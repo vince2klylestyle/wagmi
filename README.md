@@ -1,27 +1,56 @@
-HeyAnon Platform (local dev)
+# HeyAnon Platform
 
-Quick start (PowerShell / Windows):
+Multi-strategy crypto auto-trading system with self-improving ML.
 
-# From the infra folder
-cd infra
+## Architecture
 
-docker compose build api web bot
+```
+bot/                        # Trading bot (Python)
+  multi_strategy_main.py    # Main entry point
+  trading_config.py         # All config via env vars
+  strategies/               # 4 strategies + ensemble voting
+  execution/                # Position manager, leverage, risk
+  ml/                       # Self-improving ML learner
+  backtest/                 # Backtesting engine
+  alerts/                   # Discord + Telegram routing
+  data/                     # CoinGecko data fetcher
 
-docker compose up -d postgres redis
-# wait until postgres is ready (check logs), then start api
-docker compose up -d api
+api/                        # FastAPI backend (dashboard, trade logging)
+web/                        # Next.js frontend (future app UI)
+executor/                   # Copy trading executor
+infra/                      # Docker Compose orchestration
+```
 
-# Seed DB (runs inside the api container)
-docker compose exec api sh -c "python -m app.scripts.seed_strategies"
+## Quick Start
 
-# Start the web and bot
-docker compose up -d web bot
+```bash
+cd bot
+cp .env.example .env        # Edit with your Discord/Telegram tokens
+pip install -r requirements.txt
 
-Verify:
-- API health: http://localhost:8000/health
-- Web UI: http://localhost:3000
-- Seeded strategies: http://localhost:8000/v1/strategies
+# Paper trading (default):
+python multi_strategy_main.py
 
-If you want to run the bot locally without compose, set environment variables from `bot/.env.example` and run:
-python bot.py
+# Backtest:
+python -m backtest.engine --symbols BTC,ETH,SOL --days 30
+```
 
+## Strategies
+
+| Strategy | Edge | Timeframes |
+|----------|------|------------|
+| Regime Trend | WaveTrend + MACD/MFI multi-TF regime | 1h, 6h, 16h |
+| Monte Carlo Zones | SMA zones + 1000-sim price prediction | Daily |
+| Confidence Scorer | Zone signals with historical win-rate tracking | Daily |
+| Multi-Tier Quality | EMA crossover + VWAP + tiered confidence | 5m, 30m, 1h |
+
+Ensemble voting requires 2+ strategies to agree. Consensus boosts confidence,
+which determines leverage (spot at low confidence, up to 25x when all 4 agree).
+
+## Key Features
+
+- **Trailing stop loss** - Activates after TP1 (40% partial close), trails by 1.5x ATR
+- **Dynamic leverage** - 1x to 25x based on confidence + strategy agreement
+- **ML self-improvement** - Learns from every trade, adjusts confidence over time
+- **Circuit breakers** - Halts on 5% daily loss, 5 consecutive losses, or 10% drawdown
+- **CoinGecko data** - Supports all coins including HYPE

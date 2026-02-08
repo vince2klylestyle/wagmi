@@ -2,8 +2,10 @@
 infra/.env
 .env
 .env.*
+!bot/.env.example
 *.key
 *.pem
+*.json.bak
 
 # Python caches & artifacts
 __pycache__/
@@ -27,6 +29,11 @@ node_modules/
 # Docker & logs
 *.log
 docker-compose.override.yml
+
+# Bot runtime data (generated at runtime, not committed)
+bot/ml_data/
+bot/backtest_ml_data/
+bot/logs/
 
 # IDE & editor
 .vscode/
