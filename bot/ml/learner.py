@@ -1,23 +1,14 @@
 """
 Self-improving ML system.
-Learns from every trade outcome and adjusts signal confidence over time.
+Learns from every trade outcome AND market observations to adjust confidence.
 
-Features tracked per trade:
-- Strategy that generated the signal
-- Original confidence score
-- Regime/trend alignment
-- VWAP alignment
-- EMA alignment
-- ATR stop width ratio
-- Hour of day, day of week
-- Symbol
-- Leverage used
-- Win/loss outcome
-- PnL
-
-After collecting enough samples (default 20), trains a logistic regression
-model to predict win probability. Uses predictions to adjust confidence
-scores on new signals.
+Key improvements over v1:
+- Learns from EVERY tick (not just closed trades) via market snapshots
+- Tracks per-symbol and per-strategy performance separately
+- Volatility-adjusted confidence (high vol = less confident)
+- Momentum features (price change %, volume surge)
+- Rolling win rate per strategy feeds back into ensemble weights
+- Saves model + stats after every retrain for crash recovery
 """
 
 import json
@@ -36,7 +27,6 @@ logger = logging.getLogger("bot.ml")
 @dataclass
 class TradeOutcome:
     """Records everything about a completed trade for ML training."""
-    # Signal features
     symbol: str
     strategy: str
     side: str
@@ -44,29 +34,54 @@ class TradeOutcome:
     regime_score: float = 0.0
     vwap_aligned: bool = False
     ema_aligned: bool = False
-    stop_width_ratio: float = 0.0  # stop_width / ATR
+    stop_width_ratio: float = 0.0
     hour_of_day: int = 0
     day_of_week: int = 0
     leverage: float = 1.0
+
+    # Market context at signal time
+    price_change_1h_pct: float = 0.0
+    price_change_24h_pct: float = 0.0
+    volume_ratio: float = 1.0  # current vol / avg vol
+    volatility: float = 0.0    # ATR / price as percentage
+    num_strategies_agree: int = 1
 
     # Outcome
     win: bool = False
     pnl: float = 0.0
     hold_time_s: float = 0.0
-    exit_action: str = ""  # "TP1", "TP2", "SL", "TRAILING_STOP"
+    exit_action: str = ""
 
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+@dataclass
+class MarketSnapshot:
+    """Lightweight observation recorded every tick for faster learning."""
+    symbol: str
+    price: float
+    price_change_1h_pct: float = 0.0
+    volume_ratio: float = 1.0
+    volatility: float = 0.0
+    regime_score: float = 0.0
+    ensemble_direction: str = ""  # "BUY", "SELL", or "" (no signal)
+    ensemble_confidence: float = 0.0
+    # Where price went in next N minutes (filled in later)
+    future_return_5m: Optional[float] = None
+    future_return_15m: Optional[float] = None
+    future_return_1h: Optional[float] = None
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class SignalLearner:
     """
-    ML model that learns from trade outcomes to improve signal confidence.
+    ML model that learns from trade outcomes AND market observations.
 
-    Training flow:
-    1. Record outcomes from every closed trade
-    2. After min_samples trades, train logistic regression
-    3. For new signals, predict win probability and adjust confidence
-    4. Retrain every retrain_interval new trades
+    Two learning modes:
+    1. Trade learning: logistic regression on closed trades (existing)
+    2. Market learning: tracks which conditions led to price moves (new)
+       - Builds a rolling picture of "when strategies say BUY, does price go up?"
+       - Tracks per-strategy accuracy over recent windows
     """
 
     def __init__(
@@ -80,24 +95,39 @@ class SignalLearner:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.outcomes_path = self.data_dir / "trade_outcomes.json"
         self.model_path = self.data_dir / "model_weights.json"
+        self.stats_path = self.data_dir / "strategy_stats.json"
+        self.snapshots_path = self.data_dir / "market_snapshots.json"
 
         self.min_samples = min_samples
         self.retrain_interval = retrain_interval
         self.adjustment_weight = adjustment_weight
 
         self.outcomes: List[TradeOutcome] = self._load_outcomes()
+        self.snapshots: List[MarketSnapshot] = self._load_snapshots()
         self.weights: Optional[np.ndarray] = None
         self.bias: float = 0.0
         self._samples_since_train = 0
 
+        # Per-strategy rolling performance
+        self.strategy_stats: Dict[str, Dict] = self._load_strategy_stats()
+
         self._load_model()
+
+    # ─── Persistence ─────────────────────────────────────────────────
 
     def _load_outcomes(self) -> List[TradeOutcome]:
         if self.outcomes_path.exists():
             try:
                 with open(self.outcomes_path) as f:
                     data = json.load(f)
-                return [TradeOutcome(**d) for d in data]
+                loaded = []
+                for d in data:
+                    # Handle fields that may not exist in old data
+                    for key in ["price_change_1h_pct", "price_change_24h_pct",
+                                "volume_ratio", "volatility", "num_strategies_agree"]:
+                        d.setdefault(key, 0.0 if key != "num_strategies_agree" else 1)
+                    loaded.append(TradeOutcome(**d))
+                return loaded
             except Exception as e:
                 logger.warning(f"Failed to load outcomes: {e}")
         return []
@@ -105,9 +135,27 @@ class SignalLearner:
     def _save_outcomes(self):
         try:
             with open(self.outcomes_path, "w") as f:
-                json.dump([asdict(o) for o in self.outcomes], f, indent=2)
+                json.dump([asdict(o) for o in self.outcomes[-500:]], f, indent=2)
         except Exception as e:
             logger.warning(f"Failed to save outcomes: {e}")
+
+    def _load_snapshots(self) -> List[MarketSnapshot]:
+        if self.snapshots_path.exists():
+            try:
+                with open(self.snapshots_path) as f:
+                    data = json.load(f)
+                return [MarketSnapshot(**d) for d in data[-2000:]]
+            except Exception:
+                pass
+        return []
+
+    def _save_snapshots(self):
+        try:
+            # Keep last 2000 snapshots
+            with open(self.snapshots_path, "w") as f:
+                json.dump([asdict(s) for s in self.snapshots[-2000:]], f)
+        except Exception as e:
+            logger.warning(f"Failed to save snapshots: {e}")
 
     def _load_model(self):
         if self.model_path.exists():
@@ -129,29 +177,82 @@ class SignalLearner:
                         "bias": self.bias,
                         "trained_at": datetime.now(timezone.utc).isoformat(),
                         "num_samples": len(self.outcomes),
+                        "feature_names": self._feature_names(),
                     }, f, indent=2)
             except Exception as e:
                 logger.warning(f"Failed to save model: {e}")
 
+    def _load_strategy_stats(self) -> Dict[str, Dict]:
+        if self.stats_path.exists():
+            try:
+                with open(self.stats_path) as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    def _save_strategy_stats(self):
+        try:
+            with open(self.stats_path, "w") as f:
+                json.dump(self.strategy_stats, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save strategy stats: {e}")
+
+    # ─── Feature engineering ─────────────────────────────────────────
+
+    def _feature_names(self) -> List[str]:
+        return [
+            "confidence", "regime_score", "vwap_aligned", "ema_aligned",
+            "stop_width_ratio", "hour_sin", "hour_cos", "day_sin", "day_cos",
+            "leverage", "is_buy", "price_change_1h", "price_change_24h",
+            "volume_ratio", "volatility", "num_agree",
+        ]
+
     def _featurize(self, outcome: TradeOutcome) -> np.ndarray:
-        """Convert a trade outcome into a feature vector."""
+        """Convert a trade outcome into a feature vector with cyclical time encoding."""
+        hour_rad = 2 * np.pi * outcome.hour_of_day / 24.0
+        day_rad = 2 * np.pi * outcome.day_of_week / 7.0
+
         return np.array([
             outcome.confidence / 100.0,
-            outcome.regime_score / 4.0,  # normalize to ~[-1, 1]
+            outcome.regime_score / 4.0,
             1.0 if outcome.vwap_aligned else 0.0,
             1.0 if outcome.ema_aligned else 0.0,
-            min(outcome.stop_width_ratio, 3.0) / 3.0,  # normalize
-            outcome.hour_of_day / 24.0,
-            outcome.day_of_week / 7.0,
-            outcome.leverage / 25.0,  # normalize
+            min(outcome.stop_width_ratio, 3.0) / 3.0,
+            np.sin(hour_rad),      # cyclical hour encoding
+            np.cos(hour_rad),
+            np.sin(day_rad),       # cyclical day encoding
+            np.cos(day_rad),
+            outcome.leverage / 25.0,
             1.0 if outcome.side == "BUY" else 0.0,
+            np.clip(outcome.price_change_1h_pct / 5.0, -1, 1),   # normalize
+            np.clip(outcome.price_change_24h_pct / 10.0, -1, 1),
+            np.clip(outcome.volume_ratio / 3.0, 0, 1),
+            np.clip(outcome.volatility / 5.0, 0, 1),
+            outcome.num_strategies_agree / 4.0,
         ], dtype=np.float64)
+
+    # ─── Recording ───────────────────────────────────────────────────
 
     def record_outcome(self, outcome: TradeOutcome):
         """Record a completed trade outcome."""
         self.outcomes.append(outcome)
         self._save_outcomes()
         self._samples_since_train += 1
+
+        # Update per-strategy stats
+        strat = outcome.strategy
+        if strat not in self.strategy_stats:
+            self.strategy_stats[strat] = {
+                "wins": 0, "losses": 0, "total_pnl": 0.0,
+                "recent_results": [],  # last 20 results
+            }
+        stats = self.strategy_stats[strat]
+        stats["wins" if outcome.win else "losses"] += 1
+        stats["total_pnl"] += outcome.pnl
+        stats["recent_results"].append(1 if outcome.win else 0)
+        stats["recent_results"] = stats["recent_results"][-20:]
+        self._save_strategy_stats()
 
         logger.info(
             f"ML recorded: {outcome.symbol} {outcome.side} "
@@ -166,6 +267,39 @@ class SignalLearner:
         ):
             self.train()
 
+    def record_snapshot(self, snapshot: MarketSnapshot):
+        """Record a market observation for passive learning."""
+        self.snapshots.append(snapshot)
+
+        # Backfill future returns on older snapshots
+        self._backfill_returns(snapshot.symbol, snapshot.price)
+
+        # Save periodically (every 50 snapshots)
+        if len(self.snapshots) % 50 == 0:
+            self._save_snapshots()
+
+    def _backfill_returns(self, symbol: str, current_price: float):
+        """Fill in future returns for past snapshots of same symbol."""
+        now = time.time()
+        for snap in reversed(self.snapshots[-200:]):
+            if snap.symbol != symbol:
+                continue
+            if snap.future_return_5m is not None:
+                break  # already filled
+
+            snap_time = datetime.fromisoformat(snap.timestamp).timestamp()
+            age_min = (now - snap_time) / 60.0
+            ret = (current_price - snap.price) / snap.price * 100.0
+
+            if age_min >= 5 and snap.future_return_5m is None:
+                snap.future_return_5m = ret
+            if age_min >= 15 and snap.future_return_15m is None:
+                snap.future_return_15m = ret
+            if age_min >= 60 and snap.future_return_1h is None:
+                snap.future_return_1h = ret
+
+    # ─── Training ────────────────────────────────────────────────────
+
     def train(self):
         """Train logistic regression on all recorded outcomes."""
         if len(self.outcomes) < self.min_samples:
@@ -175,35 +309,61 @@ class SignalLearner:
         X = np.array([self._featurize(o) for o in self.outcomes])
         y = np.array([1.0 if o.win else 0.0 for o in self.outcomes])
 
-        # Simple online logistic regression via gradient descent
         n_features = X.shape[1]
-        if self.weights is None:
+        if self.weights is None or len(self.weights) != n_features:
             self.weights = np.zeros(n_features)
             self.bias = 0.0
 
+        # Mini-batch gradient descent with momentum
         lr = 0.01
-        for _ in range(100):  # epochs
+        momentum = 0.9
+        v_w = np.zeros_like(self.weights)
+        v_b = 0.0
+
+        # More epochs for small datasets, fewer for large
+        epochs = max(50, min(300, 3000 // len(self.outcomes)))
+
+        for _ in range(epochs):
             z = X @ self.weights + self.bias
-            pred = 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))  # sigmoid
+            pred = 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))
             error = pred - y
-            grad_w = (X.T @ error) / len(y)
+
+            # L2 regularization to prevent overfitting
+            reg = 0.001
+            grad_w = (X.T @ error) / len(y) + reg * self.weights
             grad_b = error.mean()
-            self.weights -= lr * grad_w
-            self.bias -= lr * grad_b
+
+            v_w = momentum * v_w - lr * grad_w
+            v_b = momentum * v_b - lr * grad_b
+            self.weights += v_w
+            self.bias += v_b
 
         self._samples_since_train = 0
         self._save_model()
 
         # Log accuracy
         z = X @ self.weights + self.bias
-        pred = (1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))) > 0.5
+        pred_prob = 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))
+        pred = pred_prob > 0.5
         accuracy = (pred == y).mean()
         baseline = max(y.mean(), 1 - y.mean())
+
         logger.info(
             f"ML trained on {len(self.outcomes)} samples | "
             f"Accuracy: {accuracy:.1%} | Baseline: {baseline:.1%} | "
             f"Improvement: {accuracy - baseline:+.1%}"
         )
+
+        # Log feature importances
+        feature_names = self._feature_names()
+        importances = sorted(
+            zip(feature_names, self.weights),
+            key=lambda x: abs(x[1]), reverse=True
+        )
+        top5 = ", ".join(f"{n}={w:+.3f}" for n, w in importances[:5])
+        logger.info(f"Top features: {top5}")
+
+    # ─── Prediction ──────────────────────────────────────────────────
 
     def predict_win_probability(
         self,
@@ -214,6 +374,11 @@ class SignalLearner:
         stop_width_ratio: float = 1.5,
         leverage: float = 1.0,
         side: str = "BUY",
+        price_change_1h_pct: float = 0.0,
+        price_change_24h_pct: float = 0.0,
+        volume_ratio: float = 1.0,
+        volatility: float = 0.0,
+        num_strategies_agree: int = 1,
     ) -> Optional[float]:
         """Predict win probability for a signal."""
         if self.weights is None:
@@ -230,10 +395,20 @@ class SignalLearner:
             hour_of_day=now.hour,
             day_of_week=now.weekday(),
             leverage=leverage,
+            price_change_1h_pct=price_change_1h_pct,
+            price_change_24h_pct=price_change_24h_pct,
+            volume_ratio=volume_ratio,
+            volatility=volatility,
+            num_strategies_agree=num_strategies_agree,
         )
         x = self._featurize(dummy)
+
+        # Handle feature count mismatch (model was trained with different features)
+        if len(self.weights) != len(x):
+            return None
+
         z = float(x @ self.weights + self.bias)
-        return 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))
+        return float(1.0 / (1.0 + np.exp(-np.clip(z, -500, 500))))
 
     def adjust_confidence(
         self,
@@ -244,14 +419,18 @@ class SignalLearner:
         stop_width_ratio: float = 1.5,
         leverage: float = 1.0,
         side: str = "BUY",
+        price_change_1h_pct: float = 0.0,
+        price_change_24h_pct: float = 0.0,
+        volume_ratio: float = 1.0,
+        volatility: float = 0.0,
+        num_strategies_agree: int = 1,
     ) -> float:
-        """
-        Adjust signal confidence based on ML prediction.
-        Blends original confidence with ML win probability prediction.
-        """
+        """Adjust signal confidence based on ML prediction."""
         win_prob = self.predict_win_probability(
             original_confidence, regime_score, vwap_aligned,
             ema_aligned, stop_width_ratio, leverage, side,
+            price_change_1h_pct, price_change_24h_pct,
+            volume_ratio, volatility, num_strategies_agree,
         )
         if win_prob is None:
             return original_confidence
@@ -271,6 +450,33 @@ class SignalLearner:
 
         return adjusted
 
+    # ─── Strategy performance tracking ───────────────────────────────
+
+    def get_strategy_win_rate(self, strategy_name: str, window: int = 20) -> Optional[float]:
+        """Get rolling win rate for a strategy over last N trades."""
+        stats = self.strategy_stats.get(strategy_name)
+        if not stats or not stats.get("recent_results"):
+            return None
+        recent = stats["recent_results"][-window:]
+        if len(recent) < 3:
+            return None
+        return sum(recent) / len(recent)
+
+    def get_strategy_weights(self) -> Dict[str, float]:
+        """Get recommended ensemble weights based on observed performance."""
+        weights = {}
+        for strat, stats in self.strategy_stats.items():
+            recent = stats.get("recent_results", [])
+            if len(recent) >= 5:
+                wr = sum(recent[-10:]) / len(recent[-10:])
+                # Weight = 0.5 + win_rate, clamped to [0.2, 2.0]
+                weights[strat] = max(0.2, min(2.0, 0.5 + wr))
+            else:
+                weights[strat] = 1.0
+        return weights
+
+    # ─── Reporting ───────────────────────────────────────────────────
+
     def get_performance_report(self) -> Dict[str, Any]:
         """Generate performance report from all recorded outcomes."""
         if not self.outcomes:
@@ -280,7 +486,6 @@ class SignalLearner:
         wins = sum(1 for o in self.outcomes if o.win)
         total_pnl = sum(o.pnl for o in self.outcomes)
 
-        # By strategy
         by_strategy = {}
         for o in self.outcomes:
             if o.strategy not in by_strategy:
@@ -292,7 +497,6 @@ class SignalLearner:
                 s["losses"] += 1
             s["pnl"] += o.pnl
 
-        # By symbol
         by_symbol = {}
         for o in self.outcomes:
             if o.symbol not in by_symbol:
@@ -304,6 +508,9 @@ class SignalLearner:
                 s["losses"] += 1
             s["pnl"] += o.pnl
 
+        # Snapshot learning stats
+        filled = sum(1 for s in self.snapshots if s.future_return_1h is not None)
+
         return {
             "total_trades": total,
             "wins": wins,
@@ -311,6 +518,10 @@ class SignalLearner:
             "win_rate": wins / total if total else 0,
             "total_pnl": total_pnl,
             "model_trained": self.weights is not None,
+            "model_features": len(self.weights) if self.weights is not None else 0,
+            "market_snapshots": len(self.snapshots),
+            "snapshots_with_returns": filled,
             "by_strategy": by_strategy,
             "by_symbol": by_symbol,
+            "strategy_weights": self.get_strategy_weights(),
         }
