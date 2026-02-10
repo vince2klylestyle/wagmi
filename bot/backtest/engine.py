@@ -117,7 +117,7 @@ class BacktestEngine:
             if not sym_cfg:
                 continue
             logger.info(f"Fetching data for {symbol} ({sym_cfg.coingecko_id})")
-            data = self.fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, needed_tfs)
+            data = self.fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, needed_tfs)
             all_data[symbol] = data
 
         # Walk forward through data
