@@ -28,7 +28,7 @@ from strategies.ensemble import EnsembleStrategy
 from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
 from execution.risk import RiskManager, CircuitBreaker
-from ml.learner import SignalLearner, TradeOutcome
+from ml.learner import SignalLearner, TradeOutcome, MarketSnapshot
 from alerts.router import AlertRouter
 
 # Setup logging
@@ -197,12 +197,29 @@ class MultiStrategyBot:
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""
         # Fetch data for all needed timeframes
-        data = self.fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, self._needed_tfs)
+        data = self.fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, self._needed_tfs)
 
         # Get current price
-        current_price = self.fetcher.latest_price(sym_cfg.coingecko_id)
+        current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
         if current_price is None:
             return
+
+        # Record market snapshot for ML passive learning
+        if self.ml:
+            snapshot = MarketSnapshot(symbol=symbol, price=current_price)
+            # Try to compute market context from available data
+            try:
+                df_1h = data.get("1h")
+                if df_1h is not None and not df_1h.empty and len(df_1h) > 2:
+                    snapshot.price_change_1h_pct = (current_price - float(df_1h["close"].iloc[-2])) / float(df_1h["close"].iloc[-2]) * 100
+                    if len(df_1h) > 24:
+                        snapshot.price_change_24h_pct = (current_price - float(df_1h["close"].iloc[-24])) / float(df_1h["close"].iloc[-24]) * 100
+                    avg_vol = float(df_1h["volume"].tail(20).mean())
+                    if avg_vol > 0:
+                        snapshot.volume_ratio = float(df_1h["volume"].iloc[-1]) / avg_vol
+            except Exception:
+                pass
+            self.ml.record_snapshot(snapshot)
 
         # Update existing positions
         events = self.pos_mgr.update_price(symbol, current_price)
@@ -350,8 +367,8 @@ class MultiStrategyBot:
 
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             try:
-                data = self.fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, self._needed_tfs)
-                price = self.fetcher.latest_price(sym_cfg.coingecko_id)
+                data = self.fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, self._needed_tfs)
+                price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
                 if price is None:
                     continue
 

@@ -116,8 +116,8 @@ def cmd_signals(args):
 
         print(f"\n--- {symbol} ---")
         try:
-            data = fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, needed_tfs)
-            price = fetcher.latest_price(sym_cfg.coingecko_id)
+            data = fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, needed_tfs)
+            price = fetcher.latest_price(symbol, sym_cfg.coingecko_id)
             print(f"  Price: ${price:,.2f}" if price else "  Price: unavailable")
 
             signal = ensemble.evaluate(symbol, data)
@@ -175,7 +175,7 @@ def cmd_status(args):
 
         print(f"\n=== {symbol} ===")
         try:
-            data = fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, needed_tfs)
+            data = fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, needed_tfs)
             statuses = ensemble.get_all_status(symbol, data)
             for s in statuses:
                 strat = s.get("strategy", "?")
