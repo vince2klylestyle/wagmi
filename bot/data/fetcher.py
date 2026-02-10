@@ -1,11 +1,12 @@
 """
 Multi-exchange data fetcher using CCXT.
-Primary: Binance (BTC, SOL) + Hyperliquid (HYPE) for real OHLCV candles.
-Fallback: CoinGecko for any coin not available on primary exchanges.
+Primary: Kraken (BTC, SOL) + Hyperliquid (HYPE) for real OHLCV candles.
+Fallback chain: if an exchange is geo-blocked (403), auto-tries the next.
+Final fallback: CoinGecko for any coin not available on exchanges.
 
 Why CCXT over CoinGecko:
 - Real OHLCV candles (true high/low, not approximated from close)
-- 3,000+ calls/min (Binance) vs 10-30/min (CoinGecko)
+- 3,000+ calls/min vs 10-30/min (CoinGecko)
 - Sub-second latency vs 2-3 seconds
 - No API key required for market data
 - WebSocket support for future real-time streaming
@@ -98,21 +99,37 @@ class DataFetcher:
         self._cache_hits = 0
         self._ccxt_available = False
         self._exchanges: Dict[str, Any] = {}
+        self._blocked_exchanges: set = set()  # exchanges that returned 403 geo-block
+
+        # Exchange fallback chains per symbol (tried in order)
+        self._symbol_exchanges = {
+            "BTC": [("kraken", "BTC/USDT"), ("bybit", "BTC/USDT")],
+            "SOL": [("kraken", "SOL/USDT"), ("bybit", "SOL/USDT")],
+            "HYPE": [("hyperliquid", "HYPE/USDC:USDC")],
+        }
 
         # Try to initialize CCXT exchanges
         try:
             import ccxt
             self._ccxt = ccxt
 
-            # Bybit - no auth needed for market data, works in US
-            self._exchanges["bybit"] = ccxt.bybit({
+            # Kraken - US-based (San Francisco), no geo-blocking, no auth for market data
+            self._exchanges["kraken"] = ccxt.kraken({
                 "enableRateLimit": True,
             })
 
-            # Hyperliquid - no auth needed for market data
+            # Hyperliquid - DEX, no auth needed for market data
             self._exchanges["hyperliquid"] = ccxt.hyperliquid({
                 "enableRateLimit": True,
             })
+
+            # Bybit - backup (blocked in some countries)
+            try:
+                self._exchanges["bybit"] = ccxt.bybit({
+                    "enableRateLimit": True,
+                })
+            except Exception:
+                pass
 
             self._ccxt_available = True
             logger.info(f"CCXT initialized: {list(self._exchanges.keys())}")
@@ -159,25 +176,30 @@ class DataFetcher:
     # ─── CCXT fetching ───────────────────────────────────────────────
 
     def _get_exchange_for_symbol(self, symbol_name: str) -> tuple:
-        """Return (exchange_obj, ccxt_symbol) for a given symbol name."""
-        mapping = {
-            "BTC": ("bybit", "BTC/USDT"),
-            "SOL": ("bybit", "SOL/USDT"),
-            "HYPE": ("hyperliquid", "HYPE/USDC:USDC"),
-        }
-        if symbol_name in mapping:
-            exch_name, ccxt_sym = mapping[symbol_name]
+        """Return (exchange_obj, ccxt_symbol) for a given symbol name.
+        Uses fallback chain, skipping geo-blocked exchanges."""
+        candidates = self._symbol_exchanges.get(symbol_name, [])
+        for exch_name, ccxt_sym in candidates:
+            if exch_name in self._blocked_exchanges:
+                continue
             exch = self._exchanges.get(exch_name)
             if exch:
                 return exch, ccxt_sym
         return None, None
 
-    def _fetch_ccxt_ohlcv(self, symbol_name: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Fetch OHLCV candles from exchange via CCXT."""
-        exchange, ccxt_symbol = self._get_exchange_for_symbol(symbol_name)
-        if exchange is None:
-            return None
+    def _mark_exchange_blocked(self, exchange_obj, error_msg: str):
+        """Mark an exchange as geo-blocked so we skip it on future calls."""
+        error_lower = str(error_msg).lower()
+        if "403" in error_lower or "block" in error_lower or "country" in error_lower:
+            for name, exch in self._exchanges.items():
+                if exch is exchange_obj:
+                    self._blocked_exchanges.add(name)
+                    logger.warning(f"Exchange '{name}' geo-blocked, will use fallback")
+                    break
 
+    def _fetch_ccxt_ohlcv(self, symbol_name: str, timeframe: str) -> Optional[pd.DataFrame]:
+        """Fetch OHLCV candles from exchange via CCXT.
+        Tries each exchange in the fallback chain, skipping blocked ones."""
         ccxt_tf = CCXT_TIMEFRAME_MAP.get(timeframe)
         limit = CANDLE_LIMITS.get(timeframe, 100)
 
@@ -189,21 +211,18 @@ class DataFetcher:
             return None
 
         # Handle 6h — not all exchanges support it, so build from 1h
-        if timeframe == "6h" and ccxt_tf == "6h":
-            # Try native 6h first; if it fails, resample from 1h
-            try:
-                self._total_requests += 1
-                since = None
-                if "hyperliquid" in str(type(exchange)).lower():
-                    since = int((time.time() - limit * 360 * 60) * 1000)
-                candles = exchange.fetch_ohlcv(ccxt_symbol, "6h", since=since, limit=limit)
-                if candles:
-                    df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                    df["time"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-                    df = df.drop(columns=["timestamp"]).set_index("time").sort_index().reset_index()
-                    return df
-            except Exception:
-                pass
+        if timeframe == "6h":
+            # Try native 6h first
+            exchange, ccxt_symbol = self._get_exchange_for_symbol(symbol_name)
+            if exchange:
+                try:
+                    self._total_requests += 1
+                    since = self._compute_since(exchange, limit, 360)
+                    candles = exchange.fetch_ohlcv(ccxt_symbol, "6h", since=since, limit=limit)
+                    if candles:
+                        return self._candles_to_df(candles)
+                except Exception as e:
+                    self._mark_exchange_blocked(exchange, str(e))
             # Fallback: build 6h from 1h
             df_1h = self._fetch_ccxt_ohlcv(symbol_name, "1h")
             if df_1h is not None and not df_1h.empty:
@@ -213,30 +232,48 @@ class DataFetcher:
         if ccxt_tf is None:
             return None
 
-        # For Hyperliquid, always pass 'since' to avoid the slow epoch-0 fetch
-        since = None
-        if "hyperliquid" in str(type(exchange)).lower():
-            tf_minutes = self._tf_to_minutes(ccxt_tf)
-            since = int((time.time() - limit * tf_minutes * 60) * 1000)
+        # Try each exchange in the fallback chain
+        candidates = self._symbol_exchanges.get(symbol_name, [])
+        for exch_name, ccxt_symbol in candidates:
+            if exch_name in self._blocked_exchanges:
+                continue
+            exchange = self._exchanges.get(exch_name)
+            if not exchange:
+                continue
 
-        for attempt in range(self.max_retries):
-            try:
-                self._total_requests += 1
-                candles = exchange.fetch_ohlcv(ccxt_symbol, ccxt_tf, since=since, limit=limit)
-                if not candles:
-                    return None
+            since = self._compute_since(exchange, limit, self._tf_to_minutes(ccxt_tf))
 
-                df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                df["time"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-                df = df.drop(columns=["timestamp"]).set_index("time").sort_index().reset_index()
-                return df
-
-            except Exception as e:
-                logger.warning(f"[{symbol_name}] CCXT {timeframe} attempt {attempt+1}/{self.max_retries}: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay * (attempt + 1))
+            for attempt in range(self.max_retries):
+                try:
+                    self._total_requests += 1
+                    candles = exchange.fetch_ohlcv(ccxt_symbol, ccxt_tf, since=since, limit=limit)
+                    if not candles:
+                        break  # try next exchange
+                    return self._candles_to_df(candles)
+                except Exception as e:
+                    error_str = str(e)
+                    # If geo-blocked, mark and try next exchange immediately
+                    if "403" in error_str:
+                        self._mark_exchange_blocked(exchange, error_str)
+                        break  # skip retries, try next exchange
+                    logger.warning(f"[{symbol_name}] {exch_name} {timeframe} attempt {attempt+1}/{self.max_retries}: {e}")
+                    if attempt < self.max_retries - 1:
+                        time.sleep(self.retry_delay * (attempt + 1))
 
         return None
+
+    def _compute_since(self, exchange, limit: int, tf_minutes: int) -> Optional[int]:
+        """Compute 'since' param. Required for Hyperliquid, optional for others."""
+        if "hyperliquid" in str(type(exchange)).lower():
+            return int((time.time() - limit * tf_minutes * 60) * 1000)
+        return None
+
+    def _candles_to_df(self, candles: list) -> pd.DataFrame:
+        """Convert raw CCXT candle list to DataFrame."""
+        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["time"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.drop(columns=["timestamp"]).set_index("time").sort_index().reset_index()
+        return df
 
     def _tf_to_minutes(self, tf: str) -> int:
         """Convert CCXT timeframe string to minutes."""
@@ -382,26 +419,31 @@ class DataFetcher:
         return pd.DataFrame()
 
     def latest_price(self, symbol_name: str, coin_id: str) -> Optional[float]:
-        """Get latest price. Tries CCXT ticker first, then cache."""
+        """Get latest price. Tries CCXT ticker first, then candle data, then CoinGecko."""
         cache_key = f"price:{symbol_name}"
         cached = self._get_cached(cache_key, ttl=30)
         if cached is not None and not cached.empty:
             return float(cached["close"].iloc[-1])
 
-        # Try CCXT ticker (fastest)
+        # Try CCXT ticker via fallback chain (fastest)
         if self._ccxt_available:
-            exchange, ccxt_symbol = self._get_exchange_for_symbol(symbol_name)
-            if exchange:
+            candidates = self._symbol_exchanges.get(symbol_name, [])
+            for exch_name, ccxt_symbol in candidates:
+                if exch_name in self._blocked_exchanges:
+                    continue
+                exchange = self._exchanges.get(exch_name)
+                if not exchange:
+                    continue
                 try:
                     self._total_requests += 1
                     ticker = exchange.fetch_ticker(ccxt_symbol)
                     if ticker and ticker.get("last"):
-                        # Store as a tiny df for cache compatibility
                         df = pd.DataFrame([{"close": ticker["last"]}])
                         self._set_cache(cache_key, df)
                         return float(ticker["last"])
                 except Exception as e:
-                    logger.debug(f"[{symbol_name}] CCXT ticker failed: {e}")
+                    self._mark_exchange_blocked(exchange, str(e))
+                    logger.debug(f"[{symbol_name}] {exch_name} ticker failed: {e}")
 
         # Fallback: get from most recent candle data
         df = self.fetch_ohlcv(symbol_name, coin_id, "5m")
