@@ -95,6 +95,7 @@ class MultiStrategyBot:
             mode=config.ensemble_mode,
             min_votes=config.min_votes_required,
             weight_manager=self.weight_mgr,
+            veto_ratio=config.veto_ratio,
         )
 
         # Execution

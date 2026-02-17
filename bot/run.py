@@ -99,7 +99,7 @@ def cmd_signals(args):
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
     ]
-    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required)
+    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())
@@ -159,7 +159,7 @@ def cmd_status(args):
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
     ]
-    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required)
+    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())

@@ -33,12 +33,14 @@ class EnsembleStrategy:
         min_votes: int = 2,
         weights: Optional[Dict[str, float]] = None,
         weight_manager=None,
+        veto_ratio: float = 1.1,
     ):
         self.strategies = strategies
         self.mode = mode
         self.min_votes = min_votes
         self.weights = weights or {s.name: 1.0 for s in strategies}
         self.weight_manager = weight_manager  # StrategyWeightManager instance
+        self.veto_ratio = veto_ratio
 
     def get_all_required_timeframes(self) -> List[str]:
         """Get the union of all timeframes needed by all strategies."""
@@ -74,6 +76,8 @@ class EnsembleStrategy:
 
         if self.mode == "voting":
             return self._voting(symbol, signals)
+        elif self.mode == "weighted_veto":
+            return self._weighted_veto(symbol, signals)
         elif self.mode == "weighted":
             return self._weighted(symbol, signals)
         elif self.mode == "best":
@@ -146,6 +150,53 @@ class EnsembleStrategy:
             logger.info(
                 f"[{symbol}] Opposition penalty: -{penalty} confidence "
                 f"(opposed by {[s.strategy for s in opposition]})"
+            )
+
+        return merged
+
+    def _weighted_veto(self, symbol: str, signals: List[Signal]) -> Optional[Signal]:
+        """Weight-aware voting with graduated veto.
+        Uses strategy accuracy weights * confidence to determine direction.
+        Requires chosen side to have veto_ratio times the opposition's strength."""
+        if len(signals) < 2:
+            return None  # need at least 2 strategies participating
+
+        buy_signals = [s for s in signals if s.side == "BUY"]
+        sell_signals = [s for s in signals if s.side == "SELL"]
+
+        buy_strength = self._weighted_confidence_sum(buy_signals) if buy_signals else 0
+        sell_strength = self._weighted_confidence_sum(sell_signals) if sell_signals else 0
+
+        if buy_strength > sell_strength and buy_signals:
+            chosen, opposition = buy_signals, sell_signals
+            chosen_strength, oppose_strength = buy_strength, sell_strength
+        elif sell_strength > buy_strength and sell_signals:
+            chosen, opposition = sell_signals, buy_signals
+            chosen_strength, oppose_strength = sell_strength, buy_strength
+        else:
+            return None  # tied or empty
+
+        # Weighted veto: chosen side must be meaningfully stronger
+        if opposition and chosen_strength < oppose_strength * self.veto_ratio:
+            logger.info(
+                f"[{symbol}] Weighted veto: {chosen[0].side} strength={chosen_strength:.1f} "
+                f"< {opposition[0].side} strength={oppose_strength:.1f} * {self.veto_ratio} "
+                f"= {oppose_strength * self.veto_ratio:.1f}"
+            )
+            return None
+
+        merged = self._merge_signals(symbol, chosen)
+
+        # Weighted opposition penalty (scaled by opposer's accuracy weight)
+        if opposition:
+            penalty = sum(self._get_strategy_weight(s.strategy) * 15 for s in opposition)
+            merged.confidence = max(0, merged.confidence - penalty)
+            merged.metadata["opposition_penalty"] = round(penalty, 1)
+            opp_names = [s.strategy for s in opposition]
+            logger.info(
+                f"[{symbol}] {chosen[0].side} passes weighted veto "
+                f"({chosen_strength:.1f} vs {oppose_strength:.1f}), "
+                f"penalty -{penalty:.1f} from {opp_names}"
             )
 
         return merged
