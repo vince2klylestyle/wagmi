@@ -206,10 +206,10 @@ class MultiStrategyBot:
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""
         # Fetch data for all needed timeframes
-        data = self.fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, self._needed_tfs)
+        data = self.fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, self._needed_tfs)
 
         # Get current price
-        current_price = self.fetcher.latest_price(sym_cfg.coingecko_id)
+        current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
         if current_price is None:
             return
 
@@ -533,8 +533,8 @@ class MultiStrategyBot:
 
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             try:
-                data = self.fetcher.fetch_multi_timeframe(sym_cfg.coingecko_id, self._needed_tfs)
-                price = self.fetcher.latest_price(sym_cfg.coingecko_id)
+                data = self.fetcher.fetch_multi_timeframe(symbol, sym_cfg.coingecko_id, self._needed_tfs)
+                price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
                 if price is None:
                     continue
 

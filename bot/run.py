@@ -28,6 +28,9 @@ def cmd_paper(args):
     os.makedirs("logs", exist_ok=True)
     os.makedirs("ml_data", exist_ok=True)
 
+    from data.db import init_db
+    init_db()
+
     from trading_config import TradingConfig, DEFAULT_SYMBOLS
     from multi_strategy_main import MultiStrategyBot
 
