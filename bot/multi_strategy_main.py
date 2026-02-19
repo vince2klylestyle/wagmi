@@ -156,6 +156,10 @@ class MultiStrategyBot:
         self._tick = 0
         self._needed_tfs = self.ensemble.get_all_required_timeframes()
 
+        # Per-symbol cooldown: prevent rapid re-entry after a position closes
+        self._symbol_cooldown: Dict[str, float] = {}  # symbol -> timestamp of last close
+        self._cooldown_seconds = 120  # 2 minutes minimum between close and re-entry
+
     def run(self):
         """Main run loop."""
         logger.info("=" * 60)
@@ -305,11 +309,19 @@ class MultiStrategyBot:
                     day_of_week=datetime.now(timezone.utc).weekday(),
                 ))
 
+            # Track cooldown on full closes
+            if event.action in ("SL", "TP2", "TRAILING_STOP", "EMERGENCY", "LIQUIDATION_AVOID"):
+                self._symbol_cooldown[symbol] = time.time()
+
             # Send alert
             details = (
-                f"{event.action} {event.side} @ {event.price:.4f}\n"
+                f"{event.action} {event.side} @ {_fmt_price(event.price)}\n"
                 f"PnL: ${event.pnl:+.2f} | Leverage: {event.leverage:.1f}x"
             )
+            if event.action in ("SL", "TP2", "TRAILING_STOP"):
+                pos = self.pos_mgr.positions.get(symbol)
+                if pos:
+                    details += f"\nTotal PnL: ${pos.realized_pnl:+.2f}"
             self.alerts.send_trade_event(event.action, symbol, details)
 
             # Check circuit breaker
@@ -329,11 +341,22 @@ class MultiStrategyBot:
                     logger.warning(f"[{symbol}] LIQUIDATION RISK: {liq_check}")
                     self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
 
+        # Clean up stale closed positions (prevent memory growth overnight)
+        stale = [s for s, p in self.pos_mgr.positions.items()
+                 if p.status == "closed" and s not in open_pos]
+        for s in stale:
+            del self.pos_mgr.positions[s]
+
         # Try to generate new signal
         if not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count()):
             return
         if symbol in open_pos:
             return  # Already have position in this symbol
+
+        # Per-symbol cooldown: don't re-enter too quickly after closing
+        last_close = self._symbol_cooldown.get(symbol, 0)
+        if time.time() - last_close < self._cooldown_seconds:
+            return
 
         signal_result = self.ensemble.evaluate(symbol, data)
 
@@ -423,6 +446,15 @@ class MultiStrategyBot:
             )
             signal_result.confidence = adjusted_conf
 
+        # R:R sanity filter: reject trades with tiny reward relative to risk
+        rr1 = signal_result.risk_reward_tp1
+        if rr1 < 0.3:
+            logger.info(
+                f"[{trace_id}][{symbol}] Signal rejected: R:R1={rr1:.2f} < 0.3 "
+                f"(stop too wide or TP1 too close)"
+            )
+            return
+
         # Determine leverage
         num_agree = signal_result.metadata.get("num_agree", 1)
         total = signal_result.metadata.get("total_strategies", len(self.strategies))
@@ -438,6 +470,14 @@ class MultiStrategyBot:
 
         if lev_decision.leverage <= 0:
             return  # Confidence too low
+
+        # Extra R:R gate for high leverage: need R:R1 >= 0.5 above 8x
+        if lev_decision.leverage > 8.0 and rr1 < 0.5:
+            logger.info(
+                f"[{trace_id}][{symbol}] Signal rejected: R:R1={rr1:.2f} < 0.5 "
+                f"at {lev_decision.leverage:.1f}x leverage"
+            )
+            return
 
         # Calculate position size (pass leverage + risk_multiplier for correct sizing)
         qty = self.risk_mgr.calculate_qty(
