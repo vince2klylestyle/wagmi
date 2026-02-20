@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data.fetcher import DataFetcher
-from trading_config import TradingConfig, DEFAULT_SYMBOLS, RISK_MULTIPLIERS
+from trading_config import TradingConfig, DEFAULT_SYMBOLS
 from strategies.base import Signal
 from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
@@ -228,6 +228,8 @@ class BacktestEngine:
 
     def _execute_signal(self, signal: Signal, current_price: float):
         """Execute a signal in backtest mode."""
+        from multi_strategy_main import get_tp1_close_pct
+
         # Determine leverage
         num_agree = signal.metadata.get("num_agree", 1)
         total = signal.metadata.get("total_strategies", 4)
@@ -254,6 +256,7 @@ class BacktestEngine:
             return
 
         side = "LONG" if signal.side == "BUY" else "SHORT"
+        tp1_pct = get_tp1_close_pct(signal.confidence)
 
         self.pos_mgr.open_position(
             symbol=signal.symbol,
@@ -268,6 +271,8 @@ class BacktestEngine:
             mode=lev_decision.mode,
             strategy=signal.strategy,
             confidence=signal.confidence,
+            tp1_close_pct=tp1_pct,
+            entry_reasons={"backtest": True, "strategy": signal.strategy},
         )
 
         self.signals_generated.append({

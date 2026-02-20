@@ -23,6 +23,10 @@ import pandas as pd
 from data.fetcher import DataFetcher
 from data.db import init_db, log_signal, log_trade, log_equity, get_daily_summary
 from data.strategy_weights import StrategyWeightManager
+from data.risk_log import log_rejection, get_rejection_counts
+from data.ml_log import log_ml_stats, log_ml_confidence
+from data.trade_log import log_closed_trade
+from data.learning import record_trade_outcome, get_performance
 from trading_config import TradingConfig, DEFAULT_SYMBOLS
 from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
@@ -35,6 +39,21 @@ from execution.risk import RiskManager, CircuitBreaker
 from execution.trade_logger import TradeLogger
 from ml.learner import SignalLearner, TradeOutcome, MarketSnapshot
 from alerts.router import AlertRouter
+from alerts.telegram_bot import TelegramCommandBot
+
+
+def get_tp1_close_pct(confidence: float) -> float:
+    """Confidence-based TP1 close percentage.
+    Lower confidence = lock in more profit. Higher = let more ride.
+    Conservative by design: default to closing more, not less."""
+    if confidence < 70:
+        return 1.00   # very low confidence: close 100% at TP1 (full take-profit)
+    elif confidence < 85:
+        return 0.70   # moderate: close 70% at TP1, 30% rides
+    elif confidence < 92:
+        return 0.50   # high: close 50%, 50% rides
+    else:
+        return 0.30   # very high: close 30%, 70% rides (strong conviction)
 
 
 def _fmt_price(price: float) -> str:
@@ -164,6 +183,14 @@ class MultiStrategyBot:
         self._last_signal: Dict[str, tuple] = {}  # symbol -> (side, timestamp)
         self._signal_dedup_seconds = 300  # 5 minutes between same-side signals per symbol
 
+        # Telegram command bot
+        tg_user_id = int(os.getenv("TELEGRAM_ALLOWED_USER_ID", "0"))
+        self.telegram_bot = TelegramCommandBot(
+            token=config.telegram_token,
+            allowed_user_id=tg_user_id,
+            bot_instance=self,
+        )
+
     def run(self):
         """Main run loop."""
         logger.info("=" * 60)
@@ -182,6 +209,9 @@ class MultiStrategyBot:
             logger.warning("AUTO-TRADING ENABLED - REAL MONEY MODE")
             logger.warning("Starting in 5 seconds... Press CTRL+C to abort")
             time.sleep(5)
+
+        # Start Telegram command bot
+        self.telegram_bot.start()
 
         # Signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -318,9 +348,47 @@ class MultiStrategyBot:
                     day_of_week=datetime.now(timezone.utc).weekday(),
                 ))
 
-            # Track cooldown on full closes
+            # Learning hooks + enhanced trade log on full closes
             if event.action in _FULL_CLOSE:
                 self._symbol_cooldown[symbol] = time.time()
+                pos = self.pos_mgr.positions.get(symbol)
+                if pos:
+                    # Record to data/analysis/trade_outcomes.csv
+                    record_trade_outcome(
+                        symbol=symbol,
+                        side=event.side,
+                        outcome=pos.outcome,
+                        pnl=pos.realized_pnl,
+                        entry=pos.entry,
+                        sl=pos.original_sl,
+                        tp1=pos.tp1,
+                        tp2=pos.tp2,
+                        tp1_hit=pos.filled_tp1,
+                        sl_after_tp1=event.action == "SL" and pos.filled_tp1,
+                        state_path=pos.state_path_str,
+                        leverage=pos.leverage,
+                        confidence=pos.confidence,
+                        strategy=pos.strategy,
+                        entry_reasons=pos.entry_reasons,
+                    )
+                    # Record to data/trades.csv (enhanced)
+                    log_closed_trade(
+                        symbol=symbol,
+                        side=event.side,
+                        entry=pos.entry,
+                        exit_price=event.price,
+                        action=event.action,
+                        pnl=pos.realized_pnl,
+                        fees=pos.fees_paid,
+                        state_path=pos.state_path_str,
+                        outcome=pos.outcome,
+                        leverage=pos.leverage,
+                        confidence=pos.confidence,
+                        strategy=pos.strategy,
+                        ml_samples_at_entry=0,
+                        ml_samples_at_exit=len(self.ml.outcomes) if self.ml else 0,
+                        entry_reasons=pos.entry_reasons,
+                    )
 
             # Send alert
             details = (
@@ -351,12 +419,15 @@ class MultiStrategyBot:
                     self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
 
         # Clean up stale closed positions (prevent memory growth overnight)
+        from execution.position_state import CLOSED as _CLOSED
         stale = [s for s, p in self.pos_mgr.positions.items()
-                 if p.status == "closed" and s not in open_pos]
+                 if p.state == _CLOSED and s not in open_pos]
         for s in stale:
             del self.pos_mgr.positions[s]
 
         # Try to generate new signal
+        if self.telegram_bot.is_paused:
+            return  # Paused via Telegram /pause command
         if not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count()):
             return
         if symbol in open_pos:
@@ -464,14 +535,22 @@ class MultiStrategyBot:
             )
             signal_result.confidence = adjusted_conf
 
-        # R:R sanity filter: reject trades with tiny reward relative to risk
-        # At 1.5R TP1 targets, R:R1 should naturally be ~1.5; reject anything under 0.5
+        # ── Risk filters (all rejections logged to data/logs/risk_rejections.csv) ──
         rr1 = signal_result.risk_reward_tp1
+        sl_distance = signal_result.stop_width
+
+        # R:R sanity filter
         if rr1 < 0.5:
-            logger.info(
-                f"[{trace_id}][{symbol}] Signal rejected: R:R1={rr1:.2f} < 0.5 "
-                f"(stop too wide or TP1 too close)"
-            )
+            log_rejection(symbol, "rr1_too_low", rr1=rr1, sl_distance=sl_distance,
+                          confidence=signal_result.confidence)
+            logger.info(f"[{trace_id}][{symbol}] Rejected: R:R1={rr1:.2f} < 0.5")
+            return
+
+        # SL too tight relative to ATR (noise will stop us out)
+        if signal_result.atr > 0 and sl_distance < signal_result.atr * 0.5:
+            log_rejection(symbol, "sl_too_tight", rr1=rr1, sl_distance=sl_distance,
+                          confidence=signal_result.confidence)
+            logger.info(f"[{trace_id}][{symbol}] Rejected: SL distance {sl_distance:.4f} < 0.5*ATR")
             return
 
         # Determine leverage
@@ -491,11 +570,12 @@ class MultiStrategyBot:
             return  # Confidence too low
 
         # Extra R:R gate for high leverage: need R:R1 >= 1.0 above 8x
-        # At high leverage, fees eat more of the profit margin
         if lev_decision.leverage > 8.0 and rr1 < 1.0:
+            log_rejection(symbol, "rr1_too_low_high_lev", rr1=rr1,
+                          leverage=lev_decision.leverage,
+                          confidence=signal_result.confidence)
             logger.info(
-                f"[{trace_id}][{symbol}] Signal rejected: R:R1={rr1:.2f} < 1.0 "
-                f"at {lev_decision.leverage:.1f}x leverage"
+                f"[{trace_id}][{symbol}] Rejected: R:R1={rr1:.2f} < 1.0 at {lev_decision.leverage:.1f}x"
             )
             return
 
@@ -508,15 +588,20 @@ class MultiStrategyBot:
         if qty <= 0:
             return
 
-        # Dynamic TP1 close %: lock in more profit at lower confidence,
-        # let more ride at high confidence (where TP2 is more likely)
-        conf = signal_result.confidence
-        if conf >= 85:
-            tp1_pct = 0.40   # high confidence: 40% at TP1, 60% rides
-        elif conf >= 75:
-            tp1_pct = 0.60   # medium: 60% at TP1, 40% rides
-        else:
-            tp1_pct = 0.80   # low confidence: 80% at TP1, only 20% rides
+        # Dynamic TP1 close % from confidence-based mapping
+        tp1_pct = get_tp1_close_pct(signal_result.confidence)
+
+        # Build entry reasons: WHY this trade was entered (for EV analysis)
+        entry_reasons = {
+            "strategies_agree": signal_result.metadata.get("strategies_agree", []),
+            "num_agree": num_agree,
+            "trend_adjustment": signal_result.metadata.get("trend_adjustment", 0),
+            "regime_score": signal_result.metadata.get("align_long", 0) or signal_result.metadata.get("regime_score", 0),
+            "individual_confidences": signal_result.metadata.get("individual_confidences", {}),
+            "mode": signal_result.metadata.get("mode", ""),
+            "rr1": round(rr1, 2),
+            "ml_adjusted": original_conf != signal_result.confidence,
+        }
 
         # Open position
         side = "LONG" if signal_result.side == "BUY" else "SHORT"
@@ -534,6 +619,7 @@ class MultiStrategyBot:
             strategy=signal_result.strategy,
             confidence=signal_result.confidence,
             tp1_close_pct=tp1_pct,
+            entry_reasons=entry_reasons,
         )
 
         # Log trade open to database
@@ -606,17 +692,44 @@ class MultiStrategyBot:
         # Daily strategy weight recompute from trades DB
         self.weight_mgr.recompute_from_db()
 
+        # ML stats logging (data/ml/ml_stats.jsonl)
+        ml_conf_trade = 0.0
+        ml_conf_snapshot = 0.0
+        ml_conf_fast = 0.0
+        if self.ml:
+            ml_conf_trade = self.ml.predict_win_probability(70, 0, False, False, 1.5) if self.ml.weights else 0.0
+            ml_conf_snapshot = 1.0 if self.ml.snapshot_weights is not None else 0.0
+            ml_conf_fast = 1.0 if self.ml.fast_weights is not None else 0.0
+        log_ml_stats(
+            ml_samples_total=status["ml_samples"],
+            ml_conf_trade=ml_conf_trade,
+            ml_conf_snapshot=ml_conf_snapshot,
+            ml_conf_fast=ml_conf_fast,
+            equity=status["equity"],
+            open_positions=status["open_positions"],
+        )
+
+        # Risk rejection counts for heartbeat
+        rejections = get_rejection_counts()
+
+        # Rolling performance from learning hooks
+        perf = get_performance()
+
         self.alerts.send_heartbeat(status)
         strat_weights = self.weight_mgr.get_all_weights()
         weights_str = " ".join(f"{k}={v:.2f}" for k, v in strat_weights.items()) if strat_weights else "none"
+        rej_str = " ".join(f"{k}={v}" for k, v in rejections.items()) if rejections else "none"
+        wr20 = perf.get("win_rate_20", 0)
         logger.info(
             f"[HEARTBEAT] equity=${status['equity']:,.2f} "
             f"positions={status['open_positions']} "
             f"daily_pnl=${status['daily_pnl']:+,.2f} "
+            f"WR20={wr20:.0%} "
             f"ml_trades={status['ml_samples']} "
             f"ml_snaps={status['ml_snapshots']}({status['ml_snap_trained']}filled) "
             f"direction_model={'YES' if status['ml_direction_model'] else 'no'} "
             f"strat_weights=[{weights_str}] "
+            f"rejections=[{rej_str}] "
             f"api={fetcher_stats['total_requests']} "
             f"cache={fetcher_stats['cache_hits']}"
         )

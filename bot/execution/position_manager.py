@@ -1,17 +1,18 @@
 """
-Position manager with progressive trailing stop and dynamic TP1 sizing.
-Handles position lifecycle: open -> TP1 partial -> trailing stop -> TP2/close.
+Position manager with state machine, progressive trailing stop, and dynamic TP1.
+
+State machine: IDLE → OPEN → TP1_HIT → TRAILING → CLOSED
+                        ↓                              ↑
+                        └── CLOSED (SL, EARLY_EXIT) ───┘
 
 Flow:
-1. Open position with entry, SL, TP1, TP2
+1. Open position (IDLE → OPEN)
 2. Monitor price each tick
-3. If TP1 hit: close tp1_close_pct (dynamic, 40-80%), move SL above breakeven, trailing ON
-4. Trailing stop tightens progressively as price approaches TP2:
-   - Near TP1: trail distance ~ ATR*1.0 (67% of original ATR*1.5)
-   - Near TP2: trail distance ~ ATR*0.5 (33% of original)
-5. Profit lock floor: once past 30% of entry->TP2, guarantee minimum gains
-6. If TP2 hit or trailing stop triggered: close remaining
-7. Early exit: if momentum reverses hard against position, cut early to minimize loss
+3. Early exit check (OPEN → CLOSED if momentum reverses hard)
+4. If TP1 hit: partial close, SL → breakeven (OPEN → TP1_HIT → TRAILING)
+5. Trailing stop tightens progressively as price approaches TP2
+6. Profit lock floor: once past 30% of entry→TP2, guarantee minimum gains
+7. If TP2 hit or trailing stop triggered (TRAILING → CLOSED)
 """
 
 import logging
@@ -19,12 +20,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 
+from execution.position_state import (
+    IDLE, OPEN, TP1_HIT, TRAILING, CLOSED, transition,
+)
+from execution.precision import round_price, round_qty
+
 logger = logging.getLogger("bot.execution.positions")
 
 
 @dataclass
 class Position:
-    """Represents an open trading position."""
+    """Represents a trading position with full lifecycle state tracking."""
     symbol: str
     side: str               # "LONG" or "SHORT"
     entry: float
@@ -40,14 +46,16 @@ class Position:
     atr: float = 0.0            # ATR at entry (for progressive trailing)
     tp1_close_pct: float = 0.7  # fraction to close at TP1 (dynamic per-trade)
 
-    # State
-    status: str = "open"    # "open", "closed"
-    filled_tp1: bool = False
+    # State machine
+    state: str = IDLE
+    state_path: List[str] = field(default_factory=lambda: [IDLE])
     original_qty: float = 0.0
     original_sl: float = 0.0
 
+    # Entry reasons: WHY we opened this position (for EV analysis)
+    entry_reasons: Dict[str, Any] = field(default_factory=dict)
+
     # Trailing stop
-    trailing_active: bool = False
     trailing_distance: float = 0.0  # absolute distance from peak
     peak_price: float = 0.0         # best price since TP1
 
@@ -59,6 +67,9 @@ class Position:
     realized_pnl: float = 0.0
     fees_paid: float = 0.0
 
+    # Outcome classification (set on close)
+    outcome: str = ""  # CLEAN_WIN, CLEAN_LOSS, TP1_ONLY, TP1_THEN_SL, etc.
+
     def __post_init__(self):
         if self.original_qty == 0:
             self.original_qty = self.qty
@@ -67,12 +78,37 @@ class Position:
         if self.peak_price == 0:
             self.peak_price = self.entry
 
+    # ── Derived properties (backward compat) ──
+    @property
+    def status(self) -> str:
+        return "closed" if self.state == CLOSED else "open"
+
+    @property
+    def filled_tp1(self) -> bool:
+        return self.state in (TP1_HIT, TRAILING, CLOSED) and TP1_HIT in self.state_path
+
+    @property
+    def trailing_active(self) -> bool:
+        return self.state == TRAILING
+
+    @property
+    def state_path_str(self) -> str:
+        return "→".join(self.state_path)
+
+    def _transition(self, target: str, reason: str = "") -> str:
+        """Transition to a new state, updating state_path."""
+        new = transition(self.symbol, self.state, target, reason)
+        if new != self.state:
+            self.state = new
+            self.state_path.append(new)
+        return new
+
 
 @dataclass
 class TradeEvent:
     """Record of a trade action (open, partial close, full close)."""
     symbol: str
-    action: str         # "OPEN", "TP1", "TP2", "SL", "TRAILING_STOP", "EMERGENCY"
+    action: str         # "OPEN", "TP1", "TP2", "SL", "TRAILING_STOP", "EARLY_EXIT", etc.
     side: str
     price: float
     qty: float
@@ -86,13 +122,10 @@ class TradeEvent:
 
 class PositionManager:
     """
-    Manages all open positions with TP/SL/trailing stop logic.
+    Manages all open positions with state-machine lifecycle.
 
-    Trailing stop behavior:
-    - Activates after TP1 is hit
-    - Trails price by trailing_stop_distance (ATR * multiplier)
-    - Updates each tick to lock in profits as price moves favorably
-    - Closes position when price retraces to trailing stop level
+    Bot-only mode: only manages positions it opened.
+    One active position per symbol enforced.
     """
 
     def __init__(
@@ -125,11 +158,23 @@ class PositionManager:
         strategy: str = "",
         confidence: float = 0.0,
         tp1_close_pct: float = 0.7,
+        entry_reasons: Optional[Dict[str, Any]] = None,
     ) -> Optional[Position]:
-        """Open a new position."""
+        """Open a new position. Enforces one position per symbol."""
         # Don't open if already have a position in this symbol
-        if symbol in self.positions and self.positions[symbol].status == "open":
-            logger.warning(f"[{symbol}] Already have open position, skipping")
+        existing = self.positions.get(symbol)
+        if existing and existing.state != CLOSED:
+            logger.warning(f"[{symbol}] Already have position in state {existing.state}, skipping")
+            return None
+
+        # Apply precision rounding
+        entry = round_price(symbol, entry)
+        sl = round_price(symbol, sl)
+        tp1 = round_price(symbol, tp1)
+        tp2 = round_price(symbol, tp2)
+        qty = round_qty(symbol, qty)
+        if qty <= 0:
+            logger.warning(f"[{symbol}] Qty rounds to 0, skipping")
             return None
 
         trailing_distance = atr * self.trailing_atr_mult if atr > 0 else abs(entry - sl)
@@ -149,7 +194,11 @@ class PositionManager:
             atr=atr,
             tp1_close_pct=tp1_close_pct,
             trailing_distance=trailing_distance,
+            entry_reasons=entry_reasons or {},
         )
+
+        # State: IDLE → OPEN
+        pos._transition(OPEN, f"OPEN {side} @ {entry}")
 
         self.positions[symbol] = pos
 
@@ -169,9 +218,9 @@ class PositionManager:
         self.trade_log.append(event)
 
         logger.info(
-            f"[{symbol}] OPEN {side} @ {entry:.4f} qty={qty:.6f} "
-            f"SL={sl:.4f} TP1={tp1:.4f} TP2={tp2:.4f} "
-            f"leverage={leverage}x trail_dist={trailing_distance:.4f}"
+            f"[{symbol}] OPEN {side} @ {entry} qty={qty} "
+            f"SL={sl} TP1={tp1} TP2={tp2} "
+            f"leverage={leverage}x tp1_close={tp1_close_pct:.0%}"
         )
 
         return pos
@@ -188,15 +237,15 @@ class PositionManager:
             return []
 
         pos = self.positions[symbol]
-        if pos.status != "open":
+        if pos.state == CLOSED:
             return []
 
         events = []
         is_long = pos.side == "LONG"
 
-        # 0. Early exit: cut position if momentum is accelerating toward SL
-        # Only before TP1 (after TP1, breakeven SL protects us)
-        if not pos.filled_tp1 and df_5m is not None:
+        # 0. Early exit: cut position if momentum accelerating toward SL
+        # Only in OPEN state (after TP1, breakeven SL protects us)
+        if pos.state == OPEN and df_5m is not None:
             early = self._check_early_exit(pos, current_price, df_5m)
             if early:
                 event = self._close_position(pos, current_price, "EARLY_EXIT")
@@ -206,25 +255,25 @@ class PositionManager:
         # 1. Check stop loss (including trailing stop)
         sl_hit = (current_price <= pos.sl) if is_long else (current_price >= pos.sl)
         if sl_hit:
-            action = "TRAILING_STOP" if pos.trailing_active else "SL"
+            action = "TRAILING_STOP" if pos.state == TRAILING else "SL"
             event = self._close_position(pos, current_price, action)
             events.append(event)
             return events
 
-        # 2. Check TP1 (dynamic partial close + move SL to breakeven + trailing)
-        if not pos.filled_tp1:
+        # 2. Check TP1 (dynamic partial close → TP1_HIT → TRAILING)
+        if pos.state == OPEN:
             tp1_hit = (current_price >= pos.tp1) if is_long else (current_price <= pos.tp1)
             if tp1_hit:
                 event = self._partial_close_tp1(pos, current_price)
                 events.append(event)
 
-        # 3. Update trailing stop (if active)
-        if pos.trailing_active and self.enable_trailing:
+        # 3. Update trailing stop (if in TRAILING state)
+        if pos.state == TRAILING and self.enable_trailing:
             self._update_trailing_stop(pos, current_price)
 
         # 4. Check TP2 (full close)
         tp2_hit = (current_price >= pos.tp2) if is_long else (current_price <= pos.tp2)
-        if tp2_hit:
+        if tp2_hit and pos.state != CLOSED:
             event = self._close_position(pos, current_price, "TP2")
             events.append(event)
 
@@ -232,13 +281,12 @@ class PositionManager:
 
     def _check_early_exit(self, pos: Position, price: float, df_5m) -> bool:
         """
-        Detect momentum reversal heading toward SL and cut early to minimize loss.
+        Detect momentum reversal heading toward SL and cut early.
         Triggers when ALL of:
-        1. Price has moved >50% of the way from entry to SL
-        2. Last 3 candles show accelerating movement against the position
-        3. EMA5 has crossed below EMA13 (for longs) or above (for shorts)
-
-        Cutting at 50-60% loss is better than waiting for 100% SL hit.
+        1. Price moved >50% toward SL
+        2. Last 3 candles accelerating against position
+        3. EMA5 crossed against EMA13
+        Cutting at 50-60% loss is better than waiting for full SL.
         """
         if df_5m is None or df_5m.empty or len(df_5m) < 15:
             return False
@@ -249,29 +297,24 @@ class PositionManager:
             if stop_dist == 0:
                 return False
 
-            # How far toward SL are we? (0 = at entry, 1 = at SL)
             if is_long:
                 sl_progress = (pos.entry - price) / stop_dist
             else:
                 sl_progress = (price - pos.entry) / stop_dist
 
-            # Only consider early exit if >50% toward SL
             if sl_progress < 0.5:
                 return False
 
             c = df_5m["close"].astype(float)
-
-            # Check last 3 candles: accelerating against position
             last3 = c.iloc[-3:].values
             if is_long:
-                accelerating = last3[2] < last3[1] < last3[0]  # consecutive drops
+                accelerating = last3[2] < last3[1] < last3[0]
             else:
-                accelerating = last3[2] > last3[1] > last3[0]  # consecutive rises
+                accelerating = last3[2] > last3[1] > last3[0]
 
             if not accelerating:
                 return False
 
-            # EMA5 vs EMA13 crossover (fast momentum)
             ema5 = float(c.ewm(span=5, adjust=False).mean().iloc[-1])
             ema13 = float(c.ewm(span=13, adjust=False).mean().iloc[-1])
 
@@ -294,8 +337,11 @@ class PositionManager:
         return False
 
     def _partial_close_tp1(self, pos: Position, price: float) -> TradeEvent:
-        """Close tp1_close_pct at TP1, move SL above breakeven, activate trailing stop."""
-        close_qty = pos.qty * pos.tp1_close_pct
+        """Close tp1_close_pct at TP1, move SL above breakeven, activate trailing."""
+        # State: OPEN → TP1_HIT → TRAILING
+        pos._transition(TP1_HIT, f"TP1 @ {price}")
+
+        close_qty = round_qty(pos.symbol, pos.qty * pos.tp1_close_pct)
         fee = self._fee(price, close_qty)
         pos.fees_paid += fee
 
@@ -305,22 +351,23 @@ class PositionManager:
             pnl = (pos.entry - price) * close_qty * pos.leverage
 
         pos.realized_pnl += (pnl - fee)
-        pos.qty -= close_qty
-        pos.filled_tp1 = True
+        pos.qty = round_qty(pos.symbol, pos.qty - close_qty)
 
-        # Move SL to breakeven + buffer (0.2% covers fees, ensures small profit)
+        # Move SL to breakeven + buffer (0.2% covers fees)
         fee_buffer = pos.entry * 0.002
         if pos.side == "LONG":
-            pos.sl = pos.entry + fee_buffer
+            pos.sl = round_price(pos.symbol, pos.entry + fee_buffer)
         else:
-            pos.sl = pos.entry - fee_buffer
+            pos.sl = round_price(pos.symbol, pos.entry - fee_buffer)
 
-        pos.trailing_active = True
         pos.peak_price = price
 
+        # TP1_HIT → TRAILING
+        pos._transition(TRAILING, "trailing activated")
+
         logger.info(
-            f"[{pos.symbol}] TP1 @ {price:.4f} | Closed {close_qty:.6f} | "
-            f"PnL={pnl:.2f} | SL->BE+={pos.sl:.4f} | Trailing ON"
+            f"[{pos.symbol}] TP1 @ {price} | Closed {close_qty} ({pos.tp1_close_pct:.0%}) | "
+            f"PnL={pnl:.2f} | SL→BE+={pos.sl} | Trailing ON"
         )
 
         return TradeEvent(
@@ -333,22 +380,20 @@ class PositionManager:
             fee=fee,
             leverage=pos.leverage,
             strategy=pos.strategy,
-            metadata={"remaining_qty": pos.qty, "new_sl": pos.sl},
+            metadata={
+                "remaining_qty": pos.qty,
+                "new_sl": pos.sl,
+                "tp1_close_pct": pos.tp1_close_pct,
+            },
         )
 
     def _update_trailing_stop(self, pos: Position, current_price: float):
         """
         Progressive trailing stop with profit lock floor.
-
-        After TP1:
-        - Trailing distance tightens as price moves from TP1 toward TP2
-        - At TP1 level: 67% of original distance (≈ ATR*1.0)
-        - Near TP2: 33% of original distance (≈ ATR*0.5)
-        - Profit lock floor guarantees minimum gain once past 30% progress
+        Tightens from 67% → 33% of original distance as price → TP2.
         """
         is_long = pos.side == "LONG"
 
-        # Update peak price
         if is_long:
             if current_price > pos.peak_price:
                 pos.peak_price = current_price
@@ -356,7 +401,6 @@ class PositionManager:
             if current_price < pos.peak_price:
                 pos.peak_price = current_price
 
-        # Calculate progress toward TP2 (0.0 at entry, 1.0 at TP2)
         if is_long:
             total_range = pos.tp2 - pos.entry
             peak_move = pos.peak_price - pos.entry
@@ -366,19 +410,15 @@ class PositionManager:
 
         progress = min(peak_move / total_range, 1.0) if total_range > 0 else 0.0
 
-        # Progressive tightening: shrink trailing distance as we approach TP2
-        # 67% at start -> 33% near TP2
         tighten_factor = max(0.67 - progress * 0.34, 0.33)
         effective_distance = pos.trailing_distance * tighten_factor
 
-        # Calculate trailing stop level
         if is_long:
             trailing_sl = pos.peak_price - effective_distance
         else:
             trailing_sl = pos.peak_price + effective_distance
 
-        # Profit lock floor: once past 30% of entry->TP2, lock in minimum profit
-        # Scales from 30% of gains locked at 30% progress to 65% locked near TP2
+        # Profit lock floor: guarantee minimum gain past 30% progress
         floor_sl = None
         if progress > 0.3 and peak_move > 0:
             lock_pct = min(0.3 + (progress - 0.3) * 0.5, 0.65)
@@ -387,7 +427,6 @@ class PositionManager:
             else:
                 floor_sl = pos.entry - peak_move * lock_pct
 
-        # Use the tighter (more protective) of trailing and floor
         new_sl = trailing_sl
         if floor_sl is not None:
             if is_long:
@@ -395,26 +434,46 @@ class PositionManager:
             else:
                 new_sl = min(trailing_sl, floor_sl)
 
-        # Only move SL in the protective direction (up for longs, down for shorts)
-        if is_long:
-            if new_sl > pos.sl:
-                old_sl = pos.sl
-                pos.sl = new_sl
-                logger.info(
-                    f"[{pos.symbol}] Trail SL: {old_sl:.4f} -> {new_sl:.4f} "
-                    f"(peak={pos.peak_price:.4f} prog={progress:.0%})"
-                )
+        new_sl = round_price(pos.symbol, new_sl)
+
+        # Only move SL in the protective direction
+        if is_long and new_sl > pos.sl:
+            old_sl = pos.sl
+            pos.sl = new_sl
+            logger.info(
+                f"[{pos.symbol}] Trail SL: {old_sl} → {new_sl} "
+                f"(peak={pos.peak_price} prog={progress:.0%})"
+            )
+        elif not is_long and new_sl < pos.sl:
+            old_sl = pos.sl
+            pos.sl = new_sl
+            logger.info(
+                f"[{pos.symbol}] Trail SL: {old_sl} → {new_sl} "
+                f"(peak={pos.peak_price} prog={progress:.0%})"
+            )
+
+    def _classify_outcome(self, pos: Position, action: str) -> str:
+        """Classify the trade outcome for learning hooks."""
+        tp1_was_hit = TP1_HIT in pos.state_path
+        win = pos.realized_pnl > 0
+
+        if action == "TP2":
+            return "CLEAN_WIN"
+        elif action == "EARLY_EXIT":
+            return "EARLY_EXIT_SAVE" if pos.realized_pnl > -(abs(pos.entry - pos.original_sl) * pos.original_qty * pos.leverage * 0.5) else "EARLY_EXIT_FAIL"
+        elif action == "TRAILING_STOP":
+            return "TRAILING_WIN" if win else "TRAILING_FAIL"
+        elif action == "SL":
+            if tp1_was_hit:
+                return "TP1_THEN_SL"
+            return "CLEAN_LOSS"
+        elif tp1_was_hit and not win:
+            return "TP1_ONLY"
         else:
-            if new_sl < pos.sl:
-                old_sl = pos.sl
-                pos.sl = new_sl
-                logger.info(
-                    f"[{pos.symbol}] Trail SL: {old_sl:.4f} -> {new_sl:.4f} "
-                    f"(peak={pos.peak_price:.4f} prog={progress:.0%})"
-                )
+            return "CLEAN_LOSS" if not win else "CLEAN_WIN"
 
     def _close_position(self, pos: Position, price: float, action: str) -> TradeEvent:
-        """Fully close a position."""
+        """Fully close a position with state transition."""
         qty = pos.qty
         fee = self._fee(price, qty)
         pos.fees_paid += fee
@@ -426,12 +485,18 @@ class PositionManager:
 
         pos.realized_pnl += (pnl - fee)
         pos.qty = 0
-        pos.status = "closed"
         pos.close_time = datetime.now(timezone.utc)
 
+        # Classify outcome before closing state
+        pos.outcome = self._classify_outcome(pos, action)
+
+        # State → CLOSED
+        pos._transition(CLOSED, f"{action} @ {price}")
+
         logger.info(
-            f"[{pos.symbol}] {action} @ {price:.4f} | PnL={pnl:.2f} | "
-            f"Total PnL={pos.realized_pnl:.2f} | Fees={pos.fees_paid:.2f}"
+            f"[{pos.symbol}] {action} @ {price} | PnL={pnl:.2f} | "
+            f"Total={pos.realized_pnl:.2f} | Fees={pos.fees_paid:.2f} | "
+            f"Outcome={pos.outcome} | Path={pos.state_path_str}"
         )
 
         return TradeEvent(
@@ -448,27 +513,30 @@ class PositionManager:
                 "total_pnl": pos.realized_pnl,
                 "total_fees": pos.fees_paid,
                 "hold_time_s": (pos.close_time - pos.open_time).total_seconds(),
-                "trailing_was_active": pos.trailing_active,
                 "peak_price": pos.peak_price,
+                "outcome": pos.outcome,
+                "state_path": pos.state_path_str,
+                "entry_reasons": pos.entry_reasons,
             },
         )
 
     def force_close(self, symbol: str, price: float, reason: str = "EMERGENCY") -> Optional[TradeEvent]:
         """Force close a position (circuit breaker, liquidation avoidance, etc.)."""
-        if symbol not in self.positions or self.positions[symbol].status != "open":
+        pos = self.positions.get(symbol)
+        if not pos or pos.state == CLOSED:
             return None
-        return self._close_position(self.positions[symbol], price, reason)
+        return self._close_position(pos, price, reason)
 
     def get_open_positions(self) -> Dict[str, Position]:
-        return {s: p for s, p in self.positions.items() if p.status == "open"}
+        return {s: p for s, p in self.positions.items() if p.state != CLOSED}
 
     def get_open_count(self) -> int:
-        return sum(1 for p in self.positions.values() if p.status == "open")
+        return sum(1 for p in self.positions.values() if p.state != CLOSED)
 
     def get_total_unrealized_pnl(self, prices: Dict[str, float]) -> float:
         total = 0.0
         for symbol, pos in self.positions.items():
-            if pos.status != "open" or symbol not in prices:
+            if pos.state == CLOSED or symbol not in prices:
                 continue
             price = prices[symbol]
             if pos.side == "LONG":
@@ -479,7 +547,8 @@ class PositionManager:
 
     def get_trade_summary(self) -> Dict[str, Any]:
         """Summary of all trades taken."""
-        closed = [e for e in self.trade_log if e.action in ("SL", "TP1", "TP2", "TRAILING_STOP", "EMERGENCY")]
+        closed = [e for e in self.trade_log if e.action in
+                  ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT", "EMERGENCY")]
         if not closed:
             return {"total_trades": 0}
 
@@ -500,6 +569,6 @@ class PositionManager:
             "avg_loss": sum(e.pnl for e in losses) / len(losses) if losses else 0,
             "by_action": {
                 action: sum(1 for e in closed if e.action == action)
-                for action in ("SL", "TP1", "TP2", "TRAILING_STOP", "EMERGENCY")
+                for action in ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT", "EMERGENCY")
             },
         }

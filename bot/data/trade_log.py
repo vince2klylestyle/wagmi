@@ -1,0 +1,80 @@
+"""
+Enhanced trade logging to CSV with state path and ML context.
+
+File: data/trades.csv
+Written on every full trade close.
+"""
+
+import csv
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger("bot.data.trade_log")
+
+_TRADES_DIR = "data"
+_TRADES_FILE = os.path.join(_TRADES_DIR, "trades.csv")
+_HEADERS = [
+    "timestamp", "symbol", "side", "entry", "exit",
+    "tp1_hit", "tp2_hit", "sl_hit", "trailing_hit", "early_exit",
+    "pnl", "fees",
+    "ml_samples_at_entry", "ml_samples_at_exit",
+    "ml_conf_at_entry", "ml_conf_at_exit",
+    "state_path", "outcome", "leverage", "confidence",
+    "strategy", "entry_reasons",
+]
+
+
+def _ensure_file():
+    os.makedirs(_TRADES_DIR, exist_ok=True)
+    if not os.path.exists(_TRADES_FILE):
+        with open(_TRADES_FILE, "w", newline="") as f:
+            csv.writer(f).writerow(_HEADERS)
+
+
+def log_closed_trade(
+    symbol: str,
+    side: str,
+    entry: float,
+    exit_price: float,
+    action: str,
+    pnl: float,
+    fees: float,
+    state_path: str,
+    outcome: str,
+    leverage: float = 1.0,
+    confidence: float = 0.0,
+    strategy: str = "",
+    ml_samples_at_entry: int = 0,
+    ml_samples_at_exit: int = 0,
+    ml_conf_at_entry: float = 0.0,
+    ml_conf_at_exit: float = 0.0,
+    entry_reasons: Optional[Dict[str, Any]] = None,
+):
+    """Log a fully closed trade to CSV."""
+    import json
+    _ensure_file()
+    ts = datetime.now(timezone.utc).isoformat()
+
+    tp1_hit = "TP1_HIT" in state_path
+    tp2_hit = action == "TP2"
+    sl_hit = action == "SL"
+    trailing_hit = action == "TRAILING_STOP"
+    early_exit = action == "EARLY_EXIT"
+
+    row = [
+        ts, symbol, side, f"{entry}", f"{exit_price}",
+        str(tp1_hit), str(tp2_hit), str(sl_hit), str(trailing_hit), str(early_exit),
+        f"{pnl:.2f}", f"{fees:.2f}",
+        str(ml_samples_at_entry), str(ml_samples_at_exit),
+        f"{ml_conf_at_entry:.4f}", f"{ml_conf_at_exit:.4f}",
+        state_path, outcome, f"{leverage:.1f}", f"{confidence:.1f}",
+        strategy, json.dumps(entry_reasons or {}),
+    ]
+
+    try:
+        with open(_TRADES_FILE, "a", newline="") as f:
+            csv.writer(f).writerow(row)
+    except Exception as e:
+        logger.warning(f"Failed to log trade: {e}")
