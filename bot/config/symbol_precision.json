@@ -1,0 +1,8 @@
+{
+  "BTC":      { "price": 1, "qty": 3 },
+  "SOL":      { "price": 2, "qty": 2 },
+  "HYPE":     { "price": 4, "qty": 1 },
+  "FARTCOIN": { "price": 6, "qty": 0 },
+  "PEPE":     { "price": 8, "qty": 0 },
+  "KPEPE":    { "price": 8, "qty": 0 }
+}

@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data.fetcher import DataFetcher
-from trading_config import TradingConfig, DEFAULT_SYMBOLS, RISK_MULTIPLIERS
+from trading_config import TradingConfig, DEFAULT_SYMBOLS
 from strategies.base import Signal
 from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
@@ -228,6 +228,8 @@ class BacktestEngine:
 
     def _execute_signal(self, signal: Signal, current_price: float):
         """Execute a signal in backtest mode."""
+        from execution.trade_profile import classify_trade, apply_profile_to_signal
+
         # Determine leverage
         num_agree = signal.metadata.get("num_agree", 1)
         total = signal.metadata.get("total_strategies", 4)
@@ -255,19 +257,40 @@ class BacktestEngine:
 
         side = "LONG" if signal.side == "BUY" else "SHORT"
 
+        # Classify trade and apply profile-based exit levels
+        trade_prof = classify_trade(
+            signal_metadata=signal.metadata,
+            confidence=signal.confidence,
+            atr=signal.atr,
+            entry=signal.entry,
+            side=signal.side,
+        )
+        adjusted = apply_profile_to_signal(
+            trade_prof,
+            entry=signal.entry,
+            sl=signal.sl,
+            tp1=signal.tp1,
+            tp2=signal.tp2,
+            atr=signal.atr,
+            side=signal.side,
+        )
+
         self.pos_mgr.open_position(
             symbol=signal.symbol,
             side=side,
             entry=signal.entry,
             qty=qty,
-            sl=signal.sl,
-            tp1=signal.tp1,
-            tp2=signal.tp2,
+            sl=adjusted["sl"],
+            tp1=adjusted["tp1"],
+            tp2=adjusted["tp2"],
             atr=signal.atr,
             leverage=lev_decision.leverage,
             mode=lev_decision.mode,
             strategy=signal.strategy,
             confidence=signal.confidence,
+            tp1_close_pct=adjusted["tp1_close_pct"],
+            entry_reasons={"backtest": True, "strategy": signal.strategy},
+            trade_profile=trade_prof,
         )
 
         self.signals_generated.append({
