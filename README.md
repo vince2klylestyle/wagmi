@@ -168,10 +168,6 @@ Manual trading compatibility
 
 Telegram commands
 
-VPS readiness (but NOT deployment)
-
-You do NOT deploy real money here.
-
 This phase is about making the bot safe and predictable.
 
 🟧 PHASE 3 — Backtesting, Replay Mode, and Historical Validation
