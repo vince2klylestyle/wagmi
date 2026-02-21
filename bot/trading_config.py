@@ -61,7 +61,7 @@ class TradingConfig:
 
     # Equity & risk
     starting_equity: float = field(default_factory=lambda: _env_float("STARTING_EQUITY", 10000.0))
-    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.015))
+    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.01))
     max_open_positions: int = field(default_factory=lambda: _env_int("MAX_OPEN_POSITIONS", 3))
     taker_fee_bps: int = field(default_factory=lambda: _env_int("TAKER_FEE_BPS", 5))
 
@@ -74,6 +74,9 @@ class TradingConfig:
     )
     max_consecutive_losses: int = field(
         default_factory=lambda: _env_int("MAX_CONSECUTIVE_LOSSES", 5)
+    )
+    cb_conf_override_pct: float = field(
+        default_factory=lambda: _env_float("CB_CONF_OVERRIDE_PCT", 0.92)
     )
 
     # Leverage tiers: (min_confidence, max_confidence) -> leverage

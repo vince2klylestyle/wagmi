@@ -5,7 +5,7 @@ Simulates:
 1. Flash crash (sudden 10-15% drop)
 2. Volatility spike (ATR triples)
 3. Liquidity drought (volume drops 90%)
-4. TP1→SL stress (price hits TP1 then reverses to SL)
+4. TP1->SL stress (price hits TP1 then reverses to SL)
 
 Usage:
     python -m scripts.scenario_sim

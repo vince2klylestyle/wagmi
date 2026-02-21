@@ -238,7 +238,7 @@ class TestWeightedEnsemble:
             ]
 
             # In the voting method, tie-break uses weighted sum
-            # A+B have higher weights → BUY side wins
+            # A+B have higher weights -> BUY side wins
             result = ensemble._voting("BTC", signals)
 
             # With opposition veto, 2v2 requires min_votes + 2 = 4, so this gets vetoed
@@ -248,8 +248,8 @@ class TestWeightedEnsemble:
             result = ensemble._voting("BTC", signals)
 
             # Now the weighted sum should break the tie in favor of BUY (A+B are more accurate)
-            # But opposition veto: 2 BUY, 2 SELL → need min_votes(1) + 2 = 3 votes
-            # 2 < 3 → still vetoed. That's correct too.
+            # But opposition veto: 2 BUY, 2 SELL -> need min_votes(1) + 2 = 3 votes
+            # 2 < 3 -> still vetoed. That's correct too.
             # Let's test pure tiebreak without the veto by using 3v1
             signals_3v1 = [
                 make_signal("strategy_a", "BUY", 70.0),
@@ -341,7 +341,7 @@ class TestWeightedVeto:
         ]
 
         result = ensemble._weighted_veto("BTC", signals)
-        # BUY strength=134, SELL strength=131, 131*1.1=144.1 > 134 → vetoed
+        # BUY strength=134, SELL strength=131, 131*1.1=144.1 > 134 -> vetoed
         assert result is None, "Close 2v2 should be vetoed"
 
     def test_2v2_passes_with_strong_chosen(self):
@@ -368,7 +368,7 @@ class TestWeightedVeto:
         ]
 
         result = ensemble._weighted_veto("BTC", signals)
-        # BUY strength=158, SELL strength=115, 115*1.1=126.5 < 158 → passes
+        # BUY strength=158, SELL strength=115, 115*1.1=126.5 < 158 -> passes
         assert result is not None, "Strong 2v2 should pass weighted veto"
         assert result.side == "BUY"
 
@@ -422,7 +422,7 @@ class TestWeightedVeto:
             # BUY strength = 0.42*70 + 0.42*70 = 58.3
             # SELL strength = 0.75*70 = 52.5
             # BUY chosen (58.3 > 52.5), oppose*1.1 = 57.75
-            # 58.3 >= 57.75 → barely passes
+            # 58.3 >= 57.75 -> barely passes
             # This is correct: 2 weak strategies can still override 1 strong one,
             # but the margin is thin. With slightly lower MC/CS confidence it would fail.
             assert result is not None or result is None  # depends on exact rounding

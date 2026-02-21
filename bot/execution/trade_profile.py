@@ -12,13 +12,13 @@ Every Position carries a TradeProfile that drives:
 - Trailing style and parameters
 - Expected holding time
 
-Strategy → entry_type mapping:
-- regime_trend       → TREND
-- multi_tier_quality → TREND
-- monte_carlo_zones  → MEDIUM
-- confidence_scorer  → MEDIUM
-- (future) microstructure / fast_ml → SCALP
-- (future) volatility_regime → REGIME (modifier, not standalone)
+Strategy -> entry_type mapping:
+- regime_trend       -> TREND
+- multi_tier_quality -> TREND
+- monte_carlo_zones  -> MEDIUM
+- confidence_scorer  -> MEDIUM
+- (future) microstructure / fast_ml -> SCALP
+- (future) volatility_regime -> REGIME (modifier, not standalone)
 """
 
 import logging
@@ -38,7 +38,7 @@ REGIME = "REGIME"
 ALL_ENTRY_TYPES = {SCALP, MEDIUM, TREND, REGIME}
 
 
-# ── Strategy → entry type mapping ────────────────────────
+# ── Strategy -> entry type mapping ────────────────────────
 
 STRATEGY_ENTRY_TYPE = {
     "regime_trend": TREND,
@@ -70,7 +70,7 @@ class ExitParams:
     sl_atr_mult: float       # SL distance in ATR multiples
     tp1_close_pct: float     # fraction to close at TP1
     trailing_style: str      # "tight", "medium", "loose", "none"
-    # Trailing tighten curve: factor shrinks from start→end as price→TP2
+    # Trailing tighten curve: factor shrinks from start->end as price->TP2
     trailing_tighten_start: float  # initial tighten factor (wider)
     trailing_tighten_end: float    # final tighten factor (tighter)
     # Profit lock floor: minimum % of peak move to guarantee
@@ -202,8 +202,8 @@ def _determine_primary_driver(
 
 def _determine_entry_type(primary_driver: str, strategies_agree: List[str]) -> str:
     """Classify entry_type from primary driver.
-    If all strategies are TREND → TREND.
-    If mixed TREND+MEDIUM → MEDIUM (conservative: don't widen exits for mixed signals)."""
+    If all strategies are TREND -> TREND.
+    If mixed TREND+MEDIUM -> MEDIUM (conservative: don't widen exits for mixed signals)."""
     primary_type = STRATEGY_ENTRY_TYPE.get(primary_driver, MEDIUM)
 
     # Check if unanimous
@@ -229,16 +229,16 @@ def _determine_regime(signal_metadata: Dict[str, Any]) -> str:
     trend_adj = signal_metadata.get("trend_adjustment", 0)
     vol_ratio = signal_metadata.get("volume_ratio", 1.0)
 
-    # Strong trend alignment bonus (negative trend_adj = aligned) → trending
+    # Strong trend alignment bonus (negative trend_adj = aligned) -> trending
     if trend_adj <= -5:
         return "trending"
-    # Strong counter-trend penalty → ranging/choppy
+    # Strong counter-trend penalty -> ranging/choppy
     if trend_adj >= 10:
         return "ranging"
-    # Low volume → illiquid
+    # Low volume -> illiquid
     if vol_ratio < 0.5:
         return "illiquid"
-    # Moderate trend → trending
+    # Moderate trend -> trending
     if trend_adj < 0:
         return "trending"
 

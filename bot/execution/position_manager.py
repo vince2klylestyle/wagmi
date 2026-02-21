@@ -1,7 +1,7 @@
 """
 Position manager with state machine, progressive trailing stop, and dynamic TP1.
 
-State machine: IDLE → OPEN → TP1_HIT → TRAILING → CLOSED
+State machine: IDLE -> OPEN -> TP1_HIT -> TRAILING -> CLOSED
                         ↓                              ↑
                         └── CLOSED (SL, EARLY_EXIT) ───┘
 
@@ -12,13 +12,13 @@ Exit behavior is driven by TradeProfile (entry_type + regime + volatility):
 - REGIME: conservative defaults
 
 Flow:
-1. Open position (IDLE → OPEN) with TradeProfile attached
+1. Open position (IDLE -> OPEN) with TradeProfile attached
 2. Monitor price each tick
-3. Early exit check (OPEN → CLOSED if momentum reverses hard)
-4. If TP1 hit: partial close (% from profile), SL → breakeven
+3. Early exit check (OPEN -> CLOSED if momentum reverses hard)
+4. If TP1 hit: partial close (% from profile), SL -> breakeven
 5. Trailing stop tightens per profile curve (tight/medium/loose)
 6. Profit lock floor per profile (varies by entry_type)
-7. If TP2 hit or trailing stop triggered (TRAILING → CLOSED)
+7. If TP2 hit or trailing stop triggered (TRAILING -> CLOSED)
 """
 
 import logging
@@ -103,7 +103,7 @@ class Position:
 
     @property
     def state_path_str(self) -> str:
-        return "→".join(self.state_path)
+        return "->".join(self.state_path)
 
     def _transition(self, target: str, reason: str = "") -> str:
         """Transition to a new state, updating state_path."""
@@ -219,7 +219,7 @@ class PositionManager:
             trade_profile=trade_profile,
         )
 
-        # State: IDLE → OPEN
+        # State: IDLE -> OPEN
         pos._transition(OPEN, f"OPEN {side} @ {entry}")
 
         self.positions[symbol] = pos
@@ -284,7 +284,7 @@ class PositionManager:
             events.append(event)
             return events
 
-        # 2. Check TP1 (dynamic partial close → TP1_HIT → TRAILING)
+        # 2. Check TP1 (dynamic partial close -> TP1_HIT -> TRAILING)
         if pos.state == OPEN:
             tp1_hit = (current_price >= pos.tp1) if is_long else (current_price <= pos.tp1)
             if tp1_hit:
@@ -362,7 +362,7 @@ class PositionManager:
 
     def _partial_close_tp1(self, pos: Position, price: float) -> TradeEvent:
         """Close tp1_close_pct at TP1, move SL above breakeven, activate trailing."""
-        # State: OPEN → TP1_HIT → TRAILING
+        # State: OPEN -> TP1_HIT -> TRAILING
         pos._transition(TP1_HIT, f"TP1 @ {price}")
 
         close_qty = round_qty(pos.symbol, pos.qty * pos.tp1_close_pct)
@@ -386,12 +386,12 @@ class PositionManager:
 
         pos.peak_price = price
 
-        # TP1_HIT → TRAILING
+        # TP1_HIT -> TRAILING
         pos._transition(TRAILING, "trailing activated")
 
         logger.info(
             f"[{pos.symbol}] TP1 @ {price} | Closed {close_qty} ({pos.tp1_close_pct:.0%}) | "
-            f"PnL={pnl:.2f} | SL→BE+={pos.sl} | Trailing ON"
+            f"PnL={pnl:.2f} | SL->BE+={pos.sl} | Trailing ON"
         )
 
         return TradeEvent(
@@ -415,9 +415,9 @@ class PositionManager:
         """
         Progressive trailing stop with profit lock floor.
         Tighten curve and floor are driven by TradeProfile when available:
-        - SCALP:  fast tightening (0.80→0.50), early floor (20%)
-        - MEDIUM: standard (0.67→0.33), floor at 30%
-        - TREND:  slow tightening (0.50→0.25), late floor (35%)
+        - SCALP:  fast tightening (0.80->0.50), early floor (20%)
+        - MEDIUM: standard (0.67->0.33), floor at 30%
+        - TREND:  slow tightening (0.50->0.25), late floor (35%)
         """
         is_long = pos.side == "LONG"
 
@@ -480,14 +480,14 @@ class PositionManager:
             old_sl = pos.sl
             pos.sl = new_sl
             logger.info(
-                f"[{pos.symbol}] Trail SL: {old_sl} → {new_sl} "
+                f"[{pos.symbol}] Trail SL: {old_sl} -> {new_sl} "
                 f"(peak={pos.peak_price} prog={progress:.0%})"
             )
         elif not is_long and new_sl < pos.sl:
             old_sl = pos.sl
             pos.sl = new_sl
             logger.info(
-                f"[{pos.symbol}] Trail SL: {old_sl} → {new_sl} "
+                f"[{pos.symbol}] Trail SL: {old_sl} -> {new_sl} "
                 f"(peak={pos.peak_price} prog={progress:.0%})"
             )
 
@@ -529,7 +529,7 @@ class PositionManager:
         # Classify outcome before closing state
         pos.outcome = self._classify_outcome(pos, action)
 
-        # State → CLOSED
+        # State -> CLOSED
         pos._transition(CLOSED, f"{action} @ {price}")
 
         logger.info(

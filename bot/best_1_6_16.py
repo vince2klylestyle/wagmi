@@ -333,10 +333,10 @@ def generate_signal(symbol: str, prod: str):
             log(f"Failed to post evaluation log: {e}")
 
     if buy:
-        log(f"[{symbol}] → BUY setup confirmed (alignLong={alignLong}/4). SL={slBuy:.2f} TP1={tp1Buy:.2f} TP2={tp2Buy:.2f}")
+        log(f"[{symbol}] -> BUY setup confirmed (alignLong={alignLong}/4). SL={slBuy:.2f} TP1={tp1Buy:.2f} TP2={tp2Buy:.2f}")
         return {"symbol": symbol, "side": "BUY", "entry": float(c), "sl": float(slBuy), "tp1": float(tp1Buy), "tp2": float(tp2Buy)}
     if sell:
-        log(f"[{symbol}] → SELL setup confirmed (alignShort={alignShort}/4). SL={slSell:.2f} TP1={tp1Sell:.2f} TP2={tp2Sell:.2f}")
+        log(f"[{symbol}] -> SELL setup confirmed (alignShort={alignShort}/4). SL={slSell:.2f} TP1={tp1Sell:.2f} TP2={tp2Sell:.2f}")
         return {"symbol": symbol, "side": "SELL", "entry": float(c), "sl": float(slSell), "tp1": float(tp1Sell), "tp2": float(tp2Sell)}
 
     return None

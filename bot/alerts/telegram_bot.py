@@ -209,9 +209,9 @@ class TelegramCommandBot:
             f"*ML Learner*\n"
             f"Trade outcomes: {len(ml.outcomes)}\n"
             f"Snapshots: {len(ml.snapshots)}\n"
-            f"Trade model: {'trained' if ml.weights else 'waiting'}\n"
-            f"Snapshot model: {'trained' if ml.snapshot_weights else 'waiting'}\n"
-            f"Fast model: {'trained' if ml.fast_weights else 'waiting'}"
+            f"Trade model: {'trained' if ml.weights is not None and len(ml.weights) > 0 else 'waiting'}\n"
+            f"Snapshot model: {'trained' if ml.snapshot_weights is not None else 'waiting'}\n"
+            f"Fast model: {'trained' if ml.fast_weights is not None else 'waiting'}"
         )
 
     def _cmd_performance(self) -> str:
@@ -226,7 +226,7 @@ class TelegramCommandBot:
             f"WR (50): {perf.get('win_rate_50', 0):.0%}\n"
             f"Avg R:R: {perf.get('avg_rr', 0):.2f}\n"
             f"TP1 rate: {perf.get('tp1_success_rate', 0):.0%}\n"
-            f"TP1→SL: {perf.get('tp1_to_sl_rate', 0):.0%}\n"
+            f"TP1->SL: {perf.get('tp1_to_sl_rate', 0):.0%}\n"
             f"Total PnL: ${perf.get('total_pnl', 0):+,.2f}"
         )
 

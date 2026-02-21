@@ -221,13 +221,11 @@ class DataFetcher:
                 if df.empty or len(df) < 5:
                     continue
 
-                # Log first success per symbol at INFO level
-                log_key = f"{symbol_name}:{timeframe}"
-                if log_key not in self._ccxt_first_success:
-                    self._ccxt_first_success[log_key] = True
-                    logger.info(
-                        f"[{symbol_name}] CCXT {ex_name}: {len(df)} {timeframe} candles"
-                    )
+                # Log candle count for every successful fetch
+                logger.info(
+                    f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} "
+                    f"via CCXT {ex_name}"
+                )
 
                 return df
 
@@ -406,6 +404,7 @@ class DataFetcher:
         logger.info(f"[{symbol_name}] CCXT unavailable for {timeframe}, falling back to CoinGecko")
         df = self._fetch_cg_ohlcv(coin_id, timeframe)
         if not df.empty:
+            logger.info(f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} via CoinGecko")
             self._set_cache(cache_key, df)
         return df
 

@@ -125,7 +125,7 @@ def tp1_to_sl_analysis():
     total = len(rows)
     tp1_hits = sum(1 for r in rows if r["tp1_hit"])
     tp1_then_sl = sum(1 for r in rows if r["tp1_hit"] and r["final_action"] == "SL")
-    logger.info(f"TP1→SL analysis: {tp1_hits}/{total} hit TP1, {tp1_then_sl} then hit SL")
+    logger.info(f"TP1->SL analysis: {tp1_hits}/{total} hit TP1, {tp1_then_sl} then hit SL")
 
 
 def ml_conf_vs_pnl():

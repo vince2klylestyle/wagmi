@@ -444,10 +444,10 @@ class MultiStrategyBot:
         # Try to generate new signal
         if self.telegram_bot.is_paused:
             return  # Paused via Telegram /pause command
-        if not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count()):
-            return
         if symbol in open_pos:
             return  # Already have position in this symbol
+        if self.pos_mgr.get_open_count() >= self.risk_mgr.max_open_positions:
+            return  # Max positions reached (hard limit, no override)
 
         # Per-symbol cooldown: don't re-enter too quickly after closing
         last_close = self._symbol_cooldown.get(symbol, 0)
@@ -551,6 +551,14 @@ class MultiStrategyBot:
             )
             signal_result.confidence = adjusted_conf
 
+        # ── Circuit breaker check (with high-confidence override) ──
+        if not self.risk_mgr.can_open_position(
+            self.pos_mgr.get_open_count(),
+            confidence=signal_result.confidence,
+            cb_conf_override_pct=self.config.cb_conf_override_pct,
+        ):
+            return
+
         # ── Risk filters (all rejections logged to data/logs/risk_rejections.csv) ──
         rr1 = signal_result.risk_reward_tp1
         sl_distance = signal_result.stop_width
@@ -595,17 +603,18 @@ class MultiStrategyBot:
             )
             return
 
-        # Calculate position size (pass leverage + risk_multiplier for correct sizing)
+        # Calculate position size (risk-based: qty = risk$ / (stop_dist * leverage))
         qty = self.risk_mgr.calculate_qty(
             signal_result.entry, signal_result.sl,
             leverage=lev_decision.leverage,
             risk_multiplier=lev_decision.risk_multiplier,
+            symbol=symbol,
         )
         if qty <= 0:
             return
 
         # ── Trade Classification Layer ──
-        # Classify trade → TradeProfile (drives exits, TP1%, trailing)
+        # Classify trade -> TradeProfile (drives exits, TP1%, trailing)
         # Add volume_ratio to metadata for regime detection
         try:
             df_1h_vol = data.get("1h")
@@ -755,7 +764,7 @@ class MultiStrategyBot:
         ml_conf_snapshot = 0.0
         ml_conf_fast = 0.0
         if self.ml:
-            ml_conf_trade = self.ml.predict_win_probability(70, 0, False, False, 1.5) if self.ml.weights else 0.0
+            ml_conf_trade = self.ml.predict_win_probability(70, 0, False, False, 1.5) if self.ml.weights is not None and len(self.ml.weights) > 0 else 0.0
             ml_conf_snapshot = 1.0 if self.ml.snapshot_weights is not None else 0.0
             ml_conf_fast = 1.0 if self.ml.fast_weights is not None else 0.0
         log_ml_stats(
