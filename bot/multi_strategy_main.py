@@ -634,6 +634,22 @@ class MultiStrategyBot:
             side=signal_result.side,
         )
 
+        # ── CB entry_type filter: when CB is active, only allow TREND/REGIME ──
+        if self.risk_mgr.circuit_breaker.tripped:
+            allowed_types = ("TREND", "REGIME")
+            if trade_prof.entry_type not in allowed_types:
+                from data.risk_log import log_rejection
+                log_rejection(
+                    symbol, "CB_HIGH_CONF_ONLY",
+                    confidence=signal_result.confidence,
+                    rr1=signal_result.risk_reward_tp1,
+                )
+                logger.info(
+                    f"[SAFETY] CB active: rejecting {trade_prof.entry_type} trade "
+                    f"(only {allowed_types} allowed during CB)"
+                )
+                return
+
         # Apply profile-recommended TP1/SL/TP2 (overrides strategy levels)
         adjusted = apply_profile_to_signal(
             trade_prof,

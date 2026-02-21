@@ -403,6 +403,77 @@ def classify_trade(
     return profile
 
 
+# ── Tuning helpers ──────────────────────────────────────────
+# These allow adjusting exit parameters per profile without editing _BASE_PROFILES.
+# Used by the grid search / parameter sweep system.
+
+def get_profile_config() -> Dict[str, Dict[str, float]]:
+    """Return current exit parameters per entry_type as a flat config dict.
+    Useful for logging what config is active and for grid search."""
+    config = {}
+    for etype, params in _BASE_PROFILES.items():
+        config[etype] = {
+            "tp1_atr_mult": params.tp1_atr_mult,
+            "tp2_atr_mult": params.tp2_atr_mult,
+            "sl_atr_mult": params.sl_atr_mult,
+            "tp1_close_pct": params.tp1_close_pct,
+            "trailing_style": params.trailing_style,
+        }
+    return config
+
+
+def adjust_profile_params(
+    entry_type: str,
+    tp1_atr_mult: Optional[float] = None,
+    sl_atr_mult: Optional[float] = None,
+    tp1_close_pct: Optional[float] = None,
+) -> ExitParams:
+    """Return a modified copy of the base profile for a given entry_type.
+
+    Used for grid search: try different TP1/SL/TP1% without mutating globals.
+    Only the specified parameters are changed; others keep base values.
+    """
+    base = _BASE_PROFILES.get(entry_type, _BASE_PROFILES[MEDIUM])
+    return ExitParams(
+        tp1_atr_mult=tp1_atr_mult if tp1_atr_mult is not None else base.tp1_atr_mult,
+        tp2_atr_mult=base.tp2_atr_mult,
+        sl_atr_mult=sl_atr_mult if sl_atr_mult is not None else base.sl_atr_mult,
+        tp1_close_pct=tp1_close_pct if tp1_close_pct is not None else base.tp1_close_pct,
+        trailing_style=base.trailing_style,
+        trailing_tighten_start=base.trailing_tighten_start,
+        trailing_tighten_end=base.trailing_tighten_end,
+        floor_progress_start=base.floor_progress_start,
+        floor_lock_start=base.floor_lock_start,
+        floor_lock_max=base.floor_lock_max,
+    )
+
+
+# Grid search ranges per entry_type (safe, conservative ranges).
+# These are hypotheses to be tested, not truths.
+TUNING_GRID = {
+    SCALP: {
+        "tp1_atr_mult": [0.3, 0.4, 0.5, 0.6],
+        "sl_atr_mult": [0.3, 0.4, 0.5],
+        "tp1_close_pct": [0.80, 0.85, 0.90, 1.0],
+    },
+    MEDIUM: {
+        "tp1_atr_mult": [0.8, 1.0, 1.2],
+        "sl_atr_mult": [0.6, 0.75, 0.9],
+        "tp1_close_pct": [0.50, 0.60, 0.70],
+    },
+    TREND: {
+        "tp1_atr_mult": [1.0, 1.5, 2.0],
+        "sl_atr_mult": [0.8, 1.0, 1.2],
+        "tp1_close_pct": [0.25, 0.35, 0.45],
+    },
+    REGIME: {
+        "tp1_atr_mult": [1.0, 1.2, 1.5],
+        "sl_atr_mult": [0.7, 0.8, 1.0],
+        "tp1_close_pct": [0.40, 0.50, 0.60],
+    },
+}
+
+
 def apply_profile_to_signal(
     profile: TradeProfile,
     entry: float,
