@@ -194,6 +194,10 @@ class MultiStrategyBot:
         self._cooldown_seconds = 120  # 2 minutes after a loss
         self._win_cooldown_seconds = 300  # 5 minutes after a win (anti-round-trip)
 
+        # Correlation guard: prevent correlated blowups
+        self._max_same_direction = int(os.getenv("MAX_SAME_DIRECTION", "3"))
+        self._max_same_tier = int(os.getenv("MAX_SAME_TIER", "2"))
+
         # Track last close result per symbol for anti-round-tripping
         self._last_close_win: Dict[str, bool] = {}  # symbol -> was_win
         self._last_close_side: Dict[str, str] = {}  # symbol -> "LONG"/"SHORT"
@@ -629,6 +633,17 @@ class MultiStrategyBot:
         if time.time() - last_close < cd:
             return
 
+        # Correlation guard: check before evaluating (saves compute)
+        # We need to know the signal direction first, so we do a quick check
+        # on existing positions to reject early if same-tier is maxed out
+        sym_tier = sym_cfg.risk_tier
+        tier_count = sum(
+            1 for s, p in open_pos.items()
+            if DEFAULT_SYMBOLS.get(s) and DEFAULT_SYMBOLS[s].risk_tier == sym_tier
+        )
+        if tier_count >= self._max_same_tier:
+            return  # Too many positions in same risk tier
+
         signal_result = self.ensemble.evaluate(symbol, data)
 
         # Update last snapshot with ensemble context for ML learning
@@ -944,8 +959,19 @@ class MultiStrategyBot:
             "volatility_band": trade_prof.volatility_band,
         }
 
-        # LLM trigger: about to open a position (highest priority)
+        # Correlation guard: max same-direction positions
         side = "LONG" if signal_result.side == "BUY" else "SHORT"
+        same_dir_count = sum(1 for p in open_pos.values() if p.side == side)
+        if same_dir_count >= self._max_same_direction:
+            log_rejection(symbol, "CORRELATION_GUARD",
+                          confidence=signal_result.confidence)
+            logger.info(
+                f"[{trace_id}][{symbol}] Correlation guard: "
+                f"{same_dir_count} {side} positions open (max {self._max_same_direction})"
+            )
+            return
+
+        # LLM trigger: about to open a position (highest priority)
         self._llm_triggers.add(
             LLMTrigger.PRE_TRADE,
             symbol=symbol,

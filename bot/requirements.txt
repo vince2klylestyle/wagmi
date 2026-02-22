@@ -4,5 +4,11 @@ pandas>=2.2.0
 numpy>=2.0.0
 python-dotenv>=1.0.0
 
-# Exchange data (real OHLCV candles from Binance + Hyperliquid)
+# Exchange data (real OHLCV candles from Hyperliquid + Kraken/Bybit fallback)
 ccxt>=4.0.0
+
+# LLM meta-brain (Claude API)
+anthropic>=0.40.0
+
+# Optional: plots for LLM analytics (pip install matplotlib)
+# matplotlib>=3.8.0
