@@ -336,6 +336,14 @@ class MultiStrategyBot:
                     context=divergence,
                 )
 
+            # Check memory-worthy events (performance shifts, streaks)
+            mem_events = self._llm_triggers.check_memory_events()
+            for mem_ctx in mem_events:
+                self._llm_triggers.add(
+                    LLMTrigger.MEMORY_EVENT,
+                    context=mem_ctx,
+                )
+
             # Check periodic fallback (5-minute heartbeat)
             if self._llm_triggers.event_count == 0:
                 if self._llm_triggers.check_periodic():
@@ -415,6 +423,27 @@ class MultiStrategyBot:
                 pass
             self.ml.record_snapshot(snapshot)
 
+        # Pre-close trigger: predict if any open position is about to close
+        open_pos = self.pos_mgr.get_open_positions()
+        if symbol in open_pos:
+            pos = open_pos[symbol]
+            pre_close = self._llm_triggers.check_pre_close(
+                symbol=symbol,
+                side=pos.side,
+                entry=pos.entry,
+                current_price=current_price,
+                sl=pos.sl,
+                tp1=pos.tp1,
+                tp2=pos.tp2,
+                state=pos.state,
+                atr=pos.atr,
+            )
+            if pre_close:
+                self._llm_triggers.add(
+                    LLMTrigger.PRE_CLOSE,
+                    symbol=symbol,
+                    context=pre_close,
+                )
 
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
@@ -445,6 +474,16 @@ class MultiStrategyBot:
                 pos = self.pos_mgr.positions.get(symbol)
                 total_pnl = pos.realized_pnl if pos else event.pnl
                 self.weight_mgr.record_outcome(event.strategy, total_pnl > 0)
+
+                # Record for LLM memory-worthy event detection
+                _et = ""
+                if pos and pos.trade_profile:
+                    _et = pos.trade_profile.entry_type
+                self._llm_triggers.record_trade_outcome(
+                    strategy=event.strategy,
+                    entry_type=_et,
+                    win=total_pnl > 0,
+                )
 
             # Log trade event (paper trading compatibility)
             if self.trade_logger:
@@ -642,6 +681,38 @@ class MultiStrategyBot:
                 symbol=symbol,
                 context=f"{symbol} regime shifted to '{current_regime}'",
             )
+
+        # Strategy disagreement detection (2 long vs 2 short, or high-conf outlier)
+        try:
+            statuses = self.ensemble.get_all_status(symbol, data)
+            strat_signals = {}
+            strat_confs = {}
+            for s in statuses:
+                strat_name = s.get("strategy", "unknown")
+                action = s.get("action", s.get("side", "neutral"))
+                if action in ("BUY", "buy"):
+                    strat_signals[strat_name] = "long"
+                elif action in ("SELL", "sell"):
+                    strat_signals[strat_name] = "short"
+                else:
+                    strat_signals[strat_name] = "neutral"
+                conf = s.get("confidence", 0)
+                if conf == 0:
+                    align_l = s.get("align_long", 0)
+                    align_s = s.get("align_short", 0)
+                    conf = max(align_l, align_s) / 100.0 if max(align_l, align_s) > 1 else max(align_l, align_s)
+                strat_confs[strat_name] = min(conf, 1.0)
+            disagreement = self._llm_triggers.check_strategy_disagreement(
+                strat_signals, strat_confs
+            )
+            if disagreement:
+                self._llm_triggers.add(
+                    LLMTrigger.STRATEGY_DISAGREEMENT,
+                    symbol=symbol,
+                    context=f"{symbol}: {disagreement}",
+                )
+        except Exception:
+            pass
 
         # Anti-round-trip: same-direction re-entry after a win needs 10% more confidence
         last_side = self._last_close_side.get(symbol)
@@ -1110,13 +1181,14 @@ class MultiStrategyBot:
 
         In ADVISORY mode: call LLM, log decision, send to alerts, no influence.
         """
-        # Get the best trigger and combined context
-        trigger_type, trigger_ctx = self._llm_triggers.get_best()
+        # Get the best trigger, combined context, and all reason labels
+        trigger_type, trigger_ctx, all_reasons = self._llm_triggers.get_best()
         trigger_label = TRIGGER_LABELS.get(trigger_type, "unknown") if trigger_type else "periodic"
         is_event = trigger_type is not None and trigger_type != LLMTrigger.PERIODIC
 
         logger.info(
             f"[{trace_id}][LLM] Trigger: {trigger_label} "
+            f"reasons=[{', '.join(all_reasons)}] "
             f"(events: {self._llm_triggers.event_summary})"
         )
 
@@ -1156,10 +1228,12 @@ class MultiStrategyBot:
 
             # In ADVISORY mode: send to alerts for visibility
             if self.llm_mode == LLMMode.ADVISORY:
+                reasons_str = ", ".join(all_reasons) if all_reasons else trigger_label
                 self.alerts.send_market_update(
                     f"[LLM META-BRAIN] {d.action.upper()} "
                     f"conf={d.confidence:.0%} regime={d.regime}\n"
                     f"Trigger: {trigger_label}\n"
+                    f"All reasons: {reasons_str}\n"
                     f"{d.notes}"
                 )
         elif result.reason:

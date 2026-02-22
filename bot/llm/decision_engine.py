@@ -216,6 +216,8 @@ def get_trading_decision(
         "memory_update": decision.memory_update,
         "strategy_weights": decision.strategy_weights.to_dict(),
         "mode": mode.name,
+        "trigger_reason": trigger_reason,
+        "trigger_context": trigger_context,
         "usage": usage,
     })
 
