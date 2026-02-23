@@ -2,7 +2,7 @@
 Tests for the Trade Classification Layer.
 
 Verifies:
-1. Strategy → entry_type mapping works correctly
+1. Strategy -> entry_type mapping works correctly
 2. SCALP trades have tighter TP1/SL than TREND trades
 3. SCALP closes more % at TP1 than TREND
 4. Trailing behavior differs by entry_type
@@ -49,7 +49,7 @@ def tmpdir_data(tmp_path, monkeypatch):
     yield tmp_path
 
 
-# ─── 1. Strategy → entry_type mapping ───────────────────
+# ─── 1. Strategy -> entry_type mapping ───────────────────
 
 class TestStrategyMapping:
     def test_regime_trend_is_trend(self):
@@ -114,7 +114,7 @@ class TestExitProfileDifferences:
 
 class TestClassificationLogic:
     def test_classify_trend_signal(self):
-        """Two TREND strategies → TREND classification."""
+        """Two TREND strategies -> TREND classification."""
         metadata = {
             "strategies_agree": ["regime_trend", "multi_tier_quality"],
             "individual_confidences": {"regime_trend": 80, "multi_tier_quality": 75},
@@ -126,7 +126,7 @@ class TestClassificationLogic:
         assert profile.exit_params.tp1_close_pct <= 0.50  # TREND closes less
 
     def test_classify_medium_signal(self):
-        """Two MEDIUM strategies → MEDIUM classification."""
+        """Two MEDIUM strategies -> MEDIUM classification."""
         metadata = {
             "strategies_agree": ["monte_carlo_zones", "confidence_scorer"],
             "individual_confidences": {"monte_carlo_zones": 72, "confidence_scorer": 70},
@@ -143,12 +143,12 @@ class TestClassificationLogic:
             "strategy_weights": {"regime_trend": 0.8, "monte_carlo_zones": 0.5},
         }
         profile = classify_trade(metadata, confidence=78, atr=2.0, entry=100.0, side="BUY")
-        # regime_trend has higher score (0.8*85=68 vs 0.5*70=35) → primary = regime_trend → TREND
+        # regime_trend has higher score (0.8*85=68 vs 0.5*70=35) -> primary = regime_trend -> TREND
         assert profile.primary_driver == "regime_trend"
         assert profile.entry_type == TREND
 
     def test_volatility_band_classification(self):
-        """High ATR/price ratio → high volatility band."""
+        """High ATR/price ratio -> high volatility band."""
         profile = classify_trade(
             {"strategies_agree": ["regime_trend"], "individual_confidences": {"regime_trend": 80},
              "strategy_weights": {"regime_trend": 0.7}},
@@ -246,7 +246,7 @@ class TestPositionManagerWithProfile:
             {"strategies_agree": ["regime_trend", "multi_tier_quality"],
              "individual_confidences": {"regime_trend": 80, "multi_tier_quality": 75},
              "strategy_weights": {"regime_trend": 0.7, "multi_tier_quality": 0.6},
-             "trend_adjustment": -8},  # strong trend alignment → trending regime
+             "trend_adjustment": -8},  # strong trend alignment -> trending regime
             confidence=78, atr=2.0, entry=100.0, side="BUY",
         )
 
@@ -280,7 +280,7 @@ class TestPositionManagerWithProfile:
             sl=98.0, tp1=103.0, tp2=106.0, atr=2.0,
             leverage=2.0, trade_profile=prof,
         )
-        # TREND uses loose trailing → trailing_distance = atr * 1.5 * 1.5 = 4.5
+        # TREND uses loose trailing -> trailing_distance = atr * 1.5 * 1.5 = 4.5
         assert pos.trailing_distance > 2.0 * 1.5  # atr * trailing_atr_mult * loose_mult
 
     def test_profile_overrides_tp1_close_pct(self):
@@ -324,7 +324,7 @@ class TestEvPerEntryType:
                 symbol="BTC", side="LONG", outcome="CLEAN_WIN",
                 pnl=100.0, entry=100.0, sl=95.0, tp1=107.5, tp2=115.0,
                 tp1_hit=True, sl_after_tp1=False,
-                state_path="IDLE→OPEN→TP1_HIT→TRAILING→CLOSED",
+                state_path="IDLE->OPEN->TP1_HIT->TRAILING->CLOSED",
                 leverage=2.0, confidence=80.0, strategy="regime_trend",
                 entry_type="TREND", primary_driver="regime_trend", regime="trending",
             )
@@ -333,7 +333,7 @@ class TestEvPerEntryType:
                 symbol="SOL", side="LONG", outcome="CLEAN_LOSS",
                 pnl=-50.0, entry=50.0, sl=47.0, tp1=53.0, tp2=56.0,
                 tp1_hit=False, sl_after_tp1=False,
-                state_path="IDLE→OPEN→CLOSED",
+                state_path="IDLE->OPEN->CLOSED",
                 leverage=2.0, confidence=70.0, strategy="monte_carlo_zones",
                 entry_type="MEDIUM", primary_driver="monte_carlo_zones", regime="ranging",
             )
@@ -359,7 +359,7 @@ class TestEvPerEntryType:
             symbol="BTC", side="LONG", outcome="CLEAN_WIN",
             pnl=100.0, entry=100.0, sl=95.0, tp1=107.5, tp2=115.0,
             tp1_hit=True, sl_after_tp1=False,
-            state_path="IDLE→OPEN→TP1_HIT→TRAILING→CLOSED",
+            state_path="IDLE->OPEN->TP1_HIT->TRAILING->CLOSED",
             entry_type="TREND", primary_driver="regime_trend", regime="trending",
         )
         perf = get_performance()
@@ -373,7 +373,7 @@ class TestEvPerEntryType:
             symbol="BTC", side="LONG", outcome="CLEAN_WIN",
             pnl=100.0, entry=100.0, sl=95.0, tp1=107.5, tp2=115.0,
             tp1_hit=True, sl_after_tp1=False,
-            state_path="IDLE→OPEN→TP1_HIT→TRAILING→CLOSED",
+            state_path="IDLE->OPEN->TP1_HIT->TRAILING->CLOSED",
             entry_type="TREND", primary_driver="regime_trend", regime="trending",
         )
         perf = get_performance()

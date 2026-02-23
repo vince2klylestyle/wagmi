@@ -36,7 +36,7 @@ def _ensure_outcomes_file():
 
 
 # Rolling window of recent outcomes for metric computation
-_recent_outcomes: deque = deque(maxlen=100)
+_recent_outcomes: deque = deque(maxlen=200)
 
 
 def record_trade_outcome(
@@ -124,7 +124,7 @@ def _update_performance():
 
     avg_rr = sum(o["rr1"] for o in outcomes) / n if n else 0
 
-    # ── Per-entry_type EV metrics ──
+    # ── Per-entry_type EV metrics with rolling windows ──
     by_type = {}
     for etype in ("SCALP", "MEDIUM", "TREND", "REGIME"):
         typed = [o for o in outcomes if o.get("entry_type") == etype]
@@ -137,10 +137,20 @@ def _update_performance():
             ev = wr * avg_win_r - (1 - wr) * avg_loss_r
             tp1_h = [o for o in typed if o["tp1_hit"]]
             tp1_sl = [o for o in typed if o["sl_after_tp1"]]
-            trail_wins = [o for o in typed if "TRAILING" in o["outcome"] and o["pnl"] > 0]
+            trail_all = [o for o in typed if "TRAILING" in o.get("outcome", "")]
+            trail_wins = [o for o in trail_all if o["pnl"] > 0]
+
+            # Rolling windows per entry_type
+            last_50 = typed[-50:]
+            last_200 = typed[-200:]
+            wr_50 = sum(1 for o in last_50 if o["pnl"] > 0) / len(last_50) if last_50 else 0
+            wr_200 = sum(1 for o in last_200 if o["pnl"] > 0) / len(last_200) if last_200 else 0
+
             by_type[etype] = {
                 "count": len(typed),
                 "win_rate": round(wr, 3),
+                "win_rate_last_50": round(wr_50, 3),
+                "win_rate_last_200": round(wr_200, 3),
                 "avg_pnl": round(sum(o["pnl"] for o in typed) / len(typed), 2),
                 "total_pnl": round(sum(o["pnl"] for o in typed), 2),
                 "avg_win_R": round(avg_win_r, 2),
@@ -148,7 +158,7 @@ def _update_performance():
                 "EV_per_trade": round(ev, 3),
                 "tp1_success_rate": round(len(tp1_h) / len(typed), 3),
                 "tp1_to_sl_rate": round(len(tp1_sl) / max(len(tp1_h), 1), 3),
-                "trailing_win_rate": round(len(trail_wins) / max(len([o for o in typed if "TRAILING" in o["outcome"]]), 1), 3),
+                "trailing_win_rate": round(len(trail_wins) / max(len(trail_all), 1), 3),
             }
 
     # ── Per-regime metrics ──
@@ -163,16 +173,24 @@ def _update_performance():
                 "total_pnl": round(sum(o["pnl"] for o in reg_outcomes), 2),
             }
 
-    # ── Per-strategy metrics ──
+    # ── Per-strategy metrics with EV ──
     by_strategy = {}
     all_drivers = set(o.get("primary_driver", "") for o in outcomes if o.get("primary_driver"))
     for drv in all_drivers:
         drv_outcomes = [o for o in outcomes if o.get("primary_driver") == drv]
         if drv_outcomes:
-            dwr = sum(1 for o in drv_outcomes if o["pnl"] > 0) / len(drv_outcomes)
+            d_wins = [o for o in drv_outcomes if o["pnl"] > 0]
+            d_losses = [o for o in drv_outcomes if o["pnl"] <= 0]
+            dwr = len(d_wins) / len(drv_outcomes)
+            d_avg_win_r = sum(o["rr1"] for o in d_wins) / len(d_wins) if d_wins else 0
+            d_avg_loss_r = sum(o["rr1"] for o in d_losses) / len(d_losses) if d_losses else 0
+            d_ev = dwr * d_avg_win_r - (1 - dwr) * d_avg_loss_r
             by_strategy[drv] = {
                 "count": len(drv_outcomes),
                 "win_rate": round(dwr, 3),
+                "avg_win_R": round(d_avg_win_r, 2),
+                "avg_loss_R": round(d_avg_loss_r, 2),
+                "EV_per_trade": round(d_ev, 3),
                 "total_pnl": round(sum(o["pnl"] for o in drv_outcomes), 2),
             }
 

@@ -1,7 +1,7 @@
 """
 Position lifecycle state machine.
 
-States: IDLE → OPEN → TP1_HIT → TRAILING → CLOSED
+States: IDLE -> OPEN -> TP1_HIT -> TRAILING -> CLOSED
                  ↓                              ↑
                  └── CLOSED (SL, EARLY_EXIT) ───┘
 
@@ -78,11 +78,11 @@ def transition(
     """
     if not is_valid_transition(current_state, target_state):
         logger.warning(
-            f"[{symbol}] Invalid state transition: {current_state} → {target_state} "
+            f"[{symbol}] Invalid state transition: {current_state} -> {target_state} "
             f"(reason: {reason}). Staying in {current_state}."
         )
         return current_state
 
     log_transition(symbol, current_state, target_state, reason)
-    logger.info(f"[{symbol}] State: {current_state} → {target_state} ({reason})")
+    logger.info(f"[{symbol}] State: {current_state} -> {target_state} ({reason})")
     return target_state

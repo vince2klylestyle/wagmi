@@ -101,7 +101,7 @@ class TestStateMachineTransitions:
             assert is_valid_transition(CLOSED, target) is False
 
     def test_full_happy_path(self):
-        """IDLE → OPEN → TP1_HIT → TRAILING → CLOSED."""
+        """IDLE -> OPEN -> TP1_HIT -> TRAILING -> CLOSED."""
         state = IDLE
         state = transition("BTC", state, OPEN, "open")
         assert state == OPEN
@@ -330,7 +330,7 @@ class TestTp1NeverNetNegative:
             total_pnl = tp1_pnl + sl_events[0].pnl - sum(e.fee for e in events_tp1) - sl_events[0].fee
             # Total should be near breakeven (TP1 profit offsets small SL loss on remainder)
             # The key property: NOT a big loss
-            assert total_pnl > -20, f"TP1→SL total should be near breakeven, got {total_pnl:.2f}"
+            assert total_pnl > -20, f"TP1->SL total should be near breakeven, got {total_pnl:.2f}"
 
 
 # ─── 6. ML Stats Export ─────────────────────────────────
@@ -412,7 +412,7 @@ class TestBacktestEquityCurve:
         pm = PositionManager(taker_fee_bps=5)
         rm = RiskManager(starting_equity=10000, risk_per_trade=0.015)
 
-        # Open → TP1 → TP2 path
+        # Open -> TP1 -> TP2 path
         pm.open_position(
             symbol="BTC", side="LONG", entry=100.0, qty=10.0,
             sl=95.0, tp1=107.5, tp2=115.0, atr=5.0,
@@ -500,7 +500,7 @@ class TestReplayModeConsistency:
             symbol="BTC", side="LONG", outcome="CLEAN_WIN",
             pnl=150.0, entry=100.0, sl=95.0, tp1=107.5, tp2=115.0,
             tp1_hit=True, sl_after_tp1=False,
-            state_path="IDLE→OPEN→TP1_HIT→TRAILING→CLOSED",
+            state_path="IDLE->OPEN->TP1_HIT->TRAILING->CLOSED",
             leverage=2.0, confidence=80.0, strategy="regime_trend",
         )
         perf = get_performance()

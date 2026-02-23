@@ -78,13 +78,26 @@ class DataFetcher:
         self._cache: Dict[str, tuple] = {}
         self._lock = threading.Lock()
 
-        # Exchange fallback chains per symbol
+        # Exchange fallback chains per symbol (Hyperliquid primary for all)
         self._symbol_exchanges = {
-            "BTC": [("kraken", "BTC/USDT"), ("bybit", "BTC/USDT")],
-            "SOL": [("kraken", "SOL/USDT"), ("bybit", "SOL/USDT")],
+            "BTC": [("hyperliquid", "BTC/USDC:USDC"), ("kraken", "BTC/USDT"), ("bybit", "BTC/USDT")],
+            "ETH": [("hyperliquid", "ETH/USDC:USDC"), ("kraken", "ETH/USDT"), ("bybit", "ETH/USDT")],
+            "SOL": [("hyperliquid", "SOL/USDC:USDC"), ("kraken", "SOL/USDT"), ("bybit", "SOL/USDT")],
             "HYPE": [("hyperliquid", "HYPE/USDC:USDC")],
-            "FARTCOIN": [("hyperliquid", "FARTCOIN/USDC:USDC"), ("bybit", "FARTCOIN/USDT")],
+            "XRP": [("hyperliquid", "XRP/USDC:USDC"), ("bybit", "XRP/USDT")],
+            "AVAX": [("hyperliquid", "AVAX/USDC:USDC"), ("bybit", "AVAX/USDT")],
+            "LINK": [("hyperliquid", "LINK/USDC:USDC"), ("bybit", "LINK/USDT")],
+            "SUI": [("hyperliquid", "SUI/USDC:USDC"), ("bybit", "SUI/USDT")],
+            "NEAR": [("hyperliquid", "NEAR/USDC:USDC"), ("bybit", "NEAR/USDT")],
+            "ARB": [("hyperliquid", "ARB/USDC:USDC"), ("bybit", "ARB/USDT")],
+            "DOGE": [("hyperliquid", "DOGE/USDC:USDC"), ("bybit", "DOGE/USDT")],
+            "WIF": [("hyperliquid", "WIF/USDC:USDC"), ("bybit", "WIF/USDT")],
             "PEPE": [("hyperliquid", "KPEPE/USDC:USDC"), ("kraken", "PEPE/USDT"), ("bybit", "PEPE/USDT")],
+            "TIA": [("hyperliquid", "TIA/USDC:USDC"), ("bybit", "TIA/USDT")],
+            "SEI": [("hyperliquid", "SEI/USDC:USDC"), ("bybit", "SEI/USDT")],
+            "JUP": [("hyperliquid", "JUP/USDC:USDC"), ("bybit", "JUP/USDT")],
+            "ONDO": [("hyperliquid", "ONDO/USDC:USDC"), ("bybit", "ONDO/USDT")],
+            "FARTCOIN": [("hyperliquid", "FARTCOIN/USDC:USDC"), ("bybit", "FARTCOIN/USDT")],
         }
 
         # CCXT exchange instances
@@ -221,13 +234,11 @@ class DataFetcher:
                 if df.empty or len(df) < 5:
                     continue
 
-                # Log first success per symbol at INFO level
-                log_key = f"{symbol_name}:{timeframe}"
-                if log_key not in self._ccxt_first_success:
-                    self._ccxt_first_success[log_key] = True
-                    logger.info(
-                        f"[{symbol_name}] CCXT {ex_name}: {len(df)} {timeframe} candles"
-                    )
+                # Log candle count for every successful fetch
+                logger.info(
+                    f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} "
+                    f"via CCXT {ex_name}"
+                )
 
                 return df
 
@@ -406,6 +417,7 @@ class DataFetcher:
         logger.info(f"[{symbol_name}] CCXT unavailable for {timeframe}, falling back to CoinGecko")
         df = self._fetch_cg_ohlcv(coin_id, timeframe)
         if not df.empty:
+            logger.info(f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} via CoinGecko")
             self._set_cache(cache_key, df)
         return df
 

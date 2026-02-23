@@ -12,13 +12,13 @@ Every Position carries a TradeProfile that drives:
 - Trailing style and parameters
 - Expected holding time
 
-Strategy → entry_type mapping:
-- regime_trend       → TREND
-- multi_tier_quality → TREND
-- monte_carlo_zones  → MEDIUM
-- confidence_scorer  → MEDIUM
-- (future) microstructure / fast_ml → SCALP
-- (future) volatility_regime → REGIME (modifier, not standalone)
+Strategy -> entry_type mapping:
+- regime_trend       -> TREND
+- multi_tier_quality -> TREND
+- monte_carlo_zones  -> MEDIUM
+- confidence_scorer  -> MEDIUM
+- (future) microstructure / fast_ml -> SCALP
+- (future) volatility_regime -> REGIME (modifier, not standalone)
 """
 
 import logging
@@ -38,7 +38,7 @@ REGIME = "REGIME"
 ALL_ENTRY_TYPES = {SCALP, MEDIUM, TREND, REGIME}
 
 
-# ── Strategy → entry type mapping ────────────────────────
+# ── Strategy -> entry type mapping ────────────────────────
 
 STRATEGY_ENTRY_TYPE = {
     "regime_trend": TREND,
@@ -70,7 +70,7 @@ class ExitParams:
     sl_atr_mult: float       # SL distance in ATR multiples
     tp1_close_pct: float     # fraction to close at TP1
     trailing_style: str      # "tight", "medium", "loose", "none"
-    # Trailing tighten curve: factor shrinks from start→end as price→TP2
+    # Trailing tighten curve: factor shrinks from start->end as price->TP2
     trailing_tighten_start: float  # initial tighten factor (wider)
     trailing_tighten_end: float    # final tighten factor (tighter)
     # Profit lock floor: minimum % of peak move to guarantee
@@ -202,8 +202,8 @@ def _determine_primary_driver(
 
 def _determine_entry_type(primary_driver: str, strategies_agree: List[str]) -> str:
     """Classify entry_type from primary driver.
-    If all strategies are TREND → TREND.
-    If mixed TREND+MEDIUM → MEDIUM (conservative: don't widen exits for mixed signals)."""
+    If all strategies are TREND -> TREND.
+    If mixed TREND+MEDIUM -> MEDIUM (conservative: don't widen exits for mixed signals)."""
     primary_type = STRATEGY_ENTRY_TYPE.get(primary_driver, MEDIUM)
 
     # Check if unanimous
@@ -229,16 +229,16 @@ def _determine_regime(signal_metadata: Dict[str, Any]) -> str:
     trend_adj = signal_metadata.get("trend_adjustment", 0)
     vol_ratio = signal_metadata.get("volume_ratio", 1.0)
 
-    # Strong trend alignment bonus (negative trend_adj = aligned) → trending
+    # Strong trend alignment bonus (negative trend_adj = aligned) -> trending
     if trend_adj <= -5:
         return "trending"
-    # Strong counter-trend penalty → ranging/choppy
+    # Strong counter-trend penalty -> ranging/choppy
     if trend_adj >= 10:
         return "ranging"
-    # Low volume → illiquid
+    # Low volume -> illiquid
     if vol_ratio < 0.5:
         return "illiquid"
-    # Moderate trend → trending
+    # Moderate trend -> trending
     if trend_adj < 0:
         return "trending"
 
@@ -401,6 +401,77 @@ def classify_trade(
     )
 
     return profile
+
+
+# ── Tuning helpers ──────────────────────────────────────────
+# These allow adjusting exit parameters per profile without editing _BASE_PROFILES.
+# Used by the grid search / parameter sweep system.
+
+def get_profile_config() -> Dict[str, Dict[str, float]]:
+    """Return current exit parameters per entry_type as a flat config dict.
+    Useful for logging what config is active and for grid search."""
+    config = {}
+    for etype, params in _BASE_PROFILES.items():
+        config[etype] = {
+            "tp1_atr_mult": params.tp1_atr_mult,
+            "tp2_atr_mult": params.tp2_atr_mult,
+            "sl_atr_mult": params.sl_atr_mult,
+            "tp1_close_pct": params.tp1_close_pct,
+            "trailing_style": params.trailing_style,
+        }
+    return config
+
+
+def adjust_profile_params(
+    entry_type: str,
+    tp1_atr_mult: Optional[float] = None,
+    sl_atr_mult: Optional[float] = None,
+    tp1_close_pct: Optional[float] = None,
+) -> ExitParams:
+    """Return a modified copy of the base profile for a given entry_type.
+
+    Used for grid search: try different TP1/SL/TP1% without mutating globals.
+    Only the specified parameters are changed; others keep base values.
+    """
+    base = _BASE_PROFILES.get(entry_type, _BASE_PROFILES[MEDIUM])
+    return ExitParams(
+        tp1_atr_mult=tp1_atr_mult if tp1_atr_mult is not None else base.tp1_atr_mult,
+        tp2_atr_mult=base.tp2_atr_mult,
+        sl_atr_mult=sl_atr_mult if sl_atr_mult is not None else base.sl_atr_mult,
+        tp1_close_pct=tp1_close_pct if tp1_close_pct is not None else base.tp1_close_pct,
+        trailing_style=base.trailing_style,
+        trailing_tighten_start=base.trailing_tighten_start,
+        trailing_tighten_end=base.trailing_tighten_end,
+        floor_progress_start=base.floor_progress_start,
+        floor_lock_start=base.floor_lock_start,
+        floor_lock_max=base.floor_lock_max,
+    )
+
+
+# Grid search ranges per entry_type (safe, conservative ranges).
+# These are hypotheses to be tested, not truths.
+TUNING_GRID = {
+    SCALP: {
+        "tp1_atr_mult": [0.3, 0.4, 0.5, 0.6],
+        "sl_atr_mult": [0.3, 0.4, 0.5],
+        "tp1_close_pct": [0.80, 0.85, 0.90, 1.0],
+    },
+    MEDIUM: {
+        "tp1_atr_mult": [0.8, 1.0, 1.2],
+        "sl_atr_mult": [0.6, 0.75, 0.9],
+        "tp1_close_pct": [0.50, 0.60, 0.70],
+    },
+    TREND: {
+        "tp1_atr_mult": [1.0, 1.5, 2.0],
+        "sl_atr_mult": [0.8, 1.0, 1.2],
+        "tp1_close_pct": [0.25, 0.35, 0.45],
+    },
+    REGIME: {
+        "tp1_atr_mult": [1.0, 1.2, 1.5],
+        "sl_atr_mult": [0.7, 0.8, 1.0],
+        "tp1_close_pct": [0.40, 0.50, 0.60],
+    },
+}
 
 
 def apply_profile_to_signal(

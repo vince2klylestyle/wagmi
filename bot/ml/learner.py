@@ -321,7 +321,7 @@ class SignalLearner:
             np.clip(snap.volatility / 5.0, 0, 1),
             np.sin(hour_rad),
             np.cos(hour_rad),
-            snap.regime_score / 4.0,  # regime: -2 to +2 → -0.5 to +0.5
+            snap.regime_score / 4.0,  # regime: -2 to +2 -> -0.5 to +0.5
             1.0 if snap.ensemble_direction == "BUY" else (-1.0 if snap.ensemble_direction == "SELL" else 0.0),
             snap.ensemble_confidence / 100.0,
         ], dtype=np.float64)

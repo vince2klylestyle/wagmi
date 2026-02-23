@@ -153,10 +153,12 @@ class TelegramCommandBot:
             "/positions": self._cmd_positions,
             "/ml": self._cmd_ml,
             "/performance": self._cmd_performance,
+            "/llm": self._cmd_llm,
             "/close": lambda: self._cmd_close(args),
             "/closeall": self._cmd_closeall,
             "/pause": self._cmd_pause,
             "/resume": self._cmd_resume,
+            "/help": self._cmd_help,
         }
         handler = handlers.get(command)
         if handler:
@@ -209,9 +211,9 @@ class TelegramCommandBot:
             f"*ML Learner*\n"
             f"Trade outcomes: {len(ml.outcomes)}\n"
             f"Snapshots: {len(ml.snapshots)}\n"
-            f"Trade model: {'trained' if ml.weights else 'waiting'}\n"
-            f"Snapshot model: {'trained' if ml.snapshot_weights else 'waiting'}\n"
-            f"Fast model: {'trained' if ml.fast_weights else 'waiting'}"
+            f"Trade model: {'trained' if ml.weights is not None and len(ml.weights) > 0 else 'waiting'}\n"
+            f"Snapshot model: {'trained' if ml.snapshot_weights is not None else 'waiting'}\n"
+            f"Fast model: {'trained' if ml.fast_weights is not None else 'waiting'}"
         )
 
     def _cmd_performance(self) -> str:
@@ -226,7 +228,7 @@ class TelegramCommandBot:
             f"WR (50): {perf.get('win_rate_50', 0):.0%}\n"
             f"Avg R:R: {perf.get('avg_rr', 0):.2f}\n"
             f"TP1 rate: {perf.get('tp1_success_rate', 0):.0%}\n"
-            f"TP1→SL: {perf.get('tp1_to_sl_rate', 0):.0%}\n"
+            f"TP1->SL: {perf.get('tp1_to_sl_rate', 0):.0%}\n"
             f"Total PnL: ${perf.get('total_pnl', 0):+,.2f}"
         )
 
@@ -263,6 +265,35 @@ class TelegramCommandBot:
         if closed:
             return "Closed:\n" + "\n".join(closed)
         return "No positions to close"
+
+    def _cmd_llm(self) -> str:
+        if not self.bot:
+            return "Bot not connected"
+        mode = self.bot.llm_mode
+        triggers = self.bot._llm_triggers
+        rate = triggers.rate_stats
+        return (
+            f"*LLM Meta-Brain*\n"
+            f"Mode: {mode.name}\n"
+            f"Calls (1h): {rate['calls_last_hour']}/{rate['max_per_hour']}\n"
+            f"Calls (24h): {rate['calls_last_day']}/{rate['max_per_day']}\n"
+            f"Pending events: {triggers.event_count}\n"
+            f"Events: {triggers.event_summary}"
+        )
+
+    def _cmd_help(self) -> str:
+        return (
+            "*nunuIRL Bot Commands*\n"
+            "/status - Equity, positions, PnL\n"
+            "/positions - Open position details\n"
+            "/ml - ML learner stats\n"
+            "/performance - Win rate and metrics\n"
+            "/llm - LLM meta-brain status\n"
+            "/close <SYM> - Force close position\n"
+            "/closeall - Close all positions\n"
+            "/pause - Pause trading\n"
+            "/resume - Resume trading"
+        )
 
     def _cmd_pause(self) -> str:
         self._paused = True
