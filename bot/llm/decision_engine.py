@@ -46,6 +46,10 @@ from llm.memory_store import get_memory_summary, apply_memory_update, load_memor
 from llm.validation import validate_and_parse
 from llm.risk_gating import gate_decision, RiskContext, GatedResult
 from llm.autonomy import LLMMode, should_call_llm, get_llm_mode
+from llm.validator import validate_schema, validate_semantics, validate_and_sanitize
+from llm.recovery import handle_validation_error, should_disable_llm_temporarily
+from llm.normalizers import normalize_llm_output, decision_from_normalized_dict
+from llm.autonomy_router import apply_autonomy_mode
 
 logger = logging.getLogger("bot.llm.engine")
 
@@ -176,19 +180,47 @@ def get_trading_decision(
             usage=usage,
         )
 
-    # Step 5: Validate
+    # Step 5: Validate + Normalize + Sanitize
     decision, val_err = validate_and_parse(raw_text)
 
     if val_err:
+        # Parse failed: try recovery
+        recoverable, _, recovery_reason = handle_validation_error(val_err, raw_text)
         _log_audit({
             "ts": time.time(),
             "action": "validation_failed",
             "error": val_err,
+            "recoverable": recoverable,
             "raw": raw_text[:500],
         })
         return DecisionResult(
             decision=None,
-            reason=f"validation: {val_err}",
+            reason=f"validation_error: {val_err}",
+            source="none",
+            usage=usage,
+        )
+
+    # Step 5.5: Additional validation + sanitization (strict)
+    try:
+        decision, sanitize_err = validate_and_sanitize(decision)
+        if sanitize_err:
+            logger.warning(f"[LLM-ENGINE] Sanitization failed: {sanitize_err}")
+            _log_audit({
+                "ts": time.time(),
+                "action": "sanitization_failed",
+                "error": sanitize_err,
+            })
+            return DecisionResult(
+                decision=None,
+                reason=f"sanitization_error: {sanitize_err}",
+                source="none",
+                usage=usage,
+            )
+    except Exception as e:
+        logger.error(f"[LLM-ENGINE] Sanitization exception: {e}")
+        return DecisionResult(
+            decision=None,
+            reason=f"sanitization_exception: {str(e)[:100]}",
             source="none",
             usage=usage,
         )
