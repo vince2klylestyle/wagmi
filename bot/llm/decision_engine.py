@@ -88,6 +88,8 @@ class DecisionResult:
     reason: str                    # "success", "throttled", "off", parse/validation/gate reason
     source: str                    # "llm", "cache", "none"
     usage: dict = None             # API token usage stats
+    is_veto: bool = False          # True when LLM vetoed a trade (action=flat in VETO_ONLY+)
+    original_action: str = ""      # Pre-mode-constraint action (e.g. "flip" before downgrade)
 
     def __post_init__(self):
         if self.usage is None:
@@ -191,6 +193,10 @@ def get_trading_decision(
             usage=usage,
         )
 
+    # Step 5.5: Apply mode-specific constraints
+    original_action = decision.action
+    decision, mode_overrides = _apply_mode_constraints(decision, mode)
+
     # Step 6: Risk gate
     gated = gate_decision(decision, risk_context)
 
@@ -204,14 +210,22 @@ def get_trading_decision(
     _cached_decision = decision if gated.allowed else None
     _cached_at = time.time()
 
+    # Determine if this was a veto (LLM said flat for a trade candidate)
+    is_veto = decision.action == "flat" and mode >= LLMMode.VETO_ONLY
+
     # Step 10: Audit log
     _log_audit({
         "ts": time.time(),
         "action": decision.action,
+        "original_action": original_action,
         "confidence": decision.confidence,
         "regime": decision.regime,
+        "size_multiplier": decision.size_multiplier,
+        "entry_adjustment": decision.entry_adjustment,
         "allowed": gated.allowed,
         "gate_reason": gated.reason,
+        "is_veto": is_veto,
+        "mode_overrides": mode_overrides,
         "notes": decision.notes,
         "memory_update": decision.memory_update,
         "strategy_weights": decision.strategy_weights.to_dict(),
@@ -225,13 +239,17 @@ def get_trading_decision(
         logger.info(
             f"[LLM-ENGINE] Decision: {decision.action} "
             f"conf={decision.confidence:.2f} regime={decision.regime} "
+            f"size_mult={decision.size_multiplier:.2f} "
             f"mode={mode.name}"
+            + (f" (was {original_action})" if original_action != decision.action else "")
         )
         return DecisionResult(
             decision=decision,
             reason="success",
             source="llm",
             usage=usage,
+            is_veto=is_veto,
+            original_action=original_action,
         )
     else:
         logger.info(
@@ -243,4 +261,53 @@ def get_trading_decision(
             reason=f"gated: {gated.reason}",
             source="none",
             usage=usage,
+            is_veto=is_veto,
+            original_action=original_action,
         )
+
+
+def _apply_mode_constraints(
+    decision: LLMDecision, mode: LLMMode
+) -> tuple:
+    """Enforce mode-specific constraints on the LLM decision.
+
+    Returns (modified_decision, list_of_overrides_applied).
+
+    VETO_ONLY: flip -> flat, size_multiplier -> 1.0, entry_adjustment -> None
+    SIZING:    flip -> flat, entry_adjustment -> None (keep size_multiplier)
+    DIRECTION: no constraints on action (keep everything)
+    FULL:      no constraints
+    """
+    overrides = []
+
+    if mode == LLMMode.VETO_ONLY:
+        # VETO_ONLY: only proceed or flat allowed
+        if decision.action == "flip":
+            logger.info(
+                f"[LLM-ENGINE] VETO_ONLY: downgrading flip -> flat "
+                f"(flips not allowed in VETO_ONLY mode)"
+            )
+            decision.action = "flat"
+            overrides.append("flip_to_flat")
+        if decision.size_multiplier != 1.0:
+            overrides.append(f"size_mult_{decision.size_multiplier:.2f}_to_1.0")
+            decision.size_multiplier = 1.0
+        if decision.entry_adjustment is not None:
+            overrides.append("entry_adj_cleared")
+            decision.entry_adjustment = None
+
+    elif mode == LLMMode.SIZING:
+        # SIZING: no flips, but size_multiplier is kept
+        if decision.action == "flip":
+            logger.info(
+                f"[LLM-ENGINE] SIZING: downgrading flip -> flat "
+                f"(flips not allowed in SIZING mode)"
+            )
+            decision.action = "flat"
+            overrides.append("flip_to_flat")
+        if decision.entry_adjustment is not None:
+            overrides.append("entry_adj_cleared")
+            decision.entry_adjustment = None
+
+    # DIRECTION and FULL: no constraints
+    return decision, overrides
