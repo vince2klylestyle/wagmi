@@ -162,6 +162,12 @@ class TelegramCommandBot:
             "/closeall": self._cmd_closeall,
             "/pause": self._cmd_pause,
             "/resume": self._cmd_resume,
+            "/copytrades": self._cmd_copytrades,
+            "/telemetry": self._cmd_telemetry,
+            "/replay": self._cmd_replay,
+            "/proposals": self._cmd_proposals,
+            "/approve": lambda: self._cmd_approve_proposal(args),
+            "/reject": lambda: self._cmd_reject_proposal(args),
             "/help": self._cmd_help,
         }
         handler = handlers.get(command)
@@ -370,6 +376,50 @@ class TelegramCommandBot:
         from llm.progression import format_progression_status
         return format_progression_status(self.bot.llm_mode)
 
+    def _cmd_copytrades(self) -> str:
+        from classification.human_copy_classifier import format_copy_trades_telegram
+        from execution.candidate import CandidateLogger
+        candidates = CandidateLogger.load_candidates()
+        return format_copy_trades_telegram(candidates)
+
+    def _cmd_telemetry(self) -> str:
+        from data.fetchers.telemetry import Telemetry
+        return Telemetry.format_telegram()
+
+    def _cmd_replay(self) -> str:
+        from engine.replay_engine import replay_from_csv, format_replay_report
+        # Replay the main candidate log
+        csv_path = os.path.join("data", "analysis", "trade_candidates.csv")
+        if not os.path.exists(csv_path):
+            return "No trade log found for replay."
+        result = replay_from_csv(csv_path)
+        return format_replay_report(result)
+
+    def _cmd_proposals(self) -> str:
+        from llm.strategy_discovery.research_agent import list_proposals, format_proposals_telegram
+        proposals = list_proposals()
+        return format_proposals_telegram(proposals)
+
+    def _cmd_approve_proposal(self, args: str) -> str:
+        proposal_id = args.strip()
+        if not proposal_id:
+            return "Usage: /approve <proposal_id>"
+        from llm.strategy_discovery.sandbox import approve_proposal
+        p = approve_proposal(proposal_id)
+        if p:
+            return f"Proposal approved: {p.name} ({p.proposal_id})"
+        return f"Cannot approve {proposal_id} (not found or wrong status)"
+
+    def _cmd_reject_proposal(self, args: str) -> str:
+        proposal_id = args.strip()
+        if not proposal_id:
+            return "Usage: /reject <proposal_id>"
+        from llm.strategy_discovery.sandbox import reject_proposal
+        p = reject_proposal(proposal_id)
+        if p:
+            return f"Proposal rejected: {p.name} ({p.proposal_id})"
+        return f"Cannot reject {proposal_id} (not found)"
+
     def _cmd_help(self) -> str:
         return (
             "*nunuIRL Bot Commands*\n"
@@ -382,6 +432,12 @@ class TelegramCommandBot:
             "/health - System health check\n"
             "/uplift - LLM uplift analytics\n"
             "/progression - Mode promotion readiness\n"
+            "/copytrades - Human copy-tradable signals\n"
+            "/telemetry - Execution quality metrics\n"
+            "/replay - Trade log replay analysis\n"
+            "/proposals - Strategy discovery proposals\n"
+            "/approve <id> - Approve a strategy proposal\n"
+            "/reject <id> - Reject a strategy proposal\n"
             "/close <SYM> - Force close position\n"
             "/closeall - Close all positions\n"
             "/pause - Pause trading\n"

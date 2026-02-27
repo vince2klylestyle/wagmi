@@ -1,0 +1,13 @@
+Execution spec (high level):
+- Use snapshot_entry at signal time, live_entry at execution time.
+- All execution, TP/SL, and PnL must use effective_entry() which prefers live_entry when available.
+- Before executing:
+  - verify live price within +/-X% of snapshot,
+  - verify slippage < MAX_SLIPPAGE_PCT,
+  - verify spread < MAX_SPREAD_PCT,
+  - verify liquidity > MIN_LIQUIDITY_USD,
+  - verify volatility not spiking,
+  - verify correlation guard and circuit breaker are not violated.
+- On any violation:
+  - downgrade, veto, or require human confirmation (configurable),
+  - always log the reason.
