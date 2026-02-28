@@ -509,6 +509,15 @@ class DataFetcher:
 
         return None
 
+    def fetch_live_price(self, symbol_name: str) -> Optional[float]:
+        """Fetch a fresh live price bypassing cache. Use at execution time."""
+        price = self._fetch_ccxt_ticker(symbol_name)
+        if price is not None:
+            # Also update the cache so subsequent reads are fresh
+            df = pd.DataFrame([{"close": price}])
+            self._set_cache(f"price:{symbol_name}", df)
+        return price
+
     def clear_cache(self):
         """Clear the data cache."""
         self._cache.clear()

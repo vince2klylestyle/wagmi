@@ -168,6 +168,9 @@ class TelegramCommandBot:
             "/proposals": self._cmd_proposals,
             "/approve": lambda: self._cmd_approve_proposal(args),
             "/reject": lambda: self._cmd_reject_proposal(args),
+            "/kill": lambda: self._cmd_kill(args),
+            "/unkill": self._cmd_unkill,
+            "/ops": self._cmd_ops,
             "/help": self._cmd_help,
         }
         handler = handlers.get(command)
@@ -420,6 +423,24 @@ class TelegramCommandBot:
             return f"Proposal rejected: {p.name} ({p.proposal_id})"
         return f"Cannot reject {proposal_id} (not found)"
 
+    def _cmd_kill(self, args: str) -> str:
+        from execution.ops_guard import OpsGuard
+        guard = OpsGuard()
+        reason = args.strip() or "Telegram kill switch"
+        guard.kill(reason)
+        return f"KILL SWITCH ACTIVATED: {reason}\nAll execution halted. Use /unkill to resume."
+
+    def _cmd_unkill(self) -> str:
+        from execution.ops_guard import OpsGuard
+        guard = OpsGuard()
+        guard.unkill()
+        return "Kill switch deactivated. Trading can resume."
+
+    def _cmd_ops(self) -> str:
+        from execution.ops_guard import OpsGuard
+        guard = OpsGuard()
+        return guard.format_status()
+
     def _cmd_help(self) -> str:
         return (
             "*nunuIRL Bot Commands*\n"
@@ -438,6 +459,9 @@ class TelegramCommandBot:
             "/proposals - Strategy discovery proposals\n"
             "/approve <id> - Approve a strategy proposal\n"
             "/reject <id> - Reject a strategy proposal\n"
+            "/kill [reason] - Emergency kill switch\n"
+            "/unkill - Deactivate kill switch\n"
+            "/ops - Ops guard status (throttles, limits)\n"
             "/close <SYM> - Force close position\n"
             "/closeall - Close all positions\n"
             "/pause - Pause trading\n"

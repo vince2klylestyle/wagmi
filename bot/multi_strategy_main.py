@@ -56,6 +56,8 @@ from llm.triggers import LLMTrigger, TriggerAccumulator, TRIGGER_LABELS
 from execution.candidate import TradeCandidate, CandidateLogger
 from execution.reconciliation import reconcile_positions
 from execution.time_sizing import get_time_multiplier
+from execution.ops_guard import OpsGuard
+from data.fetchers.telemetry import Telemetry
 
 
 def get_tp1_close_pct(confidence: float) -> float:
@@ -218,6 +220,9 @@ class MultiStrategyBot:
 
         # Dual-world candidate logging (baseline vs LLM)
         self._candidate_logger = CandidateLogger()
+
+        # Operations guard: kill switch, rate limiting, exposure limits
+        self.ops_guard = OpsGuard()
 
         # Track 1h price changes for cross-market divergence detection
         self._price_changes_1h: Dict[str, float] = {}
@@ -398,6 +403,7 @@ class MultiStrategyBot:
         # Heartbeat every 60 ticks (~1 hour at 60s intervals)
         if self._tick % 60 == 0:
             self._send_heartbeat()
+            Telemetry.save_snapshot()  # Persist telemetry for dashboards/LLM
 
         # Market update every 15 ticks (~15 min) - sends even without signals
         if self._tick % 15 == 0 and self._tick % 60 != 0:
@@ -552,6 +558,12 @@ class MultiStrategyBot:
                 if pos:
                     self._last_close_win[symbol] = pos.realized_pnl > 0
                     self._last_close_side[symbol] = pos.side
+                    # Telemetry: track win/loss and PnL
+                    if pos.realized_pnl > 0:
+                        Telemetry.inc("trades_won")
+                    else:
+                        Telemetry.inc("trades_lost")
+                    Telemetry.record("pnls", pos.realized_pnl)
 
                 # LLM trigger: position closed -> learn from it
                 _close_pnl = pos.realized_pnl if pos else event.pnl
@@ -652,6 +664,8 @@ class MultiStrategyBot:
         # Try to generate new signal
         if self.telegram_bot.is_paused:
             return  # Paused via Telegram /pause command
+        if self.ops_guard.is_killed:
+            return  # Kill switch active
         if symbol in open_pos:
             return  # Already have position in this symbol
         if self.pos_mgr.get_open_count() >= self.risk_mgr.max_open_positions:
@@ -688,6 +702,8 @@ class MultiStrategyBot:
 
         if signal_result is None:
             return
+
+        Telemetry.inc("total_signals")
 
         # Signal dedup: skip if we just saw the same side signal for this symbol
         now = time.time()
@@ -1078,11 +1094,103 @@ class MultiStrategyBot:
         candidate.leverage_used = lev_decision.leverage
         self._candidate_logger.log_candidate(candidate)
 
-        # Open position with profile-adjusted levels
+        # ── OpsGuard: rate limiting, exposure limits ──
+        position_size_usd = qty * signal_result.entry * lev_decision.leverage
+        total_exposure = sum(
+            p.qty * p.entry * p.leverage
+            for p in self.pos_mgr.get_open_positions().values()
+        )
+        ops_check = self.ops_guard.can_execute(
+            position_size_usd=position_size_usd,
+            equity=self.risk_mgr.current_equity,
+            total_exposure_usd=total_exposure,
+        )
+        if not ops_check["allowed"]:
+            Telemetry.inc("throttle_blocks")
+            log_rejection(symbol, "OPS_GUARD", confidence=signal_result.confidence)
+            logger.warning(f"[{trace_id}][{symbol}] OPS GUARD: {ops_check['reason']}")
+            return
+
+        # ── LIVE PRICE ENTRY: fetch fresh price right before opening ──
+        # signal_result.entry is the stale candle-close price from strategy eval.
+        # We need the actual live market price for accurate entry/TP/SL/PnL.
+        snapshot_entry = signal_result.entry
+        live_entry = self.fetcher.fetch_live_price(symbol)
+        if live_entry is None:
+            live_entry = current_price  # fall back to tick-start price
+
+        # Compute slippage between signal snapshot and live execution price
+        slippage_pct = abs(live_entry - snapshot_entry) / snapshot_entry * 100 if snapshot_entry > 0 else 0
+        max_slippage = float(os.getenv("MAX_ENTRY_SLIPPAGE_PCT", "1.5"))
+
+        if slippage_pct > max_slippage:
+            log_rejection(symbol, "ENTRY_SLIPPAGE",
+                          confidence=signal_result.confidence)
+            logger.warning(
+                f"[{trace_id}][{symbol}] ENTRY REJECTED: slippage {slippage_pct:.2f}% "
+                f"(snapshot={_fmt_price(snapshot_entry)} live={_fmt_price(live_entry)} "
+                f"max={max_slippage}%)"
+            )
+            return
+
+        # Use live price as actual entry
+        actual_entry = live_entry
+
+        # Shift TP/SL proportionally to match the live entry price
+        entry_shift = actual_entry - snapshot_entry
+        adj_sl = adj_sl + entry_shift
+        adj_tp1 = adj_tp1 + entry_shift
+        adj_tp2 = adj_tp2 + entry_shift
+
+        # Safety: ensure SL/TP are still on the correct side of entry
+        if side == "LONG":
+            if adj_sl >= actual_entry:
+                adj_sl = actual_entry - signal_result.atr * 1.5 if signal_result.atr > 0 else actual_entry * 0.98
+            if adj_tp1 <= actual_entry:
+                adj_tp1 = actual_entry + signal_result.atr * 1.0 if signal_result.atr > 0 else actual_entry * 1.01
+            if adj_tp2 <= actual_entry:
+                adj_tp2 = actual_entry + signal_result.atr * 2.0 if signal_result.atr > 0 else actual_entry * 1.02
+        else:  # SHORT
+            if adj_sl <= actual_entry:
+                adj_sl = actual_entry + signal_result.atr * 1.5 if signal_result.atr > 0 else actual_entry * 1.02
+            if adj_tp1 >= actual_entry:
+                adj_tp1 = actual_entry - signal_result.atr * 1.0 if signal_result.atr > 0 else actual_entry * 0.99
+            if adj_tp2 >= actual_entry:
+                adj_tp2 = actual_entry - signal_result.atr * 2.0 if signal_result.atr > 0 else actual_entry * 0.98
+
+        # Recalculate qty with live entry price (stop distance may have changed)
+        live_sl_dist = abs(actual_entry - adj_sl)
+        snapshot_sl_dist = abs(snapshot_entry - (adj_sl - entry_shift))
+        if snapshot_sl_dist > 0 and live_sl_dist > 0:
+            # Scale qty to maintain the same dollar risk
+            qty = qty * (snapshot_sl_dist / live_sl_dist)
+            min_q = get_min_qty(symbol)
+            if qty < min_q:
+                log_rejection(symbol, "BELOW_MIN_QTY_LIVE", confidence=signal_result.confidence)
+                logger.info(f"[{trace_id}][{symbol}] Rejected: live-adjusted qty {qty} < min {min_q}")
+                return
+
+        if slippage_pct > 0.1:
+            logger.info(
+                f"[{trace_id}][{symbol}] Entry slippage: {slippage_pct:.2f}% "
+                f"(snapshot={_fmt_price(snapshot_entry)} -> live={_fmt_price(actual_entry)})"
+            )
+
+        # Track snapshot vs live for dual-entry analysis
+        entry_reasons["snapshot_entry"] = snapshot_entry
+        entry_reasons["live_entry"] = actual_entry
+        entry_reasons["entry_slippage_pct"] = round(slippage_pct, 4)
+
+        # Telemetry: record trade and slippage
+        Telemetry.inc("total_trades")
+        Telemetry.record("slippages", slippage_pct)
+        self.ops_guard.record_trade()
+
+        # Open position with LIVE price as entry
         self.pos_mgr.open_position(
             symbol=symbol,
             side=side,
-            entry=signal_result.entry,
+            entry=actual_entry,
             qty=qty,
             sl=adj_sl,
             tp1=adj_tp1,
@@ -1097,32 +1205,38 @@ class MultiStrategyBot:
             trade_profile=trade_prof,
         )
 
-        # Log trade open to database
+        # Log trade open to database (with live price)
         log_trade(
             symbol=symbol,
             action="OPEN",
             side=side,
-            price=signal_result.entry,
+            price=actual_entry,
             qty=qty,
             leverage=lev_decision.leverage,
             strategy=signal_result.strategy,
-            metadata={"confidence": signal_result.confidence, "strategies": signal_result.metadata.get("strategies_agree", [])}
+            metadata={
+                "confidence": signal_result.confidence,
+                "strategies": signal_result.metadata.get("strategies_agree", []),
+                "snapshot_entry": snapshot_entry,
+                "live_entry": actual_entry,
+                "entry_slippage_pct": round(slippage_pct, 4),
+            }
         )
 
-        # Mark signal as traded
+        # Mark signal as traded (log original signal levels for analysis)
         log_signal(
             symbol=symbol,
             strategy=signal_result.strategy,
             side=signal_result.side,
             confidence=signal_result.confidence,
-            entry=signal_result.entry,
-            sl=signal_result.sl,
-            tp1=signal_result.tp1,
-            tp2=signal_result.tp2,
+            entry=actual_entry,
+            sl=adj_sl,
+            tp1=adj_tp1,
+            tp2=adj_tp2,
             atr=signal_result.atr,
             leverage=lev_decision.leverage,
             traded=True,
-            metadata=signal_result.metadata
+            metadata={**signal_result.metadata, "snapshot_entry": snapshot_entry}
         )
 
         # Send signal alert
@@ -1132,6 +1246,7 @@ class MultiStrategyBot:
         logger.info(
             f"[{trace_id}][{symbol}] OPENED {side} | "
             f"Type: {trade_prof.entry_type} | "
+            f"Entry: {_fmt_price(actual_entry)} (snap={_fmt_price(snapshot_entry)} slip={slippage_pct:.2f}%) | "
             f"Conf: {original_conf:.0f}%->{signal_result.confidence:.0f}% | "
             f"Lev: {lev_decision.leverage:.1f}x ({lev_decision.reason}) | "
             f"TP1close: {tp1_pct:.0%} | Trail: {trade_prof.exit_params.trailing_style} | "
@@ -1316,8 +1431,9 @@ class MultiStrategyBot:
                 signals=signals,
             ))
 
-        # Global context
+        # Global context (enriched with telemetry for LLM learning)
         eth_btc = eth_price / btc_price if btc_price > 0 else 0.0
+        telem_snap = Telemetry.snapshot()
         global_ctx = LLMGlobalContext(
             timestamp=int(time.time() * 1000),
             btc_price=btc_price,
@@ -1329,6 +1445,17 @@ class MultiStrategyBot:
             equity=self.risk_mgr.equity,
             circuit_breaker_active=self.risk_mgr.circuit_breaker.tripped,
         )
+        # Attach telemetry so the LLM can learn from execution quality
+        global_ctx.extra = {
+            "win_rate": telem_snap.get("win_rate", 0),
+            "total_trades": telem_snap.get("total_trades", 0),
+            "avg_slippage": telem_snap.get("avg_slippage", 0),
+            "avg_snapshot_age": telem_snap.get("avg_snapshot_age", 0),
+            "stale_signals": telem_snap.get("stale_signals", 0),
+            "circuit_breaker_triggers": telem_snap.get("circuit_breaker_triggers", 0),
+            "throttle_blocks": telem_snap.get("throttle_blocks", 0),
+            "ops_guard_status": self.ops_guard.format_status(),
+        }
 
         # Risk context
         risk_ctx = LLMRiskContext(

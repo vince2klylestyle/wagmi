@@ -237,6 +237,7 @@ class GlobalContext:
     daily_pnl: float = 0.0
     equity: float = 10000.0
     circuit_breaker_active: bool = False
+    extra: Dict[str, Any] = field(default_factory=dict)  # Telemetry, ops guard, etc.
 
 
 @dataclass
@@ -284,6 +285,7 @@ class LLMInputSnapshot:
                 "daily_pnl": round(self.global_context.daily_pnl, 2),
                 "equity": round(self.global_context.equity, 2),
                 "cb_active": self.global_context.circuit_breaker_active,
+                **({"telemetry": self.global_context.extra} if self.global_context.extra else {}),
             },
         }
         if self.trigger_reason:
