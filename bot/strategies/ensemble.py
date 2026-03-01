@@ -263,8 +263,8 @@ class EnsembleStrategy:
                 result.metadata["trend_adjustment"] = -5
                 result.metadata["trend_flipped"] = True
                 logger.info(
-                    f"[{symbol}] FLIP {side}→{result.side}: strong trend "
-                    f"score={total}/{n} [{detail_str}] — sniper mode"
+                    f"[{symbol}] FLIP {side}->{result.side}: strong trend "
+                    f"score={total}/{n} [{detail_str}] -- sniper mode"
                 )
         elif abs(total) >= 1:
             trend_bullish = total > 0
@@ -282,8 +282,8 @@ class EnsembleStrategy:
                 result.metadata["trend_adjustment"] = 0
                 result.metadata["trend_flipped"] = True
                 logger.info(
-                    f"[{symbol}] FLIP {side}→{result.side}: moderate trend "
-                    f"score={total}/{n} [{detail_str}] — sniper mode"
+                    f"[{symbol}] FLIP {side}->{result.side}: moderate trend "
+                    f"score={total}/{n} [{detail_str}] -- sniper mode"
                 )
         else:
             result.metadata["trend_adjustment"] = 0

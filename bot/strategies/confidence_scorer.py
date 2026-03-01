@@ -262,7 +262,7 @@ class ConfidenceScorerStrategy(BaseStrategy):
         if action in ("DEEP_BUY", "BUY") and hist_conf is not None and hist_conf < 0.15:
             if self._detect_bounce_short(df, zones):
                 logger.info(
-                    f"[{symbol}] {action} win rate {hist_conf:.0%} too low + bounce detected → flipping to SHORT"
+                    f"[{symbol}] {action} win rate {hist_conf:.0%} too low + bounce detected -> flipping to SHORT"
                 )
                 action = "BOUNCE_SHORT"
                 confidence = 55.0  # reset base
