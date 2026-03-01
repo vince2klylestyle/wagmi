@@ -75,20 +75,32 @@ class AlertRouter:
         if tier == "REGULAR" and (now - ls["reg_ts"]) < self.min_gap_regular_s:
             return
 
+        # Burst protection: max 5 priority alerts per symbol in 10 minutes
+        if tier == "PRIORITY":
+            burst = self._prio_burst[signal.symbol]
+            burst.append(now)
+            recent_burst = sum(1 for t in burst if now - t < 600)
+            if recent_burst >= 5:
+                logger.info(
+                    f"[ALERT] Burst protection: {signal.symbol} hit {recent_burst} "
+                    f"priority alerts in 10min — suppressing"
+                )
+                return
+
         # Format message
         msg = self._format_signal(signal, leverage, tier)
 
-        # Route
+        # Route (set timestamps AFTER successful send)
         if tier == "PRIORITY":
-            ls["prio_ts"] = now
             self._send_discord(msg, priority=True)
             self._send_discord(msg, priority=False)
             self._send_telegram(msg)
+            ls["prio_ts"] = now  # Set after send, not before
         elif tier == "REGULAR":
-            ls["reg_ts"] = now
             self._send_discord(msg, priority=False)
             if signal.confidence >= self.telegram_conf_threshold:
                 self._send_telegram(msg)
+            ls["reg_ts"] = now  # Set after send, not before
         else:  # MANUAL
             self._send_discord(msg, priority=False)
 

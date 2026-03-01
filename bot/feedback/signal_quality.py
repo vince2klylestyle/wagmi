@@ -57,7 +57,7 @@ class SignalQualityScorer:
     The quality score modulates confidence:
         adjusted_confidence = raw_confidence * quality_multiplier
 
-    Where quality_multiplier ranges from 0.7 (poor quality context)
+    Where quality_multiplier ranges from 0.5 (poor quality context)
     to 1.3 (excellent quality context).
     """
 
@@ -138,7 +138,7 @@ class SignalQualityScorer:
         Returns:
             (quality_multiplier, breakdown)
 
-        quality_multiplier: 0.7 to 1.3
+        quality_multiplier: 0.5 to 1.3
         breakdown: per-dimension scores for transparency
         """
         scores = {}
@@ -223,8 +223,8 @@ class SignalQualityScorer:
         else:
             quality = 1.0
 
-        # Clamp to bounds
-        quality = max(0.7, min(1.3, quality))
+        # Clamp to bounds (0.5 lower lets genuinely bad signals get penalized)
+        quality = max(0.5, min(1.3, quality))
 
         return quality, {k: round(v, 3) for k, v in scores.items()}
 
@@ -254,21 +254,25 @@ class SignalQualityScorer:
         recent = tracker.get("recent", [])
         if len(recent) >= 5:
             return sum(recent) / len(recent)
-        # Fall back to all-time with prior
+        # Fall back to all-time with adaptive Bayesian prior
         total = tracker["total"]
         wins = tracker["wins"]
-        # Bayesian prior: 50% with pseudo-count of 4
-        return (wins + 2) / (total + 4)
+        # Adaptive pseudocount: stronger prior with fewer samples
+        # prevents 1 loss from giving overly optimistic 0.4 quality
+        pseudo = 10 if total < 5 else (5 if total < 20 else 2)
+        return (wins + pseudo / 2) / (total + pseudo)
 
     def _wr_to_score(self, win_rate: float) -> float:
         """Convert a win rate to a quality score multiplier.
 
         50% win rate = 1.0 (neutral)
-        70% win rate = 1.2 (boost)
-        30% win rate = 0.8 (penalty)
+        75% win rate = 1.2 (boost)
+        25% win rate = 0.8 (penalty)
+        0%  win rate = 0.5 (harsh penalty for consistently losing)
         """
-        # Linear mapping: 0% -> 0.7, 50% -> 1.0, 100% -> 1.3
-        return 0.7 + win_rate * 0.6
+        # Linear mapping: 0% -> 0.5, 50% -> 0.9, 100% -> 1.3
+        # Wider range punishes truly bad signals harder
+        return 0.5 + win_rate * 0.8
 
     def get_report(self) -> Dict[str, Any]:
         """Get quality scoring report."""

@@ -21,7 +21,7 @@ from typing import Dict, Any
 import pandas as pd
 
 from data.fetcher import DataFetcher
-from data.db import init_db, log_signal, log_trade, log_equity, get_daily_summary
+from data.db import init_db, log_signal, log_trade, log_equity, get_daily_summary, update_signal_traded
 from data.strategy_weights import StrategyWeightManager
 from data.risk_log import log_rejection, get_rejection_counts
 from data.ml_log import log_ml_stats, log_ml_confidence
@@ -659,6 +659,23 @@ class MultiStrategyBot:
             if self.ml and event.action in _FULL_CLOSE:
                 pos = self.pos_mgr.positions.get(symbol)
                 total_pnl = pos.realized_pnl if pos else event.pnl
+
+                # Gather close-time market context for richer ML learning
+                _close_vol = 0.0
+                _close_pchange_1h = 0.0
+                _close_regime = ""
+                try:
+                    sym_cfg = DEFAULT_SYMBOLS.get(symbol)
+                    if sym_cfg:
+                        df_1h = self.fetcher.fetch_ohlcv(symbol, sym_cfg.coingecko_id, "1h")
+                        if df_1h is not None and not df_1h.empty and len(df_1h) > 14:
+                            atr_series = df_1h["close"].rolling(14, min_periods=1).std()
+                            _close_vol = float(atr_series.iloc[-1] / df_1h["close"].iloc[-1] * 100) if df_1h["close"].iloc[-1] > 0 else 0.0
+                            _close_pchange_1h = float((df_1h["close"].iloc[-1] - df_1h["close"].iloc[-2]) / df_1h["close"].iloc[-2] * 100) if len(df_1h) > 1 else 0.0
+                        _close_regime = _rg_fb  # reuse regime from feedback block above
+                except Exception as e:
+                    logger.debug(f"ML close-context fetch error: {e}")
+
                 self.ml.record_outcome(TradeOutcome(
                     symbol=symbol,
                     strategy=event.strategy,
@@ -671,6 +688,9 @@ class MultiStrategyBot:
                     hold_time_s=event.metadata.get("hold_time_s", 0),
                     hour_of_day=datetime.now(timezone.utc).hour,
                     day_of_week=datetime.now(timezone.utc).weekday(),
+                    close_volatility=_close_vol,
+                    close_price_change_1h_pct=_close_pchange_1h,
+                    close_regime=_close_regime,
                 ))
 
             # Learning hooks + enhanced trade log on full closes
@@ -923,7 +943,7 @@ class MultiStrategyBot:
             return
 
         # Log every signal generated to database (even if not traded)
-        log_signal(
+        _signal_id = log_signal(
             symbol=symbol,
             strategy=signal_result.strategy,
             side=signal_result.side,
@@ -1466,21 +1486,9 @@ class MultiStrategyBot:
             }
         )
 
-        # Mark signal as traded (log original signal levels for analysis)
-        log_signal(
-            symbol=symbol,
-            strategy=signal_result.strategy,
-            side=signal_result.side,
-            confidence=signal_result.confidence,
-            entry=actual_entry,
-            sl=adj_sl,
-            tp1=adj_tp1,
-            tp2=adj_tp2,
-            atr=signal_result.atr,
-            leverage=lev_decision.leverage,
-            traded=True,
-            metadata={**signal_result.metadata, "snapshot_entry": snapshot_entry}
-        )
+        # Mark the original signal as traded (update, don't duplicate)
+        if _signal_id:
+            update_signal_traded(_signal_id, traded=True)
 
         # Send signal alert
         tier = signal_result.metadata.get("tier", "")
@@ -1813,6 +1821,18 @@ class MultiStrategyBot:
             circuit_breaker_active=self.risk_mgr.circuit_breaker.tripped,
         )
         # Attach telemetry so the LLM can learn from execution quality
+        cb = self.risk_mgr.circuit_breaker
+        # Build recent outcomes string (e.g., "WWLLL") from feedback quality scorer
+        _recent_out_str = ""
+        if self.feedback.quality.overall_recent:
+            _recent_out_str = "".join(
+                "W" if r else "L" for r in self.feedback.quality.overall_recent[-5:]
+            )
+        # Daily win rate from feedback
+        _daily_wr = None
+        if len(self.feedback.quality.overall_recent) >= 3:
+            _daily_wr = sum(self.feedback.quality.overall_recent) / len(self.feedback.quality.overall_recent)
+
         global_ctx.extra = {
             "win_rate": telem_snap.get("win_rate", 0),
             "total_trades": telem_snap.get("total_trades", 0),
@@ -1822,6 +1842,10 @@ class MultiStrategyBot:
             "circuit_breaker_triggers": telem_snap.get("circuit_breaker_triggers", 0),
             "throttle_blocks": telem_snap.get("throttle_blocks", 0),
             "ops_guard_status": self.ops_guard.format_status(),
+            # Loss streak context for LLM awareness
+            "consecutive_losses": cb.consecutive_losses,
+            "recent_outcomes": _recent_out_str,
+            "daily_win_rate": _daily_wr,
         }
 
         # Risk context
@@ -2100,6 +2124,38 @@ class MultiStrategyBot:
             # Log updated signal
             from signals.telegram_ingest import log_ingested_signal
             log_ingested_signal(signal)
+
+            # Route high-confidence TAKE verdicts into trading pipeline
+            if (analysis.verdict == "TAKE"
+                    and analysis.verdict_confidence >= 0.75
+                    and signal.entry_price > 0
+                    and signal.stop_loss > 0
+                    and signal.take_profit_1 > 0):
+                logger.info(
+                    f"[SIGNAL-PIPE] TAKE verdict for {signal.symbol} "
+                    f"(conf={analysis.verdict_confidence:.0%}) — logging as external signal"
+                )
+                # Log to signals DB so it appears in analytics
+                log_signal(
+                    symbol=signal.symbol,
+                    strategy="external_telegram",
+                    side=signal.side,
+                    confidence=analysis.verdict_confidence * 100,
+                    entry=signal.entry_price,
+                    sl=signal.stop_loss,
+                    tp1=signal.take_profit_1,
+                    tp2=signal.take_profit_2 if signal.take_profit_2 else 0,
+                    atr=0,
+                    leverage=1.0,
+                    traded=False,
+                    metadata={
+                        "source": "telegram_ingest",
+                        "llm_verdict": analysis.verdict,
+                        "llm_confidence": analysis.verdict_confidence,
+                        "analysis_id": analysis.analysis_id,
+                        "original_source": signal.source_channel,
+                    }
+                )
         else:
             logger.warning(f"[SIGNAL-PIPE] LLM analysis failed for {signal.symbol}")
             self.alerts.send_market_update(

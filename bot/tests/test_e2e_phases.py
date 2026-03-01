@@ -194,10 +194,10 @@ def test_memory_store():
 
     clear_memory()
 
-    # Add notes
-    apply_memory_update("BTC breakout at 65k", symbol="BTC", regime="trending")
-    apply_memory_update("SOL failing at resistance", symbol="SOL", regime="ranging")
-    apply_memory_update("ETH following BTC lead", symbol="ETH")
+    # Add notes (must pass quality gate: >=20 chars, mention symbol or have structure)
+    apply_memory_update("BTC breakout at 65k, strong volume confirmation", symbol="BTC", regime="trending")
+    apply_memory_update("SOL failing at resistance with declining volume", symbol="SOL", regime="ranging")
+    apply_memory_update("ETH following BTC lead, correlated move", symbol="ETH")
 
     # Summary should include all 3
     summary = get_memory_summary()
@@ -216,19 +216,19 @@ def test_memory_store():
     assert "BTC" in stats["symbol_counts"]
 
     # Dedup: same note should not be duplicated
-    apply_memory_update("BTC breakout at 65k", symbol="BTC")
+    apply_memory_update("BTC breakout at 65k, strong volume confirmation", symbol="BTC")
     stats2 = get_memory_stats()
     assert stats2["total_notes"] == 3  # Should NOT increase
 
-    # Staleness pruning (mock old notes)
-    old_notes = [{"text": "old note", "ts": time.time() - 200000, "symbol": "", "regime": ""}]
+    # Staleness pruning (mock old notes — must be older than 7 days retention)
+    old_notes = [{"text": "old note", "ts": time.time() - 700000, "symbol": "", "regime": ""}]
     pruned = _prune_stale(old_notes)
     assert len(pruned) == 0
 
-    # Cap size
-    many_notes = [{"text": f"note {i}", "ts": time.time(), "symbol": "", "regime": ""} for i in range(60)]
+    # Cap size (max notes is 100)
+    many_notes = [{"text": f"note {i}", "ts": time.time(), "symbol": "", "regime": ""} for i in range(120)]
     capped = _cap_size(many_notes)
-    assert len(capped) == 50
+    assert len(capped) == 100
 
     clear_memory()
     print("  [PASS] Memory store")
@@ -496,9 +496,11 @@ def test_snapshot_compaction():
     assert parsed["m"][0]["s"] == "BTC"
     assert "d1h" in parsed["m"][0]
 
-    # Compact core data (excluding growth context) should be shorter than verbose
+    # Compact core data (excluding enrichment context) should be shorter than verbose
     parsed_compact = json.loads(compact_json)
-    parsed_compact.pop("growth", None)  # Growth context only in compact
+    # Remove enrichment fields only present in compact mode
+    for key in ("growth", "survival", "knowledge", "trade_dna"):
+        parsed_compact.pop(key, None)
     compact_core = json.dumps(parsed_compact, separators=(",", ":"))
     verbose_json = snapshot_to_json(snapshot, compact=False)
     assert len(compact_core) < len(verbose_json)

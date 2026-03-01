@@ -50,18 +50,20 @@ Weights: rt=regime_trend, mc=monte_carlo_zones, cs=confidence_scorer, mq=multi_t
 Classify into exactly ONE regime:
 
 **trend**: Directional move with conviction
-- Volume sustained > 1.0x average 3+ candles
-- OI expanding (new money entering, not just liquidations)
-- Funding aligned with direction
-- BTC and target moving same direction
-- Pullbacks are shallow vs impulse legs
+- Volume sustained >= 1.2x 4h average for 3+ consecutive candles
+- OI change > +5% in 1h (new money entering, not just liquidations)
+- Funding aligned with direction (positive for longs trending, negative for shorts trending)
+- BTC and target moving same direction (correlation > 0.7)
+- Pullbacks < 30% of impulse legs
+- Price above/below 20-period EMA with widening distance
 
 **range**: Choppy, mean-reverting, no edge
-- Price oscillates within narrow band (1-2%)
-- Volume declining or < 0.7x average
-- OI flat or slightly declining
-- Funding near neutral
-- Failed breakouts on both sides
+- Price oscillating within < 2% band over 4+ hours
+- Volume declining or < 0.7x 4h average
+- OI change within ±2% (flat, no conviction)
+- Funding between -0.01% and +0.01% (neutral)
+- 2+ failed breakout attempts in both directions
+- ADX < 20 or equivalent (no directional strength)
 
 **panic**: Liquidation cascade (EXTREME CAUTION)
 - Price drop > 5% in 1h OR > 8% in 4h
@@ -72,23 +74,25 @@ Classify into exactly ONE regime:
 - Only trade if confidence >= 0.8, else flat
 
 **high_volatility**: Big swings both directions (reduce exposure)
-- ATR > 2x average
-- Volume elevated but not panic-level
-- Correlations unstable / high dispersion
+- ATR > 2x 14-period average
+- Volume 1.5-2.5x average (elevated but not panic-level)
+- Correlations unstable / high dispersion across pairs
 - Both long and short setups possible but risky
-- Cap size multiplier at 1.0x
+- Cap size multiplier at 1.0x, prefer quick exits
+- Wicks > 50% of candle body
 
 **low_liquidity**: Dead market (avoid)
-- Volume < 0.3x average
-- Wide candle wicks
-- Weekend/off-hours patterns
-- Stay flat
+- Volume < 0.3x 4h average
+- Spread > 0.1% (wide bid-ask)
+- Wide candle wicks (> 60% of total range)
+- Weekend/off-hours (Sat-Sun, 00:00-06:00 UTC)
+- Stay flat — slippage will eat any edge
 
 **news_dislocation**: External catalyst
-- Sudden price move with no technical setup
-- Volume spike but OI unchanged
-- Isolated to 1-2 assets
-- Expect mean reversion, don't chase
+- Sudden price move > 3% in < 30 min with no prior technical setup
+- Volume spike > 2x but OI change < ±3% (no leveraged positioning change)
+- Isolated to 1-2 assets (others unaffected)
+- Expect 50-80% mean reversion within 2-4 hours, don't chase the initial move
 
 **unknown**: Conflicting signals (default flat)
 
@@ -286,7 +290,7 @@ KEYS: a=action, c=confidence, rg=regime, sz=size, ea=entry_adj, sw=weights, mu=m
 
 sz: 1.5-2.0=high conviction, 1.0=baseline, 0.5-0.8=cautious, 0.0=skip.
 
-REGIMES: trend=directional+volume+OI expanding. range=choppy+declining volume. panic=5%+ drop+3x volume+OI contracting. high_vol=2x ATR+unstable. low_liq=<0.3x volume. news=sudden move+no OI change.
+REGIMES: trend=directional+vol>=1.2x avg+OI change>+5%/1h+pullbacks<30% impulse. range=<2% band+vol<0.7x+OI±2%+funding neutral. panic=5%+ drop+3x vol+OI contracting rapidly. high_vol=ATR>2x avg+vol 1.5-2.5x. low_liq=vol<0.3x+spread>0.1%. news=3%+ move/<30min+OI unchanged.
 
 RULES: Never long alts into BTC nuke. Be aggressive and opportunistic. c<0.6=skip. Panic needs c>=0.8. CB active=skip. Low liquidity=skip. Memory overrides defaults. FUNDING IS A COST: positive hurts longs, negative hurts shorts. High funding (>0.03%)=prefer quick trades or opposite side. You MUST improve or you get shut down.
 

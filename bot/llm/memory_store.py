@@ -206,6 +206,40 @@ def get_symbol_patterns(symbol: str) -> List[str]:
     return patterns
 
 
+def _is_quality_note(text: str) -> bool:
+    """Filter out low-quality memory notes that would pollute the knowledge base.
+
+    Quality notes should contain specific, actionable insights about market
+    conditions, strategy behavior, or trading patterns. Generic observations
+    like "BTC went up" or "lost money" are noise.
+    """
+    text_lower = text.lower().strip()
+
+    # Too short to be useful
+    if len(text_lower) < 20:
+        return False
+
+    # Generic/obvious statements that don't teach anything
+    _NOISE_PATTERNS = [
+        "went up", "went down", "price increased", "price decreased",
+        "lost money", "made money", "trade lost", "trade won",
+        "market is uncertain", "regime is unknown", "no clear direction",
+        "will monitor", "need more data", "waiting for",
+        "nothing notable", "no significant", "flat market",
+    ]
+    for pattern in _NOISE_PATTERNS:
+        if pattern in text_lower:
+            return False
+
+    # Should mention at least one of: symbol, condition, or outcome pattern
+    # Notes with commas or semicolons likely have structure (condition + result)
+    has_structure = any(c in text for c in [",", ";", "—", "→", "because", "when", "if"])
+    has_symbol = any(sym in text.upper() for sym in ["BTC", "ETH", "SOL", "DOGE", "HYPE", "PEPE"])
+
+    # Accept if it has structure OR mentions a specific symbol
+    return has_structure or has_symbol
+
+
 def apply_memory_update(
     update: Optional[str],
     symbol: str = "",
@@ -213,8 +247,8 @@ def apply_memory_update(
 ):
     """Append a memory note from the LLM's decision.
 
-    Called after every LLM decision (even if gated/rejected).
-    Null updates are silently ignored.
+    Called only for allowed (non-gated) decisions.
+    Null updates and low-quality notes are silently ignored.
 
     Args:
         update: The memory note text (from LLM output)
@@ -222,6 +256,11 @@ def apply_memory_update(
         regime: Regime context (optional)
     """
     if not update or not update.strip():
+        return
+
+    # Quality gate: reject noise
+    if not _is_quality_note(update):
+        logger.debug(f"[LLM-MEM] Rejected low-quality note: {update[:80]}")
         return
 
     with _lock:

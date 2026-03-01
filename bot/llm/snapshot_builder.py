@@ -41,6 +41,7 @@ def should_call_llm(snapshot: LLMInputSnapshot) -> bool:
       - At least 5 minutes since last call AND something changed
       - OR at least 15 minutes since last call (forced periodic update)
       - OR circuit breaker just activated/deactivated
+      - High volatility reduces minimum interval to 120s for faster reaction
     """
     global _last_call_ts, _last_snapshot_hash
 
@@ -51,8 +52,19 @@ def should_call_llm(snapshot: LLMInputSnapshot) -> bool:
     if elapsed >= _FORCE_CALL_INTERVAL_S:
         return True
 
+    # Volatility-aware minimum interval: faster in volatile markets
+    min_interval = _MIN_CALL_INTERVAL_S
+    g = snapshot.global_context
+    if g and g.extra:
+        # Check if any volatility indicator suggests fast markets
+        regime = g.extra.get("dominant_regime", "")
+        if regime in ("panic", "high_volatility", "news_dislocation"):
+            min_interval = 120  # 2 min in volatile regimes
+        elif g.circuit_breaker_active:
+            min_interval = 120  # faster during circuit breaker
+
     # Minimum interval
-    if elapsed < _MIN_CALL_INTERVAL_S:
+    if elapsed < min_interval:
         return False
 
     # Check if market state changed meaningfully
@@ -232,6 +244,16 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
     if g.circuit_breaker_active:
         result["g"]["cb"] = True
 
+    # Loss streak context: recent outcomes and consecutive losses
+    # Source from extra dict (populated by main bot from risk manager state)
+    if g.extra:
+        if g.extra.get("consecutive_losses", 0) > 0:
+            result["g"]["closs"] = g.extra["consecutive_losses"]
+        if g.extra.get("recent_outcomes"):
+            result["g"]["rout"] = g.extra["recent_outcomes"]  # e.g., "WWLLL"
+        if g.extra.get("daily_win_rate") is not None:
+            result["g"]["dwr"] = round(g.extra["daily_win_rate"], 2)
+
     # Trigger
     if snapshot.trigger_reason:
         result["t"] = snapshot.trigger_reason
@@ -262,8 +284,8 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         if growth_ctx:
             # Truncate to save tokens (max ~400 chars)
             result["growth"] = growth_ctx[:400]
-    except Exception:
-        pass  # Growth system not available — no problem
+    except Exception as e:
+        logger.warning(f"[SNAPSHOT] Growth context unavailable: {e}")
 
     # Survival pressure context — constant accountability awareness
     try:
@@ -271,8 +293,8 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         survival_ctx = get_survival_context_for_llm()
         if survival_ctx:
             result["survival"] = survival_ctx[:500]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[SNAPSHOT] Survival context unavailable: {e}")
 
     # Knowledge base injection — axioms, principles, anti-patterns
     try:
@@ -288,8 +310,20 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         knowledge_ctx = engine.get_knowledge_for_prompt(symbol=symbol, regime=regime)
         if knowledge_ctx:
             result["knowledge"] = knowledge_ctx[:600]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[SNAPSHOT] Teaching engine unavailable: {e}")
+        result["knowledge"] = "Teaching engine unavailable — rely on memory notes and market data."
+
+    # Deep memory: trade DNA and pattern summaries
+    try:
+        from llm.deep_memory import TradeDNAStore
+        dna_store = TradeDNAStore()
+        dna_summary = dna_store.get_summary_stats()
+        if dna_summary:
+            # Compact summary for LLM context
+            result["trade_dna"] = str(dna_summary)[:400]
+    except Exception as e:
+        logger.debug(f"[SNAPSHOT] Deep memory unavailable: {e}")
 
     # Funding cost reminder — injected when positions are open
     if snapshot.active_positions:
