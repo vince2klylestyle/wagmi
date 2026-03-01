@@ -53,7 +53,7 @@ def call_llm(
     system_prompt: str,
     snapshot_json: str,
     model: str = "claude-sonnet-4-5-20250929",
-    max_tokens: int = 1024,
+    max_tokens: int = 4096,
     max_retries: int = 2,
     timeout: float = 30.0,
 ) -> Tuple[Optional[str], dict]:

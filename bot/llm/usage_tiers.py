@@ -113,7 +113,7 @@ class UsageTier:
     force_snapshot_interval_s: int = 900  # 15 min default
 
     # Max output tokens
-    max_output_tokens: int = 600
+    max_output_tokens: int = 4096
 
     # Estimated monthly cost (USD)
     estimated_monthly_cost: float = 0.0
@@ -152,7 +152,7 @@ TIER_CONSERVATIVE = UsageTier(
     min_cooldown_s=30,
     min_snapshot_interval_s=300,
     force_snapshot_interval_s=900,
-    max_output_tokens=800,
+    max_output_tokens=4096,
     estimated_monthly_cost=18.0,
 )
 
@@ -165,7 +165,7 @@ TIER_RECOMMENDED = UsageTier(
     min_cooldown_s=20,
     min_snapshot_interval_s=180,
     force_snapshot_interval_s=600,
-    max_output_tokens=1024,
+    max_output_tokens=4096,
     estimated_monthly_cost=130.0,
 )
 
@@ -192,7 +192,7 @@ TIER_AGGRESSIVE = UsageTier(
     },
     min_snapshot_interval_s=90,  # Down from 120 — tighter feedback loop
     force_snapshot_interval_s=240,  # Down from 300 — more frequent forced updates
-    max_output_tokens=1000,    # Up from 800 — richer reasoning and memory updates
+    max_output_tokens=4096,
     estimated_monthly_cost=750.0,
 )
 
@@ -219,7 +219,7 @@ TIER_UNLEASHED = UsageTier(
     },
     min_snapshot_interval_s=60,
     force_snapshot_interval_s=180,
-    max_output_tokens=1000,
+    max_output_tokens=4096,
     estimated_monthly_cost=1400.0,
 )
 
