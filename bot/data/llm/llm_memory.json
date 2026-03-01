@@ -1,21 +1,21 @@
 {
-  "last_updated": 1772390264,
+  "last_updated": 1772391842,
   "notes": [
     {
       "text": "SOL failing at resistance",
-      "ts": 1772390264.0529132,
+      "ts": 1772391842.6321025,
       "symbol": "SOL",
       "regime": "ranging"
     },
     {
       "text": "ETH following BTC lead",
-      "ts": 1772390264.0533137,
+      "ts": 1772391842.6325655,
       "symbol": "ETH",
       "regime": ""
     },
     {
       "text": "BTC breakout at 65k",
-      "ts": 1772390264.0537083,
+      "ts": 1772391842.6330202,
       "symbol": "BTC",
       "regime": ""
     }
