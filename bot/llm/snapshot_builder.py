@@ -334,11 +334,17 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
     except Exception as e:
         logger.debug(f"[SNAPSHOT] Self-performance unavailable: {e}")
 
-    # Portfolio correlation risk (injected by main bot via global_ctx.extra)
+    # Portfolio-level risk indicators (injected by main bot via global_ctx.extra)
     if g and g.extra:
         corr_risk = g.extra.get("correlation_risk")
         if corr_risk and corr_risk != "low":
             result["corr_risk"] = corr_risk
+        port_lev = g.extra.get("portfolio_leverage", 0)
+        if port_lev > 0:
+            result["port_lev"] = port_lev
+        daily_funding = g.extra.get("estimated_daily_funding_cost", 0)
+        if daily_funding > 0.01:
+            result["funding_cost_pct"] = round(daily_funding, 2)
 
     # Funding cost reminder — injected when positions are open
     if snapshot.active_positions:

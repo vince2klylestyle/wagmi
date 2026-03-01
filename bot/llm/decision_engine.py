@@ -299,8 +299,12 @@ def get_trading_decision(
     decision, mode_overrides = _apply_mode_constraints(decision, mode)
 
     # Step 5.6: Flip rate limiter — prevent LLM from flip-spamming
-    _flip_history.append(decision.action == "flip")
-    if decision.action == "flip" and len(_flip_history) >= 10:
+    # High-confidence flips (>= 0.80) bypass the rate limit — genuine reversals
+    is_flip = decision.action == "flip"
+    is_high_conf_flip = is_flip and decision.confidence >= 0.80
+    if not is_high_conf_flip:
+        _flip_history.append(is_flip)
+    if is_flip and not is_high_conf_flip and len(_flip_history) >= 10:
         flip_rate = sum(_flip_history) / len(_flip_history)
         if flip_rate > _FLIP_RATE_LIMIT:
             logger.warning(

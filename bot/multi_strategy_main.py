@@ -231,6 +231,8 @@ class MultiStrategyBot:
 
         # Last known prices for fill-price validation
         self._last_prices: Dict[str, float] = {}  # symbol -> price
+        # Last known funding rates per symbol (updated from fetcher)
+        self._last_funding_rates: Dict[str, float] = {}  # symbol -> funding rate
 
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
@@ -570,6 +572,36 @@ class MultiStrategyBot:
                     symbol=symbol,
                     context=pre_close,
                 )
+
+        # Liquidation distance monitoring: check every tick for leveraged positions
+        if symbol in open_pos and open_pos[symbol].leverage > 1.0:
+            _liq_pos = open_pos[symbol]
+            _liq_check = self.leverage_mgr.check_liquidation_risk(
+                entry=_liq_pos.entry,
+                current_price=current_price,
+                side=_liq_pos.side,
+                leverage=_liq_pos.leverage,
+                safety_buffer=0.03,  # 3% distance triggers alert
+            )
+            _liq_dist = _liq_check.get("distance_pct", 1.0)
+            if _liq_dist < 0.015:
+                # < 1.5% from liquidation — force close
+                logger.warning(
+                    f"[{trace_id}][{symbol}] LIQUIDATION PROXIMITY: "
+                    f"{_liq_dist:.1%} from liquidation at {_liq_check.get('liquidation_price', 0):.4f}. "
+                    f"Force closing."
+                )
+                self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
+            elif _liq_dist < 0.03:
+                # < 3% from liquidation — tighten SL
+                _new_sl = current_price * (0.995 if _liq_pos.side == "LONG" else 1.005)
+                if (_liq_pos.side == "LONG" and _new_sl > _liq_pos.sl) or \
+                   (_liq_pos.side == "SHORT" and _new_sl < _liq_pos.sl):
+                    _liq_pos.sl = _new_sl
+                    logger.warning(
+                        f"[{trace_id}][{symbol}] Liquidation warning: "
+                        f"{_liq_dist:.1%} distance — tightened SL to {_new_sl:.4f}"
+                    )
 
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
@@ -1087,6 +1119,19 @@ class MultiStrategyBot:
             confidence=signal_result.confidence,
             cb_conf_override_pct=self.config.cb_conf_override_pct,
         ):
+            return
+
+        # Portfolio leverage guard: block new entries when total leverage too high
+        _portfolio_lev = self._compute_portfolio_leverage()
+        _max_portfolio_lev = float(os.getenv("MAX_PORTFOLIO_LEVERAGE", "8.0"))
+        if _portfolio_lev >= _max_portfolio_lev:
+            log_rejection(symbol, "PORTFOLIO_LEVERAGE",
+                          confidence=signal_result.confidence,
+                          portfolio_leverage=_portfolio_lev)
+            logger.info(
+                f"[{trace_id}][{symbol}] Portfolio leverage guard: "
+                f"{_portfolio_lev:.1f}x >= {_max_portfolio_lev:.1f}x max"
+            )
             return
 
         # Get CB override constraints (graduated risk during CB override)
@@ -1910,6 +1955,10 @@ class MultiStrategyBot:
             "daily_win_rate": _daily_wr,
             # Portfolio correlation risk for LLM sizing adjustment
             "correlation_risk": self._compute_portfolio_correlation().get("risk_level", "low"),
+            # Portfolio leverage for risk awareness
+            "portfolio_leverage": self._compute_portfolio_leverage(),
+            # Estimated daily funding cost (% of equity)
+            "estimated_daily_funding_cost": self._compute_estimated_daily_funding(),
         }
 
         # Risk context
@@ -1918,7 +1967,7 @@ class MultiStrategyBot:
             max_daily_loss=self.risk_mgr.equity * self.config.circuit_breaker_daily_loss_pct,
             equity=self.risk_mgr.equity,
             max_leverage=self.config.max_leverage,
-            current_leverage=0.0,  # TODO: sum of open position leverages
+            current_leverage=self._compute_portfolio_leverage(),
             volatility=max((m.volatility for m in markets), default=0.0),
             max_volatility=15.0,  # 15% ATR/price = extreme
             open_positions=self.pos_mgr.get_open_count(),
@@ -2028,6 +2077,56 @@ class MultiStrategyBot:
                 f"tokens={stats['total_input_tokens']}in/{stats['total_output_tokens']}out "
                 f"est=${stats['estimated_cost_usd']:.4f}"
             )
+
+    def _compute_portfolio_leverage(self) -> float:
+        """Compute total portfolio leverage as a fraction of equity.
+
+        Formula: sum(abs(qty) * price * leverage) / equity
+        E.g., 3 positions at 5x each with $1000 notional each = 15000 / equity.
+        """
+        open_pos = self.pos_mgr.get_open_positions()
+        if not open_pos:
+            return 0.0
+        equity = self.risk_mgr.equity
+        if equity <= 0:
+            return 0.0
+        total_notional = 0.0
+        for sym, pos in open_pos.items():
+            price = self._last_prices.get(sym, pos.entry)
+            total_notional += abs(pos.qty) * price * pos.leverage
+        return round(total_notional / equity, 2)
+
+    def _compute_estimated_daily_funding(self) -> float:
+        """Compute estimated daily funding cost as % of equity.
+
+        Funding on Hyperliquid is paid 3x/day (every 8 hours).
+        Cost = sum(abs(funding_rate) * 3 * leverage * position_value / equity) * 100
+        Only counts positions paying funding (long+positive or short+negative rate).
+        """
+        open_pos = self.pos_mgr.get_open_positions()
+        if not open_pos:
+            return 0.0
+        equity = self.risk_mgr.equity
+        if equity <= 0:
+            return 0.0
+        total_daily_cost_pct = 0.0
+        for sym, pos in open_pos.items():
+            fr = self._last_funding_rates.get(sym, 0.0)
+            if fr == 0:
+                continue
+            price = self._last_prices.get(sym, pos.entry)
+            pos_value = abs(pos.qty) * price
+            # Check if position is paying or receiving funding
+            side_lower = pos.side.lower()
+            is_paying = (
+                (side_lower in ("long", "buy") and fr > 0) or
+                (side_lower in ("short", "sell") and fr < 0)
+            )
+            if is_paying:
+                # 3 payments per day, scaled by leverage
+                daily_cost = abs(fr) * 3 * pos.leverage * pos_value / equity * 100
+                total_daily_cost_pct += daily_cost
+        return round(total_daily_cost_pct, 4)
 
     def _compute_portfolio_correlation(self) -> Dict[str, Any]:
         """Compute directional correlation risk across open positions.
@@ -2147,7 +2246,7 @@ class MultiStrategyBot:
                 "correlation_risk": correlation_info.get("risk_level", "low"),
                 "hours_since_last_trade": 0,  # populated below
                 "signals_generated": len(get_daily_summary().get("by_strategy", {})),
-                "estimated_daily_funding_cost": 0,  # TODO: compute from positions
+                "estimated_daily_funding_cost": self._compute_estimated_daily_funding(),
                 "flip_success_rate": perf_stats.get("flip_success_rate", 0.5),
                 "flip_count": perf_stats.get("flip_count", 0),
                 "calibration": perf_stats.get("calibration", 0.0),

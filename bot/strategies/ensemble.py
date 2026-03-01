@@ -389,16 +389,16 @@ class EnsembleStrategy:
         """Weight-aware voting with graduated veto.
         Uses strategy accuracy weights * confidence to determine direction.
         Requires chosen side to have veto_ratio times the opposition's strength.
-        Minimum 2 strategies must agree on the same side for a trade."""
+        Minimum min_votes strategies must agree on the same side for a trade."""
         buy_signals = [s for s in signals if s.side == "BUY"]
         sell_signals = [s for s in signals if s.side == "SELL"]
 
-        # Require at least 2 strategies agreeing on the same direction
-        if len(buy_signals) < 2 and len(sell_signals) < 2:
+        # Require at least min_votes strategies agreeing on the same direction
+        if len(buy_signals) < self.min_votes and len(sell_signals) < self.min_votes:
             if buy_signals:
-                logger.info(f"[{symbol}] Only {len(buy_signals)} BUY signal(s), need 2+ same-side")
+                logger.info(f"[{symbol}] Only {len(buy_signals)} BUY signal(s), need {self.min_votes}+ same-side")
             elif sell_signals:
-                logger.info(f"[{symbol}] Only {len(sell_signals)} SELL signal(s), need 2+ same-side")
+                logger.info(f"[{symbol}] Only {len(sell_signals)} SELL signal(s), need {self.min_votes}+ same-side")
             return None
 
         buy_strength = self._weighted_confidence_sum(buy_signals) if buy_signals else 0
@@ -485,7 +485,10 @@ class EnsembleStrategy:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
         # Consensus bonus: more strategies agree -> higher confidence
+        # Unanimous bonus: if ALL strategies agree, extra +5 on top
         consensus_bonus = (len(signals) - 1) * 3
+        if len(signals) == len(self.strategies) and len(signals) >= 3:
+            consensus_bonus += 5  # Unanimous agreement bonus
         combined_conf = min(100, weighted_conf + consensus_bonus)
 
         # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
