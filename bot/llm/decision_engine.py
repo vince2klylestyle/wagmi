@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
@@ -80,7 +81,11 @@ def _log_audit(entry: dict):
 
 _cached_decision: Optional[LLMDecision] = None
 _cached_at: float = 0.0
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = 180  # 3 minutes (reduced from 5 for faster market response)
+
+# Flip rate tracking: detect LLM overconfidence in direction changes
+_flip_history: deque = deque(maxlen=20)
+_FLIP_RATE_LIMIT = 0.30  # Reject flips if >30% of last 20 decisions are flips
 
 
 def get_cached_decision() -> Optional[LLMDecision]:
@@ -88,6 +93,15 @@ def get_cached_decision() -> Optional[LLMDecision]:
     if _cached_decision and (time.time() - _cached_at) < _CACHE_TTL:
         return _cached_decision
     return None
+
+
+def invalidate_cache(reason: str = ""):
+    """Invalidate the cached decision (e.g., on circuit breaker or regime shift)."""
+    global _cached_decision, _cached_at
+    if _cached_decision:
+        logger.info(f"[LLM-ENGINE] Cache invalidated: {reason}")
+    _cached_decision = None
+    _cached_at = 0.0
 
 
 # ── Main entry point ─────────────────────────────────────────────
@@ -176,13 +190,16 @@ def get_trading_decision(
         "snapshot_json": snapshot_json,
     }
     if _HAS_USAGE_TIERS:
-        tier = get_active_tier()
-        routed_model = tier.get_model_for_trigger(trigger_reason)
-        call_kwargs["model"] = routed_model
-        call_kwargs["max_tokens"] = tier.max_output_tokens
-        logger.debug(
-            f"[LLM-ENGINE] Tier {tier.name}: using {routed_model} for trigger={trigger_reason}"
-        )
+        try:
+            tier = get_active_tier()
+            routed_model = tier.get_model_for_trigger(trigger_reason)
+            call_kwargs["model"] = routed_model
+            call_kwargs["max_tokens"] = tier.max_output_tokens
+            logger.debug(
+                f"[LLM-ENGINE] Tier {tier.name}: using {routed_model} for trigger={trigger_reason}"
+            )
+        except Exception as e:
+            logger.warning(f"[LLM-ENGINE] Tier routing failed: {e}, using default model")
 
     raw_text, usage = call_llm(**call_kwargs)
 
@@ -248,27 +265,32 @@ def get_trading_decision(
     original_action = decision.action
     decision, mode_overrides = _apply_mode_constraints(decision, mode)
 
+    # Step 5.6: Flip rate limiter — prevent LLM from flip-spamming
+    _flip_history.append(decision.action == "flip")
+    if decision.action == "flip" and len(_flip_history) >= 10:
+        flip_rate = sum(_flip_history) / len(_flip_history)
+        if flip_rate > _FLIP_RATE_LIMIT:
+            logger.warning(
+                f"[LLM-ENGINE] Flip rate too high: {flip_rate:.0%} of last "
+                f"{len(_flip_history)} decisions are flips — downgrading to flat"
+            )
+            decision.action = "flat"
+            mode_overrides.append("flip_rate_limited")
+
     # Step 6: Risk gate
     gated = gate_decision(decision, risk_context)
 
-    # Step 7: Apply memory update (even if gated, memory is still valuable)
-    apply_memory_update(
-        decision.memory_update,
-        symbol=trigger_context.split()[0] if trigger_context else "",
-        regime=decision.regime,
-    )
-
-    # Step 8: Mark called (for throttle)
+    # Step 7: Mark called (for throttle)
     mark_called(snapshot)
 
-    # Step 9: Cache decision
+    # Step 8: Cache decision
     _cached_decision = decision if gated.allowed else None
     _cached_at = time.time()
 
     # Determine if this was a veto (LLM said flat for a trade candidate)
     is_veto = decision.action == "flat" and mode >= LLMMode.VETO_ONLY
 
-    # Step 10: Audit log
+    # Step 9: Audit log
     _log_audit({
         "ts": time.time(),
         "action": decision.action,
@@ -291,6 +313,14 @@ def get_trading_decision(
     })
 
     if gated.allowed:
+        # Step 10: Apply memory update ONLY for allowed decisions
+        # (don't learn from gated/rejected decisions the bot never executed)
+        apply_memory_update(
+            decision.memory_update,
+            symbol=trigger_context.split()[0] if trigger_context else "",
+            regime=decision.regime,
+        )
+
         logger.info(
             f"[LLM-ENGINE] Decision: {decision.action} "
             f"conf={decision.confidence:.2f} regime={decision.regime} "

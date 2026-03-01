@@ -79,6 +79,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(timestamp);
         CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
         CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_trades_sym_action_ts ON trades(symbol, action, timestamp);
         CREATE INDEX IF NOT EXISTS idx_equity_ts ON equity_snapshots(timestamp);
     """)
     conn.close()
@@ -90,11 +91,12 @@ def init_db():
 def log_signal(symbol: str, strategy: str, side: str, confidence: float,
                entry: float = 0, sl: float = 0, tp1: float = 0, tp2: float = 0,
                atr: float = 0, leverage: float = 1.0, traded: bool = False,
-               metadata: Optional[Dict] = None):
-    """Log a generated signal."""
+               metadata: Optional[Dict] = None) -> Optional[int]:
+    """Log a generated signal. Returns the signal row ID (or None on failure)."""
+    conn = None
     try:
         conn = get_connection()
-        conn.execute(
+        cursor = conn.execute(
             """INSERT INTO signals (timestamp, symbol, strategy, side, confidence,
                entry, sl, tp1, tp2, atr, leverage, traded, metadata)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -103,16 +105,48 @@ def log_signal(symbol: str, strategy: str, side: str, confidence: float,
              json.dumps(metadata) if metadata else None)
         )
         conn.commit()
-        conn.close()
+        return cursor.lastrowid
     except Exception as e:
         logger.warning(f"Failed to log signal: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_signal_traded(signal_id: int, traded: bool = True):
+    """Mark a signal as having been traded (position opened)."""
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "UPDATE signals SET traded = ? WHERE id = ?",
+            (int(traded), signal_id)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Failed to update signal traded status: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
 
 
 def log_trade(symbol: str, action: str, side: str, price: float,
               qty: float = 0, pnl: float = 0, fee: float = 0,
               leverage: float = 1.0, strategy: str = "",
               metadata: Optional[Dict] = None):
-    """Log a trade event (OPEN, TP1, TP2, SL, TRAILING_STOP)."""
+    """Log a trade event (OPEN, TP1, TP2, SL, TRAILING_STOP, EARLY_EXIT, etc.)."""
+    conn = None
     try:
         conn = get_connection()
         conn.execute(
@@ -124,14 +158,22 @@ def log_trade(symbol: str, action: str, side: str, price: float,
              json.dumps(metadata) if metadata else None)
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         logger.warning(f"Failed to log trade: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
 
 
 def log_equity(equity: float, open_positions: int = 0,
                daily_pnl: float = 0, unrealized_pnl: float = 0):
     """Log an equity snapshot."""
+    conn = None
     try:
         conn = get_connection()
         conn.execute(
@@ -141,9 +183,16 @@ def log_equity(equity: float, open_positions: int = 0,
              daily_pnl, unrealized_pnl)
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         logger.warning(f"Failed to log equity: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
 
 
 # ─── Read helpers (for summaries) ─────────────────────────────────
@@ -192,10 +241,15 @@ def get_recent_trades(limit: int = 10) -> List[Dict]:
         return []
 
 
+# All actions that represent a position close (for consistent filtering)
+CLOSE_ACTIONS = {"SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT", "EMERGENCY",
+                 "ROTATE_OUT", "ROTATE_LOSS", "MANUAL_CLOSE"}
+
+
 def get_daily_summary() -> Dict[str, Any]:
     """Generate daily performance summary."""
     trades = get_trades_today()
-    closes = [t for t in trades if t["action"] in ("SL", "TP1", "TP2", "TRAILING_STOP")]
+    closes = [t for t in trades if t["action"] in CLOSE_ACTIONS]
 
     if not closes:
         return {"total_trades": 0, "net_pnl": 0, "win_rate": 0}

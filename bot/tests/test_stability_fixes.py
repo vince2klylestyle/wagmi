@@ -335,5 +335,64 @@ class TestTradeLogsWrittenAfterClose(unittest.TestCase):
                     self.assertNotIn("\u2192", rows[0]["state_path"])
 
 
+class TestFlatDecisionZeroWeights(unittest.TestCase):
+    """Test that flat decisions with all-zero strategy_weights pass validation.
+
+    Bug: LLM returns flat + all-zero weights (correct for 'skip trade'),
+    but validator.py rejects with 'strategy_weights sum too low: 0.0'.
+    """
+
+    def _make_decision(self, action, confidence=0.0, regime="unknown",
+                       size_multiplier=0.0, all_zero_weights=True):
+        from llm.decision_types import LLMDecision, StrategyWeights
+        sw = StrategyWeights(
+            regime_trend=0, monte_carlo_zones=0, confidence_scorer=0,
+            multi_tier_quality=0, funding_rate=0, open_interest=0,
+            volume_momentum=0, cross_asset=0,
+        ) if all_zero_weights else StrategyWeights()
+        return LLMDecision(
+            action=action,
+            confidence=confidence,
+            regime=regime,
+            strategy_weights=sw,
+            memory_update=None,
+            notes="test",
+            size_multiplier=size_multiplier,
+        )
+
+    def test_flat_zero_weights_passes_schema(self):
+        """Flat + all-zero weights should pass schema validation."""
+        from llm.validator import validate_schema
+        decision = self._make_decision("flat")
+        valid, err = validate_schema(decision)
+        self.assertTrue(valid, f"Flat with zero weights should pass schema: {err}")
+
+    def test_flat_zero_weights_passes_full_pipeline(self):
+        """Flat + all-zero weights should pass validate_and_sanitize."""
+        from llm.validator import validate_and_sanitize
+        decision = self._make_decision("flat")
+        result, err = validate_and_sanitize(decision)
+        self.assertIsNotNone(result, f"Flat with zero weights should pass: {err}")
+        self.assertEqual(result.action, "flat")
+
+    def test_proceed_zero_weights_still_fails(self):
+        """Proceed + all-zero weights should still be rejected."""
+        from llm.validator import validate_schema
+        decision = self._make_decision("proceed", confidence=0.7, regime="trend",
+                                       size_multiplier=1.0)
+        valid, err = validate_schema(decision)
+        self.assertFalse(valid)
+        self.assertIn("strategy_weights sum too low", err)
+
+    def test_flip_zero_weights_still_fails(self):
+        """Flip + all-zero weights should still be rejected."""
+        from llm.validator import validate_schema
+        decision = self._make_decision("flip", confidence=0.8, regime="trend",
+                                       size_multiplier=1.0)
+        valid, err = validate_schema(decision)
+        self.assertFalse(valid)
+        self.assertIn("strategy_weights sum too low", err)
+
+
 if __name__ == "__main__":
     unittest.main()

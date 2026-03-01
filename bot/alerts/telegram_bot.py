@@ -127,14 +127,26 @@ class TelegramCommandBot:
 
         # Security: only allow configured user
         if self.allowed_user_id == 0:
-            # No user ID configured - accept this user and log a setup hint
-            logger.warning(
+            # No user ID configured — refuse commands (security: don't auto-authorize)
+            logger.error(
                 f"TELEGRAM_ALLOWED_USER_ID not set! "
-                f"Add TELEGRAM_ALLOWED_USER_ID={user_id} to your .env file "
-                f"to authorize this user and silence this warning."
+                f"Commands DISABLED. Add TELEGRAM_ALLOWED_USER_ID={user_id} to .env"
             )
-            # Auto-authorize so the bot works during initial setup
-            self.allowed_user_id = user_id
+            try:
+                requests.post(
+                    f"{self._base_url}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": (
+                            f"Setup required: Add TELEGRAM_ALLOWED_USER_ID={user_id} "
+                            f"to your .env file, then restart the bot."
+                        ),
+                    },
+                    timeout=10,
+                )
+            except Exception:
+                pass
+            return
         elif user_id != self.allowed_user_id:
             logger.warning(f"Unauthorized Telegram command from user {user_id}")
             return

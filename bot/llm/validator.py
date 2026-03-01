@@ -81,7 +81,7 @@ def validate_schema(decision: LLMDecision) -> Tuple[bool, Optional[str]]:
     sw = decision.strategy_weights
     if sw:
         total = sum(sw.to_dict().values())
-        if total < 0.1:
+        if total < 0.1 and decision.action != "flat":
             return False, f"strategy_weights sum too low: {total}"
         for key in EXTENDED_WEIGHT_KEYS:
             val = getattr(sw, key, 0.5)
@@ -152,20 +152,20 @@ def validate_and_sanitize(decision: LLMDecision) -> Tuple[LLMDecision, Optional[
     Returns (decision, error_reason).
     If validation fails, returns (None, error_string).
     """
-    # Step 1: Schema validation
+    # Step 1: Sanitize first (clamp/truncate fixable values)
+    decision = _sanitize(decision)
+
+    # Step 2: Schema validation (catches structural issues)
     valid, schema_err = validate_schema(decision)
     if not valid:
         logger.warning(f"[LLM-VALIDATOR] Schema validation failed: {schema_err}")
         return None, schema_err
 
-    # Step 2: Semantic validation
+    # Step 3: Semantic validation (catches business logic violations)
     valid, semantic_err = validate_semantics(decision)
     if not valid:
         logger.warning(f"[LLM-VALIDATOR] Semantic validation failed: {semantic_err}")
         return None, semantic_err
-
-    # Step 3: Sanitization (cap/clamp values)
-    decision = _sanitize(decision)
 
     logger.info(
         f"[LLM-VALIDATOR] PASS: {decision.action} "

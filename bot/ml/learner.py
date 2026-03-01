@@ -52,6 +52,11 @@ class TradeOutcome:
     hold_time_s: float = 0.0
     exit_action: str = ""
 
+    # Market context at close time (for learning what exit conditions look like)
+    close_volatility: float = 0.0
+    close_price_change_1h_pct: float = 0.0
+    close_regime: str = ""
+
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 

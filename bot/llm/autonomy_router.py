@@ -15,12 +15,18 @@ Each mode has specific rules about what LLM can/cannot do.
 """
 
 import logging
+import time
+from collections import deque
 from typing import Dict, Any, Optional
 
 from llm.autonomy import LLMMode
 from llm.decision_types import LLMDecision
 
 logger = logging.getLogger("bot.llm.autonomy_router")
+
+# ── Divergence tracking (ADVISORY mode) ─────────────────────
+# Tracks when LLM disagrees with baseline to measure LLM signal quality
+_divergence_history: deque = deque(maxlen=50)  # (timestamp, agreed: bool, llm_action, baseline_action)
 
 
 def apply_autonomy_mode(
@@ -84,6 +90,7 @@ def _mode_advisory(baseline: Dict[str, Any], llm: Optional[LLMDecision]) -> Dict
 
     LLM decision is logged to decisions.jsonl for comparison.
     Bot executes baseline regardless.
+    Tracks divergence rate for autonomy promotion decisions.
     """
     decision = baseline.copy()
     decision["source"] = "baseline"
@@ -95,6 +102,21 @@ def _mode_advisory(baseline: Dict[str, Any], llm: Optional[LLMDecision]) -> Dict
             "confidence": llm.confidence,
             "regime": llm.regime,
         }
+        # Track whether LLM agrees with baseline
+        baseline_action = baseline.get("action", "long")
+        llm_action = llm.action  # "proceed", "flat", or "flip"
+        agreed = llm_action == "proceed"
+        _divergence_history.append((time.time(), agreed, llm_action, baseline_action))
+
+        if not agreed:
+            logger.info(
+                f"[AUTONOMY-ROUTER] ADVISORY divergence: LLM={llm_action} "
+                f"vs baseline={baseline_action} (conf={llm.confidence:.2f})"
+            )
+
+        # Add divergence stats to decision for logging
+        decision["advisory_divergence_rate"] = get_divergence_rate()
+
     logger.debug("[AUTONOMY-ROUTER] Mode ADVISORY: baseline + LLM logged")
     return decision
 
@@ -423,3 +445,34 @@ def can_llm_scale_size(mode: LLMMode) -> bool:
 def is_llm_active(mode: LLMMode) -> bool:
     """Whether LLM has any influence on trades in this mode."""
     return mode != LLMMode.OFF and mode != LLMMode.ADVISORY
+
+
+def get_divergence_rate() -> float:
+    """Get the LLM-vs-baseline divergence rate from ADVISORY mode.
+
+    Returns 0.0-1.0 representing how often LLM disagrees with baseline.
+    Useful for deciding when to promote from ADVISORY to VETO_ONLY.
+    """
+    if len(_divergence_history) < 5:
+        return 0.0
+    disagreements = sum(1 for _, agreed, _, _ in _divergence_history if not agreed)
+    return disagreements / len(_divergence_history)
+
+
+def get_divergence_stats() -> Dict[str, Any]:
+    """Get detailed divergence statistics for monitoring."""
+    if not _divergence_history:
+        return {"total": 0, "divergence_rate": 0.0}
+
+    total = len(_divergence_history)
+    disagreements = sum(1 for _, agreed, _, _ in _divergence_history if not agreed)
+    flips = sum(1 for _, _, action, _ in _divergence_history if action == "flip")
+    skips = sum(1 for _, _, action, _ in _divergence_history if action == "flat")
+
+    return {
+        "total": total,
+        "divergence_rate": round(disagreements / total, 3),
+        "flip_rate": round(flips / total, 3),
+        "skip_rate": round(skips / total, 3),
+        "agree_rate": round((total - disagreements) / total, 3),
+    }
