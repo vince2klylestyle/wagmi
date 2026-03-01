@@ -314,16 +314,65 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         logger.warning(f"[SNAPSHOT] Teaching engine unavailable: {e}")
         result["knowledge"] = "Teaching engine unavailable — rely on memory notes and market data."
 
-    # Deep memory: trade DNA and pattern summaries
+    # Deep memory: full knowledge summary (trade DNA, strategy fingerprints,
+    # pattern library, regime history, insights) via singleton manager
     try:
-        from llm.deep_memory import TradeDNAStore
-        dna_store = TradeDNAStore()
-        dna_summary = dna_store.get_summary_stats()
-        if dna_summary:
-            # Compact summary for LLM context
-            result["trade_dna"] = str(dna_summary)[:400]
+        from llm.deep_memory import get_deep_memory
+        dm = get_deep_memory()
+        # Extract symbol/regime from trigger context for targeted knowledge
+        _dm_symbol = ""
+        _dm_regime = ""
+        if snapshot.trigger_context:
+            _dm_parts = snapshot.trigger_context.split()
+            if _dm_parts:
+                _dm_symbol = _dm_parts[0]
+        knowledge = dm.build_llm_knowledge_summary(
+            symbol=_dm_symbol, regime=_dm_regime
+        )
+        if knowledge:
+            result["deep_memory"] = knowledge[:800]
     except Exception as e:
         logger.debug(f"[SNAPSHOT] Deep memory unavailable: {e}")
+
+    # Self-performance stats — the LLM's mirror for self-calibration
+    try:
+        from llm.self_performance import get_compact_stats
+        self_perf = get_compact_stats()
+        if self_perf:
+            result["self_perf"] = self_perf
+    except Exception as e:
+        logger.debug(f"[SNAPSHOT] Self-performance unavailable: {e}")
+
+    # Portfolio-level risk indicators (injected by main bot via global_ctx.extra)
+    if g and g.extra:
+        corr_risk = g.extra.get("correlation_risk")
+        if corr_risk and corr_risk != "low":
+            result["corr_risk"] = corr_risk
+        port_lev = g.extra.get("portfolio_leverage", 0)
+        if port_lev > 0:
+            result["port_lev"] = port_lev
+        daily_funding = g.extra.get("estimated_daily_funding_cost", 0)
+        if daily_funding > 0.01:
+            result["funding_cost_pct"] = round(daily_funding, 2)
+        # D5: Session performance (win rates by trading session)
+        session_perf = g.extra.get("session_performance")
+        if session_perf:
+            result["session_perf"] = session_perf
+        # E2: Regime transitions in progress
+        transitions = g.extra.get("regime_transitions")
+        if transitions:
+            result["regime_shifts"] = transitions
+
+        # Cross-symbol lead-lag signals: active signals where a leader moved
+        # and a follower is expected to follow (e.g., BTC dropped, SOL expected to drop)
+        cs_signals = g.extra.get("cross_symbol_signals")
+        if cs_signals:
+            result["cross_sym"] = cs_signals
+
+        # Cross-symbol confirmed patterns: historically validated lead-lag relationships
+        cs_patterns = g.extra.get("cross_symbol_patterns")
+        if cs_patterns:
+            result["cross_pat"] = cs_patterns
 
     # Funding cost reminder — injected when positions are open
     if snapshot.active_positions:

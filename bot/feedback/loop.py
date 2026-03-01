@@ -136,6 +136,11 @@ class FeedbackLoop:
         # Blend: 60% adaptive (data-driven) + 40% tuner (backtest-driven)
         effective_floor = adaptive_floor * 0.6 + tuner_floor * 0.4
 
+        # Step 4.5: Symbol difficulty adjustment — hard-to-trade symbols get higher floor
+        symbol_floor = self.quality.get_symbol_confidence_floor(symbol, base_floor=effective_floor)
+        if symbol_floor > effective_floor:
+            effective_floor = symbol_floor
+
         # Check
         if adjusted_conf >= effective_floor:
             margin = adjusted_conf - effective_floor
@@ -195,6 +200,9 @@ class FeedbackLoop:
         hold_time_s: float = 0,
         exit_action: str = "",
         leverage: float = 1.0,
+        llm_action: str = "",
+        llm_confidence: float = 0.0,
+        llm_agreed: bool = True,
     ):
         """Record a trade outcome. Updates all feedback components."""
         now = datetime.now(timezone.utc)
@@ -222,7 +230,7 @@ class FeedbackLoop:
             leverage=leverage,
         )
 
-        # 3. Update signal quality scorer
+        # 3. Update signal quality scorer (with LLM decision data)
         features = QualityFeatures(
             confidence=confidence,
             num_strategies_agree=num_agree,
@@ -232,6 +240,9 @@ class FeedbackLoop:
             entry_type=entry_type,
             hour_of_day=now.hour,
             day_of_week=now.weekday(),
+            llm_action=llm_action,
+            llm_confidence=llm_confidence,
+            llm_agreed_with_ensemble=llm_agreed,
         )
         self.quality.record_outcome(features, win, pnl)
 
