@@ -81,7 +81,7 @@ def validate_schema(decision: LLMDecision) -> Tuple[bool, Optional[str]]:
     sw = decision.strategy_weights
     if sw:
         total = sum(sw.to_dict().values())
-        if total < 0.1:
+        if total < 0.1 and decision.action != "flat":
             return False, f"strategy_weights sum too low: {total}"
         for key in EXTENDED_WEIGHT_KEYS:
             val = getattr(sw, key, 0.5)
