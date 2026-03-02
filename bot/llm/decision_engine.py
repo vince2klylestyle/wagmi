@@ -73,6 +73,16 @@ try:
 except ImportError:
     _HAS_VETO_TRACKER = False
 
+# Multi-LLM ensemble: aggregate decisions from multiple models
+try:
+    from llm.llm_ensemble import aggregate_decisions, get_disagreement_metrics
+    _HAS_LLM_ENSEMBLE = True
+except ImportError:
+    _HAS_LLM_ENSEMBLE = False
+
+# High-priority triggers that warrant multi-LLM ensemble
+_ENSEMBLE_TRIGGERS = {"pre_trade_veto", "regime_shift", "high_confidence_signal"}
+
 logger = logging.getLogger("bot.llm.engine")
 
 # ── Audit log ────────────────────────────────────────────────────
@@ -222,35 +232,131 @@ def get_trading_decision(
         except Exception as e:
             logger.warning(f"[LLM-ENGINE] Tier routing failed: {e}, using default model")
 
-    raw_text, usage = call_llm(**call_kwargs)
+    # ── Multi-LLM Ensemble: call additional models for high-priority triggers ──
+    _ensemble_enabled = (
+        _HAS_LLM_ENSEMBLE
+        and os.getenv("LLM_ENSEMBLE_ENABLED", "").lower() in ("1", "true", "yes")
+        and os.getenv("LLM_PERSONAS", "").strip()
+        and trigger_reason in _ENSEMBLE_TRIGGERS
+    )
 
-    # Record API call cost
-    if _HAS_COST_TRACKER and usage:
-        try:
-            cost_tracker = get_cost_tracker()
-            cost_tracker.record_call(
-                input_tokens=usage.get("input_tokens", 0),
-                output_tokens=usage.get("output_tokens", 0),
-                model=call_kwargs.get("model", "unknown"),
+    if _ensemble_enabled:
+        # Parse personas: "opus:1.0,sonnet:0.8" -> list of (model, weight)
+        _personas_str = os.getenv("LLM_PERSONAS", "")
+        _persona_list = []
+        for p in _personas_str.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            if ":" in p:
+                _pmodel, _pweight = p.split(":", 1)
+                _persona_list.append((_pmodel.strip(), float(_pweight)))
+            else:
+                _persona_list.append((p.strip(), 1.0))
+
+        if len(_persona_list) >= 2:
+            # Call each model and collect decisions
+            _ensemble_decisions = []
+            _ensemble_total_usage = {"input_tokens": 0, "output_tokens": 0}
+            for _pmodel, _pweight in _persona_list:
+                try:
+                    _p_kwargs = dict(call_kwargs)
+                    _p_kwargs["model"] = _pmodel
+                    _p_raw, _p_usage = call_llm(**_p_kwargs)
+
+                    # Track cost
+                    _ensemble_total_usage["input_tokens"] += _p_usage.get("input_tokens", 0)
+                    _ensemble_total_usage["output_tokens"] += _p_usage.get("output_tokens", 0)
+                    if _HAS_COST_TRACKER and _p_usage:
+                        try:
+                            cost_tracker = get_cost_tracker()
+                            cost_tracker.record_call(
+                                input_tokens=_p_usage.get("input_tokens", 0),
+                                output_tokens=_p_usage.get("output_tokens", 0),
+                                model=_pmodel,
+                            )
+                        except Exception:
+                            pass
+
+                    if _p_raw:
+                        _p_decision, _p_err = validate_and_parse(_p_raw)
+                        if _p_decision and not _p_err:
+                            _ensemble_decisions.append({
+                                "decision": _p_decision,
+                                "weight": _pweight,
+                                "name": _pmodel,
+                            })
+                except Exception as _pe:
+                    logger.debug(f"[LLM-ENSEMBLE] {_pmodel} call failed: {_pe}")
+
+            if _ensemble_decisions:
+                # Aggregate decisions via weighted voting
+                decision = aggregate_decisions(_ensemble_decisions)
+                _disagreement = get_disagreement_metrics(_ensemble_decisions)
+
+                _log_audit({
+                    "ts": time.time(),
+                    "action": "ensemble_vote",
+                    "providers": len(_ensemble_decisions),
+                    "disagreement": _disagreement.get("disagreement", False),
+                    "action_spread": _disagreement.get("action_spread", []),
+                })
+
+                if decision is not None:
+                    logger.info(
+                        f"[LLM-ENSEMBLE] {len(_ensemble_decisions)} models voted: "
+                        f"action={decision.action} conf={decision.confidence:.2f} "
+                        f"disagreement={_disagreement.get('disagreement', False)}"
+                    )
+                    # Skip the single-model path; jump directly to mode constraints
+                    # (Steps 5.5-6 below apply to the aggregated decision)
+                    usage = _ensemble_total_usage
+                    val_err = None
+                    # Jump past the single-model call and parse
+                    # We set raw_text to a placeholder so the flow continues
+                    raw_text = "__ensemble__"
+                else:
+                    # Ensemble aggregation failed, fall through to single model
+                    _ensemble_enabled = False
+            else:
+                # No valid ensemble decisions, fall through to single model
+                _ensemble_enabled = False
+
+    if not _ensemble_enabled:
+        # Single-model path (default)
+        raw_text, usage = call_llm(**call_kwargs)
+
+        # Record API call cost
+        if _HAS_COST_TRACKER and usage:
+            try:
+                cost_tracker = get_cost_tracker()
+                cost_tracker.record_call(
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                    model=call_kwargs.get("model", "unknown"),
+                )
+            except Exception as ce:
+                logger.debug(f"[LLM-ENGINE] Cost recording failed: {ce}")
+
+        if raw_text is None:
+            _log_audit({
+                "ts": time.time(),
+                "action": "api_error",
+                "error": usage.get("error", "unknown"),
+            })
+            return DecisionResult(
+                decision=None,
+                reason=f"api_error: {usage.get('error', 'unknown')}",
+                source="none",
+                usage=usage,
             )
-        except Exception as ce:
-            logger.debug(f"[LLM-ENGINE] Cost recording failed: {ce}")
-
-    if raw_text is None:
-        _log_audit({
-            "ts": time.time(),
-            "action": "api_error",
-            "error": usage.get("error", "unknown"),
-        })
-        return DecisionResult(
-            decision=None,
-            reason=f"api_error: {usage.get('error', 'unknown')}",
-            source="none",
-            usage=usage,
-        )
 
     # Step 5: Validate + Normalize + Sanitize
-    decision, val_err = validate_and_parse(raw_text)
+    if _ensemble_enabled and raw_text == "__ensemble__":
+        # Decision already parsed and aggregated via ensemble
+        val_err = None
+    else:
+        decision, val_err = validate_and_parse(raw_text)
 
     if val_err:
         # Parse failed: try recovery
@@ -459,5 +565,26 @@ def _apply_mode_constraints(
             overrides.append("entry_adj_cleared")
             decision.entry_adjustment = None
 
-    # DIRECTION and FULL: no constraints
+    elif mode == LLMMode.DIRECTION:
+        # DIRECTION: flips allowed but require high confidence (>= 0.65)
+        if decision.action == "flip":
+            if decision.confidence < 0.65:
+                logger.info(
+                    f"[LLM-ENGINE] DIRECTION: downgrading flip -> flat "
+                    f"(confidence {decision.confidence:.2f} < 0.65 threshold)"
+                )
+                decision.action = "flat"
+                overrides.append(f"flip_conf_{decision.confidence:.2f}_to_flat")
+
+    elif mode == LLMMode.FULL:
+        # FULL: flips allowed but still require minimum confidence (>= 0.55)
+        if decision.action == "flip":
+            if decision.confidence < 0.55:
+                logger.info(
+                    f"[LLM-ENGINE] FULL: downgrading flip -> flat "
+                    f"(confidence {decision.confidence:.2f} < 0.55 threshold)"
+                )
+                decision.action = "flat"
+                overrides.append(f"flip_conf_{decision.confidence:.2f}_to_flat")
+
     return decision, overrides

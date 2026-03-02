@@ -85,11 +85,57 @@ from llm.cost_tracker import get_cost_tracker
 from llm.operator_channel import get_operator_channel
 from llm.self_performance import get_performance_stats
 
+# Wave 1: Signal Flagger — cheap heuristic flags for LLM attention routing
+try:
+    from llm.signal_flagger import get_signal_flagger, FlagType, FlaggedSignal
+    _SIGNAL_FLAGGER_AVAILABLE = True
+except ImportError:
+    _SIGNAL_FLAGGER_AVAILABLE = False
+
+# Wave 1: Signal Override — bypass soft blockers for powerful signals
+try:
+    from llm.signal_override import (
+        should_override_blocker, BlockerType, get_override_engine,
+    )
+    _SIGNAL_OVERRIDE_AVAILABLE = True
+except ImportError:
+    _SIGNAL_OVERRIDE_AVAILABLE = False
+
+# Wave 1: Self-Teaching — periodic learning cycles + knowledge injection
+try:
+    from llm.self_teaching import get_teaching_engine
+    _SELF_TEACHING_AVAILABLE = True
+except ImportError:
+    _SELF_TEACHING_AVAILABLE = False
+
+# Wave 2: Liquidity Guard — pre-trade market health validation
+try:
+    from execution.liquidity_guard import validate_liquidity
+    _LIQUIDITY_GUARD_AVAILABLE = True
+except ImportError:
+    _LIQUIDITY_GUARD_AVAILABLE = False
+
 # Phase D+E+F: new modules
 from execution.funding_timer import should_close_before_funding, minutes_until_next_funding
 from strategies.regime_detector import RegimeTransitionDetector
 from monitoring.health import HealthMonitor
 from execution.graceful_degradation import DegradationManager
+
+# Global Brain + Portfolio Brain: cross-market reasoning for LLM
+from llm.global_brain import build_global_context, apply_global_bias
+from llm.portfolio_brain import build_portfolio_snapshot
+
+# Self-Tuning Risk Engine: adaptive risk profiles
+from risk.self_tuning import (
+    get_telemetry as get_risk_telemetry,
+    evaluate_and_adjust as risk_evaluate_and_adjust,
+    get_dynamic_leverage_cap,
+    get_profile_params as get_risk_profile_params,
+)
+
+# RL system: transition logging + policy application
+from rl.buffer import append_transition as rl_append_transition
+from rl.apply_policy import get_combined_rl_multiplier, is_rl_enabled
 
 # Deep memory + cross-symbol pattern tracking
 try:
@@ -292,6 +338,15 @@ class MultiStrategyBot:
         # Operator channel: LLM → operator communication via Telegram
         self.operator_channel = get_operator_channel(alert_router=self.alerts)
 
+        # Wave 1: Signal Flagger — cheap heuristic flags for every signal
+        self.signal_flagger = get_signal_flagger() if _SIGNAL_FLAGGER_AVAILABLE else None
+
+        # Wave 1: Signal Override — bypass soft blockers for powerful signals
+        self.signal_override = get_override_engine() if _SIGNAL_OVERRIDE_AVAILABLE else None
+
+        # Wave 1: Self-Teaching — periodic learning cycles
+        self.teaching_engine = get_teaching_engine() if _SELF_TEACHING_AVAILABLE else None
+
         # Veto tracker: counterfactual validation for LLM vetoes
         self.veto_tracker = get_veto_tracker()
 
@@ -314,6 +369,13 @@ class MultiStrategyBot:
 
         # Track 1h price changes for cross-market divergence detection
         self._price_changes_1h: Dict[str, float] = {}
+
+        # Self-tuning risk engine: adaptive profiles based on equity curve
+        self.risk_telemetry = get_risk_telemetry()
+
+        # Cache global bias from Global Brain (updated each LLM context build)
+        self._global_bias: str = "neutral"
+        self._global_bias_adjustment: Dict[str, Any] = {}
 
         # Telegram command bot
         tg_user_id = int(os.getenv("TELEGRAM_ALLOWED_USER_ID", "0"))
@@ -542,6 +604,14 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.warning(f"[{trace_id}] Exit intelligence error: {e}")
 
+        # Position aging alerts: flag positions held too long with adverse funding
+        # Runs every 10th tick (~10 min at 60s intervals)
+        if self._tick % 10 == 0:
+            try:
+                self._check_position_aging()
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Position aging check error: {e}")
+
         # Record health monitor heartbeat every tick
         self.health_monitor.record_heartbeat(
             loop_duration_s=time.time() - _loop_start,
@@ -567,6 +637,50 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.debug(f"[{trace_id}] Research cycle error: {e}")
 
+        # Self-Teaching: run learning cycle when enough trades accumulated
+        # Checks every 60 ticks (~1 hour), but only runs if should_run_cycle() says yes
+        if self._tick % 60 == 30 and self.teaching_engine and self.config.enable_self_teaching:
+            try:
+                if self.teaching_engine.should_run_cycle():
+                    # Gather recent trades from deep memory for analysis
+                    _teach_trades = []
+                    try:
+                        from llm.deep_memory import get_deep_memory
+                        _dm = get_deep_memory()
+                        _teach_trades = _dm.trade_dna._trades[-50:] if hasattr(_dm.trade_dna, '_trades') and _dm.trade_dna._trades else []
+                    except Exception:
+                        pass
+
+                    _teach_report = self.teaching_engine.run_learning_cycle(
+                        recent_trades=_teach_trades,
+                        market_state={
+                            "price_changes_1h": self._price_changes_1h,
+                            "global_bias": self._global_bias,
+                            "equity": self.risk_mgr.equity,
+                        },
+                    )
+                    if _teach_report.get("knowledge_added"):
+                        logger.info(
+                            f"[TEACH] Learning cycle #{_teach_report['cycle_number']}: "
+                            f"level={_teach_report['curriculum_level']}, "
+                            f"+{len(_teach_report['knowledge_added'])} knowledge items"
+                        )
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Self-teaching cycle error: {e}")
+
+        # Self-Tuning Risk: evaluate and auto-adjust risk profile every 30 ticks (~30 min)
+        if self._tick % 30 == 0 and self._tick > 0:
+            try:
+                new_profile = risk_evaluate_and_adjust()
+                if new_profile:
+                    logger.info(f"[RISK-TUNE] Auto-adjusted to {new_profile} profile")
+                    if self.alerts:
+                        self.alerts.send_market_update(
+                            f"Risk profile auto-adjusted to *{new_profile}*"
+                        )
+            except Exception as e:
+                logger.debug(f"Risk tuning evaluation error: {e}")
+
         # Heartbeat every 60 ticks (~1 hour at 60s intervals)
         if self._tick % 60 == 0:
             self._send_heartbeat()
@@ -575,6 +689,40 @@ class MultiStrategyBot:
         # Market update every 15 ticks (~15 min) - sends even without signals
         if self._tick % 15 == 0 and self._tick % 60 != 0:
             self._send_market_update(trace_id)
+
+        # Evolution tracker: daily strategy evolution report (~1440 ticks at 60s = 24h)
+        if self._tick % 1440 == 0 and self._tick > 0:
+            try:
+                from feedback.evolution_tracker import EvolutionTracker
+                tracker = EvolutionTracker("data")
+                report = tracker.generate_report()
+                if self.alerts and report:
+                    summary = (
+                        f"*Daily Evolution Report*\n"
+                        f"Trades: {report.total_trades}\n"
+                        f"Win rate: {report.win_rate:.1%}\n"
+                        f"Net PnL: ${report.net_pnl:+.2f}"
+                    )
+                    self.alerts.send_market_update(summary)
+                logger.info(f"[EVOLUTION] Daily report generated: {report.total_trades} trades")
+            except Exception as e:
+                logger.debug(f"Evolution tracker error: {e}")
+
+        # RL auto-training: retrain policy daily if buffer has enough data
+        if self._tick % 1440 == 720 and self._tick > 720:
+            try:
+                from rl.buffer import get_buffer_stats
+                from rl.train_offline import train
+                stats = get_buffer_stats()
+                if stats.get("total", 0) >= 50:
+                    policy = train()
+                    if policy:
+                        logger.info(
+                            f"[RL-AUTO] Daily retrain: {stats['total']} transitions, "
+                            f"policy updated"
+                        )
+            except Exception as e:
+                logger.debug(f"RL auto-training error: {e}")
 
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""
@@ -866,6 +1014,70 @@ class MultiStrategyBot:
                 except Exception as e:
                     logger.debug(f"Deep memory trade DNA error: {e}")
 
+                # Self-Teaching: feed closed trade to learning engine
+                if self.teaching_engine and self.config.enable_self_teaching:
+                    try:
+                        self.teaching_engine.record_trade_for_learning({
+                            "symbol": symbol,
+                            "side": event.side,
+                            "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                            "pnl": total_pnl,
+                            "confidence": getattr(
+                                self.pos_mgr.positions.get(symbol), "confidence", 0
+                            ),
+                            "regime": _rg_fb,
+                            "strategy": event.strategy,
+                            "entry_type": _et_fb,
+                            "num_agree": signal_result.metadata.get("num_agree", 1) if hasattr(signal_result, 'metadata') else 1,
+                            "hold_time_s": event.metadata.get("hold_time_s", 0),
+                            "leverage": event.leverage,
+                            "exit_action": event.action,
+                        })
+                    except Exception as e:
+                        logger.debug(f"Self-teaching trade record error: {e}")
+
+                # RL buffer: record transition for offline learning
+                try:
+                    _rl_pos = self.pos_mgr.positions.get(symbol)
+                    _risk_amt = self.risk_mgr.equity * 0.01  # 1% risk base
+                    _rl_reward = total_pnl / _risk_amt if _risk_amt > 0 else 0
+                    rl_append_transition(
+                        state={
+                            "symbol": symbol,
+                            "regime": _rg_fb,
+                            "confidence": _rl_pos.confidence if _rl_pos else 0,
+                            "side": event.side,
+                            "entry": _rl_pos.entry if _rl_pos else 0,
+                            "volatility": _close_vol if '_close_vol' in dir() else 0,
+                        },
+                        action={
+                            "llm_mode": self.llm_mode.name if hasattr(self.llm_mode, 'name') else str(self.llm_mode),
+                            "llm_action": _llm_action,
+                            "size_multiplier": _rl_pos.entry_reasons.get("llm_size_mult", 1.0) if _rl_pos and _rl_pos.entry_reasons else 1.0,
+                            "leverage": event.leverage,
+                            "entry_type": _et_fb,
+                        },
+                        reward=round(_rl_reward, 4),
+                        metadata={
+                            "trigger": _rl_pos.entry_reasons.get("trigger", "") if _rl_pos and _rl_pos.entry_reasons else "",
+                            "hold_time_s": event.metadata.get("hold_time_s", 0),
+                            "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                            "pnl": round(total_pnl, 2),
+                            "strategy": event.strategy,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"RL buffer append error: {e}")
+
+                # Self-Tuning Risk: update telemetry on trade close
+                try:
+                    self.risk_telemetry.update(
+                        equity=self.risk_mgr.equity,
+                        daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                    )
+                except Exception as e:
+                    logger.debug(f"Risk telemetry update error: {e}")
+
             # Record outcome for ML (use TOTAL trade PnL, not just final leg)
             if self.ml and event.action in _FULL_CLOSE:
                 pos = self.pos_mgr.positions.get(symbol)
@@ -1053,6 +1265,32 @@ class MultiStrategyBot:
             if tier_count >= self._max_same_tier:
                 return  # Too many positions in same risk tier
 
+        # ── Wave 2: Regime-based strategy filter ──
+        # Disable strategies that historically fail in the current regime
+        if self.config.enable_regime_strategy_filter:
+            try:
+                _cur_regime = self.regime_detector.get_current_regime(symbol)
+                if _cur_regime:
+                    from llm.deep_memory import get_deep_memory
+                    _dm = get_deep_memory()
+                    _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                    _disabled = set()
+                    for _sname, _swdata in _strat_wr.items():
+                        if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+                            _disabled.add(_sname)
+                    if _disabled:
+                        self.ensemble.set_disabled_strategies(_disabled)
+                        logger.info(
+                            f"[{trace_id}][{symbol}] Regime filter: disabled {_disabled} "
+                            f"in {_cur_regime} regime"
+                        )
+                    else:
+                        self.ensemble.set_disabled_strategies(set())
+                else:
+                    self.ensemble.set_disabled_strategies(set())
+            except Exception:
+                self.ensemble.set_disabled_strategies(set())
+
         signal_result = self.ensemble.evaluate(symbol, data)
 
         # Update last snapshot with ensemble context for ML learning
@@ -1176,6 +1414,53 @@ class MultiStrategyBot:
             )
             return
 
+        # ── Signal Flagger: cheap heuristic flag evaluation ──
+        # Runs on every signal (no LLM call). Flags interesting characteristics
+        # (SNIPER, ANOMALY, BREAKOUT, etc.) and fires LLM triggers for high-priority flags.
+        _flagged_signal = None
+        if self.signal_flagger and self.config.enable_signal_flagger:
+            try:
+                _sf_regime = signal_result.metadata.get("regime", "")
+                _sf_vol_ratio = signal_result.metadata.get("volume_ratio", 1.0)
+                _sf_funding = self._last_funding_rates.get(symbol, 0.0)
+                _sf_pch_1h = self._price_changes_1h.get(symbol, 0.0)
+
+                # BTC trend context for the flagger
+                _sf_btc_1h = self._price_changes_1h.get("BTC", 0.0)
+                _sf_btc_trend = "bullish" if _sf_btc_1h > 0.5 else ("bearish" if _sf_btc_1h < -0.5 else "neutral")
+
+                _flagged_signal = self.signal_flagger.evaluate_signal(
+                    symbol=symbol,
+                    side=signal_result.side,
+                    confidence=signal_result.confidence,
+                    regime=_sf_regime,
+                    num_agree=num_agree,
+                    total_strategies=len(self.strategies),
+                    volume_ratio=_sf_vol_ratio,
+                    funding_rate=_sf_funding,
+                    btc_trend=_sf_btc_trend,
+                    price_change_1h=_sf_pch_1h,
+                )
+
+                # High-priority flags fire an LLM trigger for richer meta-brain context
+                if _flagged_signal and _flagged_signal.should_trigger_llm:
+                    self._llm_triggers.add(
+                        LLMTrigger.HIGH_CONFIDENCE,
+                        symbol=symbol,
+                        context=f"FLAGGED: {_flagged_signal.flag_summary} "
+                                f"conf={signal_result.confidence:.0f}%",
+                    )
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Signal flagged: {_flagged_signal.flag_summary}"
+                    )
+
+                # Attach flags to metadata for downstream logging
+                if _flagged_signal and _flagged_signal.flags:
+                    signal_result.metadata["signal_flags"] = _flagged_signal.flag_summary
+                    signal_result.metadata["flag_max_priority"] = _flagged_signal.max_priority
+            except Exception as e:
+                logger.debug(f"[{trace_id}][{symbol}] Signal flagger error: {e}")
+
         # Log every signal generated to database (even if not traded)
         _signal_id = log_signal(
             symbol=symbol,
@@ -1291,8 +1576,35 @@ class MultiStrategyBot:
             )
 
             if not should_trade:
-                logger.info(f"[{trace_id}][{symbol}] Feedback floor: {fb_reason}")
-                return
+                # ── Signal Override: can powerful signal bypass feedback floor? ──
+                _override_ok = False
+                if (self.signal_override and self.config.enable_signal_override
+                        and _SIGNAL_OVERRIDE_AVAILABLE):
+                    try:
+                        _ov_result = should_override_blocker(
+                            confidence=signal_result.confidence,
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                            blocker=BlockerType.CONFIDENCE_FLOOR,
+                            blocker_detail=fb_reason,
+                            volume_confirms=signal_result.metadata.get("volume_ratio", 1.0) >= 1.5,
+                            regime_aligned=_regime in ("trend", "trending"),
+                            trend_aligned=signal_result.metadata.get("trend_adjustment", 0) > 0,
+                            current_equity=self.risk_mgr.equity,
+                            daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                        )
+                        if _ov_result.should_override:
+                            _override_ok = True
+                            logger.info(
+                                f"[{trace_id}][{symbol}] OVERRIDE: feedback floor bypassed "
+                                f"(power={_ov_result.power_score:.0f}, {_ov_result.reason})"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Signal override feedback error: {e}")
+
+                if not _override_ok:
+                    logger.info(f"[{trace_id}][{symbol}] Feedback floor: {fb_reason}")
+                    return
         except Exception as e:
             logger.warning(f"[{trace_id}][{symbol}] Feedback loop error (proceeding): {e}")
 
@@ -1302,7 +1614,37 @@ class MultiStrategyBot:
             confidence=signal_result.confidence,
             cb_conf_override_pct=self.config.cb_conf_override_pct,
         ):
-            return
+            # ── Signal Override: can powerful signal bypass circuit breaker? ──
+            _cb_override_ok = False
+            if (self.signal_override and self.config.enable_signal_override
+                    and _SIGNAL_OVERRIDE_AVAILABLE):
+                try:
+                    _cb_blocker = BlockerType.CIRCUIT_BREAKER
+                    if self.risk_mgr.circuit_breaker.consecutive_losses >= self.config.max_consecutive_losses:
+                        _cb_blocker = BlockerType.CONSECUTIVE_LOSSES
+
+                    _cb_ov_result = should_override_blocker(
+                        confidence=signal_result.confidence,
+                        num_agree=signal_result.metadata.get("num_agree", 1),
+                        total_strategies=len(self.strategies),
+                        blocker=_cb_blocker,
+                        volume_confirms=signal_result.metadata.get("volume_ratio", 1.0) >= 1.5,
+                        regime_aligned=signal_result.metadata.get("regime", "") in ("trend", "trending"),
+                        trend_aligned=signal_result.metadata.get("trend_adjustment", 0) > 0,
+                        current_equity=self.risk_mgr.equity,
+                        daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                    )
+                    if _cb_ov_result.should_override:
+                        _cb_override_ok = True
+                        logger.warning(
+                            f"[{trace_id}][{symbol}] OVERRIDE: circuit breaker bypassed "
+                            f"(power={_cb_ov_result.power_score:.0f}, {_cb_ov_result.reason})"
+                        )
+                except Exception as e:
+                    logger.debug(f"Signal override CB error: {e}")
+
+            if not _cb_override_ok:
+                return
 
         # Portfolio leverage guard: block new entries when total leverage too high
         _portfolio_lev = self._compute_portfolio_leverage()
@@ -1376,6 +1718,18 @@ class MultiStrategyBot:
                 lev_decision.leverage = cb_max_lev
                 lev_decision.reason = f"CB override capped to {cb_max_lev:.0f}x"
 
+        # Self-Tuning Risk: dynamic leverage cap based on drawdown
+        try:
+            dyn_lev_cap = get_dynamic_leverage_cap(self.config.max_leverage)
+            if lev_decision.leverage > dyn_lev_cap:
+                logger.info(
+                    f"[{trace_id}][{symbol}] Risk-tune: leverage "
+                    f"{lev_decision.leverage:.1f}x → {dyn_lev_cap:.1f}x (drawdown cap)"
+                )
+                lev_decision.leverage = dyn_lev_cap
+        except Exception:
+            pass
+
         # Per-symbol leverage cap from precision config
         sym_max_lev = get_max_leverage(symbol)
         if lev_decision.leverage > sym_max_lev:
@@ -1413,6 +1767,43 @@ class MultiStrategyBot:
                 })
             return
 
+        # ── Wave 2: Signal Decay — reduce confidence for stale signals ──
+        _signal_gen_time = signal_result.metadata.get("generated_at", 0)
+        if _signal_gen_time and self.config.signal_decay_seconds > 0:
+            _signal_age = time.time() - _signal_gen_time
+            if _signal_age > self.config.signal_decay_seconds:
+                _decay = max(0.8, 1.0 - (_signal_age - 60) / 600)
+                signal_result.confidence *= _decay
+                logger.info(
+                    f"[{trace_id}][{symbol}] Signal decay: {_signal_age:.0f}s old, "
+                    f"conf * {_decay:.2f} = {signal_result.confidence:.0f}%"
+                )
+
+        # ── Wave 2: Liquidity Guard — reject dead markets, reduce size in thin liquidity ──
+        _liq_size_mult = 1.0
+        if self.config.enable_liquidity_guard and _LIQUIDITY_GUARD_AVAILABLE:
+            try:
+                _liq_result = validate_liquidity(
+                    symbol=symbol,
+                    volume_ratio=signal_result.metadata.get("volume_ratio", 1.0),
+                    funding_rate=self._last_funding_rates.get(symbol, 0.0),
+                )
+                if not _liq_result.can_trade:
+                    log_rejection(symbol, "LIQUIDITY_GUARD",
+                                  confidence=signal_result.confidence)
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Liquidity guard: {_liq_result.reason}"
+                    )
+                    return
+                _liq_size_mult = _liq_result.size_multiplier
+                if _liq_size_mult < 1.0:
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Liquidity guard: "
+                        f"size * {_liq_size_mult:.2f} ({_liq_result.reason})"
+                    )
+            except Exception as e:
+                logger.debug(f"Liquidity guard error: {e}")
+
         # Calculate position size (risk-based: qty = risk$ / (stop_dist * leverage))
         qty = self.risk_mgr.calculate_qty(
             signal_result.entry, signal_result.sl,
@@ -1443,12 +1834,32 @@ class MultiStrategyBot:
         except Exception:
             pass
 
+        # Global Brain bias: adjust sizing based on macro regime
+        try:
+            _gb_size_mult = self._global_bias_adjustment.get("size_multiplier", 1.0)
+            if _gb_size_mult != 1.0:
+                qty = qty * _gb_size_mult
+                logger.info(
+                    f"[{trace_id}][{symbol}] Global bias ({self._global_bias}): "
+                    f"qty * {_gb_size_mult:.2f} = {qty:.6f}"
+                )
+        except Exception:
+            pass
+
         # Time-aware sizing: reduce during weekends / low-liquidity hours
         time_mult = get_time_multiplier()
         if time_mult < 1.0:
             qty = qty * time_mult
             logger.info(
                 f"[{trace_id}][{symbol}] Time sizing: qty * {time_mult:.2f} = {qty:.6f}"
+            )
+
+        # Liquidity guard sizing (applied after all other multipliers)
+        if _liq_size_mult < 1.0:
+            qty = qty * _liq_size_mult
+            logger.info(
+                f"[{trace_id}][{symbol}] Liquidity guard sizing: "
+                f"qty * {_liq_size_mult:.2f} = {qty:.6f}"
             )
 
         # Enforce minimum order size
@@ -1531,6 +1942,9 @@ class MultiStrategyBot:
             "llm_action": _cand_llm_action,
             "llm_confidence": _cand_llm_conf,
             "llm_agreed": _cand_llm_action in ("proceed", "go", "", None),
+            # Signal flagger data for post-trade analysis
+            "signal_flags": signal_result.metadata.get("signal_flags", ""),
+            "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
         }
 
         # Correlation guard: max same-direction positions
@@ -1640,6 +2054,19 @@ class MultiStrategyBot:
             logger.info(
                 f"[{trace_id}][{symbol}] LLM size mult: qty * {llm_sz:.2f} = {qty:.6f}"
             )
+
+        # ── RL policy multiplier: apply learned regime/symbol adjustments ──
+        if is_rl_enabled():
+            try:
+                _rl_regime = signal_result.metadata.get("regime", "unknown")
+                _rl_mult = get_combined_rl_multiplier(symbol, _rl_regime)
+                if _rl_mult != 1.0:
+                    qty = qty * _rl_mult
+                    logger.info(
+                        f"[{trace_id}][{symbol}] RL policy: qty * {_rl_mult:.2f} = {qty:.6f}"
+                    )
+            except Exception as e:
+                logger.debug(f"RL policy application error: {e}")
 
         # ── Profitable pattern boost: confirmed winners get larger size ──
         # Uses deep memory: if this strategy+regime+symbol combo has >60% WR
@@ -2217,6 +2644,50 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.warning(f"[EXIT-INTEL] Error evaluating {symbol}: {e}")
 
+    # ── Position Aging Alerts ─────────────────────────────────────
+
+    def _check_position_aging(self):
+        """Alert on positions held too long — funding costs eat profits."""
+        open_pos = self.pos_mgr.get_open_positions()
+        now = time.time()
+        for sym, pos in open_pos.items():
+            if not hasattr(pos, 'open_time') or pos.open_time is None:
+                continue
+            # Calculate age
+            if isinstance(pos.open_time, datetime):
+                age_hours = (now - pos.open_time.timestamp()) / 3600
+            else:
+                age_hours = (now - pos.open_time) / 3600
+
+            # Alert thresholds
+            funding_rate = self._last_funding_rates.get(sym, 0.0)
+            is_paying = (pos.side == "LONG" and funding_rate > 0) or \
+                        (pos.side == "SHORT" and funding_rate < 0)
+
+            # Calculate estimated funding cost since entry
+            price = self._last_prices.get(sym, pos.entry)
+            notional = pos.qty * price * pos.leverage
+            periods_since_entry = age_hours / 8  # 8h funding periods
+            est_funding_paid = abs(funding_rate) * periods_since_entry * notional if is_paying else 0
+            est_funding_pct = est_funding_paid / self.risk_mgr.equity * 100 if self.risk_mgr.equity > 0 else 0
+
+            # Alert conditions
+            if age_hours > 24 and is_paying and est_funding_pct > 0.1:
+                logger.warning(
+                    f"[AGING] {sym} {pos.side} open {age_hours:.0f}h, "
+                    f"estimated funding paid: {est_funding_pct:.2f}% of equity"
+                )
+                if self.alerts and age_hours > 48:
+                    try:
+                        self.alerts.send_market_update(
+                            f"[POSITION AGING] {sym} {pos.side}\n"
+                            f"Open: {age_hours:.0f}h\n"
+                            f"Funding paid: ~{est_funding_pct:.2f}% of equity\n"
+                            f"Current PnL: ${pos.realized_pnl:.2f}"
+                        )
+                    except Exception:
+                        pass
+
     # ── LLM Meta-Brain Integration ────────────────────────────────
 
     def _llm_veto_check(self, candidate: TradeCandidate, trace_id: str = ""):
@@ -2393,6 +2864,25 @@ class MultiStrategyBot:
                 signals=signals,
             ))
 
+        # Global Brain: build cross-market context for LLM reasoning
+        try:
+            _gb_ctx = build_global_context(
+                btc_price=btc_price,
+                btc_1h_change=btc_1h,
+                btc_24h_change=btc_24h,
+                eth_price=eth_price,
+                last_prices=self._last_prices,
+                funding_rates=self._last_funding_rates,
+            )
+            self._global_bias = _gb_ctx.get("classified_bias", "neutral")
+            self._global_bias_adjustment = apply_global_bias(
+                self._global_bias,
+                max_positions=self.config.max_open_positions,
+            )
+        except Exception as e:
+            _gb_ctx = {}
+            logger.debug(f"Global brain context error: {e}")
+
         # Global context (enriched with telemetry for LLM learning)
         eth_btc = eth_price / btc_price if btc_price > 0 else 0.0
         telem_snap = Telemetry.snapshot()
@@ -2443,6 +2933,10 @@ class MultiStrategyBot:
             "session_performance": self.feedback.quality.get_session_performance(),
             # E2: Active regime transitions
             "regime_transitions": self.regime_detector.get_transition_summary(),
+            # Global Brain: market-wide bias classification
+            "global_bias": self._global_bias,
+            "sector_activity": _gb_ctx.get("sectors_active", {}),
+            "net_funding": _gb_ctx.get("net_funding", 0.0),
         }
 
         # Cross-symbol pattern signals: inject lead-lag relationships for LLM
@@ -2489,6 +2983,27 @@ class MultiStrategyBot:
                 "unrealized_pnl": round(unrealized, 2),
                 "funding_rate": self._last_funding_rates.get(sym, 0.0),
             })
+
+        # Portfolio Brain: cross-symbol portfolio reasoning for LLM
+        try:
+            _portfolio_snap = build_portfolio_snapshot(
+                pos_mgr=self.pos_mgr,
+                last_prices=self._last_prices,
+                equity=self.risk_mgr.equity,
+            )
+            global_ctx.extra["portfolio_snapshot"] = _portfolio_snap
+        except Exception as e:
+            logger.debug(f"Portfolio brain snapshot error: {e}")
+
+        # Self-Tuning Risk: inject current profile for LLM awareness
+        try:
+            _risk_profile = get_risk_profile_params()
+            global_ctx.extra["risk_profile"] = _risk_profile.get("description", "normal")
+            global_ctx.extra["dynamic_leverage_cap"] = get_dynamic_leverage_cap(
+                self.config.max_leverage
+            )
+        except Exception as e:
+            logger.debug(f"Risk profile context error: {e}")
 
         return markets, global_ctx, risk_ctx, active_positions
 
