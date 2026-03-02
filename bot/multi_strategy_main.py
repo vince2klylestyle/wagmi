@@ -85,6 +85,36 @@ from llm.cost_tracker import get_cost_tracker
 from llm.operator_channel import get_operator_channel
 from llm.self_performance import get_performance_stats
 
+# Wave 1: Signal Flagger — cheap heuristic flags for LLM attention routing
+try:
+    from llm.signal_flagger import get_signal_flagger, FlagType, FlaggedSignal
+    _SIGNAL_FLAGGER_AVAILABLE = True
+except ImportError:
+    _SIGNAL_FLAGGER_AVAILABLE = False
+
+# Wave 1: Signal Override — bypass soft blockers for powerful signals
+try:
+    from llm.signal_override import (
+        should_override_blocker, BlockerType, get_override_engine,
+    )
+    _SIGNAL_OVERRIDE_AVAILABLE = True
+except ImportError:
+    _SIGNAL_OVERRIDE_AVAILABLE = False
+
+# Wave 1: Self-Teaching — periodic learning cycles + knowledge injection
+try:
+    from llm.self_teaching import get_teaching_engine
+    _SELF_TEACHING_AVAILABLE = True
+except ImportError:
+    _SELF_TEACHING_AVAILABLE = False
+
+# Wave 2: Liquidity Guard — pre-trade market health validation
+try:
+    from execution.liquidity_guard import validate_liquidity
+    _LIQUIDITY_GUARD_AVAILABLE = True
+except ImportError:
+    _LIQUIDITY_GUARD_AVAILABLE = False
+
 # Phase D+E+F: new modules
 from execution.funding_timer import should_close_before_funding, minutes_until_next_funding
 from strategies.regime_detector import RegimeTransitionDetector
@@ -307,6 +337,15 @@ class MultiStrategyBot:
 
         # Operator channel: LLM → operator communication via Telegram
         self.operator_channel = get_operator_channel(alert_router=self.alerts)
+
+        # Wave 1: Signal Flagger — cheap heuristic flags for every signal
+        self.signal_flagger = get_signal_flagger() if _SIGNAL_FLAGGER_AVAILABLE else None
+
+        # Wave 1: Signal Override — bypass soft blockers for powerful signals
+        self.signal_override = get_override_engine() if _SIGNAL_OVERRIDE_AVAILABLE else None
+
+        # Wave 1: Self-Teaching — periodic learning cycles
+        self.teaching_engine = get_teaching_engine() if _SELF_TEACHING_AVAILABLE else None
 
         # Veto tracker: counterfactual validation for LLM vetoes
         self.veto_tracker = get_veto_tracker()
@@ -597,6 +636,37 @@ class MultiStrategyBot:
                     )
             except Exception as e:
                 logger.debug(f"[{trace_id}] Research cycle error: {e}")
+
+        # Self-Teaching: run learning cycle when enough trades accumulated
+        # Checks every 60 ticks (~1 hour), but only runs if should_run_cycle() says yes
+        if self._tick % 60 == 30 and self.teaching_engine and self.config.enable_self_teaching:
+            try:
+                if self.teaching_engine.should_run_cycle():
+                    # Gather recent trades from deep memory for analysis
+                    _teach_trades = []
+                    try:
+                        from llm.deep_memory import get_deep_memory
+                        _dm = get_deep_memory()
+                        _teach_trades = _dm.trade_dna._trades[-50:] if hasattr(_dm.trade_dna, '_trades') and _dm.trade_dna._trades else []
+                    except Exception:
+                        pass
+
+                    _teach_report = self.teaching_engine.run_learning_cycle(
+                        recent_trades=_teach_trades,
+                        market_state={
+                            "price_changes_1h": self._price_changes_1h,
+                            "global_bias": self._global_bias,
+                            "equity": self.risk_mgr.equity,
+                        },
+                    )
+                    if _teach_report.get("knowledge_added"):
+                        logger.info(
+                            f"[TEACH] Learning cycle #{_teach_report['cycle_number']}: "
+                            f"level={_teach_report['curriculum_level']}, "
+                            f"+{len(_teach_report['knowledge_added'])} knowledge items"
+                        )
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Self-teaching cycle error: {e}")
 
         # Self-Tuning Risk: evaluate and auto-adjust risk profile every 30 ticks (~30 min)
         if self._tick % 30 == 0 and self._tick > 0:
@@ -944,6 +1014,28 @@ class MultiStrategyBot:
                 except Exception as e:
                     logger.debug(f"Deep memory trade DNA error: {e}")
 
+                # Self-Teaching: feed closed trade to learning engine
+                if self.teaching_engine and self.config.enable_self_teaching:
+                    try:
+                        self.teaching_engine.record_trade_for_learning({
+                            "symbol": symbol,
+                            "side": event.side,
+                            "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                            "pnl": total_pnl,
+                            "confidence": getattr(
+                                self.pos_mgr.positions.get(symbol), "confidence", 0
+                            ),
+                            "regime": _rg_fb,
+                            "strategy": event.strategy,
+                            "entry_type": _et_fb,
+                            "num_agree": signal_result.metadata.get("num_agree", 1) if hasattr(signal_result, 'metadata') else 1,
+                            "hold_time_s": event.metadata.get("hold_time_s", 0),
+                            "leverage": event.leverage,
+                            "exit_action": event.action,
+                        })
+                    except Exception as e:
+                        logger.debug(f"Self-teaching trade record error: {e}")
+
                 # RL buffer: record transition for offline learning
                 try:
                     _rl_pos = self.pos_mgr.positions.get(symbol)
@@ -1173,6 +1265,32 @@ class MultiStrategyBot:
             if tier_count >= self._max_same_tier:
                 return  # Too many positions in same risk tier
 
+        # ── Wave 2: Regime-based strategy filter ──
+        # Disable strategies that historically fail in the current regime
+        if self.config.enable_regime_strategy_filter:
+            try:
+                _cur_regime = self.regime_detector.get_current_regime(symbol)
+                if _cur_regime:
+                    from llm.deep_memory import get_deep_memory
+                    _dm = get_deep_memory()
+                    _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                    _disabled = set()
+                    for _sname, _swdata in _strat_wr.items():
+                        if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+                            _disabled.add(_sname)
+                    if _disabled:
+                        self.ensemble.set_disabled_strategies(_disabled)
+                        logger.info(
+                            f"[{trace_id}][{symbol}] Regime filter: disabled {_disabled} "
+                            f"in {_cur_regime} regime"
+                        )
+                    else:
+                        self.ensemble.set_disabled_strategies(set())
+                else:
+                    self.ensemble.set_disabled_strategies(set())
+            except Exception:
+                self.ensemble.set_disabled_strategies(set())
+
         signal_result = self.ensemble.evaluate(symbol, data)
 
         # Update last snapshot with ensemble context for ML learning
@@ -1296,6 +1414,53 @@ class MultiStrategyBot:
             )
             return
 
+        # ── Signal Flagger: cheap heuristic flag evaluation ──
+        # Runs on every signal (no LLM call). Flags interesting characteristics
+        # (SNIPER, ANOMALY, BREAKOUT, etc.) and fires LLM triggers for high-priority flags.
+        _flagged_signal = None
+        if self.signal_flagger and self.config.enable_signal_flagger:
+            try:
+                _sf_regime = signal_result.metadata.get("regime", "")
+                _sf_vol_ratio = signal_result.metadata.get("volume_ratio", 1.0)
+                _sf_funding = self._last_funding_rates.get(symbol, 0.0)
+                _sf_pch_1h = self._price_changes_1h.get(symbol, 0.0)
+
+                # BTC trend context for the flagger
+                _sf_btc_1h = self._price_changes_1h.get("BTC", 0.0)
+                _sf_btc_trend = "bullish" if _sf_btc_1h > 0.5 else ("bearish" if _sf_btc_1h < -0.5 else "neutral")
+
+                _flagged_signal = self.signal_flagger.evaluate_signal(
+                    symbol=symbol,
+                    side=signal_result.side,
+                    confidence=signal_result.confidence,
+                    regime=_sf_regime,
+                    num_agree=num_agree,
+                    total_strategies=len(self.strategies),
+                    volume_ratio=_sf_vol_ratio,
+                    funding_rate=_sf_funding,
+                    btc_trend=_sf_btc_trend,
+                    price_change_1h=_sf_pch_1h,
+                )
+
+                # High-priority flags fire an LLM trigger for richer meta-brain context
+                if _flagged_signal and _flagged_signal.should_trigger_llm:
+                    self._llm_triggers.add(
+                        LLMTrigger.HIGH_CONFIDENCE,
+                        symbol=symbol,
+                        context=f"FLAGGED: {_flagged_signal.flag_summary} "
+                                f"conf={signal_result.confidence:.0f}%",
+                    )
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Signal flagged: {_flagged_signal.flag_summary}"
+                    )
+
+                # Attach flags to metadata for downstream logging
+                if _flagged_signal and _flagged_signal.flags:
+                    signal_result.metadata["signal_flags"] = _flagged_signal.flag_summary
+                    signal_result.metadata["flag_max_priority"] = _flagged_signal.max_priority
+            except Exception as e:
+                logger.debug(f"[{trace_id}][{symbol}] Signal flagger error: {e}")
+
         # Log every signal generated to database (even if not traded)
         _signal_id = log_signal(
             symbol=symbol,
@@ -1411,8 +1576,35 @@ class MultiStrategyBot:
             )
 
             if not should_trade:
-                logger.info(f"[{trace_id}][{symbol}] Feedback floor: {fb_reason}")
-                return
+                # ── Signal Override: can powerful signal bypass feedback floor? ──
+                _override_ok = False
+                if (self.signal_override and self.config.enable_signal_override
+                        and _SIGNAL_OVERRIDE_AVAILABLE):
+                    try:
+                        _ov_result = should_override_blocker(
+                            confidence=signal_result.confidence,
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                            blocker=BlockerType.CONFIDENCE_FLOOR,
+                            blocker_detail=fb_reason,
+                            volume_confirms=signal_result.metadata.get("volume_ratio", 1.0) >= 1.5,
+                            regime_aligned=_regime in ("trend", "trending"),
+                            trend_aligned=signal_result.metadata.get("trend_adjustment", 0) > 0,
+                            current_equity=self.risk_mgr.equity,
+                            daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                        )
+                        if _ov_result.should_override:
+                            _override_ok = True
+                            logger.info(
+                                f"[{trace_id}][{symbol}] OVERRIDE: feedback floor bypassed "
+                                f"(power={_ov_result.power_score:.0f}, {_ov_result.reason})"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Signal override feedback error: {e}")
+
+                if not _override_ok:
+                    logger.info(f"[{trace_id}][{symbol}] Feedback floor: {fb_reason}")
+                    return
         except Exception as e:
             logger.warning(f"[{trace_id}][{symbol}] Feedback loop error (proceeding): {e}")
 
@@ -1422,7 +1614,37 @@ class MultiStrategyBot:
             confidence=signal_result.confidence,
             cb_conf_override_pct=self.config.cb_conf_override_pct,
         ):
-            return
+            # ── Signal Override: can powerful signal bypass circuit breaker? ──
+            _cb_override_ok = False
+            if (self.signal_override and self.config.enable_signal_override
+                    and _SIGNAL_OVERRIDE_AVAILABLE):
+                try:
+                    _cb_blocker = BlockerType.CIRCUIT_BREAKER
+                    if self.risk_mgr.circuit_breaker.consecutive_losses >= self.config.max_consecutive_losses:
+                        _cb_blocker = BlockerType.CONSECUTIVE_LOSSES
+
+                    _cb_ov_result = should_override_blocker(
+                        confidence=signal_result.confidence,
+                        num_agree=signal_result.metadata.get("num_agree", 1),
+                        total_strategies=len(self.strategies),
+                        blocker=_cb_blocker,
+                        volume_confirms=signal_result.metadata.get("volume_ratio", 1.0) >= 1.5,
+                        regime_aligned=signal_result.metadata.get("regime", "") in ("trend", "trending"),
+                        trend_aligned=signal_result.metadata.get("trend_adjustment", 0) > 0,
+                        current_equity=self.risk_mgr.equity,
+                        daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                    )
+                    if _cb_ov_result.should_override:
+                        _cb_override_ok = True
+                        logger.warning(
+                            f"[{trace_id}][{symbol}] OVERRIDE: circuit breaker bypassed "
+                            f"(power={_cb_ov_result.power_score:.0f}, {_cb_ov_result.reason})"
+                        )
+                except Exception as e:
+                    logger.debug(f"Signal override CB error: {e}")
+
+            if not _cb_override_ok:
+                return
 
         # Portfolio leverage guard: block new entries when total leverage too high
         _portfolio_lev = self._compute_portfolio_leverage()
@@ -1545,6 +1767,43 @@ class MultiStrategyBot:
                 })
             return
 
+        # ── Wave 2: Signal Decay — reduce confidence for stale signals ──
+        _signal_gen_time = signal_result.metadata.get("generated_at", 0)
+        if _signal_gen_time and self.config.signal_decay_seconds > 0:
+            _signal_age = time.time() - _signal_gen_time
+            if _signal_age > self.config.signal_decay_seconds:
+                _decay = max(0.8, 1.0 - (_signal_age - 60) / 600)
+                signal_result.confidence *= _decay
+                logger.info(
+                    f"[{trace_id}][{symbol}] Signal decay: {_signal_age:.0f}s old, "
+                    f"conf * {_decay:.2f} = {signal_result.confidence:.0f}%"
+                )
+
+        # ── Wave 2: Liquidity Guard — reject dead markets, reduce size in thin liquidity ──
+        _liq_size_mult = 1.0
+        if self.config.enable_liquidity_guard and _LIQUIDITY_GUARD_AVAILABLE:
+            try:
+                _liq_result = validate_liquidity(
+                    symbol=symbol,
+                    volume_ratio=signal_result.metadata.get("volume_ratio", 1.0),
+                    funding_rate=self._last_funding_rates.get(symbol, 0.0),
+                )
+                if not _liq_result.can_trade:
+                    log_rejection(symbol, "LIQUIDITY_GUARD",
+                                  confidence=signal_result.confidence)
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Liquidity guard: {_liq_result.reason}"
+                    )
+                    return
+                _liq_size_mult = _liq_result.size_multiplier
+                if _liq_size_mult < 1.0:
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Liquidity guard: "
+                        f"size * {_liq_size_mult:.2f} ({_liq_result.reason})"
+                    )
+            except Exception as e:
+                logger.debug(f"Liquidity guard error: {e}")
+
         # Calculate position size (risk-based: qty = risk$ / (stop_dist * leverage))
         qty = self.risk_mgr.calculate_qty(
             signal_result.entry, signal_result.sl,
@@ -1593,6 +1852,14 @@ class MultiStrategyBot:
             qty = qty * time_mult
             logger.info(
                 f"[{trace_id}][{symbol}] Time sizing: qty * {time_mult:.2f} = {qty:.6f}"
+            )
+
+        # Liquidity guard sizing (applied after all other multipliers)
+        if _liq_size_mult < 1.0:
+            qty = qty * _liq_size_mult
+            logger.info(
+                f"[{trace_id}][{symbol}] Liquidity guard sizing: "
+                f"qty * {_liq_size_mult:.2f} = {qty:.6f}"
             )
 
         # Enforce minimum order size
@@ -1675,6 +1942,9 @@ class MultiStrategyBot:
             "llm_action": _cand_llm_action,
             "llm_confidence": _cand_llm_conf,
             "llm_agreed": _cand_llm_action in ("proceed", "go", "", None),
+            # Signal flagger data for post-trade analysis
+            "signal_flags": signal_result.metadata.get("signal_flags", ""),
+            "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
         }
 
         # Correlation guard: max same-direction positions

@@ -49,6 +49,11 @@ class EnsembleStrategy:
         self.weights = weights or {s.name: 1.0 for s in strategies}
         self.weight_manager = weight_manager  # StrategyWeightManager instance
         self.veto_ratio = veto_ratio
+        self._disabled_strategies: set = set()  # Strategy names to skip
+
+    def set_disabled_strategies(self, names: set):
+        """Temporarily disable specific strategies (e.g., for regime filtering)."""
+        self._disabled_strategies = set(names)
 
     def _refresh_dynamic_weights(self):
         """Refresh ensemble weights using rolling strategy performance."""
@@ -80,6 +85,9 @@ class EnsembleStrategy:
         signals: List[Signal] = []
 
         for strategy in self.strategies:
+            # Regime-based strategy filter: skip disabled strategies
+            if strategy.name in self._disabled_strategies:
+                continue
             try:
                 sig = strategy.evaluate(symbol, data)
                 if sig is not None:

@@ -141,6 +141,43 @@ class TradingConfig:
         default_factory=lambda: _env_int("ROTATION_MAX_PER_DAY", 6)
     )
 
+    # ── Wave 1: Dormant feature activation ──
+    enable_signal_flagger: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SIGNAL_FLAGGER", True)
+    )
+    enable_signal_override: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SIGNAL_OVERRIDE", True)
+    )
+    enable_self_teaching: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SELF_TEACHING", True)
+    )
+    enable_few_shot: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_FEW_SHOT", True)
+    )
+    llm_ensemble_enabled: bool = field(
+        default_factory=lambda: _env_bool("LLM_ENSEMBLE_ENABLED", False)
+    )
+    llm_personas: str = field(
+        default_factory=lambda: _env("LLM_PERSONAS", "")
+    )  # e.g. "opus:1.0,sonnet:0.8"
+
+    # ── Wave 2: Execution intelligence ──
+    signal_decay_seconds: int = field(
+        default_factory=lambda: _env_int("SIGNAL_DECAY_SECONDS", 180)
+    )
+    enable_regime_strategy_filter: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_REGIME_STRATEGY_FILTER", True)
+    )
+    dynamic_tp_scaling: bool = field(
+        default_factory=lambda: _env_bool("DYNAMIC_TP_SCALING", True)
+    )
+    enable_liquidity_guard: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_LIQUIDITY_GUARD", True)
+    )
+    enable_smart_orders: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SMART_ORDERS", False)
+    )
+
     # API integration
     api_base_url: str = field(default_factory=lambda: _env("BASE_URL", "http://api:8000"))
     api_key: str = field(default_factory=lambda: _env("NUNUIRL_API_KEY", _env("HEYANON_API_KEY", "")))

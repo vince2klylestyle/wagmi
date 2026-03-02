@@ -151,10 +151,10 @@ def build_snapshot(
     remaining_slots = MAX_MARKETS_IN_SNAPSHOT - len(position_markets)
     selected = position_markets + active_markets[:max(remaining_slots, 0)]
 
-    # Truncate memory
+    # Truncate memory (increased from 500 to 1500 for richer context)
     trimmed_memory = None
     if memory_summary:
-        trimmed_memory = memory_summary[:500]  # Hard cap
+        trimmed_memory = memory_summary[:1500]
 
     return LLMInputSnapshot(
         markets=selected,
@@ -317,20 +317,34 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
     except Exception as e:
         logger.warning(f"[SNAPSHOT] Survival context unavailable: {e}")
 
+    # ── Shared symbol/regime extraction for knowledge modules ──
+    _known_symbols = {"BTC", "ETH", "SOL", "HYPE", "DOGE", "PEPE", "FARTCOIN"}
+    _known_regimes = {"trend", "trending", "range", "ranging", "volatile", "panic", "consolidation"}
+    _ctx_symbol = ""
+    _ctx_regime = ""
+    if snapshot.trigger_context:
+        for _word in snapshot.trigger_context.split():
+            if _word.upper() in _known_symbols and not _ctx_symbol:
+                _ctx_symbol = _word.upper()
+            if _word.lower() in _known_regimes and not _ctx_regime:
+                _ctx_regime = _word.lower()
+
+    # Dynamic token budget: more for high-value triggers
+    _trigger = snapshot.trigger_reason or ""
+    _high_value_trigger = _trigger in (
+        "pre_trade_veto", "regime_shift", "high_confidence_signal",
+    )
+
     # Knowledge base injection — axioms, principles, anti-patterns
     try:
         from llm.self_teaching import get_teaching_engine
         engine = get_teaching_engine()
-        # Extract current symbol/regime from trigger context
-        symbol = ""
-        regime = ""
-        if snapshot.trigger_context:
-            parts = snapshot.trigger_context.split()
-            if parts:
-                symbol = parts[0]
-        knowledge_ctx = engine.get_knowledge_for_prompt(symbol=symbol, regime=regime)
+        knowledge_ctx = engine.get_knowledge_for_prompt(
+            symbol=_ctx_symbol, regime=_ctx_regime
+        )
         if knowledge_ctx:
-            result["knowledge"] = knowledge_ctx[:600]
+            _teach_limit = 800 if _high_value_trigger else 600
+            result["knowledge"] = knowledge_ctx[:_teach_limit]
     except Exception as e:
         logger.warning(f"[SNAPSHOT] Teaching engine unavailable: {e}")
         result["knowledge"] = "Teaching engine unavailable — rely on memory notes and market data."
@@ -340,20 +354,36 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
     try:
         from llm.deep_memory import get_deep_memory
         dm = get_deep_memory()
-        # Extract symbol/regime from trigger context for targeted knowledge
-        _dm_symbol = ""
-        _dm_regime = ""
-        if snapshot.trigger_context:
-            _dm_parts = snapshot.trigger_context.split()
-            if _dm_parts:
-                _dm_symbol = _dm_parts[0]
+        _dm_limit = 1200 if _high_value_trigger else 800
         knowledge = dm.build_llm_knowledge_summary(
-            symbol=_dm_symbol, regime=_dm_regime
+            symbol=_ctx_symbol, regime=_ctx_regime
         )
         if knowledge:
-            result["deep_memory"] = knowledge[:800]
+            result["deep_memory"] = knowledge[:_dm_limit]
     except Exception as e:
         logger.debug(f"[SNAPSHOT] Deep memory unavailable: {e}")
+
+    # Few-shot examples: similar past trades from deep memory
+    try:
+        from llm.few_shot import build_few_shot_examples
+        if _ctx_symbol:
+            _fs_side = ""
+            if snapshot.trigger_context:
+                for _word in snapshot.trigger_context.split():
+                    if _word.upper() in ("LONG", "SHORT", "BUY", "SELL"):
+                        _fs_side = _word.upper()
+                        break
+            few_shot = build_few_shot_examples(
+                symbol=_ctx_symbol,
+                side=_fs_side,
+                regime=_ctx_regime,
+                max_examples=3,
+                max_chars=500,
+            )
+            if few_shot:
+                result["examples"] = few_shot
+    except Exception as e:
+        logger.debug(f"[SNAPSHOT] Few-shot examples unavailable: {e}")
 
     # Self-performance stats — the LLM's mirror for self-calibration
     try:

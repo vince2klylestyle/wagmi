@@ -22,6 +22,7 @@ Flow:
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
@@ -369,7 +370,36 @@ class PositionManager:
         # State: OPEN -> TP1_HIT -> TRAILING
         pos._transition(TP1_HIT, f"TP1 @ {price}")
 
-        close_qty = round_qty(pos.symbol, pos.qty * pos.tp1_close_pct)
+        # Dynamic TP scaling: adjust close % based on overshoot and move speed
+        dynamic_close_pct = pos.tp1_close_pct
+        if os.getenv("DYNAMIC_TP_SCALING", "true").lower() in ("1", "true", "yes"):
+            # Overshoot: price past TP1 toward TP2 -> take more profit
+            tp_range = abs(pos.tp2 - pos.tp1)
+            if tp_range > 0:
+                if pos.side == "LONG":
+                    overshoot = (price - pos.tp1) / tp_range
+                else:
+                    overshoot = (pos.tp1 - price) / tp_range
+                overshoot = max(0.0, overshoot)
+                if overshoot > 0.5:
+                    dynamic_close_pct = min(dynamic_close_pct * 1.20, 0.90)
+
+            # Speed: fast move to TP1 -> let it run; slow grind -> take profits
+            # Only apply speed scaling if position was open > 60s (avoids test artifacts)
+            time_to_tp1_s = (datetime.now(timezone.utc) - pos.open_time).total_seconds()
+            if time_to_tp1_s > 60:
+                if time_to_tp1_s < 1800:  # < 30 min -- fast runner
+                    dynamic_close_pct *= 0.85
+                elif time_to_tp1_s > 14400:  # > 4 hours -- slow grind
+                    dynamic_close_pct = min(dynamic_close_pct * 1.10, 0.90)
+
+            if dynamic_close_pct != pos.tp1_close_pct:
+                logger.info(
+                    f"[{pos.symbol}] Dynamic TP: close_pct "
+                    f"{pos.tp1_close_pct:.0%} -> {dynamic_close_pct:.0%}"
+                )
+
+        close_qty = round_qty(pos.symbol, pos.qty * dynamic_close_pct)
         fee = self._fee(price, close_qty)
         pos.fees_paid += fee
 
@@ -394,7 +424,7 @@ class PositionManager:
         pos._transition(TRAILING, "trailing activated")
 
         logger.info(
-            f"[{pos.symbol}] TP1 @ {price} | Closed {close_qty} ({pos.tp1_close_pct:.0%}) | "
+            f"[{pos.symbol}] TP1 @ {price} | Closed {close_qty} ({dynamic_close_pct:.0%}) | "
             f"PnL={pnl:.2f} | SL->BE+={pos.sl} | Trailing ON"
         )
 
@@ -411,7 +441,7 @@ class PositionManager:
             metadata={
                 "remaining_qty": pos.qty,
                 "new_sl": pos.sl,
-                "tp1_close_pct": pos.tp1_close_pct,
+                "tp1_close_pct": dynamic_close_pct,
             },
         )
 
