@@ -459,5 +459,26 @@ def _apply_mode_constraints(
             overrides.append("entry_adj_cleared")
             decision.entry_adjustment = None
 
-    # DIRECTION and FULL: no constraints
+    elif mode == LLMMode.DIRECTION:
+        # DIRECTION: flips allowed but require high confidence (>= 0.65)
+        if decision.action == "flip":
+            if decision.confidence < 0.65:
+                logger.info(
+                    f"[LLM-ENGINE] DIRECTION: downgrading flip -> flat "
+                    f"(confidence {decision.confidence:.2f} < 0.65 threshold)"
+                )
+                decision.action = "flat"
+                overrides.append(f"flip_conf_{decision.confidence:.2f}_to_flat")
+
+    elif mode == LLMMode.FULL:
+        # FULL: flips allowed but still require minimum confidence (>= 0.55)
+        if decision.action == "flip":
+            if decision.confidence < 0.55:
+                logger.info(
+                    f"[LLM-ENGINE] FULL: downgrading flip -> flat "
+                    f"(confidence {decision.confidence:.2f} < 0.55 threshold)"
+                )
+                decision.action = "flat"
+                overrides.append(f"flip_conf_{decision.confidence:.2f}_to_flat")
+
     return decision, overrides

@@ -91,6 +91,22 @@ from strategies.regime_detector import RegimeTransitionDetector
 from monitoring.health import HealthMonitor
 from execution.graceful_degradation import DegradationManager
 
+# Global Brain + Portfolio Brain: cross-market reasoning for LLM
+from llm.global_brain import build_global_context, apply_global_bias
+from llm.portfolio_brain import build_portfolio_snapshot
+
+# Self-Tuning Risk Engine: adaptive risk profiles
+from risk.self_tuning import (
+    get_telemetry as get_risk_telemetry,
+    evaluate_and_adjust as risk_evaluate_and_adjust,
+    get_dynamic_leverage_cap,
+    get_profile_params as get_risk_profile_params,
+)
+
+# RL system: transition logging + policy application
+from rl.buffer import append_transition as rl_append_transition
+from rl.apply_policy import get_combined_rl_multiplier, is_rl_enabled
+
 # Deep memory + cross-symbol pattern tracking
 try:
     from llm.deep_memory import get_deep_memory, TradeDNA
@@ -314,6 +330,13 @@ class MultiStrategyBot:
 
         # Track 1h price changes for cross-market divergence detection
         self._price_changes_1h: Dict[str, float] = {}
+
+        # Self-tuning risk engine: adaptive profiles based on equity curve
+        self.risk_telemetry = get_risk_telemetry()
+
+        # Cache global bias from Global Brain (updated each LLM context build)
+        self._global_bias: str = "neutral"
+        self._global_bias_adjustment: Dict[str, Any] = {}
 
         # Telegram command bot
         tg_user_id = int(os.getenv("TELEGRAM_ALLOWED_USER_ID", "0"))
@@ -574,6 +597,19 @@ class MultiStrategyBot:
                     )
             except Exception as e:
                 logger.debug(f"[{trace_id}] Research cycle error: {e}")
+
+        # Self-Tuning Risk: evaluate and auto-adjust risk profile every 30 ticks (~30 min)
+        if self._tick % 30 == 0 and self._tick > 0:
+            try:
+                new_profile = risk_evaluate_and_adjust()
+                if new_profile:
+                    logger.info(f"[RISK-TUNE] Auto-adjusted to {new_profile} profile")
+                    if self.alerts:
+                        self.alerts.send_market_update(
+                            f"Risk profile auto-adjusted to *{new_profile}*"
+                        )
+            except Exception as e:
+                logger.debug(f"Risk tuning evaluation error: {e}")
 
         # Heartbeat every 60 ticks (~1 hour at 60s intervals)
         if self._tick % 60 == 0:
@@ -873,6 +909,48 @@ class MultiStrategyBot:
                         self._record_trade_dna(symbol, _dm_pos, event)
                 except Exception as e:
                     logger.debug(f"Deep memory trade DNA error: {e}")
+
+                # RL buffer: record transition for offline learning
+                try:
+                    _rl_pos = self.pos_mgr.positions.get(symbol)
+                    _risk_amt = self.risk_mgr.equity * 0.01  # 1% risk base
+                    _rl_reward = total_pnl / _risk_amt if _risk_amt > 0 else 0
+                    rl_append_transition(
+                        state={
+                            "symbol": symbol,
+                            "regime": _rg_fb,
+                            "confidence": _rl_pos.confidence if _rl_pos else 0,
+                            "side": event.side,
+                            "entry": _rl_pos.entry if _rl_pos else 0,
+                            "volatility": _close_vol if '_close_vol' in dir() else 0,
+                        },
+                        action={
+                            "llm_mode": self.llm_mode.name if hasattr(self.llm_mode, 'name') else str(self.llm_mode),
+                            "llm_action": _llm_action,
+                            "size_multiplier": _rl_pos.entry_reasons.get("llm_size_mult", 1.0) if _rl_pos and _rl_pos.entry_reasons else 1.0,
+                            "leverage": event.leverage,
+                            "entry_type": _et_fb,
+                        },
+                        reward=round(_rl_reward, 4),
+                        metadata={
+                            "trigger": _rl_pos.entry_reasons.get("trigger", "") if _rl_pos and _rl_pos.entry_reasons else "",
+                            "hold_time_s": event.metadata.get("hold_time_s", 0),
+                            "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                            "pnl": round(total_pnl, 2),
+                            "strategy": event.strategy,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"RL buffer append error: {e}")
+
+                # Self-Tuning Risk: update telemetry on trade close
+                try:
+                    self.risk_telemetry.update(
+                        equity=self.risk_mgr.equity,
+                        daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
+                    )
+                except Exception as e:
+                    logger.debug(f"Risk telemetry update error: {e}")
 
             # Record outcome for ML (use TOTAL trade PnL, not just final leg)
             if self.ml and event.action in _FULL_CLOSE:
@@ -1384,6 +1462,18 @@ class MultiStrategyBot:
                 lev_decision.leverage = cb_max_lev
                 lev_decision.reason = f"CB override capped to {cb_max_lev:.0f}x"
 
+        # Self-Tuning Risk: dynamic leverage cap based on drawdown
+        try:
+            dyn_lev_cap = get_dynamic_leverage_cap(self.config.max_leverage)
+            if lev_decision.leverage > dyn_lev_cap:
+                logger.info(
+                    f"[{trace_id}][{symbol}] Risk-tune: leverage "
+                    f"{lev_decision.leverage:.1f}x → {dyn_lev_cap:.1f}x (drawdown cap)"
+                )
+                lev_decision.leverage = dyn_lev_cap
+        except Exception:
+            pass
+
         # Per-symbol leverage cap from precision config
         sym_max_lev = get_max_leverage(symbol)
         if lev_decision.leverage > sym_max_lev:
@@ -1448,6 +1538,18 @@ class MultiStrategyBot:
             elif corr_info["risk_level"] == "medium":
                 qty = qty * 0.85  # 15% reduction
                 logger.info(f"[{trace_id}][{symbol}] Correlation guard (medium): qty * 0.85")
+        except Exception:
+            pass
+
+        # Global Brain bias: adjust sizing based on macro regime
+        try:
+            _gb_size_mult = self._global_bias_adjustment.get("size_multiplier", 1.0)
+            if _gb_size_mult != 1.0:
+                qty = qty * _gb_size_mult
+                logger.info(
+                    f"[{trace_id}][{symbol}] Global bias ({self._global_bias}): "
+                    f"qty * {_gb_size_mult:.2f} = {qty:.6f}"
+                )
         except Exception:
             pass
 
@@ -1648,6 +1750,19 @@ class MultiStrategyBot:
             logger.info(
                 f"[{trace_id}][{symbol}] LLM size mult: qty * {llm_sz:.2f} = {qty:.6f}"
             )
+
+        # ── RL policy multiplier: apply learned regime/symbol adjustments ──
+        if is_rl_enabled():
+            try:
+                _rl_regime = signal_result.metadata.get("regime", "unknown")
+                _rl_mult = get_combined_rl_multiplier(symbol, _rl_regime)
+                if _rl_mult != 1.0:
+                    qty = qty * _rl_mult
+                    logger.info(
+                        f"[{trace_id}][{symbol}] RL policy: qty * {_rl_mult:.2f} = {qty:.6f}"
+                    )
+            except Exception as e:
+                logger.debug(f"RL policy application error: {e}")
 
         # ── Profitable pattern boost: confirmed winners get larger size ──
         # Uses deep memory: if this strategy+regime+symbol combo has >60% WR
@@ -2445,6 +2560,25 @@ class MultiStrategyBot:
                 signals=signals,
             ))
 
+        # Global Brain: build cross-market context for LLM reasoning
+        try:
+            _gb_ctx = build_global_context(
+                btc_price=btc_price,
+                btc_1h_change=btc_1h,
+                btc_24h_change=btc_24h,
+                eth_price=eth_price,
+                last_prices=self._last_prices,
+                funding_rates=self._last_funding_rates,
+            )
+            self._global_bias = _gb_ctx.get("classified_bias", "neutral")
+            self._global_bias_adjustment = apply_global_bias(
+                self._global_bias,
+                max_positions=self.config.max_open_positions,
+            )
+        except Exception as e:
+            _gb_ctx = {}
+            logger.debug(f"Global brain context error: {e}")
+
         # Global context (enriched with telemetry for LLM learning)
         eth_btc = eth_price / btc_price if btc_price > 0 else 0.0
         telem_snap = Telemetry.snapshot()
@@ -2495,6 +2629,10 @@ class MultiStrategyBot:
             "session_performance": self.feedback.quality.get_session_performance(),
             # E2: Active regime transitions
             "regime_transitions": self.regime_detector.get_transition_summary(),
+            # Global Brain: market-wide bias classification
+            "global_bias": self._global_bias,
+            "sector_activity": _gb_ctx.get("sectors_active", {}),
+            "net_funding": _gb_ctx.get("net_funding", 0.0),
         }
 
         # Cross-symbol pattern signals: inject lead-lag relationships for LLM
@@ -2541,6 +2679,27 @@ class MultiStrategyBot:
                 "unrealized_pnl": round(unrealized, 2),
                 "funding_rate": self._last_funding_rates.get(sym, 0.0),
             })
+
+        # Portfolio Brain: cross-symbol portfolio reasoning for LLM
+        try:
+            _portfolio_snap = build_portfolio_snapshot(
+                pos_mgr=self.pos_mgr,
+                last_prices=self._last_prices,
+                equity=self.risk_mgr.equity,
+            )
+            global_ctx.extra["portfolio_snapshot"] = _portfolio_snap
+        except Exception as e:
+            logger.debug(f"Portfolio brain snapshot error: {e}")
+
+        # Self-Tuning Risk: inject current profile for LLM awareness
+        try:
+            _risk_profile = get_risk_profile_params()
+            global_ctx.extra["risk_profile"] = _risk_profile.get("description", "normal")
+            global_ctx.extra["dynamic_leverage_cap"] = get_dynamic_leverage_cap(
+                self.config.max_leverage
+            )
+        except Exception as e:
+            logger.debug(f"Risk profile context error: {e}")
 
         return markets, global_ctx, risk_ctx, active_positions
 

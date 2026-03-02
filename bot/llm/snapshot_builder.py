@@ -254,6 +254,27 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         if g.extra.get("daily_win_rate") is not None:
             result["g"]["dwr"] = round(g.extra["daily_win_rate"], 2)
 
+    # Global Brain context (bias, funding, sectors)
+    if g.extra:
+        if g.extra.get("global_bias") and g.extra["global_bias"] != "neutral":
+            result["g"]["gbias"] = g.extra["global_bias"]
+        if g.extra.get("net_funding") and abs(g.extra["net_funding"]) >= 0.0001:
+            result["g"]["nfr"] = round(g.extra["net_funding"], 5)
+        # Portfolio snapshot (compact)
+        _ps = g.extra.get("portfolio_snapshot")
+        if _ps and _ps.get("total_positions", 0) > 0:
+            result["g"]["pf"] = {
+                "n": _ps["total_positions"],
+                "lv": _ps.get("total_leverage", 0),
+                "net": _ps.get("net_exposure_pct", 0),
+                "conc": _ps.get("concentration_pct", 0),
+            }
+        # Risk profile
+        if g.extra.get("risk_profile"):
+            result["g"]["rprof"] = g.extra["risk_profile"][:40]
+        if g.extra.get("dynamic_leverage_cap"):
+            result["g"]["dlcap"] = round(g.extra["dynamic_leverage_cap"], 0)
+
     # Trigger
     if snapshot.trigger_reason:
         result["t"] = snapshot.trigger_reason

@@ -198,6 +198,40 @@ def cmd_positions(args):
     print("=" * 80)
 
 
+def cmd_rl_train(args):
+    """Train RL policy from transition buffer."""
+    from rl.train_offline import train
+    from rl.buffer import get_buffer_stats, load_buffer
+
+    transitions = load_buffer()
+    stats = get_buffer_stats(transitions)
+
+    print("=" * 60)
+    print("NunuIRL RL Offline Training")
+    print("=" * 60)
+    print(f"  Buffer transitions: {stats.get('total', 0)}")
+
+    if stats.get("total", 0) == 0:
+        print("  No transitions in buffer. Run paper trading first.")
+        return
+
+    print(f"  Avg reward: {stats.get('avg_reward', 0):.4f}")
+    print(f"  Win rate: {stats.get('win_rate', 0):.1%}")
+    print(f"  By regime: {json.dumps(stats.get('by_regime', {}), indent=4)}")
+    print()
+
+    policy = train()
+    if policy:
+        print("Training complete!")
+        print(f"  Regime multipliers: {json.dumps(policy.get('regime_multipliers', {}), indent=4)}")
+        print(f"  Symbol risk caps: {json.dumps(policy.get('symbol_risk_caps', {}), indent=4)}")
+        print(f"  Policy saved to: data/rl/rl_policy.json")
+        print()
+        print("To enable: set ENABLE_RL_POLICY=true in .env")
+    else:
+        print("Training skipped (insufficient data).")
+
+
 def cmd_status(args):
     """Show market assessment from all strategies without trading."""
     from trading_config import TradingConfig, DEFAULT_SYMBOLS
@@ -303,6 +337,9 @@ Commands:
     # Positions
     sub_pos = subparsers.add_parser("positions", help="Show open positions")
 
+    # RL training
+    sub_rl = subparsers.add_parser("rl-train", help="Train RL policy from buffer")
+
     args = parser.parse_args()
 
     if args.command == "paper":
@@ -315,6 +352,8 @@ Commands:
         cmd_status(args)
     elif args.command == "positions":
         cmd_positions(args)
+    elif args.command == "rl-train":
+        cmd_rl_train(args)
     else:
         parser.print_help()
 
