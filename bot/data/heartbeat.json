@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-03-02T17:12:46.408000+00:00",
+  "epoch": 1772471566.4079905,
+  "uptime_s": 0.0,
+  "scan_count": 1,
+  "loop_duration_s": 1.0,
+  "avg_loop_s": 1.0,
+  "positions": 2,
+  "equity": 10000,
+  "errors": 0,
+  "error_rate_10m": 0
+}
