@@ -58,7 +58,12 @@ from llm.decision_types import (
 from llm.risk_gating import RiskContext as LLMRiskContext
 from llm.triggers import LLMTrigger, TriggerAccumulator, TRIGGER_LABELS
 from execution.candidate import TradeCandidate, CandidateLogger
-from execution.reconciliation import reconcile_positions
+from execution.reconciliation import (
+    reconcile_positions,
+    save_circuit_breaker_state,
+    restore_circuit_breaker_state,
+    periodic_reconciliation_check,
+)
 from execution.time_sizing import get_time_multiplier
 from execution.ops_guard import OpsGuard
 from execution.rotation_manager import RotationManager, RotationConfig
@@ -305,20 +310,14 @@ def _fmt_price(price: float) -> str:
         return f"{price:.12f}"
 
 
-# Setup logging with rotating file handler
-os.makedirs("logs", exist_ok=True)
-from logging.handlers import RotatingFileHandler
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler(
-            f"logs/bot_{datetime.now().strftime('%Y%m%d')}.log",
-            maxBytes=50 * 1024 * 1024,  # 50 MB
-            backupCount=10,
-        ),
-    ],
+# Setup structured logging with rotating file handler
+from core.structured_logging import setup_logging, log_trade_event, log_metric
+
+_is_production = os.getenv("ENVIRONMENT", "paper").lower() == "production"
+setup_logging(
+    json_mode=_is_production,
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    log_dir="logs",
 )
 logger = logging.getLogger("bot.main")
 
@@ -345,9 +344,11 @@ class MultiStrategyBot:
 
         # Data
         self.fetcher = DataFetcher(
-            max_retries=3,
+            max_retries=config.fetcher_max_retries,
             retry_delay=5.0,
             cache_ttl=max(30, config.scan_interval_s - 5),
+            cb_threshold=config.fetcher_circuit_breaker_threshold,
+            cb_reset_s=config.fetcher_circuit_breaker_reset_s,
         )
 
         # Strategy accuracy weights
@@ -356,11 +357,15 @@ class MultiStrategyBot:
             decay_alpha=0.9,
         )
 
-        # Strategies
+        # Strategies (pass config params to constructors)
         sym_configs = DEFAULT_SYMBOLS
         self.strategies = [
             RegimeTrendStrategy(sym_configs, config.htf_hours),
-            MonteCarloZonesStrategy(sym_configs),
+            MonteCarloZonesStrategy(
+                sym_configs,
+                mc_sims=config.mc_num_sims,
+                mc_hours=config.mc_forward_hours,
+            ),
             ConfidenceScorerStrategy(sym_configs, data_dir="ml_data"),
             MultiTierQualityStrategy(sym_configs),
         ]
@@ -381,6 +386,7 @@ class MultiStrategyBot:
             weight_manager=self.weight_mgr,
             veto_ratio=config.veto_ratio,
             chop_detector=chop,
+            confidence_floor=config.ensemble_confidence_floor,
         )
 
         # Execution
@@ -427,8 +433,8 @@ class MultiStrategyBot:
 
         # Per-symbol cooldown: prevent rapid re-entry after a position closes
         self._symbol_cooldown: Dict[str, float] = {}  # symbol -> timestamp of last close
-        self._cooldown_seconds = 120  # 2 minutes after a loss
-        self._win_cooldown_seconds = 300  # 5 minutes after a win (anti-round-trip)
+        self._cooldown_seconds = config.loss_cooldown_s
+        self._win_cooldown_seconds = config.win_cooldown_s
 
         # Correlation guard: prevent correlated blowups
         self._max_same_direction = int(os.getenv("MAX_SAME_DIRECTION", "3"))
@@ -440,7 +446,7 @@ class MultiStrategyBot:
 
         # Signal dedup: prevent spam from repeated same-side evaluations
         self._last_signal: Dict[str, tuple] = {}  # symbol -> (side, timestamp)
-        self._signal_dedup_seconds = 300  # 5 minutes between same-side signals per symbol
+        self._signal_dedup_seconds = config.signal_dedup_window_s
 
         # Last known prices for fill-price validation
         self._last_prices: Dict[str, float] = {}  # symbol -> price
@@ -657,6 +663,12 @@ class MultiStrategyBot:
         # Position reconciliation: restore open positions from exchange
         self._reconcile_exchange_positions()
 
+        # Restore circuit breaker state from disk (survives restarts during drawdowns)
+        try:
+            restore_circuit_breaker_state(self.risk_mgr.circuit_breaker)
+        except Exception as e:
+            logger.debug(f"CB state restore skipped: {e}")
+
         if self.config.auto_trade:
             logger.warning("AUTO-TRADING ENABLED - REAL MONEY MODE")
             logger.warning("Starting in 5 seconds... Press CTRL+C to abort")
@@ -679,6 +691,23 @@ class MultiStrategyBot:
                 logger.info(f"[INIT] Web dashboard started on port {self.config.dashboard_port}")
             except Exception as e:
                 logger.warning(f"[INIT] Dashboard start failed: {e}")
+
+        # Start HTTP health endpoint (container/orchestrator readiness probes)
+        try:
+            from monitoring.health_server import start_health_server
+            start_health_server(
+                health_monitor=self.health_monitor,
+                port=self.config.health_port,
+                extra_status_fn=lambda: {
+                    "tick": self._tick,
+                    "open_positions": self.pos_mgr.get_open_count(),
+                    "equity": self.risk_mgr.equity,
+                    "circuit_breaker": "tripped" if self.risk_mgr.circuit_breaker.tripped else "ok",
+                },
+            )
+            logger.info(f"[INIT] Health server started on port {self.config.health_port}")
+        except Exception as e:
+            logger.warning(f"[INIT] Health server start failed: {e}")
 
         # Signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -1146,6 +1175,37 @@ class MultiStrategyBot:
                             self.ab_manager.graduate_experiment(_exp.id)
             except Exception as e:
                 logger.debug(f"[{trace_id}] A/B test evaluation error: {e}")
+
+        # ── Circuit breaker state persistence ──
+        # Save CB state every 10 ticks so it survives restarts during drawdowns
+        if self._tick % 10 == 0:
+            try:
+                save_circuit_breaker_state(self.risk_mgr.circuit_breaker)
+            except Exception:
+                pass
+
+        # ── Periodic position reconciliation ──
+        # Every 60 ticks (~1h): detect phantom (bot-only) and orphan (exchange-only) positions
+        if self._tick % 60 == 45 and self._tick > 0:
+            try:
+                result = periodic_reconciliation_check(
+                    pos_mgr=self.pos_mgr,
+                    exchanges=self.fetcher._exchanges,
+                )
+                if result.get("phantoms") or result.get("orphans"):
+                    logger.warning(
+                        f"[RECONCILE] Drift detected: "
+                        f"{len(result.get('phantoms', []))} phantom, "
+                        f"{len(result.get('orphans', []))} orphan"
+                    )
+                    if self.alerts:
+                        self.alerts.send_market_update(
+                            f"Position drift detected: "
+                            f"{len(result.get('phantoms', []))} phantom, "
+                            f"{len(result.get('orphans', []))} orphan positions"
+                        )
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Periodic reconciliation error: {e}")
 
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""

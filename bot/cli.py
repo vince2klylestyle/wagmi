@@ -8,11 +8,13 @@ Usage:
     python cli.py --mode live        # Live trading (requires confirmation)
     python cli.py --mode evolve      # Strategy evolution report (daily review)
     python cli.py --mode tiers       # Show LLM usage tier comparison
+    python cli.py --mode optimize    # Run parameter optimizer (grid/random search)
 
 Paper mode: Uses live feeds, simulates fills, logs identical schema to live.
 Replay mode: Runs replay engine against trade logs, outputs anomaly report.
 Evolve mode: Generates the Strategy Evolution Report — the student's daily journal.
 Tiers mode: Shows LLM usage tier comparison and current configuration.
+Optimize mode: Run parameter optimization against historical backtests.
 Live mode: Real execution on Hyperliquid. Requires confirmation.
 """
 
@@ -39,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--mode", "-m",
-        choices=["paper", "replay", "live", "evolve", "tiers"],
+        choices=["paper", "replay", "live", "evolve", "tiers", "optimize"],
         default="paper",
         help="Trading mode (default: paper)",
     )
@@ -53,6 +55,29 @@ def main():
         action="store_true",
         help="Skip confirmation prompts (use with caution)",
     )
+    parser.add_argument(
+        "--symbols",
+        default="BTC,ETH,SOL",
+        help="Comma-separated symbols for optimize mode (default: BTC,ETH,SOL)",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Days of history for optimize mode (default: 30)",
+    )
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=100,
+        help="Number of trials for optimize mode (default: 100)",
+    )
+    parser.add_argument(
+        "--metric",
+        default="sharpe",
+        choices=["sharpe", "total_pnl", "win_rate", "total_return_pct"],
+        help="Optimization metric (default: sharpe)",
+    )
 
     args = parser.parse_args()
 
@@ -64,6 +89,8 @@ def main():
         _run_evolve()
     elif args.mode == "tiers":
         _run_tiers()
+    elif args.mode == "optimize":
+        _run_optimize(args.symbols, args.days, args.trials, args.metric)
     else:
         _run_paper()
 
@@ -167,6 +194,87 @@ def _run_tiers():
     """Show LLM usage tier comparison and current configuration."""
     from llm.usage_tiers import format_tier_comparison
     print(format_tier_comparison())
+
+
+def _run_optimize(symbols_str: str, days: int, max_trials: int, metric: str):
+    """Run parameter optimization against historical backtests."""
+    from optimization.param_optimizer import (
+        ParameterOptimizer,
+        create_backtest_fn,
+        STRATEGY_PARAM_SPACES,
+        TIMEFRAME_WEIGHT_SPACES,
+    )
+
+    symbols = [s.strip() for s in symbols_str.split(",")]
+
+    print("=" * 60)
+    print("PARAMETER OPTIMIZER")
+    print("=" * 60)
+    print(f"  Symbols:    {', '.join(symbols)}")
+    print(f"  Days:       {days}")
+    print(f"  Max trials: {max_trials}")
+    print(f"  Metric:     {metric}")
+    print("=" * 60)
+
+    # Phase 1: Strategy params (ATR, confidence, veto, min_votes)
+    print("\n[1/3] Optimizing strategy parameters...")
+    bt_fn = create_backtest_fn(symbols=symbols, days=days)
+    optimizer = ParameterOptimizer(bt_fn)
+    strat_result = optimizer.grid_search(
+        STRATEGY_PARAM_SPACES, metric=metric, max_trials=max_trials,
+    )
+    print(f"  Best {metric}: {strat_result.best_score:.4f}")
+    print(f"  Best params: {strat_result.best_params}")
+    print(f"  Trials: {strat_result.total_trials} in {strat_result.duration_s:.1f}s")
+
+    # Phase 2: Timeframe weights
+    print("\n[2/3] Optimizing timeframe weights...")
+    tf_result = optimizer.grid_search(
+        TIMEFRAME_WEIGHT_SPACES, metric=metric, max_trials=max_trials,
+    )
+    print(f"  Best {metric}: {tf_result.best_score:.4f}")
+    print(f"  Best params: {tf_result.best_params}")
+    print(f"  Trials: {tf_result.total_trials} in {tf_result.duration_s:.1f}s")
+
+    # Phase 3: Sensitivity analysis on best params
+    print("\n[3/3] Running sensitivity analysis...")
+    combined_best = {**strat_result.best_params, **tf_result.best_params}
+    all_spaces = {**STRATEGY_PARAM_SPACES, **TIMEFRAME_WEIGHT_SPACES}
+    sensitivity = optimizer.sensitivity_analysis(combined_best, all_spaces, metric=metric)
+
+    print("\n" + "=" * 60)
+    print("SENSITIVITY ANALYSIS")
+    print("=" * 60)
+    for param, results in sensitivity.items():
+        scores = [s for _, s in results if s > float("-inf")]
+        if scores:
+            spread = max(scores) - min(scores)
+            best_val = max(results, key=lambda t: t[1])[0]
+            print(f"  {param:25s} | spread={spread:.4f} | best={best_val}")
+
+    print("\n" + "=" * 60)
+    print("COMBINED OPTIMAL PARAMETERS")
+    print("=" * 60)
+    for k, v in combined_best.items():
+        print(f"  {k:25s} = {v}")
+    print("=" * 60)
+
+    # Save results
+    import json
+    output_path = os.path.join("data", "optimization_results.json")
+    os.makedirs("data", exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump({
+            "best_strategy_params": strat_result.best_params,
+            "best_strategy_score": strat_result.best_score,
+            "best_tf_params": tf_result.best_params,
+            "best_tf_score": tf_result.best_score,
+            "combined": combined_best,
+            "metric": metric,
+            "symbols": symbols,
+            "days": days,
+        }, f, indent=2)
+    print(f"\nResults saved to {output_path}")
 
 
 if __name__ == "__main__":

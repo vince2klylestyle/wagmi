@@ -45,6 +45,7 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.1,
         chop_detector=None,
+        confidence_floor: float = 65.0,
     ):
         self.strategies = strategies
         self.mode = mode
@@ -53,6 +54,7 @@ class EnsembleStrategy:
         self.weight_manager = weight_manager  # StrategyWeightManager instance
         self.veto_ratio = veto_ratio
         self.chop_detector = chop_detector  # ChopDetector instance (Wave 1)
+        self.confidence_floor = confidence_floor
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
 
@@ -151,9 +153,9 @@ class EnsembleStrategy:
         # ── Post-merge quality gates ──
 
         # 1. Minimum confidence floor — reject weak consensus signals
-        if result.confidence < 65:
+        if result.confidence < self.confidence_floor:
             logger.info(
-                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% < 65% floor"
+                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% < {self.confidence_floor}% floor"
             )
             return None
 
@@ -161,7 +163,7 @@ class EnsembleStrategy:
         result = self._trend_alignment_adjust(symbol, data, result)
 
         # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
-        if result.confidence < 65:
+        if result.confidence < self.confidence_floor:
             logger.info(
                 f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
                 f"after trend adjustment"
