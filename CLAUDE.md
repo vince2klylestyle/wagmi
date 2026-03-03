@@ -55,7 +55,17 @@ bot/                    # Main bot code (run from here: cd bot && python run.py 
       ├── evolution.md        # /evolution — Strategy evolution summary
       ├── cost-audit.md       # /cost-audit — LLM cost tracking and optimization
       ├── safety-audit.md     # /safety-audit — Review all safety systems
-      └── stress-test.md      # /stress-test — Scenario and stress testing
+      ├── stress-test.md      # /stress-test — Scenario and stress testing
+      ├── prompt-calibrate.md  # /prompt-calibrate — Benchmark and tune agent prompts
+      ├── agent-consistency.md # /agent-consistency — Cross-agent consistency audit
+      ├── memory-optimize.md   # /memory-optimize — Prune and audit memory stores
+      ├── confidence-calibrate.md # /confidence-calibrate — Fix calibration drift
+      ├── knowledge-distill.md # /knowledge-distill — Graduate hypotheses into rules
+      ├── veto-review.md       # /veto-review — Analyze veto decisions and accuracy
+      ├── agent-replay.md      # /agent-replay — Replay data through agent pipeline
+      ├── growth-report.md     # /growth-report — Learning intelligence report
+      ├── curriculum-advance.md # /curriculum-advance — Self-teaching level advancement
+      └── model-route-tune.md  # /model-route-tune — Optimize model routing
 ```
 
 ## Key Commands
@@ -136,6 +146,18 @@ Invoke these with `/skill-name` in Claude Code sessions:
 **Agent Development:**
 - `/add-agent [name and purpose]` — Guided workflow for new specialist agents
 - `/agent-debug [symbol|trade-id|last]` — Trace full agent decision pipeline
+
+**LLM Agent Efficiency & Consistency:**
+- `/prompt-calibrate [agent|all]` — Benchmark agent prompts against outcomes, tune for accuracy
+- `/agent-consistency [quick|deep]` — Audit cross-agent vocabulary, reasoning, contradictions
+- `/confidence-calibrate [agent|system]` — Fix calibration drift, build calibration curves
+- `/memory-optimize [short-term|deep|prune]` — Audit memory stores, prune noise, optimize tokens
+- `/knowledge-distill [hypotheses|rules|gaps]` — Graduate validated hypotheses into codified rules
+- `/veto-review [today|7d|30d]` — Analyze Critic veto accuracy, PnL saved/missed
+- `/agent-replay [last N|7d|compare]` — Replay historical data through pipeline, A/B test prompts
+- `/growth-report [summary|deep]` — Unified learning intelligence across all growth systems
+- `/curriculum-advance [status|evaluate|advance]` — Self-teaching curriculum progress and level-up
+- `/model-route-tune [cost|accuracy|balanced]` — Optimize Haiku/Sonnet/Opus routing per agent/trigger
 
 ## Claude Code Rules
 Domain-specific rules in `.claude/rules/` auto-load when editing matching files:
