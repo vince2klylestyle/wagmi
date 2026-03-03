@@ -18,8 +18,9 @@ import logging
 import threading
 import requests
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Optional, Dict, Tuple
+from typing import Any, Optional, Dict, List, Tuple
 
 logger = logging.getLogger("bot.data")
 
@@ -503,7 +504,8 @@ class DataFetcher:
         self, symbol_name: str, coin_id: str, timeframes: list
     ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch OHLCV for multiple timeframes. CCXT primary, CoinGecko fallback.
+        Fetch OHLCV for multiple timeframes concurrently.
+        CCXT primary, CoinGecko fallback.
 
         Args:
             symbol_name: Symbol name for CCXT (e.g. "BTC")
@@ -512,21 +514,35 @@ class DataFetcher:
         """
         result = {}
         cg_fallback_tfs = []
+        tfs_to_fetch = []
 
-        # Try CCXT for each timeframe
+        # Check cache first (instant, no I/O)
         for tf in timeframes:
             cache_key = f"ohlcv:{symbol_name}:{tf}"
             cached = self._get_cached(cache_key)
             if cached is not None:
                 result[tf] = cached
-                continue
-
-            df = self._fetch_ccxt_ohlcv(symbol_name, tf)
-            if df is not None and not df.empty:
-                self._set_cache(cache_key, df)
-                result[tf] = df
             else:
-                cg_fallback_tfs.append(tf)
+                tfs_to_fetch.append(tf)
+
+        # Fetch uncached timeframes concurrently via CCXT
+        if tfs_to_fetch:
+            def _fetch_one_tf(tf):
+                df = self._fetch_ccxt_ohlcv(symbol_name, tf)
+                return tf, df
+
+            with ThreadPoolExecutor(max_workers=min(len(tfs_to_fetch), 5)) as pool:
+                futures = {pool.submit(_fetch_one_tf, tf): tf for tf in tfs_to_fetch}
+                for fut in as_completed(futures):
+                    try:
+                        tf, df = fut.result()
+                        if df is not None and not df.empty:
+                            self._set_cache(f"ohlcv:{symbol_name}:{tf}", df)
+                            result[tf] = df
+                        else:
+                            cg_fallback_tfs.append(tf)
+                    except Exception:
+                        cg_fallback_tfs.append(futures[fut])
 
         # CoinGecko fallback for timeframes CCXT couldn't serve
         if cg_fallback_tfs:
@@ -595,6 +611,54 @@ class DataFetcher:
             df = pd.DataFrame([{"close": price}])
             self._set_cache(f"price:{symbol_name}", df)
         return price
+
+    def prefetch_all_symbols(
+        self,
+        symbols: Dict[str, Any],
+        timeframes: list,
+        max_workers: int = 5,
+    ) -> Dict[str, Dict[str, pd.DataFrame]]:
+        """Pre-fetch data for ALL symbols in parallel.
+
+        Call this at the start of each tick to front-load all I/O.
+        Results are cached, so subsequent fetch_multi_timeframe() calls
+        will hit the cache and return instantly.
+
+        Args:
+            symbols: Dict of symbol_name -> config (must have .coingecko_id)
+            timeframes: List of timeframes to fetch
+            max_workers: Max concurrent symbol fetches (default 5)
+
+        Returns:
+            Dict of symbol_name -> {tf: DataFrame}
+        """
+        results = {}
+
+        def _fetch_symbol(sym_name, sym_cfg):
+            try:
+                data = self.fetch_multi_timeframe(
+                    sym_name, sym_cfg.coingecko_id, timeframes
+                )
+                return sym_name, data
+            except Exception as e:
+                logger.warning(f"[PREFETCH] {sym_name} failed: {e}")
+                return sym_name, {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_fetch_symbol, sym, cfg): sym
+                for sym, cfg in symbols.items()
+            }
+            for fut in as_completed(futures):
+                try:
+                    sym_name, data = fut.result()
+                    results[sym_name] = data
+                except Exception as e:
+                    sym_name = futures[fut]
+                    logger.warning(f"[PREFETCH] {sym_name} error: {e}")
+                    results[sym_name] = {}
+
+        return results
 
     def fetch_funding_rate(self, symbol_name: str) -> Optional[float]:
         """Fetch the current 8-hour funding rate for a symbol via CCXT.
