@@ -195,7 +195,16 @@ class DataFetcher:
             for name in needed:
                 try:
                     cls = getattr(ccxt, name)
-                    self._exchanges[name] = cls(exchange_configs.get(name, {}))
+                    ex = cls(exchange_configs.get(name, {}))
+                    # Increase urllib3 connection pool for concurrent fetches
+                    if hasattr(ex, 'session') and ex.session is not None:
+                        import urllib3
+                        adapter = requests.adapters.HTTPAdapter(
+                            pool_connections=25, pool_maxsize=25,
+                        )
+                        ex.session.mount("https://", adapter)
+                        ex.session.mount("http://", adapter)
+                    self._exchanges[name] = ex
                 except Exception as e:
                     logger.warning(f"CCXT failed to init {name}: {e}")
 

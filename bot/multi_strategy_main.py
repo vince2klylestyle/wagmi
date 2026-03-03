@@ -349,7 +349,7 @@ class MultiStrategyBot:
         self.fetcher = DataFetcher(
             max_retries=config.fetcher_max_retries,
             retry_delay=5.0,
-            cache_ttl=max(30, config.scan_interval_s - 5),
+            cache_ttl=max(90, config.scan_interval_s * 3),  # survive full tick + LLM pipeline
             cb_threshold=config.fetcher_circuit_breaker_threshold,
             cb_reset_s=config.fetcher_circuit_breaker_reset_s,
         )
