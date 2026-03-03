@@ -2523,6 +2523,7 @@ class MultiStrategyBot:
             risk_multiplier=lev_decision.risk_multiplier,
             symbol=symbol,
             slippage_bps=self.config.slippage_bps,
+            risk_per_trade_override=_sym_risk,
         )
         if qty <= 0:
             return
@@ -2654,9 +2655,9 @@ class MultiStrategyBot:
         tp1_pct = adjusted["tp1_close_pct"]
 
         # Build entry reasons: WHY this trade was entered (for EV analysis)
-        # Extract LLM decision info from candidate (if LLM was involved)
-        _cand_llm_action = candidate.llm_action if hasattr(candidate, 'llm_action') and candidate.llm_action else ""
-        _cand_llm_conf = candidate.llm_confidence if hasattr(candidate, 'llm_confidence') and candidate.llm_confidence else 0.0
+        # LLM decision info will be populated later when candidate is built
+        _cand_llm_action = ""
+        _cand_llm_conf = 0.0
 
         entry_reasons = {
             "strategies_agree": signal_result.metadata.get("strategies_agree", []),
@@ -2841,6 +2842,11 @@ class MultiStrategyBot:
         candidate.llm_action = candidate.llm_action or "no_llm"
         candidate.leverage_used = lev_decision.leverage
         self._candidate_logger.log_candidate(candidate)
+
+        # Update entry_reasons with LLM decision info now that candidate is populated
+        entry_reasons["llm_action"] = candidate.llm_action or ""
+        entry_reasons["llm_confidence"] = getattr(candidate, 'llm_confidence', 0.0) or 0.0
+        entry_reasons["llm_agreed"] = candidate.llm_action in ("proceed", "go", "", "no_llm", None)
 
         # ── LLM size multiplier: apply the meta-brain's sizing adjustment ──
         # In SIZING+ modes, the LLM can scale position size 0.5x-2.0x

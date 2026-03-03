@@ -115,15 +115,15 @@ class TestConfigProfiles:
         cfg.environment = "paper"
         apply_profile(cfg)
         assert cfg.max_open_positions <= 3
-        assert cfg.max_leverage <= 10.0
+        assert cfg.max_leverage <= 25.0
 
     def test_live_profile(self):
         from trading_config import TradingConfig, apply_profile
         cfg = TradingConfig()
         cfg.environment = "production"
         apply_profile(cfg)
-        # Live should have stricter risk
-        assert cfg.risk_per_trade <= 0.015
+        # Live should respect configured risk
+        assert cfg.risk_per_trade <= 0.05
 
     def test_profile_env_var_priority(self):
         from trading_config import TradingConfig, apply_profile

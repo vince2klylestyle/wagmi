@@ -52,7 +52,6 @@ DEFAULT_SYMBOLS = {
     "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "medium"),
     # Small caps (high volume memes)
     "DOGE": SymbolConfig("DOGE", "DOGE-USD", "dogecoin", "high"),
-    "PEPE": SymbolConfig("PEPE", "PEPE-USD", "pepe", "high"),
     "FARTCOIN": SymbolConfig("FARTCOIN", "FARTCOIN-USD", "fartcoin", "high"),
 }
 
@@ -427,14 +426,15 @@ class SymbolOverrides:
     enabled: bool = True
 
 
-# Default per-symbol overrides (conservative for high-risk assets)
+# Default per-symbol overrides
+# Leverage caps align with Hyperliquid exchange maximums in symbol_precision.json
+# risk_per_trade overrides let memecoins risk slightly less than large caps
 DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
     "BTC": SymbolOverrides(max_leverage=25.0),
     "SOL": SymbolOverrides(max_leverage=20.0),
-    "HYPE": SymbolOverrides(max_leverage=15.0, confidence_floor=70.0),
-    "DOGE": SymbolOverrides(max_leverage=10.0, risk_per_trade=0.008),
-    "PEPE": SymbolOverrides(max_leverage=8.0, risk_per_trade=0.005, confidence_floor=75.0),
-    "FARTCOIN": SymbolOverrides(max_leverage=8.0, risk_per_trade=0.005, confidence_floor=75.0),
+    "HYPE": SymbolOverrides(max_leverage=20.0),
+    "DOGE": SymbolOverrides(max_leverage=20.0),
+    "FARTCOIN": SymbolOverrides(max_leverage=10.0),
 }
 
 
@@ -451,15 +451,15 @@ def get_symbol_param(symbol: str, param: str, config: TradingConfig) -> float:
 # ── Paper vs Live Config Profiles ─────────────────────────────────────
 
 PAPER_PROFILE_OVERRIDES = {
-    "max_leverage": 10.0,       # Cap leverage in paper mode
-    "risk_per_trade": 0.01,     # Standard 1% risk
+    "max_leverage": 25.0,       # Match live — paper should test real sizing
+    "risk_per_trade": 0.05,     # 5% risk per trade
     "max_open_positions": 3,
     "enable_smart_orders": False,
 }
 
 LIVE_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Full leverage in live
-    "risk_per_trade": 0.008,    # Slightly more conservative
+    "risk_per_trade": 0.05,     # 5% risk per trade
     "max_open_positions": 3,
     "enable_smart_orders": True,
 }
