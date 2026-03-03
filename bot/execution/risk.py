@@ -257,7 +257,8 @@ class RiskManager:
 
     def calculate_qty(self, entry: float, stop_loss: float,
                        leverage: float = 1.0, risk_multiplier: float = 1.0,
-                       symbol: str = "", slippage_bps: int = 0) -> float:
+                       symbol: str = "", slippage_bps: int = 0,
+                       risk_per_trade_override: float = 0.0) -> float:
         """Calculate position quantity based on fixed-risk sizing.
 
         Formula (keeps dollar risk constant regardless of leverage):
@@ -290,7 +291,8 @@ class RiskManager:
 
         # Cap risk_multiplier to prevent oversizing (was up to 3.5x before)
         capped_rm = min(max(risk_multiplier, 0.1), 1.5)
-        risk_usd = self.equity * self.risk_per_trade * capped_rm
+        effective_risk_pct = risk_per_trade_override if risk_per_trade_override > 0 else self.risk_per_trade
+        risk_usd = self.equity * effective_risk_pct * capped_rm
         effective_leverage = max(leverage, 1.0)
         qty = risk_usd / (effective_stop * effective_leverage)
 

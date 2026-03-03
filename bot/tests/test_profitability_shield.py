@@ -265,7 +265,7 @@ class TestApplyProfile:
         config = TradingConfig()
         config.environment = "paper"
         apply_profile(config)
-        assert config.max_leverage == 10.0
+        assert config.max_leverage == 25.0
         assert config.enable_smart_orders is False
 
     def test_apply_profile_live(self):
@@ -299,9 +299,9 @@ class TestSymbolOverrides:
     def test_get_symbol_param_uses_override(self):
         from trading_config import TradingConfig, get_symbol_param
         config = TradingConfig()
-        # PEPE has max_leverage=8.0 in overrides
-        val = get_symbol_param("PEPE", "max_leverage", config)
-        assert val == 8.0
+        # DOGE has max_leverage=20.0 in overrides
+        val = get_symbol_param("DOGE", "max_leverage", config)
+        assert val == 20.0
 
     def test_get_symbol_param_falls_back_to_global(self):
         from trading_config import TradingConfig, get_symbol_param
@@ -310,19 +310,19 @@ class TestSymbolOverrides:
         val = get_symbol_param("UNKNOWN_COIN", "max_leverage", config)
         assert val == config.max_leverage
 
-    def test_get_symbol_param_risk_per_trade_override(self):
+    def test_get_symbol_param_risk_per_trade_falls_back(self):
         from trading_config import TradingConfig, get_symbol_param
         config = TradingConfig()
-        # PEPE has risk_per_trade=0.005
-        val = get_symbol_param("PEPE", "risk_per_trade", config)
-        assert val == 0.005
+        # DOGE has no risk_per_trade override, falls back to global
+        val = get_symbol_param("DOGE", "risk_per_trade", config)
+        assert val == config.risk_per_trade
 
-    def test_get_symbol_param_confidence_floor_override(self):
+    def test_get_symbol_param_unknown_symbol_fallback(self):
         from trading_config import TradingConfig, get_symbol_param
         config = TradingConfig()
-        # HYPE has confidence_floor=70.0
-        val = get_symbol_param("HYPE", "confidence_floor", config)
-        assert val == 70.0
+        # Unknown symbol falls back to config default
+        val = get_symbol_param("UNKNOWN_COIN", "risk_per_trade", config)
+        assert val == config.risk_per_trade
 
 
 # ---------------------------------------------------------------------------

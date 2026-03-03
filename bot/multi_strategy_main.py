@@ -2523,6 +2523,7 @@ class MultiStrategyBot:
             risk_multiplier=lev_decision.risk_multiplier,
             symbol=symbol,
             slippage_bps=self.config.slippage_bps,
+            risk_per_trade_override=_sym_risk,
         )
         if qty <= 0:
             return
