@@ -454,6 +454,7 @@ PAPER_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Match live — paper should test real sizing
     "risk_per_trade": 0.05,     # 5% risk per trade
     "max_open_positions": 3,
+    "max_portfolio_leverage": 5.0,  # Notional cap: equity * 5x (leveraged trades need headroom)
     "enable_smart_orders": False,
 }
 
@@ -461,6 +462,7 @@ LIVE_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Full leverage in live
     "risk_per_trade": 0.05,     # 5% risk per trade
     "max_open_positions": 3,
+    "max_portfolio_leverage": 5.0,  # Notional cap: equity * 5x (leveraged trades need headroom)
     "enable_smart_orders": True,
 }
 
