@@ -159,6 +159,22 @@ Invoke these with `/skill-name` in Claude Code sessions:
 - `/curriculum-advance [status|evaluate|advance]` — Self-teaching curriculum progress and level-up
 - `/model-route-tune [cost|accuracy|balanced]` — Optimize Haiku/Sonnet/Opus routing per agent/trigger
 
+**Profitability (the skills that matter most):**
+- `/pnl-maximize [quick|deep|execute]` — Master skill: end-to-end profitability optimization
+- `/edge-finder [by-regime|by-strategy|by-symbol|full]` — Discover where the bot makes and loses money
+- `/loss-autopsy [worst|patterns|preventable]` — Forensic analysis of losses, find profit killers
+- `/sniper-setup [top10|template]` — Reverse-engineer best trades, build reusable sniper profile
+- `/strategy-discover [scan|propose|test]` — Activate strategy discovery, find new alpha sources
+- `/bug-triage [critical|all]` — Fix money-losing bugs ranked by PnL impact
+- `/config-audit [hardcoded|current|recommend]` — Find and tune every parameter that affects PnL
+
+**System Understanding:**
+- `/system-map [layer|connections|full]` — Full inventory of what's built, working, stubbed, planned
+- `/roadmap-status [status|next]` — ROADMAP progress, profitability-ranked next steps
+- `/telegram-signals [setup|test|analyze|debug]` — Telegram signal ingestion pipeline
+- `/alert-config [setup|test|status|tune]` — Discord/Telegram alert configuration
+- `/web-dashboard [dashboard|api|health|monitoring]` — Web systems health check
+
 ## Claude Code Rules
 Domain-specific rules in `.claude/rules/` auto-load when editing matching files:
 - Editing `bot/llm/**` → loads `llm-agents.md` (agent dev rules)
