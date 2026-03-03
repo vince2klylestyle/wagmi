@@ -2528,6 +2528,8 @@ class MultiStrategyBot:
         if qty <= 0:
             return
 
+        side = "LONG" if signal_result.side == "BUY" else "SHORT"
+
         # Circuit breaker override: reduce size during CB
         if cb_constraints.get("constrained"):
             cb_size_mult = cb_constraints["size_multiplier"]
@@ -2682,7 +2684,6 @@ class MultiStrategyBot:
         }
 
         # Correlation guard: max same-direction positions
-        side = "LONG" if signal_result.side == "BUY" else "SHORT"
         same_dir_count = sum(1 for p in open_pos.values() if p.side == side)
         if same_dir_count >= self._max_same_direction:
             log_rejection(symbol, "CORRELATION_GUARD",
