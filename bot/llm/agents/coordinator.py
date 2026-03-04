@@ -74,6 +74,11 @@ class AgentCoordinator:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_latency_ms = 0
+        # Delta tracking: return per-pipeline usage, not cumulative
+        self._last_reported_calls = 0
+        self._last_reported_input = 0
+        self._last_reported_output = 0
+        self._last_reported_latency = 0
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -412,14 +417,29 @@ class AgentCoordinator:
         return None
 
     def get_stats(self) -> Dict[str, Any]:
-        """Return coordinator statistics."""
+        """Return coordinator statistics SINCE LAST CALL to get_stats().
+
+        Returns delta (per-pipeline) usage, not cumulative. This prevents
+        cost_tracker from double-counting tokens on each successive call.
+        """
+        delta_calls = self._call_count - self._last_reported_calls
+        delta_input = self._total_input_tokens - self._last_reported_input
+        delta_output = self._total_output_tokens - self._last_reported_output
+        delta_latency = self._total_latency_ms - self._last_reported_latency
+
+        # Update watermarks
+        self._last_reported_calls = self._call_count
+        self._last_reported_input = self._total_input_tokens
+        self._last_reported_output = self._total_output_tokens
+        self._last_reported_latency = self._total_latency_ms
+
         return {
-            "total_calls": self._call_count,
-            "total_input_tokens": self._total_input_tokens,
-            "total_output_tokens": self._total_output_tokens,
-            "total_latency_ms": self._total_latency_ms,
+            "total_calls": delta_calls,
+            "total_input_tokens": delta_input,
+            "total_output_tokens": delta_output,
+            "total_latency_ms": delta_latency,
             "avg_latency_ms": (
-                self._total_latency_ms // max(self._call_count, 1)
+                delta_latency // max(delta_calls, 1)
             ),
         }
 

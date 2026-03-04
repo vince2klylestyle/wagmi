@@ -55,6 +55,8 @@ class PendingOrder:
     # Thesis validation
     thesis: str = ""          # LLM reasoning for this trade
     regime_at_creation: str = ""
+    notes: str = ""           # LLM decision notes
+    setup_type: str = ""      # Classified setup type
 
     # Fill tracking
     filled_at: Optional[float] = None
@@ -114,6 +116,8 @@ class PendingOrderManager:
         entry_reasons: Optional[Dict] = None,
         thesis: str = "",
         regime: str = "",
+        notes: str = "",
+        setup_type: str = "",
     ) -> Optional[str]:
         """Place a pending limit order.
 
@@ -160,6 +164,8 @@ class PendingOrderManager:
             max_age_s=max_age,
             thesis=thesis,
             regime_at_creation=regime,
+            notes=notes,
+            setup_type=setup_type,
         )
 
         self._orders[order_id] = order

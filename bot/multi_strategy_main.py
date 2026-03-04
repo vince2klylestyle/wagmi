@@ -727,7 +727,7 @@ class MultiStrategyBot:
                 self.watchdog.record_error()
 
             self._tick += 1
-            self._sleep_interruptible(self.config.scan_interval_s)
+            self._sleep_interruptible(self._adaptive_scan_interval())
 
         self.watchdog.stop()
         log_health_event("BOT_STOP", "INFO", f"Bot stopped gracefully after {self._tick} ticks")
@@ -736,6 +736,43 @@ class MultiStrategyBot:
     def _handle_signal(self, signum, frame):
         logger.info(f"Received signal {signum}, stopping...")
         self.stop_event.set()
+
+    def _adaptive_scan_interval(self) -> float:
+        """Compute scan interval based on market conditions.
+
+        Volatile/active markets → scan faster (15s) to catch moves.
+        Calm/range markets → scan slower (45s) to save compute.
+        Open positions → scan faster for exit monitoring.
+        """
+        base = self.config.scan_interval_s  # default 30s
+
+        # Check dominant regime across tracked symbols
+        regimes = []
+        for symbol in DEFAULT_SYMBOLS:
+            try:
+                r = self._tick_regime_cache.get(symbol) or self.regime_detector.get_regime(symbol)
+                regimes.append(r)
+            except Exception:
+                pass
+
+        has_open = self.pos_mgr.get_open_count() > 0
+        cb_active = self.risk_mgr.circuit_breaker.tripped
+
+        # Fast scan: volatile, panic, or active positions
+        if any(r in ("panic", "news_dislocation") for r in regimes):
+            return max(10, base * 0.5)  # 15s — urgent
+        if any(r in ("high_volatility",) for r in regimes):
+            return max(15, base * 0.65)  # 20s — volatile
+        if has_open:
+            return max(20, base * 0.75)  # 22s — monitoring positions
+        if cb_active:
+            return max(15, base * 0.5)  # 15s — recovery mode
+
+        # Slow scan: calm markets, no positions
+        if all(r in ("range", "low_liquidity", "unknown") for r in regimes) and not has_open:
+            return min(60, base * 1.5)  # 45s — nothing happening
+
+        return base  # 30s default
 
     def _sleep_interruptible(self, seconds: float):
         step = 0.5
@@ -748,6 +785,15 @@ class MultiStrategyBot:
         """One iteration of the main loop."""
         trace_id = uuid.uuid4().hex[:8]
         _loop_start = time.time()
+
+        # Per-tick regime cache: computed once, reused by all subsystems
+        # (avoids 5x redundant get_regime() calls per symbol per tick)
+        self._tick_regime_cache = {}
+        for sym in DEFAULT_SYMBOLS:
+            try:
+                self._tick_regime_cache[sym] = self.regime_detector.get_regime(sym)
+            except Exception:
+                self._tick_regime_cache[sym] = "unknown"
 
         # ── PARALLEL PREFETCH: fetch all symbols' data concurrently ──
         # This front-loads all exchange I/O so _process_symbol hits cache.
@@ -1989,7 +2035,7 @@ class MultiStrategyBot:
         # Disable strategies that historically fail in the current regime
         if self.config.enable_regime_strategy_filter:
             try:
-                _cur_regime = self.regime_detector.get_regime(symbol)
+                _cur_regime = self._tick_regime_cache.get(symbol) or self.regime_detector.get_regime(symbol)
                 if _cur_regime:
                     from llm.deep_memory import get_deep_memory
                     _dm = get_deep_memory()
@@ -2795,6 +2841,16 @@ class MultiStrategyBot:
         pre_llm_slippage = abs(pre_llm_live - signal_result.entry) / signal_result.entry * 100 if signal_result.entry > 0 else 0
         max_slippage = float(os.getenv("MAX_ENTRY_SLIPPAGE_PCT", "1.5"))
 
+        # Extract LLM notes/setup_type early — needed for both pending and immediate fills
+        _llm_notes_early = entry_reasons.get("llm_notes", "")
+        _setup_type_early = ""
+        if "setup=" in _llm_notes_early:
+            try:
+                _st = _llm_notes_early.split("setup=")[1].split(" ")[0].split("|")[0].strip()
+                _setup_type_early = _st[:30]
+            except Exception:
+                pass
+
         if pre_llm_slippage > max_slippage:
             # Price moved too far for a market order. Instead of discarding,
             # place a pending limit order at the strategy-computed entry price.
@@ -2815,6 +2871,8 @@ class MultiStrategyBot:
                     trade_profile=trade_prof,
                     entry_reasons=entry_reasons,
                     regime=signal_result.metadata.get("regime", ""),
+                    notes=_llm_notes_early[:200],
+                    setup_type=_setup_type_early,
                 )
                 if order_id:
                     logger.info(
@@ -3393,6 +3451,8 @@ class MultiStrategyBot:
             tp1_close_pct=tp1_pct,
             entry_reasons=order.entry_reasons,
             trade_profile=order.trade_profile,
+            notes=getattr(order, 'notes', ''),
+            setup_type=getattr(order, 'setup_type', ''),
         )
 
         log_trade(
@@ -3599,13 +3659,10 @@ class MultiStrategyBot:
             elif change_1h >= 1.0:
                 priority += 2
 
-            # Favorable regime
-            try:
-                regime = self.regime_detector.get_regime(symbol)
-                if regime in ("trend", "high_volatility"):
-                    priority += 3
-            except Exception:
-                pass
+            # Favorable regime (use tick cache to avoid redundant API calls)
+            regime = self._tick_regime_cache.get(symbol, "unknown")
+            if regime in ("trend", "high_volatility"):
+                priority += 3
 
             scored.append((priority, symbol, cfg))
 
@@ -3646,11 +3703,8 @@ class MultiStrategyBot:
                 change_1h = self._price_changes_1h.get(symbol, 0.0)
                 sym_data["change_1h_pct"] = round(change_1h, 2)
 
-            # Current regime
-            try:
-                sym_data["regime"] = self.regime_detector.get_regime(symbol)
-            except Exception:
-                sym_data["regime"] = "unknown"
+            # Current regime (use tick cache)
+            sym_data["regime"] = self._tick_regime_cache.get(symbol, "unknown")
 
             # Funding rate
             funding = self._last_funding_rates.get(symbol, 0.0)
@@ -3780,12 +3834,8 @@ class MultiStrategyBot:
                 hold_seconds = (now - pos.open_time).total_seconds()
                 hold_minutes = hold_seconds / 60.0
 
-                # Current regime
-                regime = "unknown"
-                try:
-                    regime = self.regime_detector.get_regime(symbol)
-                except Exception:
-                    pass
+                # Current regime (use tick cache)
+                regime = self._tick_regime_cache.get(symbol, "unknown")
 
                 # Funding rate
                 funding_rate = self._last_funding_rates.get(symbol, 0.0)
