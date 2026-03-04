@@ -79,6 +79,9 @@ class AgentCoordinator:
         self._last_reported_input = 0
         self._last_reported_output = 0
         self._last_reported_latency = 0
+        # Preserve per-agent outputs from last pipeline run for external consumers
+        self.last_pipeline_results: Dict[AgentRole, AgentOutput] = {}
+        self.last_exit_output: Optional[AgentOutput] = None
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -322,6 +325,9 @@ class AgentCoordinator:
         except Exception as e:
             logger.debug(f"[MULTI-AGENT] Decision learning error: {e}")
 
+        # Store pipeline results for external consumers (backtest logging, etc.)
+        self.last_pipeline_results = pipeline_results
+
         return decision
 
     def get_post_trade_lesson(
@@ -369,6 +375,7 @@ class AgentCoordinator:
 
         exit_input = self._build_exit_input(position_data, market_data)
         out = self._call_agent(AgentRole.EXIT, exit_input, model_for_trigger)
+        self.last_exit_output = out
 
         if out.ok:
             action = out.data.get("action", "hold")
@@ -759,6 +766,27 @@ class AgentCoordinator:
                 delta_latency // max(delta_calls, 1)
             ),
         }
+
+    def get_last_pipeline_detail(self) -> Optional[Dict[str, Any]]:
+        """Return serialized per-agent outputs from the last pipeline run.
+
+        Returns None if no pipeline has run yet.
+        """
+        if not self.last_pipeline_results:
+            return None
+
+        detail = {}
+        for role, output in self.last_pipeline_results.items():
+            detail[role.value] = {
+                "data": output.data,
+                "model": output.model_used,
+                "input_tokens": output.input_tokens,
+                "output_tokens": output.output_tokens,
+                "latency_ms": output.latency_ms,
+                "ok": output.ok,
+                "error": output.error,
+            }
+        return detail
 
     # ── Agent calling ───────────────────────────────────────────
 

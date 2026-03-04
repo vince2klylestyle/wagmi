@@ -615,7 +615,11 @@ class BacktestLearningBridge:
         return regime_map
 
     def _feed_llm_decisions(self, llm_integration):
-        """Feed LLM agent decisions into learning systems for persistence."""
+        """Feed LLM agent decisions into learning systems for persistence.
+
+        Uses enriched per-agent data (regime, trade thesis, critic reasoning)
+        to feed deep memory, insights, and calibration systems.
+        """
         try:
             decisions = llm_integration.decisions
             if not decisions:
@@ -635,12 +639,50 @@ class BacktestLearningBridge:
                             source="backtest_llm",
                         )
                     except (AttributeError, TypeError):
-                        pass  # Method may not exist in all versions
+                        pass
+
+                # Feed per-agent data for richer learning
+                agents = dec.get("agents", {})
+
+                # Critic counter-theses as prediction insights
+                critic = agents.get("critic", {})
+                if critic.get("ok"):
+                    critic_data = critic.get("data", {})
+                    counter_thesis = critic_data.get("counter_thesis", "")
+                    if counter_thesis and critic_data.get("verdict") == "challenge":
+                        try:
+                            dm.insights.add_insight(
+                                category="prediction",
+                                insight=f"Critic counter-thesis: {counter_thesis[:150]}",
+                                confidence=0.5,
+                                evidence=f"Backtest veto: {critic_data.get('reason', '')[:100]}",
+                                source="backtest_critic",
+                            )
+                        except (AttributeError, TypeError):
+                            pass
+
+                # Trade agent thesis accuracy tracking
+                trade = agents.get("trade", {})
+                if trade.get("ok"):
+                    trade_data = trade.get("data", {})
+                    thesis = trade_data.get("thesis", "")
+                    if thesis:
+                        try:
+                            dm.insights.add_insight(
+                                category="strategy",
+                                insight=f"Trade thesis: {thesis[:150]}",
+                                confidence=dec.get("confidence", 0.5),
+                                evidence=f"Regime: {regime or 'unknown'}, action: {dec.get('action', '')}",
+                                source="backtest_trade_agent",
+                            )
+                        except (AttributeError, TypeError):
+                            pass
 
             self._stats["llm_decisions_ingested"] = len(decisions)
             logger.info(
                 f"[LEARN-BRIDGE] LLM decisions ingested: "
-                f"{self._stats['llm_decisions_ingested']}"
+                f"{self._stats['llm_decisions_ingested']} "
+                f"(with per-agent data)"
             )
         except Exception as e:
             logger.warning(f"[LEARN-BRIDGE] LLM decision feed failed: {e}")
