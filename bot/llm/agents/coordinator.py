@@ -801,7 +801,7 @@ class AgentCoordinator:
                 "error": output.error,
             }
         if self.last_consistency_score is not None:
-            detail["consistency_score"] = self.last_consistency_score
+            detail["_meta"] = {"consistency_score": self.last_consistency_score}
         return detail
 
     # ── Agent calling ───────────────────────────────────────────
