@@ -297,9 +297,12 @@ class ConfidenceScorerStrategy(BaseStrategy):
             tp2 = zones["regular_buy"]
 
         hist_str = f"hist_WR={hist_conf:.0%}" if hist_conf is not None else "hist_WR=n/a"
+        sw = abs(current - sl)
+        rr = abs(current - tp1) / sw if sw > 0 else 0
         ctx = (
             f"zone={action}, RSI={rsi:.0f}, {hist_str}"
             f"{', vol_spike' if vol_spike else ''}"
+            f", R:R={rr:.1f}"
         )
 
         return Signal(

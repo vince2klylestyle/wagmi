@@ -205,6 +205,8 @@ class RegimeTrendStrategy(BaseStrategy):
             return None
 
         align = align_long if buy else align_short
+        sw = abs(c - sl)
+        rr = abs(c - tp1) / sw if sw > 0 else 0
         ctx = (
             f"WT cross-{'up' if cu else ('down' if cd else 'recent')}, "
             f"MFI={mfi_1h_val:.0f}({'bull' if mfi_1h_val > 50 else 'bear'}), "
@@ -212,6 +214,7 @@ class RegimeTrendStrategy(BaseStrategy):
             f"16h={'ok' if regime_htf['ok'] else 'no'}, "
             f"{align}/4 align"
             f"{' (momentum)' if is_momentum else ''}"
+            f", R:R={rr:.1f}, SL={sw/c*100:.1f}%"
         )
 
         return Signal(

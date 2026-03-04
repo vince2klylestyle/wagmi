@@ -514,6 +514,50 @@ STRATEGY_KNOWLEDGE = [
         "category": "strategy",
         "tags": ["signal_context", "interpretation"],
     },
+
+    # ── Predictive patterns — HOW TO PREDICT where price goes ──
+    {
+        "type": "axiom",
+        "content": "PREDICTION RULE: Form a directional thesis BEFORE evaluating a trade. 'Where is price going and why?' beats 'Should I take this signal?' Every decision starts with a prediction. The trade either aligns with your prediction or it doesn't.",
+        "category": "strategy",
+        "tags": ["prediction", "thesis", "framework"],
+    },
+    {
+        "type": "principle",
+        "content": "Convergent confluence is the strongest predictor: when trend-following (regime_trend) AND mean-reversion (monte_carlo) agree on direction, price is BOTH trending AND at a statistical edge. This is the highest-probability setup — size up aggressively.",
+        "category": "strategy",
+        "tags": ["confluence", "convergent", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Conflicting strategies are INFORMATIVE, not noise. regime_trend BUY + monte_carlo SELL zone = price is trending but overextended. Prediction: short-term pullback within the trend. Action: wait for pullback to MC buy zone, then enter with trend.",
+        "category": "strategy",
+        "tags": ["conflict", "interpretation", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "RSI divergence + WT divergence = strongest reversal predictor. If price makes new high but RSI and WaveTrend don't, the move is exhausting. Predict reversal. If MFI also dropping (MFI<40 in bull): double confirmation of exhaustion.",
+        "category": "strategy",
+        "tags": ["divergence", "reversal", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "MC probability >70% with RSI extreme (<25 or >75) = high-probability mean-reversion. Predict a return to SMA20 within 12h. The further price deviates from SMA20 in sigmas, the stronger the reversion pull. 2+ sigma = strong, 3+ sigma = very strong.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "extreme", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "BTC leads, alts follow with 10-30min lag. If BTC breaks structure (new 4h high/low), predict alts will follow within 30min. Use BTC's move to front-run alt entries — this is the single most reliable cross-market predictor.",
+        "category": "strategy",
+        "tags": ["btc_lead", "correlation", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Veto is a prediction opportunity. When you veto a trade, you're predicting the OPPOSITE will happen. Track your veto accuracy — if vetoed trades would have won (vacc < 0.50), your predictions are inverted. Consider flipping your thesis when vacc is poor.",
+        "category": "strategy",
+        "tags": ["veto", "prediction", "counter_thesis"],
+    },
 ]
 
 

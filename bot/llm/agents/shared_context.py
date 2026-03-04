@@ -143,6 +143,19 @@ STRATEGY_THEORY = {
     },
 }
 
+# When two strategies agree, the QUALITY of that agreement varies:
+# Convergent = different methodologies reaching same conclusion (highest value)
+# Timeframe = fast + slow confirming each other (high value)
+# Redundant = similar inputs/methodology (moderate value — less independent)
+STRATEGY_CONFLUENCE = {
+    ("regime_trend", "monte_carlo_zones"): "convergent — trend momentum + statistical zone agree. If both BUY: macro trend AND price at statistical buy level. Very strong.",
+    ("regime_trend", "multi_tier_quality"): "timeframe — 6h/16h macro direction + 5m micro entry. If both BUY: regime confirms + exact entry bar found. Best timing.",
+    ("regime_trend", "confidence_scorer"): "convergent — momentum + historical win rate. If both BUY: trend direction AND history validates this setup type.",
+    ("monte_carlo_zones", "confidence_scorer"): "redundant — both use SMA20/stdev zones. Agreement is expected. Less independent confirmation.",
+    ("monte_carlo_zones", "multi_tier_quality"): "convergent — statistical zone + EMA micro-trend. If both BUY: mean-reversion level confirmed by short-term momentum shift.",
+    ("confidence_scorer", "multi_tier_quality"): "timeframe — historical validation + real-time micro entry. If both BUY: setup type historically profitable + clean current entry.",
+}
+
 STRATEGY_REGIME_FIT = {
     "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
     "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "strong",   "multi_tier_quality": "weak"},
@@ -337,6 +350,13 @@ def build_shared_context_block(
         if fit:
             fit_str = ", ".join(f"{k}={v}" for k, v in fit.items())
             parts.append(f"REGIME_FIT({regime_key}): {fit_str}")
+
+        # Confluence quality guide (compact)
+        confl_lines = []
+        for (s1, s2), desc in STRATEGY_CONFLUENCE.items():
+            label = desc.split(" — ")[0]  # Just "convergent", "timeframe", "redundant"
+            confl_lines.append(f"{s1[:5]}+{s2[:5]}={label}")
+        parts.append("CONFLUENCE: " + ", ".join(confl_lines))
 
     return " || ".join(parts) if parts else ""
 

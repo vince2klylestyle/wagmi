@@ -253,11 +253,12 @@ class MultiTierQualityStrategy(BaseStrategy):
         if conf < 50:
             return None  # Too low even for manual
 
+        rr = abs(entry - tp1) / stop_width if stop_width > 0 else 0
         ctx = (
             f"5m EMA20{'>' if ema5m_side == 'above' else '<'}EMA50, "
             f"VWAP {'aligned' if vwap_align else 'opposed'}, "
             f"1h EMA {'aligned' if ema_1h_align else 'opposed'}, "
-            f"tier={tier}"
+            f"tier={tier}, R:R={rr:.1f}"
         )
 
         return Signal(
