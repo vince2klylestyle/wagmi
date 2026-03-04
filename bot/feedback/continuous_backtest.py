@@ -540,6 +540,9 @@ class ContinuousBacktester:
                     ]
                     for level, results in self.results.items()
                 },
+                # Persist signal/outcome history so it survives restarts
+                "signal_history": self._signal_history[-2000:],
+                "outcome_history": self._outcome_history[-2000:],
             }
             os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
             with open(self._state_file, "w") as f:
@@ -554,5 +557,13 @@ class ContinuousBacktester:
             with open(self._state_file) as f:
                 state = json.load(f)
             self.last_run = state.get("last_run", self.last_run)
+            # Restore signal/outcome history from disk
+            self._signal_history = state.get("signal_history", [])[-2000:]
+            self._outcome_history = state.get("outcome_history", [])[-2000:]
+            if self._signal_history or self._outcome_history:
+                logger.info(
+                    f"[CB] Restored {len(self._signal_history)} signals, "
+                    f"{len(self._outcome_history)} outcomes from disk"
+                )
         except Exception as e:
             logger.warning(f"Failed to load backtest state: {e}")

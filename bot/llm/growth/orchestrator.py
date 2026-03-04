@@ -32,6 +32,7 @@ Usage in main loop:
 """
 
 import logging
+import os
 import time
 from typing import Dict, List, Any, Optional
 
@@ -334,7 +335,7 @@ class GrowthOrchestrator:
             self._run_learning_cycle(market_state)
             self._last_learning_cycle = now
 
-        # 4. Apply auto-safe improvement proposals
+        # 4. Apply auto-safe improvement proposals (with real dispatch)
         if self._improvement_engine:
             try:
                 auto = self._improvement_engine.get_auto_applicable()
@@ -342,9 +343,20 @@ class GrowthOrchestrator:
                     logger.info(
                         f"[GROWTH] Auto-applying: {proposal.title}"
                     )
+                    # Actually dispatch the proposal action (not just mark as applied)
+                    dispatched = False
+                    try:
+                        from llm.learning_integrator import get_learning_integrator
+                        dispatched = get_learning_integrator().dispatch_proposal(proposal)
+                    except Exception as de:
+                        logger.debug(f"[GROWTH] Dispatch error: {de}")
+
                     self._improvement_engine.apply_proposal(
                         proposal.proposal_id,
-                        outcome_notes="Auto-applied (AUTO_SAFE level)",
+                        outcome_notes=(
+                            "Auto-applied and dispatched" if dispatched
+                            else "Auto-applied (display-only, no dispatcher)"
+                        ),
                     )
             except Exception as e:
                 logger.debug(f"[GROWTH] Auto-apply error: {e}")
@@ -356,6 +368,27 @@ class GrowthOrchestrator:
                     self._reporter.generate_report()
             except Exception as e:
                 logger.debug(f"[GROWTH] Report generation error: {e}")
+
+        # 6. Run Overseer meta-optimizer (every 30 min)
+        if not hasattr(self, "_last_overseer_time"):
+            self._last_overseer_time = 0.0
+        if (now - self._last_overseer_time) >= 1800:  # 30 minutes
+            try:
+                from llm.agents.coordinator import is_multi_agent_enabled, get_coordinator
+                overseer_enabled = os.environ.get("AGENT_OVERSEER_ENABLED", "true").lower()
+                if is_multi_agent_enabled() and overseer_enabled not in ("0", "false", "no"):
+                    coordinator = get_coordinator()
+                    result = coordinator.run_overseer()
+                    if result:
+                        logger.info(
+                            f"[GROWTH] Overseer analysis complete: "
+                            f"health={result.get('system_health', '?')}, "
+                            f"{len(result.get('recommendations', []))} recommendations"
+                        )
+                    self._last_overseer_time = now
+            except Exception as e:
+                logger.debug(f"[GROWTH] Overseer error: {e}")
+                self._last_overseer_time = now  # Don't retry immediately
 
     def _run_learning_cycle(self, market_state: Dict[str, Any] = None):
         """Run a self-teaching learning cycle on buffered trades."""

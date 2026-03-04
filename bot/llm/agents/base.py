@@ -23,6 +23,8 @@ class AgentRole(str, Enum):
     CRITIC = "critic"          # Self-critique / meta-review
     EXIT = "exit"              # Exit intelligence for open positions
     SCOUT = "scout"            # Idle-time preparation and forecasting
+    OVERSEER = "overseer"      # System-level meta-optimizer (periodic)
+    QUANT = "quant"            # Statistical analysis, probability, prediction
 
 
 @dataclass
@@ -95,6 +97,18 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
         role=AgentRole.SCOUT,
         max_tokens=768,
         timeout_s=10.0,
+        required=False,
+    ),
+    AgentRole.OVERSEER: AgentConfig(
+        role=AgentRole.OVERSEER,
+        max_tokens=2048,
+        timeout_s=30.0,
+        required=False,
+    ),
+    AgentRole.QUANT: AgentConfig(
+        role=AgentRole.QUANT,
+        max_tokens=1024,
+        timeout_s=15.0,
         required=False,
     ),
 }

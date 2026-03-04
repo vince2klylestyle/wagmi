@@ -49,6 +49,13 @@ def _load_json(filename: str, default=None):
             return json.load(f)
     except (json.JSONDecodeError, IOError) as e:
         logger.warning(f"[DEEP-MEM] Failed to load {filename}: {e}")
+        # Preserve corrupt file for investigation
+        if os.path.exists(filepath):
+            try:
+                os.rename(filepath, filepath + ".corrupt")
+                logger.info(f"[DEEP-MEM] Renamed corrupt file to {filepath}.corrupt")
+            except OSError:
+                pass
         return default if default is not None else {}
 
 

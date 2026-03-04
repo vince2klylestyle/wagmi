@@ -29,7 +29,7 @@ class TestAgentBaseTypes:
     def test_agent_roles_all_defined(self):
         from llm.agents.base import AgentRole
         roles = list(AgentRole)
-        assert len(roles) == 7
+        assert len(roles) == 9  # +OVERSEER +QUANT
         assert AgentRole.REGIME in roles
         assert AgentRole.TRADE in roles
         assert AgentRole.RISK in roles
@@ -282,6 +282,14 @@ class TestCoordinatorPipeline:
             # Regime Agent
             {"rg": "trend", "conf": 0.85, "factors": "strong vol + OI",
              "bias": "bullish", "transition": "stable"},
+            # Quant Agent
+            {"ev": {"direction": "long", "magnitude": 2.5, "confidence": 0.75},
+             "conditional_edge": {"base_wr": 55, "conditional_wr": 72, "n_similar": 20, "edge_pct": 17},
+             "probability": {"up_4h": 0.65, "down_4h": 0.20, "sideways_4h": 0.15},
+             "risk_profile": {"fat_tail_risk": "low", "max_adverse_move_pct": 1.8, "funding_drag_pct": 0.1},
+             "kelly_fraction": 0.25,
+             "signal_quality": {"is_noise": False, "confidence_adjustment": 0, "reason": "solid edge"},
+             "n": "convergent setup with volume confirmation"},
             # Trade Agent
             {"a": "go", "c": 0.78, "n": "trend aligns", "mu": "BTC leads", "ea": None},
             # Risk Agent
@@ -326,11 +334,16 @@ class TestCoordinatorPipeline:
         call_idx = [0]
         def mock_fn(**kwargs):
             call_idx[0] += 1
-            if call_idx[0] <= 2:
-                # Regime + Trade succeed
+            if call_idx[0] <= 3:
+                # Regime + Quant + Trade succeed
                 if call_idx[0] == 1:
                     return json.dumps({"rg": "range", "conf": 0.6, "bias": "neutral",
                                        "factors": "choppy", "transition": "stable"}), {"input_tokens": 50}
+                if call_idx[0] == 2:
+                    # Quant Agent
+                    return json.dumps({"ev": {"direction": "neutral", "magnitude": 0.5, "confidence": 0.4},
+                                       "signal_quality": {"is_noise": False, "confidence_adjustment": 0},
+                                       "kelly_fraction": 0.05, "n": "weak"}), {"input_tokens": 50}
                 return json.dumps({"a": "skip", "c": 0.3, "n": "weak range"}), {"input_tokens": 50}
             # Risk + Critic fail
             return None, {"error": "api_error"}
