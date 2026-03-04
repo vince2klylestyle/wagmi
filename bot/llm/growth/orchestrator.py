@@ -302,6 +302,13 @@ class GrowthOrchestrator:
                     if self._rec_engine:
                         for h in graduated:
                             rec_type = "rule" if h.stage == "validated" else "avoidance"
+                            # Auto-apply validated hypotheses with strong evidence
+                            # (70%+ ratio, 15+ trades) — these are proven patterns
+                            _auto = (
+                                h.stage == "validated"
+                                and h.total_evidence >= 15
+                                and h.evidence_ratio >= 0.70
+                            )
                             self._rec_engine.add_recommendation(
                                 rec_type=rec_type,
                                 title=f"Graduated: {h.statement[:80]}",
@@ -312,8 +319,13 @@ class GrowthOrchestrator:
                                 suggested_action=f"Codify as {h.graduated_to}",
                                 source="hypothesis_tracker",
                                 confidence=h.confidence,
-                                auto_applicable=False,
+                                auto_applicable=_auto,
                             )
+                            if _auto:
+                                logger.info(
+                                    f"[GROWTH] Auto-applicable: {h.statement[:60]} "
+                                    f"({h.supporting_count}/{h.total_evidence} = {h.evidence_ratio:.0%})"
+                                )
             except Exception as e:
                 logger.debug(f"[GROWTH] Hypothesis graduation error: {e}")
 
@@ -326,7 +338,7 @@ class GrowthOrchestrator:
         if self._improvement_engine:
             try:
                 auto = self._improvement_engine.get_auto_applicable()
-                for proposal in auto[:2]:  # Max 2 auto-applications per tick
+                for proposal in auto[:5]:  # Max 5 auto-applications per tick
                     logger.info(
                         f"[GROWTH] Auto-applying: {proposal.title}"
                     )

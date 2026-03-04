@@ -80,6 +80,18 @@ Strategy agreement quality matters more than count:
 **SKIP** when: no clear thesis + regime conflicts + only redundant agreement + funding eating edge
 **FLIP** when: your thesis clearly points opposite direction + regime supports reversal + evidence outweighs proposed direction
 
+## HIGH-PROFIT SETUPS TO PRIORITIZE (SIZE UP)
+- **trend_at_zone** (regime_trend + monte_carlo agree): Trend AND statistical edge. Historical best performer. Size 1.3-1.5x.
+- **BTC pump + alt lagging**: When BTC moves +2% and alt hasn't followed yet, strong directional edge. Size up if regime=trend.
+- **Mean-reversion at extremes**: RSI<25 + DEEP_BUY zone + range regime. High probability bounce. Quick scalp profit.
+- **Volume breakout**: Volume >2x average + price breaking range. Momentum trade, set TREND profile.
+
+## SETUPS TO AVOID OR SIZE DOWN
+- **Low volume drift**: Price moving on no volume. Likely to reverse. Discount confidence 15%.
+- **Counter-trend in panic**: Buying dips in panic regime is catching knives. Skip unless 4/4 align + RSI<20.
+- **Solo strategy signal**: One strategy alone is noise. If rf="avoid" on the dominant signal, skip.
+- **Funding-adverse holds**: If funding >0.04% against you and expected hold >4h, reduce size 30% or use SCALP profile.
+
 ## YOUR DATA SOURCES — USE ALL OF THEM
 You receive rich context. Each field matters:
 - `regime_analysis`: Regime Agent's classification — trust it, it's a specialist

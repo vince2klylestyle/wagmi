@@ -124,8 +124,8 @@ class SignalQualityScorer:
                 d["wins"] += 1
             d["pnl"] += pnl
             d["recent"].append(result)
-            if len(d["recent"]) > 30:
-                d["recent"] = d["recent"][-30:]
+            if len(d["recent"]) > 50:
+                d["recent"] = d["recent"][-50:]
 
         _update(self.by_symbol, features.symbol)
 
@@ -437,7 +437,7 @@ class SignalQualityScorer:
                         "wins": v["wins"],
                         "total": v["total"],
                         "pnl": v["pnl"],
-                        "recent": v["recent"][-30:],
+                        "recent": v["recent"][-50:],
                     }
                     for k, v in tracker.items()
                 }
