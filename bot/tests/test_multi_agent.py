@@ -29,7 +29,7 @@ class TestAgentBaseTypes:
     def test_agent_roles_all_defined(self):
         from llm.agents.base import AgentRole
         roles = list(AgentRole)
-        assert len(roles) == 7
+        assert len(roles) == 8  # +OVERSEER
         assert AgentRole.REGIME in roles
         assert AgentRole.TRADE in roles
         assert AgentRole.RISK in roles

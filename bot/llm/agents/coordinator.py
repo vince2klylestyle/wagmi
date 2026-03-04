@@ -416,6 +416,217 @@ class AgentCoordinator:
             return out.data
         return None
 
+    def run_overseer(
+        self,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Overseer meta-optimizer agent.
+
+        The Overseer runs periodically (every 30-60 min) to:
+        - Analyze cross-trade patterns invisible to individual agents
+        - Identify systematic drift and strategy degradation
+        - Generate long-term theses for the system to learn from
+        - Recommend strategy adjustments, model routing, parameter changes
+        - Assess agent quality and calibration
+
+        Results feed into the growth orchestrator as recommendations and
+        are written to scratchpad for downstream agents to read.
+
+        Returns:
+            Parsed overseer output dict or None.
+        """
+        cfg = self.configs.get(
+            AgentRole.OVERSEER,
+            AgentConfig(role=AgentRole.OVERSEER),
+        )
+        if not cfg.enabled:
+            return None
+
+        # Build comprehensive system state for the Overseer
+        overseer_input = self._build_overseer_input()
+        out = self._call_agent(AgentRole.OVERSEER, overseer_input, model_for_trigger)
+
+        if not out.ok:
+            logger.warning("[MULTI-AGENT] Overseer call failed")
+            return None
+
+        data = out.data
+
+        # Write Overseer findings to scratchpad for Trade/Risk/Critic to read
+        scratchpad = get_pipeline_scratchpad()
+
+        # Strategy adjustments become context for Trade Agent
+        strat_adj = data.get("strategy_adjustments")
+        if strat_adj:
+            scratchpad.write("overseer", "strategy_adjustments", strat_adj)
+
+        # Symbol focus becomes context for Trade Agent
+        sym_focus = data.get("symbol_focus")
+        if sym_focus:
+            scratchpad.write("overseer", "symbol_focus", sym_focus)
+
+        # Agent feedback becomes context for respective agents
+        agent_fb = data.get("agent_feedback")
+        if agent_fb:
+            scratchpad.write("overseer", "agent_feedback", agent_fb)
+
+        # System health for all agents to see
+        health = data.get("system_health", "stable")
+        diagnosis = data.get("diagnosis", "")
+        scratchpad.write("overseer", "health", health)
+        if diagnosis:
+            scratchpad.write("overseer", "diagnosis", diagnosis[:200])
+
+        # Feed recommendations into the growth orchestrator
+        recs = data.get("recommendations", [])
+        if recs:
+            try:
+                from llm.growth.orchestrator import get_growth_orchestrator
+                growth = get_growth_orchestrator()
+                for rec in recs[:5]:
+                    growth.on_recommendation_from_llm(
+                        rec_type=rec.get("type", "parameter"),
+                        title=rec.get("title", "Overseer recommendation"),
+                        description=rec.get("rationale", ""),
+                        suggested_action=rec.get("action", ""),
+                        confidence=0.7 if rec.get("priority") in ("critical", "high") else 0.5,
+                    )
+            except Exception as e:
+                logger.debug(f"[OVERSEER] Failed to feed recommendations: {e}")
+
+        # Feed theses into hypothesis tracker
+        theses = data.get("theses", [])
+        if theses:
+            try:
+                from llm.growth.hypothesis_tracker import get_hypothesis_tracker
+                tracker = get_hypothesis_tracker()
+                for th in theses[:3]:
+                    tracker.propose(
+                        hypothesis=th.get("thesis", ""),
+                        source="overseer",
+                        confidence=th.get("confidence", 0.5),
+                    )
+            except Exception as e:
+                logger.debug(f"[OVERSEER] Failed to feed theses: {e}")
+
+        logger.info(
+            f"[MULTI-AGENT] Overseer: health={health}, "
+            f"{len(recs)} recommendations, {len(theses)} theses, "
+            f"diagnosis={diagnosis[:80]}"
+        )
+        return data
+
+    def _build_overseer_input(self) -> str:
+        """Build comprehensive system state for the Overseer agent."""
+        state: Dict[str, Any] = {}
+
+        # 1. Self-performance stats
+        try:
+            from llm.self_performance import get_performance_stats
+            perf = get_performance_stats()
+            if perf:
+                state["self_perf"] = {
+                    "accuracy": round(perf.get("accuracy", 0.5), 2),
+                    "veto_accuracy": round(perf.get("veto_accuracy", 0.5), 2),
+                    "calibration": round(perf.get("calibration", 0), 2),
+                    "streak": perf.get("streak", ""),
+                    "total_decisions": perf.get("total_decisions", 0),
+                    "regime_accuracy": perf.get("regime_accuracy", {}),
+                    "symbol_accuracy": perf.get("symbol_accuracy", {}),
+                    "go_count": perf.get("go_count", 0),
+                    "skip_count": perf.get("skip_count", 0),
+                    "flip_count": perf.get("flip_count", 0),
+                }
+        except Exception:
+            pass
+
+        # 2. Survival metrics
+        try:
+            from llm.survival_pressure import get_survival_state
+            surv = get_survival_state()
+            state["survival"] = {
+                "score": round(surv.survival_score, 0),
+                "trajectory": surv.trajectory,
+                "total_trades": surv.total_trades,
+                "total_wins": surv.total_wins,
+                "total_pnl": round(surv.total_pnl, 1),
+                "drawdown_pct": round(surv.current_drawdown_pct, 1),
+                "funding_paid": round(surv.total_funding_paid, 1),
+                "streak": surv.current_streak,
+            }
+        except Exception:
+            pass
+
+        # 3. Strategy performance (from deep memory)
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            strat_wr = dm.trade_dna.get_win_rate_by("strategy")
+            if strat_wr:
+                state["strategy_perf"] = {
+                    k: {"wr": round(v.get("wins", 0) / max(v.get("total", 1), 1) * 100),
+                        "n": v.get("total", 0),
+                        "pnl": round(v.get("pnl", 0), 1)}
+                    for k, v in strat_wr.items() if v.get("total", 0) >= 3
+                }
+            # Setup edge map
+            setup_wr = dm.trade_dna.get_win_rate_by("setup_type")
+            if setup_wr:
+                state["setup_edge"] = {
+                    k: {"wr": round(v.get("wins", 0) / max(v.get("total", 1), 1) * 100),
+                        "n": v.get("total", 0)}
+                    for k, v in setup_wr.items() if v.get("total", 0) >= 5
+                }
+        except Exception:
+            pass
+
+        # 4. Growth state
+        try:
+            from llm.growth.orchestrator import get_growth_orchestrator
+            growth = get_growth_orchestrator()
+            ctx = growth.get_llm_context()
+            if ctx:
+                state["growth"] = ctx[:400]
+        except Exception:
+            pass
+
+        # 5. Cost tracking
+        try:
+            from llm.cost_tracker import get_daily_summary
+            cost = get_daily_summary()
+            if cost:
+                state["cost"] = cost
+        except Exception:
+            pass
+
+        # 6. Recent trade outcomes
+        try:
+            from llm.survival_pressure import get_survival_state
+            surv = get_survival_state()
+            recent = surv.recent_outcomes[-20:]
+            recent_pnl = surv.recent_pnls[-20:]
+            if recent:
+                state["recent_trades"] = {
+                    "outcomes": "".join("W" if o == "WIN" else "L" for o in recent),
+                    "pnls": [round(p, 1) for p in recent_pnl[-10:]],
+                }
+        except Exception:
+            pass
+
+        # 7. Agent pipeline scratchpad (what other agents have written)
+        try:
+            scratchpad = get_pipeline_scratchpad()
+            sp_data = scratchpad.read_all()
+            if sp_data:
+                state["agent_outputs"] = {
+                    k: v for k, v in sp_data.items()
+                    if k in ("regime", "trade", "risk", "critic", "scout")
+                }
+        except Exception:
+            pass
+
+        return json.dumps(state, separators=(",", ":"), default=str)
+
     def get_stats(self) -> Dict[str, Any]:
         """Return coordinator statistics SINCE LAST CALL to get_stats().
 
@@ -467,9 +678,9 @@ class AgentCoordinator:
             agent_role=role.value,
             scratchpad=scratchpad,
             shared_lessons=get_shared_lessons(),
-            include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
-            include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
-            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
+            include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
+            include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
+            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
             current_regime=scratchpad.read_by_key("regime") or "",
         )
 
@@ -1111,6 +1322,7 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.CRITIC: "AGENT_CRITIC_MODEL",
         AgentRole.EXIT: "AGENT_EXIT_MODEL",
         AgentRole.SCOUT: "AGENT_SCOUT_MODEL",
+        AgentRole.OVERSEER: "AGENT_OVERSEER_MODEL",
     }
     for role, env_key in env_model_map.items():
         model = os.getenv(env_key, "").strip()
@@ -1125,6 +1337,7 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.CRITIC: "AGENT_CRITIC_ENABLED",
         AgentRole.EXIT: "AGENT_EXIT_ENABLED",
         AgentRole.SCOUT: "AGENT_SCOUT_ENABLED",
+        AgentRole.OVERSEER: "AGENT_OVERSEER_ENABLED",
     }
     for role, env_key in env_enabled_map.items():
         val = os.getenv(env_key, "true").lower()
