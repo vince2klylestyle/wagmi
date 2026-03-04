@@ -614,8 +614,8 @@ def get_trading_decision(
     # Determine if this was a veto (LLM said flat for a trade candidate)
     is_veto = decision.action == "flat" and mode >= LLMMode.VETO_ONLY
 
-    # Step 9: Audit log
-    _log_audit({
+    # Step 9: Audit log — includes snapshot for LLM replay/backtesting
+    _audit_entry = {
         "ts": time.time(),
         "action": decision.action,
         "original_action": original_action,
@@ -634,7 +634,15 @@ def get_trading_decision(
         "trigger_reason": trigger_reason,
         "trigger_context": trigger_context,
         "usage": usage,
-    })
+    }
+    # Capture snapshot for LLM replay backtesting
+    # snapshot_json is the compact JSON string that was sent to the LLM
+    if snapshot_json:
+        try:
+            _audit_entry["snapshot"] = json.loads(snapshot_json)
+        except Exception:
+            pass
+    _log_audit(_audit_entry)
 
     # Step 9.5: Record to recent decisions buffer (for consistency context)
     _recent_decisions.append({
