@@ -214,6 +214,14 @@ STRATEGY WEIGHTS BY REGIME:
 - low_liquidity: all near 0
 
 Adjust weights from these baselines using memory of what worked recently.
+
+PROFIT-AWARE SIZING:
+- If g.edge shows this setup_type has wr>65% over 20+ trades: SIZE UP (1.3-1.5x baseline)
+- If g.edge shows this setup_type has wr<45%: SIZE DOWN (0.5-0.7x) or override=skip
+- If g.stperf shows driving strategy has wr>60%: boost sz by 0.1
+- Winning streak (3+ wins): Size up slightly (confidence is likely calibrated)
+- Losing streak (3+ losses): Size down 20-30%, don't skip entirely (recovery needs trades)
+- funding_cost > 0.5%/day: override=skip unless edge > 1.5% expected move
 """
 
 # ── Post-Trade Learning Agent ───────────────────────────────────
