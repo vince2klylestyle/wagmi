@@ -2037,18 +2037,32 @@ class MultiStrategyBot:
                 return  # Too many positions in same risk tier
 
         # ── Wave 2: Regime-based strategy filter ──
-        # Disable strategies that historically fail in the current regime
+        # Disable strategies that are expected to fail in the current regime.
+        # Uses STRATEGY_REGIME_FIT table (static theory) + historical WR (learned).
         if self.config.enable_regime_strategy_filter:
             try:
                 _cur_regime = self._tick_regime_cache.get(symbol) or self.regime_detector.get_regime(symbol)
                 if _cur_regime:
-                    from llm.deep_memory import get_deep_memory
-                    _dm = get_deep_memory()
-                    _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                    from llm.agents.shared_context import STRATEGY_REGIME_FIT
+                    _fit = STRATEGY_REGIME_FIT.get(_cur_regime, {})
                     _disabled = set()
-                    for _sname, _swdata in _strat_wr.items():
-                        if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+
+                    # Static: disable strategies marked "avoid" in this regime
+                    for _sname, _sfit in _fit.items():
+                        if _sfit == "avoid":
                             _disabled.add(_sname)
+
+                    # Dynamic: also disable strategies with <35% WR over 10+ trades
+                    try:
+                        from llm.deep_memory import get_deep_memory
+                        _dm = get_deep_memory()
+                        _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                        for _sname, _swdata in _strat_wr.items():
+                            if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+                                _disabled.add(_sname)
+                    except Exception:
+                        pass
+
                     if _disabled:
                         self.ensemble.set_disabled_strategies(_disabled)
                         logger.info(
