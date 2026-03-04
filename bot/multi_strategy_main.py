@@ -88,8 +88,7 @@ try:
 except ImportError:
     _EXIT_ENGINE_AVAILABLE = False
 
-# Feedback loop closers — self-performance, veto tracking, cost, operator channel
-from llm.veto_tracker import get_veto_tracker
+# Feedback loop closers — self-performance, cost, operator channel
 from llm.cost_tracker import get_cost_tracker
 from llm.operator_channel import get_operator_channel
 from llm.self_performance import get_performance_stats
@@ -507,8 +506,7 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.debug(f"Knowledge seed error (non-fatal): {e}")
 
-        # Veto tracker: counterfactual validation for LLM vetoes
-        self.veto_tracker = get_veto_tracker()
+        # Veto tracking is handled by growth orchestrator (growth/veto_feedback.py)
 
         # Phase D+E+F: new subsystems
         self.regime_detector = RegimeTransitionDetector()
@@ -5067,13 +5065,7 @@ class MultiStrategyBot:
         # Rolling performance from learning hooks
         perf = get_performance()
 
-        # Veto tracker: check counterfactual outcomes for vetoed signals
-        try:
-            def _price_fetcher(sym):
-                return self.fetcher.latest_price(sym, "") or 0
-            self.veto_tracker.check_outcomes(price_fetcher=_price_fetcher)
-        except Exception as e:
-            logger.debug(f"[HEARTBEAT] Veto check failed: {e}")
+        # Veto resolution is handled by growth.tick() via check_unresolved()
 
         # Operator channel: detect and report operational anomalies
         try:
@@ -5094,7 +5086,7 @@ class MultiStrategyBot:
                 "flip_count": perf_stats.get("flip_count", 0),
                 "calibration": perf_stats.get("calibration", 0.0),
                 "veto_accuracy": perf_stats.get("veto_accuracy", 0.5),
-                "veto_count": self.veto_tracker.get_stats().get("resolved", 0),
+                "veto_count": 0,  # populated from growth veto_feedback via get_performance_stats()
                 "streak": perf_stats.get("streak", ""),
             }
             self.operator_channel.check_and_report(op_context)

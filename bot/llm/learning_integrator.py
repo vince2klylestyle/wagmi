@@ -115,7 +115,7 @@ class LearningIntegrator:
             acf = AdaptiveConfidenceFloor()
             old_floor = acf.current_floor
             acf.current_floor = float(new_floor)
-            acf._save()
+            acf._save_state()
 
             logger.info(
                 f"[INTEGRATOR] Confidence floor: {old_floor:.1f} → {new_floor:.1f}"
@@ -131,8 +131,8 @@ class LearningIntegrator:
                     reason="Auto-applied from self-improvement proposal",
                     source="learning_integrator",
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[INTEGRATOR] Growth parameter change notify failed: {e}")
 
             return True
         except Exception as e:
@@ -490,7 +490,7 @@ class LearningIntegrator:
         Previously required manual /curriculum-advance command.
         """
         try:
-            from llm.self_teaching import get_teaching_engine
+            from llm.self_teaching import get_teaching_engine, _save_curriculum
 
             engine = get_teaching_engine()
             curriculum = engine.curriculum
@@ -519,7 +519,7 @@ class LearningIntegrator:
                 old_level = current_level
                 curriculum.current_level = current_level + 1
                 curriculum.level_started_at = time.time()
-                engine._save_curriculum()
+                _save_curriculum(curriculum)
 
                 logger.info(
                     f"[INTEGRATOR] Curriculum auto-advanced: "
@@ -553,8 +553,8 @@ class LearningIntegrator:
             growth_ctx = get_growth_orchestrator().get_llm_context(symbol, regime)
             if growth_ctx:
                 parts.append(growth_ctx)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[INTEGRATOR] Growth context failed: {e}")
 
         # 2. Veto accuracy feedback (was computed but never injected)
         try:
@@ -562,8 +562,8 @@ class LearningIntegrator:
             veto_feedback = get_veto_tracker().get_memory_feedback()
             if veto_feedback:
                 parts.append(f"VETO PERFORMANCE: {veto_feedback}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[INTEGRATOR] Veto feedback failed: {e}")
 
         # 3. Session performance (computed but never used)
         try:
@@ -583,8 +583,8 @@ class LearningIntegrator:
                     parts.append(
                         f"SESSION PERFORMANCE: {' | '.join(session_lines)}"
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[INTEGRATOR] Session performance failed: {e}")
 
         # 4. Symbol-specific memory patterns (defined but never injected)
         if symbol:
@@ -597,8 +597,8 @@ class LearningIntegrator:
                     parts.append(
                         f"{symbol} PATTERNS: {patterns_str[:300]}"
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[INTEGRATOR] Symbol patterns failed: {e}")
 
         # 5. Feedback loop status (computed but never in LLM context)
         try:
@@ -612,8 +612,8 @@ class LearningIntegrator:
                     if any(k in line for k in ["Floor:", "Trust:", "Calibration:"]):
                         parts.append(f"FEEDBACK: {line}")
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[INTEGRATOR] Feedback loop status failed: {e}")
 
         # 6. Self-improvement status
         try:
@@ -621,8 +621,8 @@ class LearningIntegrator:
             imp_ctx = get_self_improvement_engine().format_for_llm_prompt()
             if imp_ctx:
                 parts.append(imp_ctx)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[INTEGRATOR] Self-improvement context failed: {e}")
 
         return "\n".join(parts) if parts else ""
 

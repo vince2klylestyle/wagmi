@@ -66,9 +66,9 @@ try:
 except ImportError:
     _HAS_COST_TRACKER = False
 
-# Veto tracker: counterfactual validation
+# Veto tracker: counterfactual validation (via growth orchestrator)
 try:
-    from llm.veto_tracker import get_veto_tracker
+    from llm.growth.orchestrator import get_growth_orchestrator
     _HAS_VETO_TRACKER = True
 except ImportError:
     _HAS_VETO_TRACKER = False
@@ -655,30 +655,28 @@ def get_trading_decision(
         "gate": gated.reason if not gated.allowed else "",
     })
 
-    # Step 9.6: Record veto for counterfactual tracking
+    # Step 9.6: Record veto for counterfactual tracking (via growth orchestrator)
     if is_veto and _HAS_VETO_TRACKER:
         try:
-            vt = get_veto_tracker()
-            # Extract signal data from trigger context
+            growth = get_growth_orchestrator()
             _sym = trigger_context.split()[0] if trigger_context else ""
             _side = trigger_context.split()[1] if trigger_context and len(trigger_context.split()) > 1 else ""
-            # Entry/SL/TP come from the markets in snapshot (best-effort extraction)
-            _entry, _sl, _tp1 = 0.0, 0.0, 0.0
+            _entry = 0.0
             if snapshot.markets:
                 for m in snapshot.markets:
                     if _sym and _sym in m.symbol:
                         _entry = m.price
                         break
-            vt.record_veto(
+            growth.on_veto(
                 symbol=_sym,
                 side=_side,
+                confidence=decision.confidence * 100 if decision.confidence <= 1 else decision.confidence,
                 entry_price=_entry,
-                sl_price=_sl,
-                tp1_price=_tp1,
-                confidence=0.0,  # ensemble confidence not available here
-                llm_confidence=decision.confidence,
+                sl_price=0.0,
+                tp1_price=0.0,
                 llm_reason=decision.notes or "",
                 regime=decision.regime,
+                trigger="monolithic_engine",
             )
         except Exception as ve:
             logger.debug(f"[LLM-ENGINE] Veto recording failed: {ve}")

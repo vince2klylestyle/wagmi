@@ -124,8 +124,11 @@ class EnsembleStrategy:
                 error_count += 1
                 logger.warning(f"[{symbol}] {strategy.name} error: {e}")
 
-        # Cache individual strategy signals for context extraction
+        # Cache individual strategy signals for context extraction (originals)
         self._last_signals[symbol] = {s.strategy: s for s in signals}
+
+        # Deep copy signals before mutation — originals stay clean in cache
+        signals = [deepcopy(s) for s in signals]
 
         if not signals:
             return None

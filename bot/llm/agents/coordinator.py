@@ -790,9 +790,9 @@ class AgentCoordinator:
             current_regime=scratchpad.read_by_key("regime") or "",
         )
 
-        # Gap 5: Dynamic calibration injection for Trade and Critic agents
+        # Dynamic calibration injection for Trade, Critic, and Regime agents
         calibration_prefix = ""
-        if role in (AgentRole.TRADE, AgentRole.CRITIC):
+        if role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.REGIME):
             try:
                 from llm.agents.calibration_ledger import get_calibration_ledger
                 ledger = get_calibration_ledger()
@@ -1048,6 +1048,40 @@ class AgentCoordinator:
             cal_data = ledger.get_compact_for_snapshot("trade")
             if cal_data:
                 trade_data["agent_cal"] = cal_data
+        except Exception:
+            pass
+
+        # Inject similar patterns + known failure modes from deep memory
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
+            # Find signals that have patterns from this market context
+            signals = snapshot.get("signals", [])
+            symbol = ""
+            if signals:
+                symbol = signals[0].get("sym", "") if isinstance(signals[0], dict) else ""
+
+            # PatternLibrary: find similar historical patterns for context
+            similar = dm.patterns.find_similar(
+                pattern_type="trade_setup",
+                symbol=symbol,
+                regime=regime,
+                limit=3,
+            )
+            if similar:
+                trade_data["similar_patterns"] = [
+                    {k: v for k, v in p.items() if k in ("type", "symbol", "regime", "outcome", "lesson")}
+                    for p in similar[:3]
+                ]
+
+            # TradeDNAStore: get recent failure patterns to avoid
+            failures = dm.trade_dna.get_failures(limit=5)
+            if failures:
+                trade_data["recent_failures"] = [
+                    {k: v for k, v in f.items() if k in ("symbol", "side", "regime", "strategy", "pnl", "lesson")}
+                    for f in failures[:3]
+                ]
         except Exception:
             pass
 
