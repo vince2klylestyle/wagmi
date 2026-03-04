@@ -303,12 +303,21 @@ class DataFetcher:
                     continue
 
                 # Data freshness check: warn if latest candle is too old
+                # Thresholds = 2x the candle interval (a completed candle is always 1 interval old)
                 if "time" in df.columns:
                     latest = df["time"].iloc[-1]
                     if hasattr(latest, 'timestamp'):
                         age_min = (datetime.now(timezone.utc) - latest.to_pydatetime()).total_seconds() / 60
-                        expected_freshness = {"5m": 15, "1h": 120, "6h": 720, "1d": 2880}
-                        max_age = expected_freshness.get(timeframe, 180)
+                        expected_freshness = {
+                            "5m": 15,       # 3x interval — 5m data should be very fresh
+                            "15m": 45,      # 3x interval
+                            "30m": 90,      # 3x interval
+                            "1h": 180,      # 3x interval (last closed candle can be 60-120m old)
+                            "6h": 1080,     # 3x interval (last closed candle can be 360-720m old)
+                            "daily": 4320,  # 3x interval (last closed daily can be 1440-2880m old)
+                            "1d": 4320,
+                        }
+                        max_age = expected_freshness.get(timeframe, 360)
                         if age_min > max_age:
                             logger.warning(
                                 f"[DATA] {symbol_name} {timeframe} data is {age_min:.0f}m old "

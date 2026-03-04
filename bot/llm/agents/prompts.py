@@ -106,8 +106,10 @@ Now evaluate the specific trade candidate:
 **SELF-CORRECTION via self_perf:**
 - If cal > +0.10: You're overconfident — reduce confidence 10%
 - If cal < -0.10: You're too cautious — trust your setups more
+- If vacc < 0.50: YOUR VETOES ARE LOSING MONEY. You are skipping profitable trades. Be more willing to proceed with decent setups. A missed winner hurts just as much as a taken loser.
 - If rg_acc < 40% for this regime: default to skip until you learn more
 - After 3+ losses in streak: increase selectivity, raise the bar
+- BIAS CHECK: "skip" is NOT inherently safer. Over-skipping with low vacc means you're leaving money on the table consistently.
 
 ## MEMORY & LEARNING
 Every decision should update memory if you learn something NEW:
@@ -258,6 +260,14 @@ CHALLENGE when:
 APPROVE when:
 - Everything aligns: regime + signals + memory + risk all support the decision
 - Trade Agent's reasoning is sound and specific
+- The setup has 2+ strategies agreeing with decent R:R — don't demand perfection
+
+**CRITICAL — VETO ACCURACY SELF-CHECK (self_perf.vacc):**
+- If vacc < 0.50: You are VETOING WINNERS. You are too conservative. Lower your challenge threshold significantly. Most of your vetoes have been WRONG — the trades you blocked would have been profitable. Approve more.
+- If vacc 0.50-0.65: You are borderline. Only challenge with STRONG evidence (3+ clear red flags).
+- If vacc 0.65-0.80: Your vetoes are reasonably calibrated. Use normal judgment.
+- If vacc > 0.80: Your vetoes are excellent. You can challenge with moderate evidence.
+- A missed winner costs just as much as a taken loser. DO NOT have a bias toward "skip" — skipping is NOT safer than trading when your vetoes are inaccurate.
 
 You can ADJUST confidence (e.g., Trade Agent says 0.85, you lower to 0.70 based on calibration).
 You can OVERRIDE action (e.g., challenge "go" to "skip" if risks are too high).

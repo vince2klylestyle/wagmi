@@ -129,6 +129,7 @@ from execution.funding_timer import should_close_before_funding, minutes_until_n
 from strategies.regime_detector import RegimeTransitionDetector
 from monitoring.health import HealthMonitor
 from execution.graceful_degradation import DegradationManager
+from execution.pending_orders import PendingOrderManager
 
 # Watchdog: background health monitoring with stall detection and auto-alerts
 from monitoring.watchdog import get_watchdog
@@ -459,6 +460,8 @@ class MultiStrategyBot:
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
         self._llm_triggers = TriggerAccumulator()
+        self._slippage_reject_cooldown: Dict[str, float] = {}  # symbol -> timestamp
+        self.pending_orders = PendingOrderManager(max_pending=5)
 
         # Dual-world candidate logging (baseline vs LLM)
         self._candidate_logger = CandidateLogger()
@@ -762,6 +765,21 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.error(f"[{trace_id}][{symbol}] Error: {e}", exc_info=True)
                 self.health_monitor.record_error()
+
+        # ── Pending limit order fills ──
+        # Check if any pending orders should fill at current prices
+        if self.pending_orders.get_pending():
+            try:
+                _current_prices = {}
+                for sym in DEFAULT_SYMBOLS:
+                    _p = self.fetcher.fetch_live_price(sym)
+                    if _p:
+                        _current_prices[sym] = _p
+                filled_orders = self.pending_orders.check_fills(_current_prices)
+                for filled in filled_orders:
+                    self._execute_pending_fill(filled, trace_id)
+            except Exception as e:
+                logger.warning(f"[{trace_id}] Pending order check error: {e}")
 
         # ── Trade rotation evaluation ──
         # Check if any open position should be rotated into a better signal
@@ -1990,7 +2008,10 @@ class MultiStrategyBot:
         num_agree = signal_result.metadata.get("num_agree", 1)
 
         # High-confidence signal trigger (>=75%)
-        if signal_result.confidence >= 75:
+        # Skip if symbol was recently slippage-rejected (stale signal, don't waste LLM)
+        _slip_cd = self._slippage_reject_cooldown.get(symbol, 0)
+        _in_slip_cooldown = (time.time() - _slip_cd) < 300
+        if signal_result.confidence >= 75 and not _in_slip_cooldown:
             self._llm_triggers.add(
                 LLMTrigger.HIGH_CONFIDENCE,
                 symbol=symbol,
@@ -2700,6 +2721,15 @@ class MultiStrategyBot:
             )
             return
 
+        # Skip if this symbol was recently slippage-rejected (5-min cooldown)
+        _slip_cooldown = self._slippage_reject_cooldown.get(symbol, 0)
+        if time.time() - _slip_cooldown < 300:
+            logger.info(
+                f"[{trace_id}][{symbol}] Skipping: slippage-rejected "
+                f"{int(time.time() - _slip_cooldown)}s ago (cooldown 300s)"
+            )
+            return
+
         # LLM trigger: about to open a position (highest priority)
         self._llm_triggers.add(
             LLMTrigger.PRE_TRADE,
@@ -2721,13 +2751,42 @@ class MultiStrategyBot:
         max_slippage = float(os.getenv("MAX_ENTRY_SLIPPAGE_PCT", "1.5"))
 
         if pre_llm_slippage > max_slippage:
-            log_rejection(symbol, "ENTRY_SLIPPAGE",
-                          confidence=signal_result.confidence)
-            logger.warning(
-                f"[{trace_id}][{symbol}] PRE-LLM REJECT: price moved {pre_llm_slippage:.2f}% "
-                f"(signal={_fmt_price(signal_result.entry)} live={_fmt_price(pre_llm_live)} "
-                f"max={max_slippage}%) — skipping LLM call"
-            )
+            # Price moved too far for a market order. Instead of discarding,
+            # place a pending limit order at the strategy-computed entry price.
+            # This lets the exchange fill us if price retraces to our level.
+            if not self.pending_orders.get_pending_for_symbol(symbol):
+                order_id = self.pending_orders.place(
+                    symbol=symbol,
+                    side=side,
+                    entry_price=signal_result.entry,
+                    qty=qty,
+                    sl=adj_sl,
+                    tp1=adj_tp1,
+                    tp2=adj_tp2,
+                    atr=signal_result.atr,
+                    leverage=lev_decision.leverage,
+                    strategy=signal_result.strategy,
+                    confidence=signal_result.confidence,
+                    trade_profile=trade_prof,
+                    entry_reasons=entry_reasons,
+                    regime=signal_result.metadata.get("regime", ""),
+                )
+                if order_id:
+                    logger.info(
+                        f"[{trace_id}][{symbol}] PENDING LIMIT: {side} @ "
+                        f"{_fmt_price(signal_result.entry)} (live={_fmt_price(pre_llm_live)}, "
+                        f"slip={pre_llm_slippage:.1f}%) — waiting for fill"
+                    )
+            else:
+                logger.info(
+                    f"[{trace_id}][{symbol}] Already has pending order, skipping"
+                )
+            # Remove accumulated LLM triggers for this symbol to avoid
+            # wasting LLM calls on signals we already know are stale
+            self._llm_triggers.remove_symbol_events(symbol)
+            # Track slippage-rejected symbols with cooldown to prevent
+            # the same stale signal from re-triggering LLM every tick
+            self._slippage_reject_cooldown[symbol] = time.time()
             return
 
         # Shift entry + SL/TP to live price so entire pipeline uses fresh numbers
@@ -3224,6 +3283,94 @@ class MultiStrategyBot:
                     entry_reasons["copy_score"] = _copy_result.score
             except Exception as e:
                 logger.debug(f"Copy classifier error: {e}")
+
+    # ── Pending Limit Order Fills ─────────────────────────────────
+
+    def _execute_pending_fill(self, order, trace_id: str = ""):
+        """Execute a filled pending order by opening a position."""
+        from execution.precision import get_min_qty
+
+        symbol = order.symbol
+        side = order.side
+
+        # Check we can still open (circuit breaker, max positions, etc.)
+        if not self.risk_mgr.can_open_position(
+            symbol, side, self.pos_mgr.get_open_count(),
+            self.pos_mgr.get_open_positions(),
+        ):
+            logger.info(f"[{trace_id}][{symbol}] Pending fill blocked by risk manager")
+            return
+
+        # Already have a position in this symbol?
+        if symbol in self.pos_mgr.get_open_positions():
+            logger.info(f"[{trace_id}][{symbol}] Pending fill skipped — already in position")
+            return
+
+        qty = order.qty
+        min_q = get_min_qty(symbol)
+        if qty < min_q:
+            logger.info(f"[{trace_id}][{symbol}] Pending fill qty {qty} < min {min_q}")
+            return
+
+        # Determine TP1 close percentage from trade profile
+        tp1_pct = 0.7
+        if order.trade_profile:
+            exit_params = getattr(order.trade_profile, 'exit_params', None)
+            if exit_params:
+                tp1_pct = getattr(exit_params, 'tp1_close_pct', 0.7)
+
+        self.pos_mgr.open_position(
+            symbol=symbol,
+            side=side,
+            entry=order.entry_price,
+            qty=qty,
+            sl=order.sl,
+            tp1=order.tp1,
+            tp2=order.tp2,
+            atr=order.atr,
+            leverage=order.leverage,
+            mode="leverage" if order.leverage > 1 else "spot",
+            strategy=order.strategy,
+            confidence=order.confidence,
+            tp1_close_pct=tp1_pct,
+            entry_reasons=order.entry_reasons,
+            trade_profile=order.trade_profile,
+        )
+
+        log_trade(
+            symbol=symbol,
+            action="OPEN",
+            side=side,
+            price=order.entry_price,
+            qty=qty,
+            leverage=order.leverage,
+            strategy=order.strategy,
+            metadata={
+                "confidence": order.confidence,
+                "order_type": "limit",
+                "pending_wait_s": round(order.age_s, 1),
+                "order_id": order.order_id,
+            }
+        )
+
+        Telemetry.inc("total_trades")
+        Telemetry.inc("limit_order_fills")
+        self.ops_guard.record_trade()
+
+        # Clear the slippage cooldown since we successfully filled
+        self._slippage_reject_cooldown.pop(symbol, None)
+
+        logger.info(
+            f"[{trace_id}][{symbol}] LIMIT FILL: {side} @ {order.entry_price:.6f} "
+            f"qty={qty:.4f} lev={order.leverage:.1f}x conf={order.confidence:.0f}% "
+            f"(waited {order.age_s:.0f}s)"
+        )
+
+        self.alerts.send_market_update(
+            f"[LIMIT FILL] {side} {symbol} @ {order.entry_price:.6f}\n"
+            f"Qty: {qty:.4f} | Lev: {order.leverage:.1f}x | Conf: {order.confidence:.0f}%\n"
+            f"Waited {order.age_s:.0f}s for entry level"
+        )
 
     # ── Trade Rotation ─────────────────────────────────────────────
 
@@ -4566,6 +4713,7 @@ class MultiStrategyBot:
             f"direction_model={'YES' if status['ml_direction_model'] else 'no'} "
             f"strat_weights=[{weights_str}] "
             f"rejections=[{rej_str}] "
+            f"pending_orders={len(self.pending_orders.get_pending())} "
             f"api={fetcher_stats['total_requests']} "
             f"cache={fetcher_stats['cache_hits']}"
         )

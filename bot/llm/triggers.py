@@ -203,6 +203,10 @@ class TriggerAccumulator:
             context=context,
         ))
 
+    def remove_symbol_events(self, symbol: str):
+        """Remove all events for a specific symbol (e.g. after slippage rejection)."""
+        self._events = [e for e in self._events if e.symbol != symbol]
+
     # ── Firing logic ──────────────────────────────────────────
 
     def should_fire(self) -> bool:
