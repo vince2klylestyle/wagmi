@@ -135,8 +135,32 @@ class AgentCoordinator:
         if regime_out.data.get("expected_duration_h"):
             scratchpad.write("regime", "expected_duration_h", regime_out.data["expected_duration_h"])
 
+        # ── Step 1.5: Quant Agent (optional) ─────────────────────
+        quant_out = None
+        if self.configs.get(AgentRole.QUANT, AgentConfig(role=AgentRole.QUANT)).enabled:
+            quant_input = self._build_quant_input(snapshot_data, regime_out)
+            quant_out = self._call_agent(
+                AgentRole.QUANT, quant_input, model_for_trigger
+            )
+            pipeline_results[AgentRole.QUANT] = quant_out
+            if quant_out and quant_out.ok:
+                # Write quant analysis to scratchpad for Trade Agent
+                scratchpad.write("quant", "ev", quant_out.data.get("ev", {}))
+                if quant_out.data.get("conditional_edge"):
+                    scratchpad.write("quant", "conditional_edge", quant_out.data["conditional_edge"])
+                if quant_out.data.get("probability"):
+                    scratchpad.write("quant", "probability", quant_out.data["probability"])
+                if quant_out.data.get("kelly_fraction") is not None:
+                    scratchpad.write("quant", "kelly_fraction", quant_out.data["kelly_fraction"])
+                if quant_out.data.get("signal_quality"):
+                    scratchpad.write("quant", "signal_quality", quant_out.data["signal_quality"])
+                if quant_out.data.get("risk_profile"):
+                    scratchpad.write("quant", "risk_profile", quant_out.data["risk_profile"])
+            else:
+                quant_out = None  # Degrade gracefully
+
         # ── Step 2: Trade Agent ─────────────────────────────────
-        trade_input = self._build_trade_input(snapshot_data, regime_out)
+        trade_input = self._build_trade_input(snapshot_data, regime_out, quant_out)
         trade_out = self._call_agent(
             AgentRole.TRADE, trade_input, model_for_trigger
         )
@@ -161,7 +185,7 @@ class AgentCoordinator:
         # ── Step 3: Risk Agent (optional) ───────────────────────
         risk_out = None
         if self.configs.get(AgentRole.RISK, AgentConfig(role=AgentRole.RISK)).enabled:
-            risk_input = self._build_risk_input(snapshot_data, regime_out, trade_out)
+            risk_input = self._build_risk_input(snapshot_data, regime_out, trade_out, quant_out)
             risk_out = self._call_agent(
                 AgentRole.RISK, risk_input, model_for_trigger
             )
@@ -212,6 +236,36 @@ class AgentCoordinator:
                         "c": 0.0,
                         "n": f"consistency_override: {critical_issues[0].description[:100]}",
                     },
+                )
+
+        # ── Quant Agent confidence adjustment ─────────────────
+        # If Quant Agent flagged signal as noise or adjusted confidence, apply
+        if quant_out and quant_out.ok:
+            sq = quant_out.data.get("signal_quality", {})
+            quant_adj = sq.get("confidence_adjustment", 0)
+            if quant_adj and isinstance(quant_adj, (int, float)):
+                td = trade_out.data
+                old_c = float(td.get("c", td.get("confidence", 0.0)))
+                new_c = max(0.0, min(1.0, old_c + quant_adj))
+                # Update trade_out data in-place for downstream consensus
+                trade_out = AgentOutput(
+                    role=AgentRole.TRADE,
+                    data={**trade_out.data, "c": new_c,
+                          "n": (td.get("n", "") + f" | QUANT_ADJ: {quant_adj:+.2f}")},
+                    raw_text=trade_out.raw_text,
+                    model_used=trade_out.model_used,
+                    input_tokens=trade_out.input_tokens,
+                    output_tokens=trade_out.output_tokens,
+                    latency_ms=trade_out.latency_ms,
+                )
+            # If quant says it's noise, force skip for very low-confidence signals
+            if sq.get("is_noise") and float(trade_out.data.get("c", 0)) < 0.55:
+                trade_out = AgentOutput(
+                    role=AgentRole.TRADE,
+                    data={**trade_out.data, "a": "skip", "c": 0.0,
+                          "n": f"QUANT_NOISE: {sq.get('reason', 'statistical noise')}"},
+                    raw_text=trade_out.raw_text,
+                    model_used=trade_out.model_used,
                 )
 
         # ── Confidence Consensus & Consistency Scaling ─────────
@@ -720,9 +774,9 @@ class AgentCoordinator:
             agent_role=role.value,
             scratchpad=scratchpad,
             shared_lessons=get_shared_lessons(),
-            include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
+            include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER, AgentRole.QUANT)),
             include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
-            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
+            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER, AgentRole.QUANT)),
             current_regime=scratchpad.read_by_key("regime") or "",
         )
 
@@ -814,6 +868,87 @@ class AgentCoordinator:
     #   cross_sym      — cross-symbol lead-lag signals
     #   cross_pat      — validated cross-symbol patterns
 
+    def _build_quant_input(self, snapshot: dict, regime_out: AgentOutput) -> str:
+        """Build quant agent input: market data + regime + historical stats.
+
+        The Quant Agent needs:
+        - Raw market data (prices, volume, funding, signals) for statistical analysis
+        - Regime classification for conditional probability computation
+        - Historical win rates per setup type, strategy, regime, symbol
+        - Recent trade outcomes for variance/drawdown analysis
+        - Confluence quality for signal vs noise assessment
+        """
+        quant_data = {}
+
+        # Market data
+        if "m" in snapshot:
+            quant_data["markets"] = snapshot["m"]
+        if "g" in snapshot:
+            quant_data["global"] = snapshot["g"]
+
+        # Regime from Regime Agent
+        quant_data["regime"] = regime_out.data
+
+        # Compute confluence quality
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            quant_data["confluence"] = confluence
+
+        # Historical stats for conditional probability computation
+        # Setup edge: per-setup-type win rates
+        if "g" in snapshot:
+            g = snapshot["g"]
+            if isinstance(g, dict):
+                if "edge" in g:
+                    quant_data["setup_edge"] = g["edge"]
+                if "stperf" in g:
+                    quant_data["strategy_perf"] = g["stperf"]
+
+        # Self-performance for calibration/drawdown context
+        if "self_perf" in snapshot:
+            quant_data["self_perf"] = snapshot["self_perf"]
+
+        # Recent outcomes for variance analysis
+        if "autopsy" in snapshot:
+            quant_data["autopsy"] = snapshot["autopsy"]
+
+        # Funding data for cost computation
+        for key in ("funding_cost_pct", "funding_alert", "port_lev"):
+            if key in snapshot:
+                quant_data[key] = snapshot[key]
+
+        # Per-agent calibration for Bayesian updating
+        try:
+            from llm.agents.calibration_ledger import get_calibration_ledger
+            ledger = get_calibration_ledger()
+            regime = regime_out.data.get("rg", "unknown")
+            cal = ledger.get_calibration("trade", regime)
+            if cal.get("reliable"):
+                quant_data["trade_calibration"] = cal
+        except Exception:
+            pass
+
+        # Historical patterns from replay engine
+        try:
+            from llm.replay_engine import get_historical_patterns
+            patterns = get_historical_patterns(max_decisions=100)
+            if patterns and "error" not in patterns:
+                # Only pass the most relevant stats
+                compact = {}
+                for k in ("regime_wr", "conf_low_wr", "conf_mid_wr", "conf_high_wr",
+                           "conf_low_n", "conf_mid_n", "conf_high_n",
+                           "max_win_streak", "max_loss_streak", "recent_outcomes"):
+                    if k in patterns:
+                        compact[k] = patterns[k]
+                if compact:
+                    quant_data["historical"] = compact
+        except Exception:
+            pass
+
+        return json.dumps(quant_data, separators=(",", ":"))
+
     def _build_regime_input(self, snapshot: dict) -> str:
         """Build regime agent input: markets + global + regime history.
 
@@ -844,7 +979,7 @@ class AgentCoordinator:
                 regime_data["regime_history"] = regime_section
         return json.dumps(regime_data, separators=(",", ":"))
 
-    def _build_trade_input(self, snapshot: dict, regime_out: AgentOutput) -> str:
+    def _build_trade_input(self, snapshot: dict, regime_out: AgentOutput, quant_out: Optional[AgentOutput] = None) -> str:
         """Build trade agent input: FULL context for the main decision-maker.
 
         The Trade Agent is the primary brain — it gets EVERYTHING:
@@ -892,6 +1027,10 @@ class AgentCoordinator:
         _ensure_field(trade_data, "funding_cost_pct", snapshot)
         _ensure_field(trade_data, "funding_alert", snapshot)
 
+        # Inject Quant Agent's statistical analysis if available
+        if quant_out and quant_out.ok:
+            trade_data["quant_analysis"] = quant_out.data
+
         # Gap 4+5: Inject per-agent calibration data into trade input
         try:
             from llm.agents.calibration_ledger import get_calibration_ledger
@@ -905,7 +1044,8 @@ class AgentCoordinator:
         return json.dumps(trade_data, separators=(",", ":"))
 
     def _build_risk_input(
-        self, snapshot: dict, regime_out: AgentOutput, trade_out: AgentOutput
+        self, snapshot: dict, regime_out: AgentOutput, trade_out: AgentOutput,
+        quant_out: Optional[AgentOutput] = None,
     ) -> str:
         """Build risk agent input: portfolio state + trade decision + regime + risk knowledge.
 
@@ -944,6 +1084,21 @@ class AgentCoordinator:
         # Recent lessons about sizing/risk
         if "recent_lessons" in snapshot:
             risk_data["recent_lessons"] = snapshot["recent_lessons"]
+        # Inject Quant Agent analysis for Kelly-informed sizing
+        if quant_out and quant_out.ok:
+            q = quant_out.data
+            quant_compact = {}
+            if "kelly_fraction" in q:
+                quant_compact["kelly"] = q["kelly_fraction"]
+            if "ev" in q:
+                quant_compact["ev"] = q["ev"]
+            if "risk_profile" in q:
+                quant_compact["risk_profile"] = q["risk_profile"]
+            if "signal_quality" in q:
+                quant_compact["signal_quality"] = q["signal_quality"]
+            if quant_compact:
+                risk_data["quant"] = quant_compact
+
         # Confluence quality for informed sizing (convergent setups → size up)
         if "confluence" in snapshot:
             risk_data["confluence"] = snapshot["confluence"]
@@ -1454,7 +1609,7 @@ def _get_default_model(role: AgentRole) -> str:
     except ImportError:
         return "claude-sonnet-4-5-20250929"
 
-    if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING, AgentRole.EXIT, AgentRole.SCOUT):
+    if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING, AgentRole.EXIT, AgentRole.SCOUT, AgentRole.QUANT):
         return MODEL_HAIKU
     return MODEL_SONNET
 
@@ -1478,6 +1633,7 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.EXIT: "AGENT_EXIT_MODEL",
         AgentRole.SCOUT: "AGENT_SCOUT_MODEL",
         AgentRole.OVERSEER: "AGENT_OVERSEER_MODEL",
+        AgentRole.QUANT: "AGENT_QUANT_MODEL",
     }
     for role, env_key in env_model_map.items():
         model = os.getenv(env_key, "").strip()
@@ -1493,6 +1649,7 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.EXIT: "AGENT_EXIT_ENABLED",
         AgentRole.SCOUT: "AGENT_SCOUT_ENABLED",
         AgentRole.OVERSEER: "AGENT_OVERSEER_ENABLED",
+        AgentRole.QUANT: "AGENT_QUANT_ENABLED",
     }
     for role, env_key in env_enabled_map.items():
         val = os.getenv(env_key, "true").lower()
