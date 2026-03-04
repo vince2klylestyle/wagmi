@@ -222,6 +222,8 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             sig = {"st": s.strategy, "sd": s.side, "c": round(s.confidence, 2)}
             if s.regime_score and s.regime_score >= 0.1:
                 sig["rg"] = round(s.regime_score, 2)
+            if s.meta:
+                sig["meta"] = s.meta
             sigs.append(sig)
         if sigs:
             cm["sg"] = sigs

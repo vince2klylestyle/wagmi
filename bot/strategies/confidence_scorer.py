@@ -296,6 +296,12 @@ class ConfidenceScorerStrategy(BaseStrategy):
             tp1 = zones["sma20"]
             tp2 = zones["regular_buy"]
 
+        hist_str = f"hist_WR={hist_conf:.0%}" if hist_conf is not None else "hist_WR=n/a"
+        ctx = (
+            f"zone={action}, RSI={rsi:.0f}, {hist_str}"
+            f"{', vol_spike' if vol_spike else ''}"
+        )
+
         return Signal(
             strategy=self.name,
             symbol=symbol,
@@ -305,6 +311,7 @@ class ConfidenceScorerStrategy(BaseStrategy):
             sl=sl,
             tp1=tp1,
             tp2=tp2,
+            signal_context=ctx,
             metadata={
                 "action": action,
                 "zones": zones,

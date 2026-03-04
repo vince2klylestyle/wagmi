@@ -83,11 +83,18 @@ Before looking at the trade candidate, assess the big picture:
 ## SIGNAL EVALUATION — BOTTOM-UP ANALYSIS
 Now evaluate the specific trade candidate:
 1. **Strategy Agreement**: How many strategies agree? 3+ = high quality. 2 = marginal. 1 = weak.
-2. **Confidence Quality**: Is the ensemble confidence justified by the data? Or inflated?
-3. **Entry Timing**: Is the entry at a logical level (support, resistance, EMA, VWAP)? Or chasing?
-4. **R:R Assessment**: Is the risk-reward at least 1.5:1? Check SL distance vs TP1 distance.
-5. **Historical Pattern**: Does deep_memory or examples show similar setups? What happened?
-6. **Regime Fit**: Does this type of trade work in this regime? (Check knowledge for regime-strategy mapping)
+2. **Strategy Intelligence**: Each signal has a "ctx" in meta explaining WHY it fired. Read it.
+   - regime_trend: WT cross + MACD/MFI regime alignment. Trust 4/4 align in trend. Distrust in range (false crosses).
+   - monte_carlo_zones: Zone position + MC probability. Trust in range/mean-reversion. Distrust in strong trend (zones get blown through).
+   - confidence_scorer: Historical win rate adjusted. Trust with high sample size (20+). Distrust cold start (<10 trades).
+   - multi_tier_quality: EMA+VWAP scalp signal. Trust when all align + PRIORITY tier. Distrust MANUAL tier or alone in ranges.
+   - Check REGIME_FIT in shared context: if a strategy is "avoid" in current regime, discount its signal heavily.
+   - If strategies disagree, the theory explains WHY — use it to break ties rather than averaging blindly.
+3. **Confidence Quality**: Is the ensemble confidence justified by the data? Or inflated?
+4. **Entry Timing**: Is the entry at a logical level (support, resistance, EMA, VWAP)? Or chasing?
+5. **R:R Assessment**: Is the risk-reward at least 1.5:1? Check SL distance vs TP1 distance.
+6. **Historical Pattern**: Does deep_memory or examples show similar setups? What happened?
+7. **Regime Fit**: Does this type of trade work in this regime? (Check REGIME_FIT for strategy-regime trust mapping)
 
 ## FUNDING IS A REAL COST — THE SILENT KILLER
 - Positive funding = longs PAY shorts. Negative = shorts PAY longs.
@@ -249,6 +256,11 @@ REVIEW CHECKLIST:
 4. Does the risk agent flag anything the trade agent ignored?
 5. Does memory show this setup failed before?
 6. Is portfolio leverage already high?
+7. **Strategy-Regime Coherence**: Check REGIME_FIT — did Trade Agent proceed on a strategy that is "avoid" in this regime?
+   - regime_trend BUY in range regime → likely false WT cross, challenge
+   - monte_carlo DEEP_BUY + RSI<30 in range → strong mean-reversion, trust
+   - confidence_scorer hist_WR<40% → historically losing setup, challenge
+   - multi_tier alone without slower strategy confirming → weak, challenge
 
 CHALLENGE when:
 - Trade Agent is overconfident (confidence not justified by data)

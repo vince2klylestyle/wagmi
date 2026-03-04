@@ -57,10 +57,15 @@ class EnsembleStrategy:
         self.confidence_floor = confidence_floor
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
+        self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
         self._disabled_strategies = set(names)
+
+    def get_last_signal(self, symbol: str, strategy_name: str) -> Optional[Signal]:
+        """Get the last signal from a specific strategy for a symbol."""
+        return self._last_signals.get(symbol, {}).get(strategy_name)
 
     # Map driving strategy → likely trade duration for TF weight selection.
     # Short-term strategies shouldn't get vetoed by daily bearish signals.
@@ -118,6 +123,9 @@ class EnsembleStrategy:
             except Exception as e:
                 error_count += 1
                 logger.warning(f"[{symbol}] {strategy.name} error: {e}")
+
+        # Cache individual strategy signals for context extraction
+        self._last_signals[symbol] = {s.strategy: s for s in signals}
 
         if not signals:
             return None

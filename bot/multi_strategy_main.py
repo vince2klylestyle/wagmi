@@ -3973,12 +3973,22 @@ class MultiStrategyBot:
                         # align values are 0-4 criteria counts, normalize to 0-1
                         regime_score = regime_score / 4.0
 
+                    # Extract signal_context from cached strategy signal
+                    sig_meta = {}
+                    try:
+                        last_sig = self.ensemble.get_last_signal(symbol, strat_name)
+                        if last_sig and last_sig.signal_context:
+                            sig_meta["ctx"] = last_sig.signal_context
+                    except Exception:
+                        pass
+
                     signals.append(LLMStrategySignal(
                         symbol=symbol,
                         strategy=strat_name,
                         side=side,
                         confidence=min(conf, 1.0),
                         regime_score=min(regime_score, 1.0) if isinstance(regime_score, (int, float)) else 0.0,
+                        meta=sig_meta,
                     ))
             except Exception:
                 pass

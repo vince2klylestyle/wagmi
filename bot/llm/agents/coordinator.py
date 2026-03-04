@@ -295,12 +295,15 @@ class AgentCoordinator:
 
         # Inject thought protocol and shared context into the prompt
         protocol_prefix = build_protocol_prefix(role.value)
+        scratchpad = get_pipeline_scratchpad()
         shared_context = build_shared_context_block(
             agent_role=role.value,
-            scratchpad=get_pipeline_scratchpad(),
+            scratchpad=scratchpad,
             shared_lessons=get_shared_lessons(),
             include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
             include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
+            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
+            current_regime=scratchpad.read_by_key("regime") or "",
         )
 
         # Prepend protocol and context to the agent's system prompt

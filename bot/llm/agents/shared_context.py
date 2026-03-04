@@ -118,6 +118,42 @@ REGIME_ACTION_MAP = {
 }
 
 
+# ── Strategy Theory (HOW and WHY each strategy works) ────────────
+
+STRATEGY_THEORY = {
+    "regime_trend": {
+        "how": "WaveTrend cross on 1h + MACD/MFI regime filter on 6h/16h. align=0-4 (cross+MFI+6h_regime+16h_regime).",
+        "trust": "Best in trend. 4/4 align=strong conviction. Momentum entry (recent cross, not this-bar)=slightly weaker.",
+        "fail": "Ranges produce false WT crosses. MFI<40 in bull regime=divergence, caution.",
+    },
+    "monte_carlo_zones": {
+        "how": "SMA20±k*stdev zones + 1000 MC sims projecting 12h fwd. Buys in buy zone when MC>60% up.",
+        "trust": "Best in range/mean-reversion. Stronger when RSI14 confirms (oversold for buys, overbought for sells).",
+        "fail": "Trends blow through zones without reverting. News dislocations make historical distribution useless.",
+    },
+    "confidence_scorer": {
+        "how": "Same zones as MC + historical win rate per (symbol, action). Adjusts confidence by observed outcomes.",
+        "trust": "Trust grows with sample size. 20+ trades=statistically meaningful. Best arbitrator between strategies.",
+        "fail": "Cold start (<10 trades)=unreliable. Lags regime shifts. Can overfit to recent conditions.",
+    },
+    "multi_tier_quality": {
+        "how": "5m EMA20/50 crossover + VWAP alignment + 1h EMA trend. 3 tiers: PRIORITY(75%+), REGULAR(65%+), MANUAL(<65%).",
+        "trust": "Best for scalps (5-30min). When EMA+VWAP+1h all align=high conviction micro-entry.",
+        "fail": "Noisy in ranges (EMA whipsaw). Must confirm with slower strategy. MANUAL tier=low conviction.",
+    },
+}
+
+STRATEGY_REGIME_FIT = {
+    "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
+    "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "strong",   "multi_tier_quality": "weak"},
+    "panic":            {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
+    "high_volatility":  {"regime_trend": "weak",   "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
+    "low_liquidity":    {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "avoid",    "multi_tier_quality": "avoid"},
+    "news_dislocation": {"regime_trend": "avoid",  "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "avoid"},
+    "unknown":          {"regime_trend": "weak",   "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "weak"},
+}
+
+
 # ── Shared Memory Bus ────────────────────────────────────────────
 # Pipeline scratchpad: upstream agents write, downstream agents read.
 # Reset at the start of each pipeline run.
@@ -243,6 +279,8 @@ def build_shared_context_block(
     shared_lessons: Optional[SharedLessons] = None,
     include_axioms: bool = True,
     include_regime_map: bool = False,
+    include_strategy_theory: bool = False,
+    current_regime: str = "",
 ) -> str:
     """Build a compact shared context block for an agent.
 
@@ -251,6 +289,7 @@ def build_shared_context_block(
     - Upstream agent scratchpad entries
     - Shared lessons relevant to this agent
     - Regime-action mapping (if requested)
+    - Strategy theory + regime fit (if requested)
 
     Returns a compact string to minimize token usage.
     """
@@ -283,6 +322,21 @@ def build_shared_context_block(
                 "sz": mapping["sizing_range"],
             }
         parts.append(f"REGIME_RULES: {json.dumps(compact_map, separators=(',', ':'))}")
+
+    # Strategy theory: HOW/TRUST/FAIL + regime fit for current regime
+    if include_strategy_theory:
+        theory_lines = []
+        for strat, info in STRATEGY_THEORY.items():
+            short_name = strat.replace("_", "")[:8]
+            theory_lines.append(f"{short_name}: {info['how']} Trust: {info['trust']} Fail: {info['fail']}")
+        parts.append("STRAT_THEORY: " + " | ".join(theory_lines))
+
+        # Regime-specific strategy trust mapping
+        regime_key = current_regime.lower().strip() if current_regime else ""
+        fit = STRATEGY_REGIME_FIT.get(regime_key)
+        if fit:
+            fit_str = ", ".join(f"{k}={v}" for k, v in fit.items())
+            parts.append(f"REGIME_FIT({regime_key}): {fit_str}")
 
     return " || ".join(parts) if parts else ""
 
