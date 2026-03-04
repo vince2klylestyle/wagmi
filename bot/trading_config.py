@@ -274,7 +274,7 @@ class TradingConfig:
         default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.0)
     )
     min_stop_width_pct: float = field(
-        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.003)
+        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.002)
     )
     # Monte Carlo strategy
     mc_num_sims: int = field(

@@ -117,19 +117,20 @@ class RiskFilterChain:
                     meta["cluster_risk"] = round(cluster_risk, 3)
 
                     # High correlation cluster → reduce size or reject
-                    if cluster_risk >= 0.85:
+                    # Raised from 0.85 to 0.90 — correlated trades in trends are intentional
+                    if cluster_risk >= 0.90:
                         return FilterResult(
                             approved=False, signal=signal,
-                            rejection_reason=f"Correlation cluster risk {cluster_risk:.2f} >= 0.85 "
+                            rejection_reason=f"Correlation cluster risk {cluster_risk:.2f} >= 0.90 "
                                              f"(too many correlated positions in same direction)",
                             metadata=meta,
                         )
-                    elif cluster_risk >= 0.70:
-                        # Don't reject, but reduce risk multiplier by 40%
-                        meta["correlation_size_reduction"] = 0.6
+                    elif cluster_risk >= 0.75:
+                        # Don't reject, but reduce risk multiplier by 30% (was 40%)
+                        meta["correlation_size_reduction"] = 0.7
                         logger.info(
                             f"[CORR-GUARD] {signal.symbol} cluster_risk={cluster_risk:.2f} "
-                            f"— reducing position size by 40%"
+                            f"— reducing position size by 30%"
                         )
             except Exception as e:
                 logger.debug(f"[CORR-GUARD] Error: {e}")
