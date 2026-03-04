@@ -2743,6 +2743,18 @@ class MultiStrategyBot:
             "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
         }
 
+        # Track portfolio correlation risk for LLM learning feedback
+        if self.portfolio_risk and len(open_pos) >= 2:
+            try:
+                _pos_map = {s: p.side.lower() for s, p in open_pos.items()}
+                _pos_map[symbol] = side.lower()
+                _corr_m = self.portfolio_risk.compute_correlation_matrix()
+                if _corr_m:
+                    _cluster = _corr_m.get_cluster_risk(_pos_map)
+                    entry_reasons["cluster_risk"] = round(_cluster, 3)
+            except Exception:
+                pass
+
         # Correlation guard: max same-direction positions
         same_dir_count = sum(1 for p in open_pos.values() if p.side == side)
         if same_dir_count >= self._max_same_direction:
@@ -2987,6 +2999,7 @@ class MultiStrategyBot:
         entry_reasons["llm_action"] = candidate.llm_action or ""
         entry_reasons["llm_confidence"] = getattr(candidate, 'llm_confidence', 0.0) or 0.0
         entry_reasons["llm_agreed"] = candidate.llm_action in ("proceed", "go", "", "no_llm", None)
+        entry_reasons["llm_notes"] = getattr(candidate, 'llm_notes', '') or ""
 
         # ── LLM size multiplier: apply the meta-brain's sizing adjustment ──
         # In SIZING+ modes, the LLM can scale position size 0.5x-2.0x
@@ -3196,6 +3209,16 @@ class MultiStrategyBot:
         self.ops_guard.record_trade()
 
         # Open position with LIVE price as entry
+        # Extract LLM thesis and setup type for Exit Agent thesis continuity
+        _llm_notes = entry_reasons.get("llm_notes", "")
+        _setup_type = ""
+        if "setup=" in _llm_notes:
+            try:
+                _st = _llm_notes.split("setup=")[1].split(" ")[0].split("|")[0].strip()
+                _setup_type = _st[:30]
+            except Exception:
+                pass
+
         self.pos_mgr.open_position(
             symbol=symbol,
             side=side,
@@ -3212,6 +3235,8 @@ class MultiStrategyBot:
             tp1_close_pct=tp1_pct,
             entry_reasons=entry_reasons,
             trade_profile=trade_prof,
+            notes=_llm_notes[:200],
+            setup_type=_setup_type,
         )
 
         # Log trade open to database (with live price)
@@ -3661,7 +3686,7 @@ class MultiStrategyBot:
         if hasattr(self, 'portfolio_risk') and self.portfolio_risk and open_pos:
             try:
                 positions_map = {sym: pos.side.lower() for sym, pos in open_pos.items()}
-                corr_matrix = self.portfolio_risk.get_correlation_matrix()
+                corr_matrix = self.portfolio_risk.compute_correlation_matrix()
                 if corr_matrix:
                     cluster_risk = corr_matrix.get_cluster_risk(positions_map)
                     scout_data["portfolio_cluster_risk"] = round(cluster_risk, 3)
@@ -3680,9 +3705,27 @@ class MultiStrategyBot:
             "risk_per_trade": self.risk_mgr.risk_per_trade,
         }
 
-        # Run scout
+        # Enrich Scout with deep memory pattern data
+        if _DEEP_MEMORY_AVAILABLE:
+            try:
+                from llm.deep_memory import get_deep_memory
+                dm = get_deep_memory()
+                strategy_eff = dm.trade_dna.get_strategy_effectiveness()
+                if strategy_eff:
+                    # Compact: top 5 setups by sample size
+                    top_setups = sorted(strategy_eff.items(), key=lambda x: x[1].get("total", 0), reverse=True)[:5]
+                    scout_data["pattern_library"] = {
+                        k: {"wr": round(v.get("win_rate", 0.5), 2), "n": v.get("total", 0)}
+                        for k, v in top_setups
+                    }
+            except Exception:
+                pass
+
+        # Run scout and cache results for Trade Agent to consume
         result = coordinator.run_scout(scout_data)
         if result:
+            self._last_scout_result = result
+            self._last_scout_ts = time.time()
             logger.info(f"[{trace_id}][SCOUT] Preparation complete: "
                         f"{len(result.get('watchlist', []))} watchlist items")
 
@@ -4384,6 +4427,31 @@ class MultiStrategyBot:
                     global_ctx.extra["cross_symbol_patterns"] = _cs_patterns
             except Exception as e:
                 logger.debug(f"Cross-symbol pattern injection error: {e}")
+
+        # Inject Scout Agent preparation findings into LLM context
+        # Scout results persist across ticks (refreshed every 10 ticks)
+        scout = getattr(self, '_last_scout_result', None)
+        scout_ts = getattr(self, '_last_scout_ts', 0)
+        if scout and (time.time() - scout_ts) < 600:  # Fresh within 10 min
+            scout_compact = {}
+            wl = scout.get("watchlist", [])
+            if wl:
+                scout_compact["watchlist"] = [
+                    {"sym": w.get("symbol"), "pri": w.get("priority"),
+                     "setup": w.get("setup_forming"), "dir": w.get("direction"),
+                     "thesis": w.get("pre_thesis", "")[:80]}
+                    for w in wl[:5]
+                ]
+            rf = scout.get("regime_forecast")
+            if rf:
+                scout_compact["regime_forecast"] = rf
+            ll = scout.get("lead_lag_alerts", [])
+            if ll:
+                scout_compact["lead_lag"] = ll[:3]
+            cw = scout.get("correlation_warning")
+            if cw:
+                scout_compact["corr_warning"] = cw
+            global_ctx.extra["scout_preparation"] = scout_compact
 
         # Risk context
         risk_ctx = LLMRiskContext(

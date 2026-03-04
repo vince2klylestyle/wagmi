@@ -93,6 +93,7 @@ You receive rich context. Each field matters:
 - `recent_dec`: Your last 3 decisions. Your CONSISTENCY record.
 - `mem`: Short-term memory notes. Your OBSERVATIONS.
 - `survival`: Accountability context.
+- `scout_preparation` (in global context): Scout Agent's idle-time findings — pre-formed theses, watchlist priority, regime forecast, lead-lag alerts. If Scout flagged this symbol as HIGH priority with a pre-formed thesis, VALIDATE the thesis against current data rather than forming one from scratch. Scout's regime forecast predicts near-future regime transitions — factor this into your thesis timeframe.
 
 ## MACRO DECISION MAKING — TOP-DOWN ANALYSIS
 Before looking at the trade candidate, assess the big picture:

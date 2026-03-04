@@ -648,6 +648,19 @@ class AgentCoordinator:
         # Recent lessons about sizing/risk
         if "recent_lessons" in snapshot:
             risk_data["recent_lessons"] = snapshot["recent_lessons"]
+        # Confluence quality for informed sizing (convergent setups → size up)
+        if "confluence" in snapshot:
+            risk_data["confluence"] = snapshot["confluence"]
+        else:
+            # Compute confluence from market signals if available
+            markets = snapshot.get("m", [])
+            if markets:
+                try:
+                    confluence = score_confluence(markets[0].get("signals", []))
+                    if confluence.get("count", 0) > 0:
+                        risk_data["confluence"] = confluence
+                except Exception:
+                    pass
         return json.dumps(risk_data, separators=(",", ":"))
 
     def _build_critic_input(

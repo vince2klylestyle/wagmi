@@ -82,6 +82,10 @@ class Position:
     # Outcome classification (set on close)
     outcome: str = ""  # CLEAN_WIN, CLEAN_LOSS, TP1_ONLY, TP1_THEN_SL, etc.
 
+    # LLM context: thesis and setup type for exit intelligence
+    notes: str = ""          # LLM decision notes (THESIS:..., OUTLOOK:..., etc.)
+    setup_type: str = ""     # Classified setup (trend_at_zone, zone_validated, etc.)
+
     def __post_init__(self):
         if self.original_qty == 0:
             self.original_qty = self.qty
@@ -172,6 +176,8 @@ class PositionManager:
         tp1_close_pct: float = 0.7,
         entry_reasons: Optional[Dict[str, Any]] = None,
         trade_profile: Optional[TradeProfile] = None,
+        notes: str = "",
+        setup_type: str = "",
     ) -> Optional[Position]:
         """Open a new position. Enforces one position per symbol."""
         # Don't open if already have a position in this symbol
@@ -219,6 +225,8 @@ class PositionManager:
             trailing_distance=trailing_distance,
             entry_reasons=entry_reasons or {},
             trade_profile=trade_profile,
+            notes=notes,
+            setup_type=setup_type,
         )
 
         # State: IDLE -> OPEN

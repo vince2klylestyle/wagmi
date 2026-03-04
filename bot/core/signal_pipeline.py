@@ -103,7 +103,7 @@ class RiskFilterChain:
         # create excessive correlated exposure (e.g., 3 long alts all 0.8+ corr)
         if portfolio_risk_engine and open_positions and current_open_count >= 2:
             try:
-                corr_matrix = portfolio_risk_engine.get_correlation_matrix()
+                corr_matrix = portfolio_risk_engine.compute_correlation_matrix()
                 if corr_matrix:
                     # Build positions map including the proposed new trade
                     positions_map = {}
