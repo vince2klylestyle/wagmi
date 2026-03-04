@@ -55,7 +55,7 @@ class BacktestEngine:
         self.config = config or TradingConfig()
 
         # Initialize components
-        self.fetcher = DataFetcher(cache_ttl=3600)  # long cache for backtest
+        self.fetcher = DataFetcher(cache_ttl=3600, backtest_mode=True)
         self.risk_mgr = RiskManager(
             starting_equity=self.config.starting_equity,
             risk_per_trade=self.config.risk_per_trade,
@@ -195,13 +195,19 @@ class BacktestEngine:
 
             current_price = float(df_1h["close"].iloc[i])
 
+            # Parse simulation timestamp for circuit breaker time awareness
+            sim_time = pd.Timestamp(df_1h["time"].iloc[i])
+            if sim_time.tzinfo is None:
+                sim_time = sim_time.tz_localize("UTC")
+            sim_dt = sim_time.to_pydatetime()
+
             # Check existing positions
             events = self.pos_mgr.update_price(symbol, current_price)
             for event in events:
-                self.risk_mgr.update_equity(event.pnl - event.fee)
+                self.risk_mgr.update_equity(event.pnl - event.fee, sim_time=sim_dt)
 
             # Try to generate signal
-            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count()):
+            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt):
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal:
                     self._execute_signal(signal, current_price)
@@ -212,6 +218,9 @@ class BacktestEngine:
                 "equity": self.risk_mgr.equity,
                 "open_positions": self.pos_mgr.get_open_count(),
             })
+
+        # Force-close any open position at end of symbol walk
+        self._force_close_open(symbol, current_price, sim_dt)
 
     def _walk_daily(self, symbol: str, data: Dict[str, pd.DataFrame], ensemble: EnsembleStrategy):
         """Walk forward through daily data points."""
@@ -232,11 +241,17 @@ class BacktestEngine:
 
             current_price = float(df["close"].iloc[i])
 
+            # Parse simulation timestamp for circuit breaker time awareness
+            sim_time = pd.Timestamp(df["time"].iloc[i])
+            if sim_time.tzinfo is None:
+                sim_time = sim_time.tz_localize("UTC")
+            sim_dt = sim_time.to_pydatetime()
+
             events = self.pos_mgr.update_price(symbol, current_price)
             for event in events:
-                self.risk_mgr.update_equity(event.pnl - event.fee)
+                self.risk_mgr.update_equity(event.pnl - event.fee, sim_time=sim_dt)
 
-            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count()):
+            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt):
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal:
                     self._execute_signal(signal, current_price)
@@ -246,6 +261,18 @@ class BacktestEngine:
                 "equity": self.risk_mgr.equity,
                 "open_positions": self.pos_mgr.get_open_count(),
             })
+
+        # Force-close any open position at end of symbol walk
+        self._force_close_open(symbol, current_price, sim_dt)
+
+    def _force_close_open(self, symbol: str, last_price: float, sim_dt: datetime):
+        """Force-close any open position at the end of a symbol's walk."""
+        pos = self.pos_mgr.positions.get(symbol)
+        if pos and pos.state != "CLOSED":
+            event = self.pos_mgr.force_close(symbol, last_price, reason="BACKTEST_END")
+            if event:
+                self.risk_mgr.update_equity(event.pnl - event.fee, sim_time=sim_dt)
+                logger.info(f"[{symbol}] Force-closed at backtest end: PnL={event.pnl:.2f}")
 
     def _execute_signal(self, signal: Signal, current_price: float):
         """Execute a signal in backtest mode with slippage simulation."""
@@ -373,10 +400,15 @@ class BacktestEngine:
 
         return report
 
+    # Actions that represent trade closes (not OPEN events)
+    _CLOSE_ACTIONS = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
+                      "EMERGENCY", "BACKTEST_END", "HOLD_LIMIT",
+                      "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
+
     def _report_by_strategy(self) -> Dict:
         result = {}
         for event in self.pos_mgr.trade_log:
-            if event.action in ("SL", "TP1", "TP2", "TRAILING_STOP"):
+            if event.action in self._CLOSE_ACTIONS:
                 strat = event.strategy or "unknown"
                 if strat not in result:
                     result[strat] = {"trades": 0, "wins": 0, "pnl": 0.0}
@@ -391,7 +423,7 @@ class BacktestEngine:
     def _report_by_symbol(self) -> Dict:
         result = {}
         for event in self.pos_mgr.trade_log:
-            if event.action in ("SL", "TP1", "TP2", "TRAILING_STOP"):
+            if event.action in self._CLOSE_ACTIONS:
                 sym = event.symbol
                 if sym not in result:
                     result[sym] = {"trades": 0, "wins": 0, "pnl": 0.0}
@@ -408,7 +440,7 @@ class BacktestEngine:
         leveraged = {"trades": 0, "pnl": 0.0, "avg_leverage": 0.0}
         levs = []
         for event in self.pos_mgr.trade_log:
-            if event.action in ("SL", "TP1", "TP2", "TRAILING_STOP"):
+            if event.action in self._CLOSE_ACTIONS:
                 if event.leverage <= 1.0:
                     spot["trades"] += 1
                     spot["pnl"] += event.pnl
