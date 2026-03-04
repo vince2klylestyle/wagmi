@@ -345,10 +345,10 @@ class PositionManager:
         """
         Detect momentum reversal heading toward SL and cut early.
         Triggers when ALL of:
-        1. Price moved >50% toward SL
+        1. Price moved >65% toward SL (close to stop, not just noise)
         2. Last 3 candles accelerating against position
         3. EMA5 crossed against EMA13
-        Cutting at 50-60% loss is better than waiting for full SL.
+        Cutting at 65-80% loss is better than waiting for full SL.
         """
         if df_5m is None or df_5m.empty or len(df_5m) < 15:
             return False
@@ -368,7 +368,7 @@ class PositionManager:
             if sl_progress > 1.0:
                 return False
 
-            if sl_progress < 0.5:
+            if sl_progress < 0.65:
                 return False
 
             c = df_5m["close"].astype(float)

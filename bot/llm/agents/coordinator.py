@@ -846,13 +846,36 @@ class AgentCoordinator:
 
         # Critic Agent: can adjust or override
         # Treat any non-"approve" verdict as a challenge (defensive normalization)
+        # PROFITABILITY GATE: if Critic's veto accuracy is poor, limit its power
         counter_thesis = ""
+        _critic_vacc = 0.5  # default assumption
+        if snapshot_data:
+            _sp = snapshot_data.get("self_perf", {})
+            if isinstance(_sp, dict):
+                _critic_vacc = _sp.get("vacc", 0.5)
+
         if critic_out and critic_out.ok:
             cd = critic_out.data
             verdict = cd.get("verdict", "approve").lower().strip()
             counter_thesis = cd.get("counter_thesis", "")
 
-            if verdict != "approve":
+            # If Critic veto accuracy < 0.45, block full vetoes — only allow
+            # confidence adjustment. Bad vetoes lose more money than bad trades.
+            if verdict != "approve" and _critic_vacc < 0.45:
+                adj_conf = cd.get("adjusted_confidence")
+                if adj_conf is not None:
+                    old_conf = confidence
+                    confidence = max(confidence * 0.85, float(adj_conf))
+                    confidence = max(0.0, min(1.0, confidence))
+                    notes += (f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45), "
+                              f"conf {old_conf:.2f}→{confidence:.2f}")
+                else:
+                    notes += f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45)"
+                logger.info(
+                    f"[COORDINATOR] Critic veto blocked: vacc={_critic_vacc:.2f} < 0.45 "
+                    f"— vetoes are losing money, allowing trade with adjusted confidence"
+                )
+            elif verdict != "approve":
                 adj_action = cd.get("adjusted_action")
                 adj_conf = cd.get("adjusted_confidence")
                 reason = cd.get("reason", "")

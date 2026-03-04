@@ -511,11 +511,21 @@ def get_trading_decision(
                 regime_wr = rg_acc[decision.regime]
                 regime_n = rg_counts[decision.regime]
                 if regime_wr < 0.40 and regime_n >= 5 and decision.action != "flat":
-                    penalty = 0.10
+                    penalty = 0.05  # Reduced from 0.10 — don't double-penalize
                     old_conf = decision.confidence
                     decision.confidence = max(0.0, decision.confidence - penalty)
                     logger.info(
                         f"[LLM-ENGINE] Regime penalty: {decision.regime} "
+                        f"WR={regime_wr:.0%} ({regime_n} trades), "
+                        f"conf {old_conf:.2f} -> {decision.confidence:.2f}"
+                    )
+                elif regime_wr > 0.65 and regime_n >= 5 and decision.action != "flat":
+                    # Reward: we're good in this regime — boost confidence
+                    bonus = 0.05
+                    old_conf = decision.confidence
+                    decision.confidence = min(1.0, decision.confidence + bonus)
+                    logger.info(
+                        f"[LLM-ENGINE] Regime bonus: {decision.regime} "
                         f"WR={regime_wr:.0%} ({regime_n} trades), "
                         f"conf {old_conf:.2f} -> {decision.confidence:.2f}"
                     )
@@ -531,11 +541,15 @@ def get_trading_decision(
         ]
         unique_regimes = set(r for r in recent_regimes if r)
         if len(unique_regimes) >= 3 and decision.confidence < 0.75 and decision.action != "flat":
+            # Don't force flat — penalize confidence instead. Regime transitions
+            # ARE real trading opportunities, flat here loses inflection-point trades.
+            penalty = 0.10
+            old_conf = decision.confidence
+            decision.confidence = max(0.0, decision.confidence - penalty)
             logger.info(
                 f"[LLM-ENGINE] Regime instability ({unique_regimes}), "
-                f"conf={decision.confidence:.2f} < 0.75 — downgrading to flat"
+                f"conf {old_conf:.2f} → {decision.confidence:.2f} (penalty, not flat)"
             )
-            decision.action = "flat"
     except Exception:
         pass
 
@@ -559,7 +573,7 @@ def get_trading_decision(
             decision.action = "flat"
             mode_overrides.append("flip_rate_limited")
 
-    # Step 5.7: Consistency check — don't contradict recent same-symbol decisions
+    # Step 5.7: Consistency check — penalize (don't block) rapid flip-flops
     _sym_for_consistency = trigger_context.split()[0] if trigger_context else ""
     if _sym_for_consistency and decision.action != "flat":
         try:
@@ -567,21 +581,22 @@ def get_trading_decision(
             for rd in reversed(list(_recent_decisions)):
                 if rd.get("sym") != _sym_for_consistency:
                     continue
-                if (now - rd.get("ts", 0)) > 600:  # Only check last 10 minutes
+                if (now - rd.get("ts", 0)) > 300:  # Only check last 5 minutes
                     break
                 prev_action = rd.get("a", "")
                 # If we previously said flat/skip but now say proceed, need higher confidence
                 if prev_action in ("flat", "skip", "REJECTED_go", "REJECTED_proceed") \
                         and decision.action in ("proceed", "go"):
-                    if decision.confidence < rd.get("c", 0) + 0.15:
+                    if decision.confidence < rd.get("c", 0) + 0.10:
+                        # Penalize confidence instead of forcing flat — markets change
+                        old_conf = decision.confidence
+                        decision.confidence = max(0.0, decision.confidence - 0.08)
                         logger.info(
-                            f"[LLM-ENGINE] Consistency check: {_sym_for_consistency} "
+                            f"[LLM-ENGINE] Consistency penalty: {_sym_for_consistency} "
                             f"was recently {prev_action} (conf={rd.get('c', 0):.2f}), "
-                            f"now {decision.action} conf={decision.confidence:.2f} — "
-                            f"need +0.15 to override, downgrading to flat"
+                            f"conf {old_conf:.2f} → {decision.confidence:.2f}"
                         )
-                        decision.action = "flat"
-                        mode_overrides.append("consistency_override_recent_flat")
+                        mode_overrides.append("consistency_penalty")
                 break  # Only check most recent decision for this symbol
         except Exception:
             pass

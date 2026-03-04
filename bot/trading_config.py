@@ -109,7 +109,7 @@ class TradingConfig:
         default_factory=lambda: _env("ENSEMBLE_MODE", "weighted_veto")
     )  # "voting", "weighted_veto", "weighted", "best"
     min_votes_required: int = field(
-        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 3)
+        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 2)
     )
     veto_ratio: float = field(
         default_factory=lambda: _env_float("VETO_RATIO", 1.1)
@@ -173,7 +173,7 @@ class TradingConfig:
         default_factory=lambda: _env_bool("ENABLE_CHOP_DETECTOR", True)
     )
     chop_threshold: float = field(
-        default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.55)
+        default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.65)
     )
     max_hold_hours: int = field(
         default_factory=lambda: _env_int("MAX_HOLD_HOURS", 48)
@@ -340,10 +340,10 @@ class TradingConfig:
 
     # ── Cooldowns & Time Intervals ──
     loss_cooldown_s: int = field(
-        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 120)
+        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 180)
     )
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 300)
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 120)
     )
     signal_dedup_window_s: int = field(
         default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 300)

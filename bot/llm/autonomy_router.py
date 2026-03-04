@@ -163,15 +163,31 @@ def _mode_veto_only(baseline: Dict[str, Any], llm: Optional[LLMDecision]) -> Dic
         return decision
 
     else:  # "proceed"
-        # LLM approved, use baseline
+        # LLM approved — scale sizing by LLM confidence for gradation
+        # Strong approval (>0.70) = full size, weak (0.50-0.60) = reduced
         decision["source"] = "baseline_approved_by_llm"
         decision["llm_veto"] = False
         decision["llm_confidence"] = llm.confidence
         decision["llm_regime"] = llm.regime
-        logger.debug(
-            f"[AUTONOMY-ROUTER] Mode VETO_ONLY: LLM approved baseline "
-            f"(conf={llm.confidence:.2f})"
-        )
+
+        # Confidence-based size scaling: avoid all-or-nothing
+        if llm.confidence < 0.55:
+            decision["size_multiplier"] = 0.6  # Weak approval → smaller position
+            logger.info(
+                f"[AUTONOMY-ROUTER] Mode VETO_ONLY: LLM weak approval "
+                f"(conf={llm.confidence:.2f}), sizing 0.6x"
+            )
+        elif llm.confidence < 0.65:
+            decision["size_multiplier"] = 0.8  # Moderate approval → slight reduction
+            logger.debug(
+                f"[AUTONOMY-ROUTER] Mode VETO_ONLY: LLM moderate approval "
+                f"(conf={llm.confidence:.2f}), sizing 0.8x"
+            )
+        else:
+            logger.debug(
+                f"[AUTONOMY-ROUTER] Mode VETO_ONLY: LLM strong approval "
+                f"(conf={llm.confidence:.2f}), full size"
+            )
         return decision
 
 

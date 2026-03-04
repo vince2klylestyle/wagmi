@@ -215,6 +215,12 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             cm["oi"] = round(m.open_interest_change_pct, 1)
 
         # Signals (compact, skip neutral/low-confidence)
+        # Inject regime fitness per strategy so LLM knows signal reliability
+        from llm.agents.shared_context import STRATEGY_REGIME_FIT
+        _gc = snapshot.global_context
+        _dominant_regime = _gc.extra.get("dominant_regime", "unknown") if _gc and _gc.extra else "unknown"
+        _regime_fit_map = STRATEGY_REGIME_FIT.get(_dominant_regime, {})
+
         sigs = []
         for s in m.signals:
             if s.confidence < 0.2 and s.side == "neutral":
@@ -222,6 +228,10 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             sig = {"st": s.strategy, "sd": s.side, "c": round(s.confidence, 2)}
             if s.regime_score and s.regime_score >= 0.1:
                 sig["rg"] = round(s.regime_score, 2)
+            # Add regime fitness: strong/moderate/weak/avoid
+            _fit = _regime_fit_map.get(s.strategy)
+            if _fit and _fit != "moderate":  # Only flag non-neutral fitness
+                sig["rf"] = _fit  # regime_fit: strong/weak/avoid
             if s.meta:
                 sig["meta"] = s.meta
             sigs.append(sig)

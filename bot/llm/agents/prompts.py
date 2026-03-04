@@ -115,7 +115,7 @@ Now evaluate the specific trade candidate:
    - monte_carlo ctx: zone, MC probability, RSI. DEEP_BUY + MC>65% + RSI<30 = statistical edge confirmed.
    - confidence_scorer ctx: zone, historical WR. hist_WR>60% = validated, <40% = historically losing.
    - multi_tier ctx: EMA cross, VWAP, tier. PRIORITY + all aligned = clean scalp entry.
-   - Check REGIME_FIT: strategy "avoid" in current regime → discount heavily.
+   - Check `rf` field on each signal: "strong" = trust, "weak" = discount 20%, "avoid" = this strategy FAILS in this regime, discount 50%+. If rf="avoid", that signal is noise — do NOT count it as confluence.
 3. **R:R from ctx**: Check entry vs SL vs TP levels. R:R < 1.5 = not worth the risk.
 4. **Entry Quality**: Is entry at a logical level? Chasing a move = bad entry quality.
 5. **Historical Pattern**: Does deep_memory show similar setups? What happened?
@@ -137,12 +137,13 @@ Now evaluate the specific trade candidate:
 - 0.85-1.0 = rare — everything aligns perfectly, size up aggressively
 
 **SELF-CORRECTION via self_perf:**
-- If cal > +0.10: You're overconfident — reduce confidence 10%
-- If cal < -0.10: You're too cautious — trust your setups more
-- If vacc < 0.50: YOUR VETOES ARE LOSING MONEY. Be more willing to proceed. A missed winner costs as much as a taken loser.
-- If rg_acc < 40% for this regime: default to skip until you learn more
+- If cal > +0.10: You're overconfident — reduce confidence by 10%
+- If cal < -0.10: You're UNDER-confident — INCREASE confidence by 10%. You're missing winners. Every "skip" on a winner costs exactly as much as taking a loser.
+- If cal < -0.20: SEVERELY under-confident — increase confidence by 15%. You are systematically leaving money on the table.
+- If vacc < 0.50: YOUR VETOES ARE LOSING MONEY. Default to "proceed" unless you have 4+ concrete red flags. A missed winner costs exactly as much as a taken loser.
+- If rg_acc < 40% for this regime AND n >= 5: reduce confidence by 5% (not auto-skip — regime might have changed)
 - After 3+ losses in streak: increase selectivity
-- BIAS CHECK: "skip" is NOT inherently safer.
+- PROFITABILITY CHECK: "skip" costs money too. Every profitable trade you skip is a REAL loss. Measure skip accuracy (vacc) as seriously as trade accuracy.
 
 ## MEMORY & LEARNING
 Update memory when you learn something NEW (under 100 chars, specific):
@@ -377,6 +378,7 @@ The Trade Agent entered this position with a thesis. Your job is to answer:
 **HOLD** — Thesis valid, position behaving as expected:
 - Urgency: low
 - Don't tinker with winning trades unnecessarily
+- BUT: if gain > 2x risk AND momentum slowing (volume declining, candle bodies shrinking), consider PARTIAL_CLOSE 30-50% to lock profit. Unrealized gains aren't real until you close them.
 
 **TIGHTEN_SL** — Protect capital or lock profit:
 - Panic regime on LONG → move SL to midpoint between current SL and price
@@ -408,10 +410,12 @@ The Trade Agent entered this position with a thesis. Your job is to answer:
 - **range → trend**: If SHORT for mean-reversion and trend breaks out, thesis dead. Close.
 - **high_vol**: Widen stops to avoid noise, but track thesis validity more carefully.
 
-## FUNDING COST AWARENESS
+## FUNDING COST AWARENESS — THE SILENT PROFIT KILLER
 - Calculate accumulated funding cost: funding_rate × leverage × hold_hours / 8
-- If accumulated funding > 30% of unrealized gain → tighten or partial close
-- If adverse funding > 0.05% and hold > 2h → strong signal to tighten or exit
+- If accumulated funding > 20% of unrealized gain → PARTIAL_CLOSE 50% immediately. You're paying to hold.
+- If adverse funding > 0.04% and hold > 2h → tighten SL to breakeven + fees, consider PARTIAL_CLOSE
+- If adverse funding > 0.06% → urgency=high regardless of thesis. Funding is eating your edge.
+- RULE: A trade that would be +2% without funding but is +0.5% with it is a BAD hold. Take profit early.
 
 ## URGENCY LEVELS
 - **low**: Position behaving normally, thesis intact. Check again later.
