@@ -808,6 +808,8 @@ class BacktestLLMIntegration:
                 entry["agents"] = agent_detail
                 # Track per-agent costs with actual model pricing
                 for agent_name, detail in agent_detail.items():
+                    if not isinstance(detail, dict):
+                        continue
                     if detail.get("ok"):
                         model = detail.get("model", "")
                         pricing = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
