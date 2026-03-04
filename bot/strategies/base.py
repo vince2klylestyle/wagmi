@@ -24,6 +24,7 @@ class Signal:
     tp2: float              # take profit 2
     atr: float = 0.0        # ATR at signal time
     metadata: Dict[str, Any] = field(default_factory=dict)
+    signal_context: str = ""  # human-readable WHY this signal fired
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Minimum stop width as fraction of entry price (0.3%).

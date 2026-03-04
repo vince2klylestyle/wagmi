@@ -129,6 +129,7 @@ from execution.funding_timer import should_close_before_funding, minutes_until_n
 from strategies.regime_detector import RegimeTransitionDetector
 from monitoring.health import HealthMonitor
 from execution.graceful_degradation import DegradationManager
+from execution.pending_orders import PendingOrderManager
 
 # Watchdog: background health monitoring with stall detection and auto-alerts
 from monitoring.watchdog import get_watchdog
@@ -459,6 +460,8 @@ class MultiStrategyBot:
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
         self._llm_triggers = TriggerAccumulator()
+        self._slippage_reject_cooldown: Dict[str, float] = {}  # symbol -> timestamp
+        self.pending_orders = PendingOrderManager(max_pending=5)
 
         # Dual-world candidate logging (baseline vs LLM)
         self._candidate_logger = CandidateLogger()
@@ -473,7 +476,7 @@ class MultiStrategyBot:
                 global_rotation_cooldown_s=config.rotation_global_cooldown_s,
                 max_rotations_per_hour=config.rotation_max_per_hour,
                 max_rotations_per_day=config.rotation_max_per_day,
-                estimated_round_trip_fee_pct=config.taker_fee_bps / 100.0,  # bps -> %
+                estimated_round_trip_fee_pct=config.taker_fee_bps / 100.0,  # one-way fee in % (rotation mgr doubles for close+open)
             ))
         else:
             self.rotation_mgr = None
@@ -724,7 +727,7 @@ class MultiStrategyBot:
                 self.watchdog.record_error()
 
             self._tick += 1
-            self._sleep_interruptible(self.config.scan_interval_s)
+            self._sleep_interruptible(self._adaptive_scan_interval())
 
         self.watchdog.stop()
         log_health_event("BOT_STOP", "INFO", f"Bot stopped gracefully after {self._tick} ticks")
@@ -733,6 +736,43 @@ class MultiStrategyBot:
     def _handle_signal(self, signum, frame):
         logger.info(f"Received signal {signum}, stopping...")
         self.stop_event.set()
+
+    def _adaptive_scan_interval(self) -> float:
+        """Compute scan interval based on market conditions.
+
+        Volatile/active markets → scan faster (15s) to catch moves.
+        Calm/range markets → scan slower (45s) to save compute.
+        Open positions → scan faster for exit monitoring.
+        """
+        base = self.config.scan_interval_s  # default 30s
+
+        # Check dominant regime across tracked symbols
+        regimes = []
+        for symbol in DEFAULT_SYMBOLS:
+            try:
+                r = self._tick_regime_cache.get(symbol) or self.regime_detector.get_regime(symbol)
+                regimes.append(r)
+            except Exception:
+                pass
+
+        has_open = self.pos_mgr.get_open_count() > 0
+        cb_active = self.risk_mgr.circuit_breaker.tripped
+
+        # Fast scan: volatile, panic, or active positions
+        if any(r in ("panic", "news_dislocation") for r in regimes):
+            return max(10, base * 0.5)  # 15s — urgent
+        if any(r in ("high_volatility",) for r in regimes):
+            return max(15, base * 0.65)  # 20s — volatile
+        if has_open:
+            return max(20, base * 0.75)  # 22s — monitoring positions
+        if cb_active:
+            return max(15, base * 0.5)  # 15s — recovery mode
+
+        # Slow scan: calm markets, no positions
+        if all(r in ("range", "low_liquidity", "unknown") for r in regimes) and not has_open:
+            return min(60, base * 1.5)  # 45s — nothing happening
+
+        return base  # 30s default
 
     def _sleep_interruptible(self, seconds: float):
         step = 0.5
@@ -746,6 +786,15 @@ class MultiStrategyBot:
         trace_id = uuid.uuid4().hex[:8]
         _loop_start = time.time()
 
+        # Per-tick regime cache: computed once, reused by all subsystems
+        # (avoids 5x redundant get_regime() calls per symbol per tick)
+        self._tick_regime_cache = {}
+        for sym in DEFAULT_SYMBOLS:
+            try:
+                self._tick_regime_cache[sym] = self.regime_detector.get_regime(sym)
+            except Exception:
+                self._tick_regime_cache[sym] = "unknown"
+
         # ── PARALLEL PREFETCH: fetch all symbols' data concurrently ──
         # This front-loads all exchange I/O so _process_symbol hits cache.
         _prefetch_start = time.time()
@@ -756,12 +805,31 @@ class MultiStrategyBot:
         # Collect candidate signals for rotation evaluation
         self._tick_candidates: list = []
 
-        for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
+        # Smart symbol evaluation priority: evaluate symbols most likely
+        # to produce actionable signals first (lead-lag targets, volatile, open positions)
+        eval_order = self._prioritize_symbols(DEFAULT_SYMBOLS)
+
+        for symbol, sym_cfg in eval_order:
             try:
                 self._process_symbol(symbol, sym_cfg, trace_id)
             except Exception as e:
                 logger.error(f"[{trace_id}][{symbol}] Error: {e}", exc_info=True)
                 self.health_monitor.record_error()
+
+        # ── Pending limit order fills ──
+        # Check if any pending orders should fill at current prices
+        if self.pending_orders.get_pending():
+            try:
+                _current_prices = {}
+                for sym in DEFAULT_SYMBOLS:
+                    _p = self.fetcher.fetch_live_price(sym)
+                    if _p:
+                        _current_prices[sym] = _p
+                filled_orders = self.pending_orders.check_fills(_current_prices)
+                for filled in filled_orders:
+                    self._execute_pending_fill(filled, trace_id)
+            except Exception as e:
+                logger.warning(f"[{trace_id}] Pending order check error: {e}")
 
         # ── Trade rotation evaluation ──
         # Check if any open position should be rotated into a better signal
@@ -783,6 +851,27 @@ class MultiStrategyBot:
                     LLMTrigger.CROSS_MARKET_DIVERGENCE,
                     context=divergence,
                 )
+
+            # Check lead-lag signals: a leader moved, follower hasn't responded yet
+            # This proactively triggers LLM evaluation BEFORE the follower moves
+            if self.cross_symbol_tracker:
+                try:
+                    lead_lag_signals = self.cross_symbol_tracker.get_active_signals()
+                    for ll_sig in lead_lag_signals:
+                        if ll_sig.get("confidence", 0) >= 0.45:
+                            self._llm_triggers.add(
+                                LLMTrigger.LEAD_LAG_SIGNAL,
+                                context={
+                                    "leader": ll_sig["leader"],
+                                    "follower": ll_sig["follower"],
+                                    "leader_move": ll_sig["leader_move"],
+                                    "expected_follower_move": ll_sig["expected_follower_move"],
+                                    "avg_lag_min": ll_sig["avg_lag_min"],
+                                },
+                            )
+                            break  # One lead-lag trigger per tick is enough
+                except Exception:
+                    pass
 
             # Check memory-worthy events (performance shifts, streaks)
             mem_events = self._llm_triggers.check_memory_events()
@@ -838,6 +927,14 @@ class MultiStrategyBot:
                 self._check_llm_exit_suggestions()
             except Exception as e:
                 logger.warning(f"[{trace_id}] Exit intelligence error: {e}")
+
+        # Scout Agent: idle-time preparation and forecasting
+        # Runs every 10th tick (~5 min at 30s intervals) to prepare for upcoming trades
+        if self._tick % 10 == 0 and os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
+            try:
+                self._run_scout_preparation(trace_id)
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Scout preparation error: {e}")
 
         # Position aging alerts: flag positions held too long with adverse funding
         # Runs every 10th tick (~10 min at 60s intervals)
@@ -1401,6 +1498,11 @@ class MultiStrategyBot:
                     )
                     self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
 
+        # Accrue funding costs on open positions (paper trading doesn't auto-deduct)
+        _fr = self._last_funding_rates.get(symbol, 0.0)
+        if _fr:
+            self.pos_mgr.accrue_funding(symbol, _fr)
+
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
         events = self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m)
@@ -1935,18 +2037,32 @@ class MultiStrategyBot:
                 return  # Too many positions in same risk tier
 
         # ── Wave 2: Regime-based strategy filter ──
-        # Disable strategies that historically fail in the current regime
+        # Disable strategies that are expected to fail in the current regime.
+        # Uses STRATEGY_REGIME_FIT table (static theory) + historical WR (learned).
         if self.config.enable_regime_strategy_filter:
             try:
-                _cur_regime = self.regime_detector.get_regime(symbol)
+                _cur_regime = self._tick_regime_cache.get(symbol) or self.regime_detector.get_regime(symbol)
                 if _cur_regime:
-                    from llm.deep_memory import get_deep_memory
-                    _dm = get_deep_memory()
-                    _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                    from llm.agents.shared_context import STRATEGY_REGIME_FIT
+                    _fit = STRATEGY_REGIME_FIT.get(_cur_regime, {})
                     _disabled = set()
-                    for _sname, _swdata in _strat_wr.items():
-                        if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+
+                    # Static: disable strategies marked "avoid" in this regime
+                    for _sname, _sfit in _fit.items():
+                        if _sfit == "avoid":
                             _disabled.add(_sname)
+
+                    # Dynamic: also disable strategies with <35% WR over 10+ trades
+                    try:
+                        from llm.deep_memory import get_deep_memory
+                        _dm = get_deep_memory()
+                        _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+                        for _sname, _swdata in _strat_wr.items():
+                            if _swdata.get("total", 0) >= 10 and _swdata.get("win_rate", 1.0) < 0.35:
+                                _disabled.add(_sname)
+                    except Exception:
+                        pass
+
                     if _disabled:
                         self.ensemble.set_disabled_strategies(_disabled)
                         logger.info(
@@ -1990,7 +2106,10 @@ class MultiStrategyBot:
         num_agree = signal_result.metadata.get("num_agree", 1)
 
         # High-confidence signal trigger (>=75%)
-        if signal_result.confidence >= 75:
+        # Skip if symbol was recently slippage-rejected (stale signal, don't waste LLM)
+        _slip_cd = self._slippage_reject_cooldown.get(symbol, 0)
+        _in_slip_cooldown = (time.time() - _slip_cd) < 300
+        if signal_result.confidence >= 75 and not _in_slip_cooldown:
             self._llm_triggers.add(
                 LLMTrigger.HIGH_CONFIDENCE,
                 symbol=symbol,
@@ -2689,6 +2808,18 @@ class MultiStrategyBot:
             "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
         }
 
+        # Track portfolio correlation risk for LLM learning feedback
+        if self.portfolio_risk and len(open_pos) >= 2:
+            try:
+                _pos_map = {s: p.side.lower() for s, p in open_pos.items()}
+                _pos_map[symbol] = side.lower()
+                _corr_m = self.portfolio_risk.compute_correlation_matrix()
+                if _corr_m:
+                    _cluster = _corr_m.get_cluster_risk(_pos_map)
+                    entry_reasons["cluster_risk"] = round(_cluster, 3)
+            except Exception:
+                pass
+
         # Correlation guard: max same-direction positions
         same_dir_count = sum(1 for p in open_pos.values() if p.side == side)
         if same_dir_count >= self._max_same_direction:
@@ -2697,6 +2828,15 @@ class MultiStrategyBot:
             logger.info(
                 f"[{trace_id}][{symbol}] Correlation guard: "
                 f"{same_dir_count} {side} positions open (max {self._max_same_direction})"
+            )
+            return
+
+        # Skip if this symbol was recently slippage-rejected (5-min cooldown)
+        _slip_cooldown = self._slippage_reject_cooldown.get(symbol, 0)
+        if time.time() - _slip_cooldown < 300:
+            logger.info(
+                f"[{trace_id}][{symbol}] Skipping: slippage-rejected "
+                f"{int(time.time() - _slip_cooldown)}s ago (cooldown 300s)"
             )
             return
 
@@ -2720,14 +2860,55 @@ class MultiStrategyBot:
         pre_llm_slippage = abs(pre_llm_live - signal_result.entry) / signal_result.entry * 100 if signal_result.entry > 0 else 0
         max_slippage = float(os.getenv("MAX_ENTRY_SLIPPAGE_PCT", "1.5"))
 
+        # Extract LLM notes/setup_type early — needed for both pending and immediate fills
+        _llm_notes_early = entry_reasons.get("llm_notes", "")
+        _setup_type_early = ""
+        if "setup=" in _llm_notes_early:
+            try:
+                _st = _llm_notes_early.split("setup=")[1].split(" ")[0].split("|")[0].strip()
+                _setup_type_early = _st[:30]
+            except Exception:
+                pass
+
         if pre_llm_slippage > max_slippage:
-            log_rejection(symbol, "ENTRY_SLIPPAGE",
-                          confidence=signal_result.confidence)
-            logger.warning(
-                f"[{trace_id}][{symbol}] PRE-LLM REJECT: price moved {pre_llm_slippage:.2f}% "
-                f"(signal={_fmt_price(signal_result.entry)} live={_fmt_price(pre_llm_live)} "
-                f"max={max_slippage}%) — skipping LLM call"
-            )
+            # Price moved too far for a market order. Instead of discarding,
+            # place a pending limit order at the strategy-computed entry price.
+            # This lets the exchange fill us if price retraces to our level.
+            if not self.pending_orders.get_pending_for_symbol(symbol):
+                order_id = self.pending_orders.place(
+                    symbol=symbol,
+                    side=side,
+                    entry_price=signal_result.entry,
+                    qty=qty,
+                    sl=adj_sl,
+                    tp1=adj_tp1,
+                    tp2=adj_tp2,
+                    atr=signal_result.atr,
+                    leverage=lev_decision.leverage,
+                    strategy=signal_result.strategy,
+                    confidence=signal_result.confidence,
+                    trade_profile=trade_prof,
+                    entry_reasons=entry_reasons,
+                    regime=signal_result.metadata.get("regime", ""),
+                    notes=_llm_notes_early[:200],
+                    setup_type=_setup_type_early,
+                )
+                if order_id:
+                    logger.info(
+                        f"[{trace_id}][{symbol}] PENDING LIMIT: {side} @ "
+                        f"{_fmt_price(signal_result.entry)} (live={_fmt_price(pre_llm_live)}, "
+                        f"slip={pre_llm_slippage:.1f}%) — waiting for fill"
+                    )
+            else:
+                logger.info(
+                    f"[{trace_id}][{symbol}] Already has pending order, skipping"
+                )
+            # Remove accumulated LLM triggers for this symbol to avoid
+            # wasting LLM calls on signals we already know are stale
+            self._llm_triggers.remove_symbol_events(symbol)
+            # Track slippage-rejected symbols with cooldown to prevent
+            # the same stale signal from re-triggering LLM every tick
+            self._slippage_reject_cooldown[symbol] = time.time()
             return
 
         # Shift entry + SL/TP to live price so entire pipeline uses fresh numbers
@@ -2895,6 +3076,7 @@ class MultiStrategyBot:
         entry_reasons["llm_action"] = candidate.llm_action or ""
         entry_reasons["llm_confidence"] = getattr(candidate, 'llm_confidence', 0.0) or 0.0
         entry_reasons["llm_agreed"] = candidate.llm_action in ("proceed", "go", "", "no_llm", None)
+        entry_reasons["llm_notes"] = getattr(candidate, 'llm_notes', '') or ""
 
         # ── LLM size multiplier: apply the meta-brain's sizing adjustment ──
         # In SIZING+ modes, the LLM can scale position size 0.5x-2.0x
@@ -3104,6 +3286,16 @@ class MultiStrategyBot:
         self.ops_guard.record_trade()
 
         # Open position with LIVE price as entry
+        # Extract LLM thesis and setup type for Exit Agent thesis continuity
+        _llm_notes = entry_reasons.get("llm_notes", "")
+        _setup_type = ""
+        if "setup=" in _llm_notes:
+            try:
+                _st = _llm_notes.split("setup=")[1].split(" ")[0].split("|")[0].strip()
+                _setup_type = _st[:30]
+            except Exception:
+                pass
+
         self.pos_mgr.open_position(
             symbol=symbol,
             side=side,
@@ -3120,6 +3312,8 @@ class MultiStrategyBot:
             tp1_close_pct=tp1_pct,
             entry_reasons=entry_reasons,
             trade_profile=trade_prof,
+            notes=_llm_notes[:200],
+            setup_type=_setup_type,
         )
 
         # Log trade open to database (with live price)
@@ -3224,6 +3418,96 @@ class MultiStrategyBot:
                     entry_reasons["copy_score"] = _copy_result.score
             except Exception as e:
                 logger.debug(f"Copy classifier error: {e}")
+
+    # ── Pending Limit Order Fills ─────────────────────────────────
+
+    def _execute_pending_fill(self, order, trace_id: str = ""):
+        """Execute a filled pending order by opening a position."""
+        from execution.precision import get_min_qty
+
+        symbol = order.symbol
+        side = order.side
+
+        # Check we can still open (circuit breaker, max positions, etc.)
+        if not self.risk_mgr.can_open_position(
+            symbol, side, self.pos_mgr.get_open_count(),
+            self.pos_mgr.get_open_positions(),
+        ):
+            logger.info(f"[{trace_id}][{symbol}] Pending fill blocked by risk manager")
+            return
+
+        # Already have a position in this symbol?
+        if symbol in self.pos_mgr.get_open_positions():
+            logger.info(f"[{trace_id}][{symbol}] Pending fill skipped — already in position")
+            return
+
+        qty = order.qty
+        min_q = get_min_qty(symbol)
+        if qty < min_q:
+            logger.info(f"[{trace_id}][{symbol}] Pending fill qty {qty} < min {min_q}")
+            return
+
+        # Determine TP1 close percentage from trade profile
+        tp1_pct = 0.7
+        if order.trade_profile:
+            exit_params = getattr(order.trade_profile, 'exit_params', None)
+            if exit_params:
+                tp1_pct = getattr(exit_params, 'tp1_close_pct', 0.7)
+
+        self.pos_mgr.open_position(
+            symbol=symbol,
+            side=side,
+            entry=order.entry_price,
+            qty=qty,
+            sl=order.sl,
+            tp1=order.tp1,
+            tp2=order.tp2,
+            atr=order.atr,
+            leverage=order.leverage,
+            mode="leverage" if order.leverage > 1 else "spot",
+            strategy=order.strategy,
+            confidence=order.confidence,
+            tp1_close_pct=tp1_pct,
+            entry_reasons=order.entry_reasons,
+            trade_profile=order.trade_profile,
+            notes=getattr(order, 'notes', ''),
+            setup_type=getattr(order, 'setup_type', ''),
+        )
+
+        log_trade(
+            symbol=symbol,
+            action="OPEN",
+            side=side,
+            price=order.entry_price,
+            qty=qty,
+            leverage=order.leverage,
+            strategy=order.strategy,
+            metadata={
+                "confidence": order.confidence,
+                "order_type": "limit",
+                "pending_wait_s": round(order.age_s, 1),
+                "order_id": order.order_id,
+            }
+        )
+
+        Telemetry.inc("total_trades")
+        Telemetry.inc("limit_order_fills")
+        self.ops_guard.record_trade()
+
+        # Clear the slippage cooldown since we successfully filled
+        self._slippage_reject_cooldown.pop(symbol, None)
+
+        logger.info(
+            f"[{trace_id}][{symbol}] LIMIT FILL: {side} @ {order.entry_price:.6f} "
+            f"qty={qty:.4f} lev={order.leverage:.1f}x conf={order.confidence:.0f}% "
+            f"(waited {order.age_s:.0f}s)"
+        )
+
+        self.alerts.send_market_update(
+            f"[LIMIT FILL] {side} {symbol} @ {order.entry_price:.6f}\n"
+            f"Qty: {qty:.4f} | Lev: {order.leverage:.1f}x | Conf: {order.confidence:.0f}%\n"
+            f"Waited {order.age_s:.0f}s for entry level"
+        )
 
     # ── Trade Rotation ─────────────────────────────────────────────
 
@@ -3351,6 +3635,173 @@ class MultiStrategyBot:
 
     # ── LLM Exit Intelligence ─────────────────────────────────────
 
+    def _prioritize_symbols(self, symbols_dict):
+        """Order symbols by evaluation priority for the current tick.
+
+        Priority scoring (higher = evaluated first):
+        - +10: Has open position (need to monitor)
+        - +8:  Is a lead-lag follower with active signal (about to move)
+        - +5:  High recent price change (>2% in 1h, volatile = actionable)
+        - +3:  In favorable regime (trend or high_volatility)
+        - +0:  Default (evaluated last)
+
+        Returns list of (symbol, config) tuples sorted by priority (descending).
+        """
+        scored = []
+        open_positions = self.pos_mgr.get_open_positions()
+
+        # Get lead-lag follower symbols
+        lead_lag_followers = set()
+        if self.cross_symbol_tracker:
+            try:
+                for sig in self.cross_symbol_tracker.get_active_signals():
+                    if sig.get("confidence", 0) >= 0.3:
+                        lead_lag_followers.add(sig["follower"])
+            except Exception:
+                pass
+
+        for symbol, cfg in symbols_dict.items():
+            priority = 0
+
+            # Open position → high priority (monitoring)
+            if symbol in open_positions:
+                priority += 10
+
+            # Lead-lag follower → expected to move soon
+            if symbol in lead_lag_followers:
+                priority += 8
+
+            # High volatility → more likely to produce signals
+            change_1h = abs(self._price_changes_1h.get(symbol, 0.0))
+            if change_1h >= 2.0:
+                priority += 5
+            elif change_1h >= 1.0:
+                priority += 2
+
+            # Favorable regime (use tick cache to avoid redundant API calls)
+            regime = self._tick_regime_cache.get(symbol, "unknown")
+            if regime in ("trend", "high_volatility"):
+                priority += 3
+
+            scored.append((priority, symbol, cfg))
+
+        # Sort descending by priority, stable sort preserves original order for ties
+        scored.sort(key=lambda x: -x[0])
+        return [(sym, cfg) for _, sym, cfg in scored]
+
+    def _run_scout_preparation(self, trace_id: str):
+        """Run the Scout Agent during idle time for trade preparation.
+
+        Gathers cross-market data and runs the Scout Agent (Haiku) to:
+        - Build a watchlist of symbols approaching key levels
+        - Pre-form directional theses for likely setups
+        - Forecast regime transitions
+        - Surface lead-lag opportunities
+        - Calculate risk budget and correlation warnings
+
+        Findings are written to the pipeline scratchpad for downstream
+        agents to consume when a signal fires.
+        """
+        try:
+            from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+            if not is_multi_agent_enabled():
+                return
+            coordinator = get_coordinator()
+        except Exception:
+            return
+
+        # Build scout context: all symbols, prices, regimes, positions, lead-lag
+        scout_data = {"symbols": {}}
+
+        for symbol in DEFAULT_SYMBOLS:
+            sym_data = {}
+            # Current price and recent change
+            price = self._last_prices.get(symbol)
+            if price:
+                sym_data["price"] = round(price, 4)
+                change_1h = self._price_changes_1h.get(symbol, 0.0)
+                sym_data["change_1h_pct"] = round(change_1h, 2)
+
+            # Current regime (use tick cache)
+            sym_data["regime"] = self._tick_regime_cache.get(symbol, "unknown")
+
+            # Funding rate
+            funding = self._last_funding_rates.get(symbol, 0.0)
+            if funding:
+                sym_data["funding_rate"] = round(funding, 6)
+
+            scout_data["symbols"][symbol] = sym_data
+
+        # Open positions summary
+        open_pos = self.pos_mgr.get_open_positions()
+        if open_pos:
+            scout_data["open_positions"] = {}
+            for sym, pos in open_pos.items():
+                price = self._last_prices.get(sym, pos.entry)
+                is_long = pos.side == "LONG"
+                upnl_pct = ((price - pos.entry) / pos.entry * 100) if is_long else ((pos.entry - price) / pos.entry * 100)
+                scout_data["open_positions"][sym] = {
+                    "side": pos.side,
+                    "entry": pos.entry,
+                    "unrealized_pct": round(upnl_pct, 2),
+                }
+
+        # Lead-lag signals
+        if hasattr(self, 'cross_symbol_tracker') and self.cross_symbol_tracker:
+            try:
+                lead_lag = self.cross_symbol_tracker.get_active_signals()
+                if lead_lag:
+                    scout_data["lead_lag_signals"] = lead_lag[:5]
+            except Exception:
+                pass
+
+        # Portfolio correlation risk
+        if hasattr(self, 'portfolio_risk') and self.portfolio_risk and open_pos:
+            try:
+                positions_map = {sym: pos.side.lower() for sym, pos in open_pos.items()}
+                corr_matrix = self.portfolio_risk.compute_correlation_matrix()
+                if corr_matrix:
+                    cluster_risk = corr_matrix.get_cluster_risk(positions_map)
+                    scout_data["portfolio_cluster_risk"] = round(cluster_risk, 3)
+            except Exception:
+                pass
+
+        # Risk budget
+        equity = self.risk_mgr.equity
+        open_count = self.pos_mgr.get_open_count()
+        max_positions = self.risk_mgr.max_open_positions
+        scout_data["risk_budget"] = {
+            "equity": round(equity, 2),
+            "open_positions": open_count,
+            "max_positions": max_positions,
+            "slots_available": max(0, max_positions - open_count),
+            "risk_per_trade": self.risk_mgr.risk_per_trade,
+        }
+
+        # Enrich Scout with deep memory pattern data
+        if _DEEP_MEMORY_AVAILABLE:
+            try:
+                from llm.deep_memory import get_deep_memory
+                dm = get_deep_memory()
+                strategy_eff = dm.trade_dna.get_strategy_effectiveness()
+                if strategy_eff:
+                    # Compact: top 5 setups by sample size
+                    top_setups = sorted(strategy_eff.items(), key=lambda x: x[1].get("total", 0), reverse=True)[:5]
+                    scout_data["pattern_library"] = {
+                        k: {"wr": round(v.get("win_rate", 0.5), 2), "n": v.get("total", 0)}
+                        for k, v in top_setups
+                    }
+            except Exception:
+                pass
+
+        # Run scout and cache results for Trade Agent to consume
+        result = coordinator.run_scout(scout_data)
+        if result:
+            self._last_scout_result = result
+            self._last_scout_ts = time.time()
+            logger.info(f"[{trace_id}][SCOUT] Preparation complete: "
+                        f"{len(result.get('watchlist', []))} watchlist items")
+
     def _check_llm_exit_suggestions(self):
         """Evaluate open positions for dynamic SL/TP adjustments using the exit engine.
 
@@ -3402,12 +3853,8 @@ class MultiStrategyBot:
                 hold_seconds = (now - pos.open_time).total_seconds()
                 hold_minutes = hold_seconds / 60.0
 
-                # Current regime
-                regime = "unknown"
-                try:
-                    regime = self.regime_detector.get_regime(symbol)
-                except Exception:
-                    pass
+                # Current regime (use tick cache)
+                regime = self._tick_regime_cache.get(symbol, "unknown")
 
                 # Funding rate
                 funding_rate = self._last_funding_rates.get(symbol, 0.0)
@@ -3430,6 +3877,113 @@ class MultiStrategyBot:
 
                 if not should_review:
                     continue
+
+                # ── LLM Exit Intelligence Agent (when multi-agent enabled) ──
+                # Replaces heuristic rules with thesis-aware LLM reasoning
+                if os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
+                    try:
+                        from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+                        if is_multi_agent_enabled():
+                            coordinator = get_coordinator()
+                            pos_data = {
+                                "symbol": symbol,
+                                "side": pos.side,
+                                "entry": pos.entry,
+                                "current_price": current_price,
+                                "sl": pos.sl,
+                                "original_sl": getattr(pos, 'original_sl', pos.sl),
+                                "tp1": pos.tp1,
+                                "tp2": pos.tp2,
+                                "state": pos.state,
+                                "unrealized_pnl": round(unrealized_pnl, 2),
+                                "unrealized_pct": round(unrealized_pct * 100, 2),
+                                "hold_minutes": round(hold_minutes, 1),
+                                "leverage": getattr(pos, 'leverage', 1),
+                                "regime": regime,
+                                "funding_rate": funding_rate,
+                                "strategy": getattr(pos, 'strategy', ''),
+                                "entry_type": getattr(pos, 'entry_type', ''),
+                            }
+                            # Pull thesis from position notes if available
+                            notes = getattr(pos, 'notes', '') or ''
+                            if 'THESIS:' in notes:
+                                thesis_start = notes.index('THESIS:') + 7
+                                thesis_end = notes.index('|', thesis_start) if '|' in notes[thesis_start:] else len(notes)
+                                pos_data["original_thesis"] = notes[thesis_start:thesis_start + thesis_end].strip()[:100]
+                            if 'setup=' in notes:
+                                setup_start = notes.index('setup=') + 6
+                                setup_end = notes.index(' ', setup_start) if ' ' in notes[setup_start:] else len(notes)
+                                pos_data["setup_type"] = notes[setup_start:setup_start + setup_end].strip()
+
+                            snapshot = getattr(self, '_last_snapshot_data', None)
+                            exit_rec = coordinator.get_exit_intelligence(
+                                pos_data, market_data=snapshot
+                            )
+
+                            if exit_rec and exit_rec.get("action", "hold") != "hold":
+                                exit_action = exit_rec["action"]
+                                urgency = exit_rec.get("urgency", "medium")
+
+                                # Convert LLM exit recommendation to ExitDecision
+                                if exit_action == "tighten_sl" and exit_rec.get("new_sl"):
+                                    decision = ExitDecision(
+                                        symbol=symbol,
+                                        exit_action="tighten_sl",
+                                        exit_confidence=0.80 if urgency in ("high", "critical") else 0.65,
+                                        new_sl=exit_rec["new_sl"],
+                                        reason=f"[LLM-EXIT] {exit_rec.get('reason', '')[:120]}",
+                                    )
+                                elif exit_action == "widen_tp" and exit_rec.get("new_tp"):
+                                    decision = ExitDecision(
+                                        symbol=symbol,
+                                        exit_action="widen_tp",
+                                        exit_confidence=0.70,
+                                        new_tp=exit_rec["new_tp"],
+                                        reason=f"[LLM-EXIT] {exit_rec.get('reason', '')[:120]}",
+                                    )
+                                elif exit_action == "partial_close":
+                                    decision = ExitDecision(
+                                        symbol=symbol,
+                                        exit_action="partial",
+                                        exit_confidence=0.75 if urgency in ("high", "critical") else 0.60,
+                                        partial_pct=exit_rec.get("partial_pct", 0.5),
+                                        reason=f"[LLM-EXIT] {exit_rec.get('reason', '')[:120]}",
+                                    )
+                                elif exit_action == "full_close":
+                                    decision = ExitDecision(
+                                        symbol=symbol,
+                                        exit_action="close",
+                                        exit_confidence=0.85 if urgency == "critical" else 0.75,
+                                        reason=f"[LLM-EXIT] {exit_rec.get('reason', '')[:120]}",
+                                    )
+
+                                if decision is not None:
+                                    # Skip heuristic rules — LLM made the call
+                                    result = self.exit_engine.apply_exit_decision(
+                                        decision=decision,
+                                        position=pos,
+                                        current_price=current_price,
+                                    )
+                                    if result["applied"]:
+                                        action_name = result["action"]
+                                        logger.info(
+                                            f"[EXIT-INTEL-LLM] {symbol} {action_name}: "
+                                            f"{result['details']} (urgency={urgency})"
+                                        )
+                                        if action_name == "close":
+                                            self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_AGENT")
+                                        elif action_name == "partial":
+                                            partial_pct = result.get("partial_pct", 0.5)
+                                            close_qty = pos.qty * partial_pct
+                                            pos.qty -= close_qty
+                                            logger.info(
+                                                f"[EXIT-INTEL-LLM] {symbol} partial: "
+                                                f"closed {close_qty:.6f}, remaining {pos.qty:.6f}"
+                                            )
+                                    self.exit_engine.mark_evaluated(symbol)
+                                    continue  # Skip heuristic rules below
+                    except Exception as e:
+                        logger.debug(f"[EXIT-INTEL-LLM] Error for {symbol}: {e}")
 
                 # ── Deep memory pattern lookup ──
                 # Check if the strategy combo that opened this trade is historically
@@ -3826,12 +4380,22 @@ class MultiStrategyBot:
                         # align values are 0-4 criteria counts, normalize to 0-1
                         regime_score = regime_score / 4.0
 
+                    # Extract signal_context from cached strategy signal
+                    sig_meta = {}
+                    try:
+                        last_sig = self.ensemble.get_last_signal(symbol, strat_name)
+                        if last_sig and last_sig.signal_context:
+                            sig_meta["ctx"] = last_sig.signal_context
+                    except Exception:
+                        pass
+
                     signals.append(LLMStrategySignal(
                         symbol=symbol,
                         strategy=strat_name,
                         side=side,
                         confidence=min(conf, 1.0),
                         regime_score=min(regime_score, 1.0) if isinstance(regime_score, (int, float)) else 0.0,
+                        meta=sig_meta,
                     ))
             except Exception:
                 pass
@@ -3932,6 +4496,62 @@ class MultiStrategyBot:
                     global_ctx.extra["cross_symbol_patterns"] = _cs_patterns
             except Exception as e:
                 logger.debug(f"Cross-symbol pattern injection error: {e}")
+
+        # Inject Scout Agent preparation findings into LLM context
+        # Scout results persist across ticks (refreshed every 10 ticks)
+        scout = getattr(self, '_last_scout_result', None)
+        scout_ts = getattr(self, '_last_scout_ts', 0)
+        if scout and (time.time() - scout_ts) < 600:  # Fresh within 10 min
+            scout_compact = {}
+            wl = scout.get("watchlist", [])
+            if wl:
+                scout_compact["watchlist"] = [
+                    {"sym": w.get("symbol"), "pri": w.get("priority"),
+                     "setup": w.get("setup_forming"), "dir": w.get("direction"),
+                     "thesis": w.get("pre_thesis", "")[:80]}
+                    for w in wl[:5]
+                ]
+            rf = scout.get("regime_forecast")
+            if rf:
+                scout_compact["regime_forecast"] = rf
+            ll = scout.get("lead_lag_alerts", [])
+            if ll:
+                scout_compact["lead_lag"] = ll[:3]
+            cw = scout.get("correlation_warning")
+            if cw:
+                scout_compact["corr_warning"] = cw
+            global_ctx.extra["scout_preparation"] = scout_compact
+
+        # Inject deep memory edge map: which setups and strategies have proven edge
+        try:
+            from llm.deep_memory import get_deep_memory
+            _dm = get_deep_memory()
+            # Setup type win rates (most actionable for Trade Agent)
+            _setup_wr = _dm.trade_dna.get_win_rate_by("setup_type")
+            if _setup_wr:
+                edge_map = {}
+                for stype, stats in _setup_wr.items():
+                    if stats["total"] >= 5:  # Only include statistically meaningful
+                        wr = stats["wins"] / stats["total"] if stats["total"] else 0
+                        edge_map[stype] = {
+                            "wr": round(wr * 100),
+                            "n": stats["total"],
+                            "pnl": round(stats["pnl"], 2),
+                        }
+                if edge_map:
+                    global_ctx.extra["setup_edge_map"] = edge_map
+            # Strategy win rates by regime (helps Trade Agent weigh signals)
+            _strat_wr = _dm.trade_dna.get_win_rate_by("strategy")
+            if _strat_wr:
+                strat_perf = {}
+                for strat, stats in _strat_wr.items():
+                    if stats["total"] >= 3:
+                        wr = stats["wins"] / stats["total"] if stats["total"] else 0
+                        strat_perf[strat] = {"wr": round(wr * 100), "n": stats["total"]}
+                if strat_perf:
+                    global_ctx.extra["strategy_performance"] = strat_perf
+        except Exception as e:
+            logger.debug(f"Deep memory edge map injection error: {e}")
 
         # Risk context
         risk_ctx = LLMRiskContext(
@@ -4566,6 +5186,7 @@ class MultiStrategyBot:
             f"direction_model={'YES' if status['ml_direction_model'] else 'no'} "
             f"strat_weights=[{weights_str}] "
             f"rejections=[{rej_str}] "
+            f"pending_orders={len(self.pending_orders.get_pending())} "
             f"api={fetcher_stats['total_requests']} "
             f"cache={fetcher_stats['cache_hits']}"
         )

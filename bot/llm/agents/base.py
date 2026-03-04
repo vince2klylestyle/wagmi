@@ -21,6 +21,8 @@ class AgentRole(str, Enum):
     RISK = "risk"              # Risk & position sizing
     LEARNING = "learning"      # Post-trade learning extraction
     CRITIC = "critic"          # Self-critique / meta-review
+    EXIT = "exit"              # Exit intelligence for open positions
+    SCOUT = "scout"            # Idle-time preparation and forecasting
 
 
 @dataclass
@@ -81,6 +83,18 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
         role=AgentRole.CRITIC,
         max_tokens=3072,
         timeout_s=20.0,
+        required=False,
+    ),
+    AgentRole.EXIT: AgentConfig(
+        role=AgentRole.EXIT,
+        max_tokens=1024,
+        timeout_s=10.0,
+        required=False,
+    ),
+    AgentRole.SCOUT: AgentConfig(
+        role=AgentRole.SCOUT,
+        max_tokens=768,
+        timeout_s=10.0,
         required=False,
     ),
 }

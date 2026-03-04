@@ -50,12 +50,12 @@ def gate_decision(decision: LLMDecision, risk: RiskContext) -> GatedResult:
     3. Daily loss limit hit
     4. Max positions reached (for non-flat actions)
     5. Volatility cap exceeded
-    6. Panic regime requires >= 0.8 confidence
+    6. Panic regime requires >= 0.7 confidence
     7. Unknown regime with non-flat action -> reject
     8. Low liquidity regime with non-flat action -> reject
-    9. Consecutive losses > 4 requires >= 0.75 confidence
+    9. Consecutive losses > 4 requires >= 0.68 confidence
     10. Strategy weight sanity check
-    11. Flip requires higher confidence (>= 0.7)
+    11. Flip requires higher confidence (>= 0.65)
 
     Actions: "proceed" (go with ensemble), "flat" (skip), "flip" (reverse)
 
@@ -101,9 +101,11 @@ def gate_decision(decision: LLMDecision, risk: RiskContext) -> GatedResult:
         )
 
     # Rule 6: Panic regime requires high confidence
-    if decision.regime == Regime.PANIC.value and decision.confidence < 0.80:
+    # Lowered from 0.80 to 0.70 — panic regime has big moves, 0.80 was blocking
+    # legitimate crash/bounce trades where edge is real but certainty is moderate
+    if decision.regime == Regime.PANIC.value and decision.confidence < 0.70:
         return _reject(
-            f"panic_regime_low_conf ({decision.confidence:.2f} < 0.80)",
+            f"panic_regime_low_conf ({decision.confidence:.2f} < 0.70)",
             decision,
         )
 
@@ -116,9 +118,11 @@ def gate_decision(decision: LLMDecision, risk: RiskContext) -> GatedResult:
         return _reject("low_liquidity_directional", decision)
 
     # Rule 9: Consecutive losses streak
-    if risk.consecutive_losses > 4 and decision.confidence < 0.75:
+    # Lowered from 0.75 to 0.68 — after losses, the bot needs to recover.
+    # 0.75 was too strict, blocking legitimate recovery trades with real edge.
+    if risk.consecutive_losses > 4 and decision.confidence < 0.68:
         return _reject(
-            f"loss_streak ({risk.consecutive_losses} losses, conf {decision.confidence:.2f} < 0.75)",
+            f"loss_streak ({risk.consecutive_losses} losses, conf {decision.confidence:.2f} < 0.68)",
             decision,
         )
 
@@ -132,9 +136,12 @@ def gate_decision(decision: LLMDecision, risk: RiskContext) -> GatedResult:
         )
 
     # Rule 11: Flip requires higher confidence (contradicting ensemble is risky)
-    if action == "flip" and decision.confidence < 0.70:
+    # Lowered from 0.70 to 0.65 — legitimate reversals (BTC structure shift,
+    # regime transition) often come at 0.65-0.70 confidence. Blocking them
+    # means missing directional edge during transitions.
+    if action == "flip" and decision.confidence < 0.65:
         return _reject(
-            f"flip_confidence_too_low ({decision.confidence:.2f} < 0.70)",
+            f"flip_confidence_too_low ({decision.confidence:.2f} < 0.65)",
             decision,
         )
 

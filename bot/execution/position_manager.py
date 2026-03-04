@@ -82,6 +82,10 @@ class Position:
     # Outcome classification (set on close)
     outcome: str = ""  # CLEAN_WIN, CLEAN_LOSS, TP1_ONLY, TP1_THEN_SL, etc.
 
+    # LLM context: thesis and setup type for exit intelligence
+    notes: str = ""          # LLM decision notes (THESIS:..., OUTLOOK:..., etc.)
+    setup_type: str = ""     # Classified setup (trend_at_zone, zone_validated, etc.)
+
     def __post_init__(self):
         if self.original_qty == 0:
             self.original_qty = self.qty
@@ -155,6 +159,32 @@ class PositionManager:
     def _fee(self, price: float, qty: float) -> float:
         return price * qty * (self.taker_fee_bps / 10000.0)
 
+    def accrue_funding(self, symbol: str, funding_rate: float, interval_hours: float = 8.0) -> None:
+        """Accumulate funding cost on an open position.
+
+        In paper trading, funding isn't deducted automatically like on exchange.
+        Call this every tick to track the real cost of holding.
+
+        Args:
+            symbol: Position symbol
+            funding_rate: Funding rate per interval (e.g., 0.0001 = 0.01% per 8h)
+            interval_hours: Funding interval in hours (default 8h for Hyperliquid)
+        """
+        if symbol not in self.positions:
+            return
+        pos = self.positions[symbol]
+        if pos.state == CLOSED or pos.qty <= 0:
+            return
+        # Funding cost per tick: rate * notional * (tick_duration / interval)
+        # For a 30s tick in an 8h interval: fraction = 30 / 28800 = 0.00104
+        # We approximate: each call = 1 scan interval (~30s)
+        scan_interval_s = 30.0
+        fraction_of_interval = scan_interval_s / (interval_hours * 3600)
+        notional = pos.entry * pos.qty * pos.leverage
+        cost = abs(funding_rate) * notional * fraction_of_interval
+        if cost > 0:
+            pos.funding_costs += cost
+
     def open_position(
         self,
         symbol: str,
@@ -172,6 +202,8 @@ class PositionManager:
         tp1_close_pct: float = 0.7,
         entry_reasons: Optional[Dict[str, Any]] = None,
         trade_profile: Optional[TradeProfile] = None,
+        notes: str = "",
+        setup_type: str = "",
     ) -> Optional[Position]:
         """Open a new position. Enforces one position per symbol."""
         # Don't open if already have a position in this symbol
@@ -219,6 +251,8 @@ class PositionManager:
             trailing_distance=trailing_distance,
             entry_reasons=entry_reasons or {},
             trade_profile=trade_profile,
+            notes=notes,
+            setup_type=setup_type,
         )
 
         # State: IDLE -> OPEN
@@ -256,7 +290,8 @@ class PositionManager:
     ) -> List[TradeEvent]:
         """
         Process a price update for a position.
-        Checks early exit, SL, TP1, trailing stop, TP2 in order.
+        Checks SL, early exit, TP1, trailing stop, TP2 in order.
+        SL is checked first to prevent early exit from closing at a worse price.
         df_5m: optional 5m DataFrame for momentum-based early exit.
         """
         if symbol not in self.positions:
@@ -269,7 +304,16 @@ class PositionManager:
         events = []
         is_long = pos.side == "LONG"
 
-        # 0. Early exit: cut position if momentum accelerating toward SL
+        # 0. Check stop loss FIRST — on flash crashes, SL must fire before early exit
+        # to prevent closing at a worse price than the SL level
+        sl_hit = (current_price <= pos.sl) if is_long else (current_price >= pos.sl)
+        if sl_hit:
+            action = "TRAILING_STOP" if pos.state == TRAILING else "SL"
+            event = self._close_position(pos, current_price, action)
+            events.append(event)
+            return events
+
+        # 1. Early exit: cut position if momentum accelerating toward SL
         # Only in OPEN state (after TP1, breakeven SL protects us)
         if pos.state == OPEN and df_5m is not None:
             early = self._check_early_exit(pos, current_price, df_5m)
@@ -277,14 +321,6 @@ class PositionManager:
                 event = self._close_position(pos, current_price, "EARLY_EXIT")
                 events.append(event)
                 return events
-
-        # 1. Check stop loss (including trailing stop)
-        sl_hit = (current_price <= pos.sl) if is_long else (current_price >= pos.sl)
-        if sl_hit:
-            action = "TRAILING_STOP" if pos.state == TRAILING else "SL"
-            event = self._close_position(pos, current_price, action)
-            events.append(event)
-            return events
 
         # 2. Check TP1 (dynamic partial close -> TP1_HIT -> TRAILING)
         if pos.state == OPEN:
@@ -309,10 +345,10 @@ class PositionManager:
         """
         Detect momentum reversal heading toward SL and cut early.
         Triggers when ALL of:
-        1. Price moved >50% toward SL
+        1. Price moved >65% toward SL (close to stop, not just noise)
         2. Last 3 candles accelerating against position
         3. EMA5 crossed against EMA13
-        Cutting at 50-60% loss is better than waiting for full SL.
+        Cutting at 65-80% loss is better than waiting for full SL.
         """
         if df_5m is None or df_5m.empty or len(df_5m) < 15:
             return False
@@ -332,7 +368,7 @@ class PositionManager:
             if sl_progress > 1.0:
                 return False
 
-            if sl_progress < 0.5:
+            if sl_progress < 0.65:
                 return False
 
             c = df_5m["close"].astype(float)
@@ -412,8 +448,9 @@ class PositionManager:
         pos.realized_pnl += (pnl - fee)
         pos.qty = round_qty(pos.symbol, pos.qty - close_qty)
 
-        # Move SL to breakeven + buffer covering round-trip fees (entry + exit)
-        fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0)
+        # Move SL to breakeven + buffer covering round-trip fees + slippage margin
+        # 2x taker fee (entry+exit) + 0.1% slippage/noise buffer to avoid false SL hits
+        fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
         if pos.side == "LONG":
             pos.sl = round_price(pos.symbol, pos.entry + fee_buffer)
         else:
@@ -559,7 +596,8 @@ class PositionManager:
         else:
             pnl = (pos.entry - price) * qty * pos.leverage
 
-        pos.realized_pnl += (pnl - fee)
+        # Deduct accumulated funding costs at final close
+        pos.realized_pnl += (pnl - fee - pos.funding_costs)
         pos.qty = 0
         pos.close_time = datetime.now(timezone.utc)
 
@@ -572,6 +610,7 @@ class PositionManager:
         logger.info(
             f"[{pos.symbol}] {action} @ {price} | PnL={pnl:.2f} | "
             f"Total={pos.realized_pnl:.2f} | Fees={pos.fees_paid:.2f} | "
+            f"Funding={pos.funding_costs:.2f} | "
             f"Outcome={pos.outcome} | Path={pos.state_path_str}"
         )
 
@@ -590,6 +629,7 @@ class PositionManager:
             metadata={
                 "total_pnl": pos.realized_pnl,
                 "total_fees": pos.fees_paid,
+                "funding_costs": pos.funding_costs,
                 "hold_time_s": (pos.close_time - pos.open_time).total_seconds(),
                 "peak_price": pos.peak_price,
                 "outcome": pos.outcome,

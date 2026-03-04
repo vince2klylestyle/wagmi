@@ -413,35 +413,190 @@ PSYCHOLOGY = [
 # ═══════════════════════════════════════════════════════════════
 
 STRATEGY_KNOWLEDGE = [
+    # ── regime_trend: Theory, HOW, Trust, Failure ──
     {
-        "type": "principle",
-        "content": "RegimeTrend strategy uses WaveTrend on 1h filtered by MACD/MFI on 6h/16h. It excels in trending markets and fails in ranges. Trust it most when the 16h regime confirms direction.",
+        "type": "axiom",
+        "content": "RegimeTrend uses WaveTrend oscillator on 1h for entry timing, filtered by MACD histogram + MFI on 6h and 16h for regime confirmation. It answers: 'Is momentum shifting AND does the higher timeframe regime agree?'",
         "category": "strategy",
-        "tags": ["regime_trend", "WaveTrend", "trending"],
+        "tags": ["regime_trend", "WaveTrend", "theory"],
     },
     {
         "type": "principle",
-        "content": "MonteCarlo strategy uses SMA20/SMA50/RSI14 zones with 1000-simulation forward prediction. It's probabilistic - good at identifying high-probability zones but can lag in fast moves.",
+        "content": "RegimeTrend alignment scored 0-4: (1) WaveTrend cross direction, (2) MFI above/below 50, (3) 6h MACD+MFI bullish, (4) 16h MACD+MFI bullish. Needs 3/4 minimum. 4/4 = highest conviction. Confidence = align × 25.",
         "category": "strategy",
-        "tags": ["monte_carlo", "zones", "probabilistic"],
+        "tags": ["regime_trend", "alignment", "confidence"],
     },
     {
         "type": "principle",
-        "content": "ConfidenceScorer is a meta-strategy that learns which signals historically worked. It's the most adaptive but needs data to calibrate. Trust it more as trade count increases.",
+        "content": "RegimeTrend excels in trending markets (strong regime). Fails in ranges where WaveTrend produces false crosses. MFI < 40 in a bullish regime = divergence warning. Momentum entries (recent cross, not this-bar) are slightly lower conviction but catch trends early.",
         "category": "strategy",
-        "tags": ["confidence_scorer", "meta", "adaptive"],
+        "tags": ["regime_trend", "trust", "failure"],
+    },
+
+    # ── monte_carlo_zones: Theory, HOW, Trust, Failure ──
+    {
+        "type": "axiom",
+        "content": "MonteCarlo uses SMA20 ± k×stdev to define statistical zones (DEEP_BUY, BUY, HOLD, SELL, SAFE_SELL). Price in extreme zones = statistically likely to revert. 1000 Monte Carlo simulations project 12h forward price probability using historical volatility.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "zones", "theory"],
     },
     {
         "type": "principle",
-        "content": "MultiTierQuality uses EMA crossover + VWAP on 5m/30m/1h. Best for scalp confirmation. It's fast-reacting but noisy - trust it more when it aligns with slower strategies.",
+        "content": "MonteCarlo is a mean-reversion strategy. It buys when price is in buy zone AND MC simulation shows >60% up probability. RSI14 < 30 confirms oversold. It answers: 'Is price statistically extreme AND likely to revert?'",
         "category": "strategy",
-        "tags": ["multi_tier", "EMA", "VWAP", "scalp"],
+        "tags": ["monte_carlo", "mean_reversion", "confidence"],
     },
     {
         "type": "principle",
-        "content": "The ensemble voting system requires 2+ strategy agreement for a trade. This is the primary quality filter. 3-strategy agreement has historically 2x better win rate than 2-strategy.",
+        "content": "MonteCarlo excels in range-bound markets where price oscillates around SMA20. Fails in trends where price blows through zones without reverting. News dislocations make the historical distribution unreliable. Trust it most when RSI confirms extremes.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "trust", "failure"],
+    },
+
+    # ── confidence_scorer: Theory, HOW, Trust, Failure ──
+    {
+        "type": "axiom",
+        "content": "ConfidenceScorer uses the same zones as MonteCarlo but adds historical win rate tracking per (symbol, action) pair. It adjusts confidence by observed outcomes: high past accuracy = confidence boost, low accuracy = reduction. It answers: 'Has this exact type of signal historically worked?'",
+        "category": "strategy",
+        "tags": ["confidence_scorer", "meta", "theory"],
+    },
+    {
+        "type": "principle",
+        "content": "ConfidenceScorer is the most adaptive strategy. Trust grows with sample size — 20+ similar trades = statistically meaningful. Best used to arbitrate when other strategies disagree. Cold start problem: unreliable with < 10 trades. Lags regime shifts because it learns from past, not present.",
+        "category": "strategy",
+        "tags": ["confidence_scorer", "trust", "adaptive"],
+    },
+
+    # ── multi_tier_quality: Theory, HOW, Trust, Failure ──
+    {
+        "type": "axiom",
+        "content": "MultiTierQuality uses 5m EMA20/EMA50 crossover for micro-trend direction, confirmed by session VWAP alignment and 1h EMA trend for macro direction. Three tiers: PRIORITY (75%+), REGULAR (65%+), MANUAL (<65%). It answers: 'Is there a clean micro-entry aligned with the macro trend?'",
+        "category": "strategy",
+        "tags": ["multi_tier", "EMA", "VWAP", "theory"],
+    },
+    {
+        "type": "principle",
+        "content": "MultiTierQuality excels for scalps (5-30min holds). When EMA + VWAP + 1h all align = high conviction. Noisy in ranges where EMA crossovers whipsaw. MANUAL tier = low conviction, should not drive decisions. Strongest when combined with regime_trend macro direction.",
+        "category": "strategy",
+        "tags": ["multi_tier", "trust", "scalp", "failure"],
+    },
+
+    # ── Cross-strategy interpretation ──
+    {
+        "type": "principle",
+        "content": "When regime_trend and multi_tier_quality agree on direction, the signal has both macro (6h/16h regime) and micro (5m entry) confirmation — highest quality setup. regime_trend provides the 'why' (regime supports), multi_tier provides the 'when' (exact entry bar).",
+        "category": "strategy",
+        "tags": ["cross_strategy", "regime_trend", "multi_tier"],
+    },
+    {
+        "type": "principle",
+        "content": "monte_carlo acts as a contrarian check on regime_trend. If regime_trend says BUY but monte_carlo says price is in SELL zone, the trade may be chasing. If both agree (regime bullish + price in buy zone), the setup is strong from both trend and mean-reversion perspectives.",
+        "category": "strategy",
+        "tags": ["cross_strategy", "monte_carlo", "regime_trend"],
+    },
+    {
+        "type": "principle",
+        "content": "confidence_scorer with hist_WR > 60% for a setup type = validated statistical edge. Weight this signal up. hist_WR < 40% = historically losing setup. This should override other strategies' raw confidence scores.",
+        "category": "strategy",
+        "tags": ["cross_strategy", "confidence_scorer", "edge"],
+    },
+
+    # ── Ensemble rules ──
+    {
+        "type": "axiom",
+        "content": "The ensemble voting system requires 2+ strategy agreement for a trade. This is the primary quality filter. 3-strategy agreement has historically 2x better win rate than 2-strategy. Duration-aware weighting: scalps weight 5m signals, trend trades weight daily signals.",
         "category": "strategy",
         "tags": ["ensemble", "voting", "agreement"],
+    },
+    {
+        "type": "principle",
+        "content": "When evaluating signal ctx (context), read the indicator values, not just the direction. 'WT cross-up, 4/4 align' is vastly different from 'WT cross-up, 2/4 align (momentum)'. The ctx tells you HOW strong the signal's own internal confirmation is.",
+        "category": "strategy",
+        "tags": ["signal_context", "interpretation"],
+    },
+
+    # ── Predictive patterns — HOW TO PREDICT where price goes ──
+    {
+        "type": "axiom",
+        "content": "PREDICTION RULE: Form a directional thesis BEFORE evaluating a trade. 'Where is price going and why?' beats 'Should I take this signal?' Every decision starts with a prediction. The trade either aligns with your prediction or it doesn't.",
+        "category": "strategy",
+        "tags": ["prediction", "thesis", "framework"],
+    },
+    {
+        "type": "principle",
+        "content": "Convergent confluence is the strongest predictor: when trend-following (regime_trend) AND mean-reversion (monte_carlo) agree on direction, price is BOTH trending AND at a statistical edge. This is the highest-probability setup — size up aggressively.",
+        "category": "strategy",
+        "tags": ["confluence", "convergent", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Conflicting strategies are INFORMATIVE, not noise. regime_trend BUY + monte_carlo SELL zone = price is trending but overextended. Prediction: short-term pullback within the trend. Action: wait for pullback to MC buy zone, then enter with trend.",
+        "category": "strategy",
+        "tags": ["conflict", "interpretation", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "RSI divergence + WT divergence = strongest reversal predictor. If price makes new high but RSI and WaveTrend don't, the move is exhausting. Predict reversal. If MFI also dropping (MFI<40 in bull): double confirmation of exhaustion.",
+        "category": "strategy",
+        "tags": ["divergence", "reversal", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "MC probability >70% with RSI extreme (<25 or >75) = high-probability mean-reversion. Predict a return to SMA20 within 12h. The further price deviates from SMA20 in sigmas, the stronger the reversion pull. 2+ sigma = strong, 3+ sigma = very strong.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "extreme", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "BTC leads, alts follow with 10-30min lag. If BTC breaks structure (new 4h high/low), predict alts will follow within 30min. Use BTC's move to front-run alt entries — this is the single most reliable cross-market predictor.",
+        "category": "strategy",
+        "tags": ["btc_lead", "correlation", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Veto is a prediction opportunity. When you veto a trade, you're predicting the OPPOSITE will happen. Track your veto accuracy — if vetoed trades would have won (vacc < 0.50), your predictions are inverted. Consider flipping your thesis when vacc is poor.",
+        "category": "strategy",
+        "tags": ["veto", "prediction", "counter_thesis"],
+    },
+
+    # ── Confidence interpretation per strategy ──
+    {
+        "type": "principle",
+        "content": "RegimeTrend confidence = align × 25: 75% means 3/4 criteria met (cross + MFI + one HTF). 100% means 4/4 = all timeframes confirming. Momentum entries (-5% penalty) are slightly weaker but catch trends earlier. Read ctx for which criteria are missing.",
+        "category": "strategy",
+        "tags": ["regime_trend", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "MonteCarlo confidence = zone depth + MC probability + RSI confirmation. DEEP_BUY with MC>70%up and RSI<30 → maximum conviction (~85%). Regular BUY with MC~55% → moderate conviction (~65%). The MC probability is forward-looking — it tells you the statistical odds, not just current position.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "ConfidenceScorer adjusts base zone confidence by historical win rate. If hist_WR=70% for BUY signals on this symbol, confidence gets boosted. If hist_WR=35%, confidence gets crushed. hist_WR=n/a means cold start — treat as 50% baseline, don't discount or boost.",
+        "category": "strategy",
+        "tags": ["confidence_scorer", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "MultiTier confidence maps to tiers: PRIORITY (75%+) = all alignments (EMA cross + VWAP + 1h). REGULAR (65-74%) = 2/3 aligned. MANUAL (<65%) = weak, should not drive decisions alone. VWAP opposition is a strong negative — price fighting VWAP rarely sustains.",
+        "category": "strategy",
+        "tags": ["multi_tier", "confidence", "interpretation"],
+    },
+
+    # ── Regime transition prediction ──
+    {
+        "type": "axiom",
+        "content": "REGIME TRANSITION SIGNALS: Volume rising + OI expanding + funding tilting one way = trend forming. Volume dying + OI flat + funding normalizing = trend exhausting → range. Volume spike + OI contracting = panic/liquidation cascade. Detect transitions EARLY for profit.",
+        "category": "strategy",
+        "tags": ["regime", "transition", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Trend regime is where 70%+ of all profit is made. Be aggressive entering trend trades, patient exiting them. Range regime: most trades are small winners or small losers — reduce frequency, tighten targets. Panic: stay flat. The regime determines your playbook, not individual signals.",
+        "category": "strategy",
+        "tags": ["regime", "profitability", "playbook"],
     },
 ]
 
@@ -555,27 +710,43 @@ def get_course_summary_for_prompt(symbol: str = "", regime: str = "") -> str:
         regime_lower = regime.lower()
         if "trend" in regime_lower:
             parts.append(
-                "REGIME(trend): Trust regime_trend strategy. Volume + OI expanding confirms. "
+                "REGIME(trend): Trust regime_trend(strong), multi_tier(moderate). "
+                "monte_carlo(weak—zones get blown through). Volume + OI expanding confirms. "
                 "Size up if cross-market aligns. RSI can stay overbought in trends."
             )
         elif "range" in regime_lower:
             parts.append(
-                "REGIME(range): Trust confidence_scorer. Fade breakouts, trade mean reversion. "
-                "Reduce size. Failed breakouts are strong reversal signals."
+                "REGIME(range): Trust monte_carlo(strong), confidence_scorer(strong). "
+                "regime_trend(avoid—false WT crosses), multi_tier(weak—EMA whipsaw). "
+                "Fade breakouts, trade mean reversion. Reduce size."
             )
         elif "panic" in regime_lower:
             parts.append(
-                "REGIME(panic): EXTREME CAUTION. Only trade 80%+ confidence. "
-                "Liquidation cascades create overshoots. Look for relative strength only."
+                "REGIME(panic): EXTREME CAUTION. All strategies=avoid except confidence_scorer(weak). "
+                "Only trade 80%+ confidence. Liquidation cascades create overshoots."
             )
         elif "high" in regime_lower and "vol" in regime_lower:
             parts.append(
                 "REGIME(high_vol): Cap size at 1.0x. Wider stops (2x ATR). "
-                "Both directions possible. Trust multi_tier_quality for quick scalps."
+                "Trust multi_tier(moderate) for quick scalps, monte_carlo(moderate). "
+                "regime_trend(weak). Both directions possible."
             )
         elif "low" in regime_lower and "liq" in regime_lower:
             parts.append(
-                "REGIME(low_liq): STAY FLAT. Thin market, wide spreads, unreliable signals."
+                "REGIME(low_liq): STAY FLAT. All strategies=avoid. "
+                "Thin market, wide spreads, unreliable signals."
+            )
+        elif "news" in regime_lower or "disloc" in regime_lower:
+            parts.append(
+                "REGIME(news_dislocation): Wait for dust to settle. "
+                "confidence_scorer(moderate—if historical data exists). "
+                "All others=avoid or weak. Wide stops, small size if entering."
+            )
+        elif "unknown" in regime_lower:
+            parts.append(
+                "REGIME(unknown): No edge identified. Default to SKIP. "
+                "confidence_scorer(moderate) only if hist_WR>60%. "
+                "All others=weak. Wait for regime clarity."
             )
 
     # Symbol-specific knowledge

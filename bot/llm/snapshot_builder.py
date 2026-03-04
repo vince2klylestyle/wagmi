@@ -215,6 +215,12 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             cm["oi"] = round(m.open_interest_change_pct, 1)
 
         # Signals (compact, skip neutral/low-confidence)
+        # Inject regime fitness per strategy so LLM knows signal reliability
+        from llm.agents.shared_context import STRATEGY_REGIME_FIT
+        _gc = snapshot.global_context
+        _dominant_regime = _gc.extra.get("dominant_regime", "unknown") if _gc and _gc.extra else "unknown"
+        _regime_fit_map = STRATEGY_REGIME_FIT.get(_dominant_regime, {})
+
         sigs = []
         for s in m.signals:
             if s.confidence < 0.2 and s.side == "neutral":
@@ -222,6 +228,12 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             sig = {"st": s.strategy, "sd": s.side, "c": round(s.confidence, 2)}
             if s.regime_score and s.regime_score >= 0.1:
                 sig["rg"] = round(s.regime_score, 2)
+            # Add regime fitness: strong/moderate/weak/avoid
+            _fit = _regime_fit_map.get(s.strategy)
+            if _fit and _fit != "moderate":  # Only flag non-neutral fitness
+                sig["rf"] = _fit  # regime_fit: strong/weak/avoid
+            if s.meta:
+                sig["meta"] = s.meta
             sigs.append(sig)
         if sigs:
             cm["sg"] = sigs
@@ -274,6 +286,37 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             result["g"]["rprof"] = g.extra["risk_profile"][:40]
         if g.extra.get("dynamic_leverage_cap"):
             result["g"]["dlcap"] = round(g.extra["dynamic_leverage_cap"], 0)
+        # Deep memory edge map: setup type win rates for Trade/Critic
+        if g.extra.get("setup_edge_map"):
+            result["g"]["edge"] = g.extra["setup_edge_map"]
+        if g.extra.get("strategy_performance"):
+            result["g"]["stperf"] = g.extra["strategy_performance"]
+        # Scout Agent preparation (pre-formed theses, watchlist priority)
+        if g.extra.get("scout_preparation"):
+            result["g"]["scout"] = g.extra["scout_preparation"]
+        # LLM self-performance stats for calibration
+        if g.extra.get("llm_self_performance"):
+            result["g"]["selfperf"] = g.extra["llm_self_performance"]
+        # Counterfactual stats (veto accuracy for Critic calibration)
+        if g.extra.get("counterfactual_stats"):
+            _cf = g.extra["counterfactual_stats"]
+            result["g"]["cf"] = {
+                k: v for k, v in _cf.items()
+                if k in ("veto_accuracy", "vetoes_saved_pnl", "vetoes_missed_pnl", "total_vetoes")
+            } if isinstance(_cf, dict) else _cf
+        # Adaptive risk (streak + recent WR for sizing awareness)
+        if g.extra.get("adaptive_risk"):
+            result["g"]["arisk"] = g.extra["adaptive_risk"]
+        # Portfolio risk budget utilization
+        if g.extra.get("portfolio_risk_budget"):
+            result["g"]["rbudget"] = g.extra["portfolio_risk_budget"]
+        # Survival accountability context
+        if g.extra.get("survival_status"):
+            _ss = g.extra["survival_status"]
+            if isinstance(_ss, str):
+                result["g"]["surv"] = _ss[:100]
+            elif isinstance(_ss, dict):
+                result["g"]["surv"] = _ss
 
     # Trigger
     if snapshot.trigger_reason:

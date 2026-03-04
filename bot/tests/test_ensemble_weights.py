@@ -464,9 +464,9 @@ class TestWeightedVeto:
             result = ensemble._weighted_veto("BTC", signals)
             assert result is not None
             # MT weight = (9+1)/(10+2) = 0.833
-            # Penalty = 0.833 * 15 = 12.5
-            assert result.metadata["opposition_penalty"] > 10, (
-                "High-accuracy opposer should impose > 10pt penalty"
+            # Penalty = 0.833 * 15 * (65/100) = 8.1 (confidence-weighted)
+            assert result.metadata["opposition_penalty"] > 5, (
+                "High-accuracy opposer should impose meaningful penalty"
             )
 
         finally:

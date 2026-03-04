@@ -39,6 +39,7 @@ from llm.agents.shared_context import (
     get_pipeline_scratchpad,
     get_shared_lessons,
     reset_pipeline_scratchpad,
+    score_confluence,
 )
 from llm.agents.thought_protocol import build_protocol_prefix
 from llm.agents.consistency_checker import (
@@ -73,6 +74,11 @@ class AgentCoordinator:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_latency_ms = 0
+        # Delta tracking: return per-pipeline usage, not cumulative
+        self._last_reported_calls = 0
+        self._last_reported_input = 0
+        self._last_reported_output = 0
+        self._last_reported_latency = 0
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -121,6 +127,8 @@ class AgentCoordinator:
         scratchpad.write("regime", "regime", regime_out.data.get("rg", "unknown"))
         scratchpad.write("regime", "regime_conf", regime_out.data.get("conf", 0.5))
         scratchpad.write("regime", "bias", regime_out.data.get("bias", "neutral"))
+        if regime_out.data.get("outlook"):
+            scratchpad.write("regime", "outlook", regime_out.data["outlook"])
 
         # ── Step 2: Trade Agent ─────────────────────────────────
         trade_input = self._build_trade_input(snapshot_data, regime_out)
@@ -142,6 +150,8 @@ class AgentCoordinator:
         # Write trade output to scratchpad for downstream agents
         scratchpad.write("trade", "action", trade_out.data.get("a", "skip"))
         scratchpad.write("trade", "confidence", trade_out.data.get("c", 0.0))
+        if trade_out.data.get("thesis"):
+            scratchpad.write("trade", "thesis", trade_out.data["thesis"])
 
         # ── Step 3: Risk Agent (optional) ───────────────────────
         risk_out = None
@@ -200,7 +210,7 @@ class AgentCoordinator:
                 )
 
         # ── Merge into LLMDecision ──────────────────────────────
-        decision = self._merge_outputs(regime_out, trade_out, risk_out, critic_out)
+        decision = self._merge_outputs(regime_out, trade_out, risk_out, critic_out, snapshot_data)
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
         self._total_latency_ms += elapsed_ms
@@ -264,15 +274,172 @@ class AgentCoordinator:
             return out.data
         return None
 
+    def get_exit_intelligence(
+        self,
+        position_data: Dict[str, Any],
+        market_data: Optional[dict] = None,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Exit Intelligence Agent on an open position.
+
+        Args:
+            position_data: Open position state (symbol, side, entry, sl, tp1, tp2,
+                           unrealized_pnl, hold_time_s, state, thesis, setup_type)
+            market_data: Current market snapshot (regime, BTC direction, funding, signals)
+            model_for_trigger: Model override (defaults to Haiku for cost efficiency)
+
+        Returns:
+            Parsed exit recommendation dict or None.
+        """
+        if not self.configs.get(AgentRole.EXIT, AgentConfig(role=AgentRole.EXIT)).enabled:
+            return None
+
+        exit_input = self._build_exit_input(position_data, market_data)
+        out = self._call_agent(AgentRole.EXIT, exit_input, model_for_trigger)
+
+        if out.ok:
+            action = out.data.get("action", "hold")
+            urgency = out.data.get("urgency", "low")
+            logger.info(
+                f"[MULTI-AGENT] Exit agent: {position_data.get('symbol', '?')} "
+                f"action={action} urgency={urgency} "
+                f"thesis_valid={out.data.get('thesis_still_valid', '?')} "
+                f"reason={out.data.get('reason', '')[:60]}"
+            )
+            return out.data
+        return None
+
+    def _build_exit_input(
+        self, position_data: Dict[str, Any], market_data: Optional[dict] = None
+    ) -> str:
+        """Build exit agent input: position state + current market + thesis context."""
+        exit_data = dict(position_data)
+
+        # Inject current market context if available
+        if market_data:
+            if "m" in market_data:
+                # Extract just the relevant market for this symbol
+                symbol = position_data.get("symbol", "")
+                for m in market_data.get("m", []):
+                    if m.get("s") == symbol or m.get("sym") == symbol:
+                        exit_data["current_market"] = m
+                        break
+            if "g" in market_data:
+                exit_data["global"] = market_data["g"]
+
+            # Run a quick regime classification from scratchpad if available
+            scratchpad = get_pipeline_scratchpad()
+            regime = scratchpad.read_by_key("regime")
+            if regime:
+                exit_data["current_regime"] = regime
+                exit_data["regime_bias"] = scratchpad.read_by_key("bias") or "neutral"
+                exit_data["regime_outlook"] = scratchpad.read_by_key("outlook") or ""
+
+        # Add deep memory context for this symbol's exit patterns
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            symbol = position_data.get("symbol", "")
+            regime = position_data.get("regime", "")
+            summary = dm.build_llm_knowledge_summary(
+                symbol=symbol, regime=regime, max_tokens=300
+            )
+            if summary:
+                exit_data["exit_history"] = summary[:300]
+        except Exception:
+            pass
+
+        return json.dumps(exit_data, separators=(",", ":"))
+
+    def run_scout(
+        self,
+        scout_data: Dict[str, Any],
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Scout/Preparation Agent during idle time.
+
+        The Scout Agent runs between signal evaluations to:
+        - Identify setups forming (approaching key levels)
+        - Pre-form directional theses for likely trades
+        - Forecast regime transitions
+        - Surface lead-lag opportunities
+        - Calculate risk budget and correlation warnings
+
+        Results are written to the pipeline scratchpad so downstream
+        agents (Trade, Risk) can read preparation data.
+
+        Args:
+            scout_data: Market overview (all symbols, prices, levels, regime, positions)
+            model_for_trigger: Model override (defaults to Haiku)
+
+        Returns:
+            Parsed scout output dict or None.
+        """
+        if not self.configs.get(AgentRole.SCOUT, AgentConfig(role=AgentRole.SCOUT)).enabled:
+            return None
+
+        scout_input = json.dumps(scout_data, separators=(",", ":"))
+        out = self._call_agent(AgentRole.SCOUT, scout_input, model_for_trigger)
+
+        if out.ok:
+            # Write scout findings to scratchpad for Trade Agent to consume
+            scratchpad = get_pipeline_scratchpad()
+
+            watchlist = out.data.get("watchlist", [])
+            if watchlist:
+                scratchpad.write("scout", "watchlist", watchlist)
+                high_priority = [w for w in watchlist if w.get("priority") == "high"]
+                if high_priority:
+                    scratchpad.write("scout", "high_priority_setups", high_priority)
+
+            regime_forecast = out.data.get("regime_forecast")
+            if regime_forecast:
+                scratchpad.write("scout", "regime_forecast", regime_forecast)
+
+            lead_lag = out.data.get("lead_lag_alerts", [])
+            if lead_lag:
+                scratchpad.write("scout", "lead_lag_alerts", lead_lag)
+
+            corr_warning = out.data.get("correlation_warning")
+            if corr_warning:
+                scratchpad.write("scout", "correlation_warning", corr_warning)
+
+            risk_budget = out.data.get("risk_budget")
+            if risk_budget:
+                scratchpad.write("scout", "risk_budget", risk_budget)
+
+            logger.info(
+                f"[MULTI-AGENT] Scout: {len(watchlist)} watchlist items, "
+                f"regime_forecast={regime_forecast.get('direction', '?') if regime_forecast else 'none'}, "
+                f"lead_lag={len(lead_lag)} alerts"
+            )
+            return out.data
+        return None
+
     def get_stats(self) -> Dict[str, Any]:
-        """Return coordinator statistics."""
+        """Return coordinator statistics SINCE LAST CALL to get_stats().
+
+        Returns delta (per-pipeline) usage, not cumulative. This prevents
+        cost_tracker from double-counting tokens on each successive call.
+        """
+        delta_calls = self._call_count - self._last_reported_calls
+        delta_input = self._total_input_tokens - self._last_reported_input
+        delta_output = self._total_output_tokens - self._last_reported_output
+        delta_latency = self._total_latency_ms - self._last_reported_latency
+
+        # Update watermarks
+        self._last_reported_calls = self._call_count
+        self._last_reported_input = self._total_input_tokens
+        self._last_reported_output = self._total_output_tokens
+        self._last_reported_latency = self._total_latency_ms
+
         return {
-            "total_calls": self._call_count,
-            "total_input_tokens": self._total_input_tokens,
-            "total_output_tokens": self._total_output_tokens,
-            "total_latency_ms": self._total_latency_ms,
+            "total_calls": delta_calls,
+            "total_input_tokens": delta_input,
+            "total_output_tokens": delta_output,
+            "total_latency_ms": delta_latency,
             "avg_latency_ms": (
-                self._total_latency_ms // max(self._call_count, 1)
+                delta_latency // max(delta_calls, 1)
             ),
         }
 
@@ -295,12 +462,15 @@ class AgentCoordinator:
 
         # Inject thought protocol and shared context into the prompt
         protocol_prefix = build_protocol_prefix(role.value)
+        scratchpad = get_pipeline_scratchpad()
         shared_context = build_shared_context_block(
             agent_role=role.value,
-            scratchpad=get_pipeline_scratchpad(),
+            scratchpad=scratchpad,
             shared_lessons=get_shared_lessons(),
             include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
             include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
+            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC)),
+            current_regime=scratchpad.read_by_key("regime") or "",
         )
 
         # Prepend protocol and context to the agent's system prompt
@@ -429,6 +599,13 @@ class AgentCoordinator:
         # Inject regime agent's output so trade agent knows the classified regime
         trade_data["regime_analysis"] = regime_out.data
 
+        # Compute and inject confluence quality scoring
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            trade_data["confluence"] = confluence
+
         # Ensure all knowledge/learning fields are present with generous limits
         # (the Trade Agent is the decision-maker — don't starve it of context)
         _ensure_field(trade_data, "knowledge", snapshot, max_len=1000)
@@ -491,6 +668,19 @@ class AgentCoordinator:
         # Recent lessons about sizing/risk
         if "recent_lessons" in snapshot:
             risk_data["recent_lessons"] = snapshot["recent_lessons"]
+        # Confluence quality for informed sizing (convergent setups → size up)
+        if "confluence" in snapshot:
+            risk_data["confluence"] = snapshot["confluence"]
+        else:
+            # Compute confluence from market signals if available
+            markets = snapshot.get("m", [])
+            if markets:
+                try:
+                    confluence = score_confluence(markets[0].get("signals", []))
+                    if confluence.get("count", 0) > 0:
+                        risk_data["confluence"] = confluence
+                except Exception:
+                    pass
         return json.dumps(risk_data, separators=(",", ":"))
 
     def _build_critic_input(
@@ -517,6 +707,13 @@ class AgentCoordinator:
         }
         if risk_out and risk_out.ok:
             critic_data["risk_assessment"] = risk_out.data
+
+        # Inject confluence quality so Critic can assess agreement type
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            critic_data["confluence"] = confluence
         # Full self-awareness context — the critic's primary tool
         for key in ("self_perf", "recent_dec", "recent_lessons", "autopsy"):
             if key in snapshot:
@@ -549,6 +746,7 @@ class AgentCoordinator:
             "llm_action", "llm_confidence", "num_strategies_agreed",
             "ensemble_confidence", "chop_score", "entry_type",
             "funding_paid", "leverage", "size_multiplier",
+            "thesis", "counter_thesis", "setup_type", "confluence_quality",
         ):
             if key in trade_data:
                 relevant[key] = trade_data[key]
@@ -583,6 +781,7 @@ class AgentCoordinator:
         trade_out: AgentOutput,
         risk_out: Optional[AgentOutput],
         critic_out: Optional[AgentOutput],
+        snapshot_data: Optional[dict] = None,
     ) -> LLMDecision:
         """Merge all agent outputs into a single LLMDecision.
 
@@ -613,6 +812,10 @@ class AgentCoordinator:
             regime_note += f" bias={regime_bias}"
         if regime_transition != "stable":
             regime_note += f" {regime_transition}"
+        regime_outlook = rd.get("outlook", "")
+
+        # Trade thesis
+        trade_thesis = td.get("thesis", "")
 
         # Risk Agent: sizing + strategy weights
         size_mult = 1.0
@@ -633,18 +836,46 @@ class AgentCoordinator:
             override = rk.get("override")
             if override == "skip":
                 action = "flat"
-                notes += " | RISK: override to skip"
-            elif override == "reduce" and size_mult > 0.7:
+                risk_reason = rk.get("reason", rk.get("n", "unspecified"))
+                notes += f" | RISK: override to skip ({risk_reason})"
+            elif override == "reduce":
+                old_mult = size_mult
                 size_mult = min(size_mult, 0.7)
-                notes += " | RISK: reduced sizing"
+                risk_reason = rk.get("reason", rk.get("n", ""))
+                notes += f" | RISK: sizing {old_mult:.1f}x→{size_mult:.1f}x ({risk_reason})"
 
         # Critic Agent: can adjust or override
         # Treat any non-"approve" verdict as a challenge (defensive normalization)
+        # PROFITABILITY GATE: if Critic's veto accuracy is poor, limit its power
+        counter_thesis = ""
+        _critic_vacc = 0.5  # default assumption
+        if snapshot_data:
+            _sp = snapshot_data.get("self_perf", {})
+            if isinstance(_sp, dict):
+                _critic_vacc = _sp.get("vacc", 0.5)
+
         if critic_out and critic_out.ok:
             cd = critic_out.data
             verdict = cd.get("verdict", "approve").lower().strip()
+            counter_thesis = cd.get("counter_thesis", "")
 
-            if verdict != "approve":
+            # If Critic veto accuracy < 0.45, block full vetoes — only allow
+            # confidence adjustment. Bad vetoes lose more money than bad trades.
+            if verdict != "approve" and _critic_vacc < 0.45:
+                adj_conf = cd.get("adjusted_confidence")
+                if adj_conf is not None:
+                    old_conf = confidence
+                    confidence = max(confidence * 0.85, float(adj_conf))
+                    confidence = max(0.0, min(1.0, confidence))
+                    notes += (f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45), "
+                              f"conf {old_conf:.2f}→{confidence:.2f}")
+                else:
+                    notes += f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45)"
+                logger.info(
+                    f"[COORDINATOR] Critic veto blocked: vacc={_critic_vacc:.2f} < 0.45 "
+                    f"— vetoes are losing money, allowing trade with adjusted confidence"
+                )
+            elif verdict != "approve":
                 adj_action = cd.get("adjusted_action")
                 adj_conf = cd.get("adjusted_confidence")
                 reason = cd.get("reason", "")
@@ -660,6 +891,9 @@ class AgentCoordinator:
                     confidence = max(0.0, min(1.0, confidence))
                     notes += f" | CRITIC: conf {old_conf:.2f}→{confidence:.2f}"
 
+                if counter_thesis:
+                    notes += f" | COUNTER: {counter_thesis[:80]}"
+
             cal_note = cd.get("calibration_note")
             if cal_note:
                 # Store as memory update if we don't already have one
@@ -670,8 +904,34 @@ class AgentCoordinator:
         if risk_flags:
             notes += f" | RISKS: {', '.join(str(f) for f in risk_flags[:3])}"
 
-        # Build the final notes: regime + trade + risk + critic
-        combined_notes = f"[MA] {regime_note} | {notes}"[:1000]
+        # Confluence quality for notes
+        confluence_info = _compute_confluence_from_snapshot(
+            snapshot_data or {}, regime,
+        )
+        confl_note = ""
+        setup_type = ""
+        if confluence_info:
+            setup_type = confluence_info.get("setup_type", "")
+            confl_note = (
+                f"CONFLUENCE: {confluence_info['count']}strat "
+                f"q={confluence_info['quality']:.0%} "
+                f"type={confluence_info['best_pair']} "
+                f"setup={setup_type}"
+            )
+
+        # Build the final notes: regime + thesis + confluence + trade + risk + critic
+        thesis_parts = []
+        if regime_outlook:
+            thesis_parts.append(f"OUTLOOK: {regime_outlook[:80]}")
+        if trade_thesis:
+            thesis_parts.append(f"THESIS: {trade_thesis[:80]}")
+        thesis_block = " | ".join(thesis_parts)
+        combined_notes = f"[MA] {regime_note}"
+        if thesis_block:
+            combined_notes += f" | {thesis_block}"
+        if confl_note:
+            combined_notes += f" | {confl_note}"
+        combined_notes = f"{combined_notes} | {notes}"[:1500]
 
         return LLMDecision(
             action=action,
@@ -782,6 +1042,44 @@ def _extract_section(text: str, keyword: str, max_len: int = 300) -> Optional[st
     return "\n".join(result_lines) if result_lines else None
 
 
+def _compute_confluence_from_snapshot(
+    snapshot: dict, regime: str
+) -> Optional[Dict[str, Any]]:
+    """Extract agreeing strategies from the snapshot and compute confluence quality."""
+    try:
+        markets = snapshot.get("m", [])
+        if not markets:
+            return None
+
+        # Find the primary market (first one with signals)
+        for market in markets:
+            sigs = market.get("sg", [])
+            if not sigs:
+                continue
+
+            # Find the consensus side
+            side_counts: Dict[str, list] = {}
+            for sig in sigs:
+                sd = sig.get("sd", "neutral")
+                if sd in ("neutral",):
+                    continue
+                side_counts.setdefault(sd, []).append(sig.get("st", ""))
+
+            if not side_counts:
+                continue
+
+            # Get the majority side
+            majority_side = max(side_counts, key=lambda s: len(side_counts[s]))
+            agreeing = side_counts[majority_side]
+
+            if agreeing:
+                return score_confluence(agreeing, regime)
+
+    except Exception:
+        pass
+    return None
+
+
 def _get_default_model(role: AgentRole) -> str:
     """Default model per agent role when no tier routing is available."""
     # Regime + Risk + Learning use cheaper Haiku; Trade + Critic use Sonnet
@@ -790,7 +1088,7 @@ def _get_default_model(role: AgentRole) -> str:
     except ImportError:
         return "claude-sonnet-4-5-20250929"
 
-    if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING):
+    if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING, AgentRole.EXIT, AgentRole.SCOUT):
         return MODEL_HAIKU
     return MODEL_SONNET
 
@@ -811,6 +1109,8 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.RISK: "AGENT_RISK_MODEL",
         AgentRole.LEARNING: "AGENT_LEARNING_MODEL",
         AgentRole.CRITIC: "AGENT_CRITIC_MODEL",
+        AgentRole.EXIT: "AGENT_EXIT_MODEL",
+        AgentRole.SCOUT: "AGENT_SCOUT_MODEL",
     }
     for role, env_key in env_model_map.items():
         model = os.getenv(env_key, "").strip()
@@ -823,6 +1123,8 @@ def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
         AgentRole.RISK: "AGENT_RISK_ENABLED",
         AgentRole.LEARNING: "AGENT_LEARNING_ENABLED",
         AgentRole.CRITIC: "AGENT_CRITIC_ENABLED",
+        AgentRole.EXIT: "AGENT_EXIT_ENABLED",
+        AgentRole.SCOUT: "AGENT_SCOUT_ENABLED",
     }
     for role, env_key in env_enabled_map.items():
         val = os.getenv(env_key, "true").lower()

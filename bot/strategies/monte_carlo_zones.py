@@ -276,6 +276,16 @@ class MonteCarloZonesStrategy(BaseStrategy):
         if confidence < 60:
             return None
 
+        # Build context: which zone, MC probabilities, RSI, R:R
+        mc_dir = f"MC {mc['up_prob']:.0%}up/{mc['down_prob']:.0%}dn"
+        sw = abs(current - sl)
+        rr = abs(current - tp1) / sw if sw > 0 else 0
+        ctx = (
+            f"zone={action}, RSI={rsi:.0f}, {mc_dir}"
+            f"{', vol_spike' if vol_spike else ''}"
+            f", R:R={rr:.1f}, target=SMA20"
+        )
+
         return Signal(
             strategy=self.name,
             symbol=symbol,
@@ -285,6 +295,7 @@ class MonteCarloZonesStrategy(BaseStrategy):
             sl=sl,
             tp1=tp1,
             tp2=tp2,
+            signal_context=ctx,
             metadata={
                 "action": action,
                 "zones": zones,

@@ -109,7 +109,7 @@ class TradingConfig:
         default_factory=lambda: _env("ENSEMBLE_MODE", "weighted_veto")
     )  # "voting", "weighted_veto", "weighted", "best"
     min_votes_required: int = field(
-        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 3)
+        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 2)
     )
     veto_ratio: float = field(
         default_factory=lambda: _env_float("VETO_RATIO", 1.1)
@@ -155,11 +155,11 @@ class TradingConfig:
         default_factory=lambda: _env_float("MAX_PORTFOLIO_LEVERAGE", 5.0)
     )  # Aggregate notional cap: total_open_notional <= equity * this
     slippage_bps: int = field(
-        default_factory=lambda: _env_int("SLIPPAGE_BPS", 5)
-    )  # Estimated slippage in basis points (added to stop distance for sizing)
+        default_factory=lambda: _env_int("SLIPPAGE_BPS", 3)
+    )  # Estimated slippage in basis points (3 bps for HL perps, override higher for alts)
     min_profit_threshold_mult: float = field(
-        default_factory=lambda: _env_float("MIN_PROFIT_THRESHOLD_MULT", 3.0)
-    )  # Reject trades where TP1 target < this * total expected costs
+        default_factory=lambda: _env_float("MIN_PROFIT_THRESHOLD_MULT", 1.5)
+    )  # Reject trades where TP1 target < this * total expected costs (was 3.0 — too strict)
     enable_funding_check: bool = field(
         default_factory=lambda: _env_bool("ENABLE_FUNDING_CHECK", True)
     )
@@ -173,7 +173,7 @@ class TradingConfig:
         default_factory=lambda: _env_bool("ENABLE_CHOP_DETECTOR", True)
     )
     chop_threshold: float = field(
-        default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.55)
+        default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.65)
     )
     max_hold_hours: int = field(
         default_factory=lambda: _env_int("MAX_HOLD_HOURS", 48)
@@ -274,7 +274,7 @@ class TradingConfig:
         default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.0)
     )
     min_stop_width_pct: float = field(
-        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.003)
+        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.002)
     )
     # Monte Carlo strategy
     mc_num_sims: int = field(
@@ -340,10 +340,10 @@ class TradingConfig:
 
     # ── Cooldowns & Time Intervals ──
     loss_cooldown_s: int = field(
-        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 120)
+        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 180)
     )
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 300)
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 120)
     )
     signal_dedup_window_s: int = field(
         default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 300)

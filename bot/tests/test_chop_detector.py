@@ -211,10 +211,10 @@ class TestEnsembleChopIntegration:
 # ---------------------------------------------------------------------------
 
 class TestMinVotesConfig:
-    """Test that min_votes default was raised to 3."""
+    """Test that min_votes default is 2 (lowered for more trade opportunities)."""
 
-    def test_default_min_votes_is_3(self):
-        """Default MIN_VOTES_REQUIRED should be 3."""
+    def test_default_min_votes_is_2(self):
+        """Default MIN_VOTES_REQUIRED should be 2 (veto ratio protects against weak signals)."""
         with patch.dict(os.environ, {}, clear=False):
             # Remove env override if set
             env = os.environ.copy()
@@ -222,8 +222,8 @@ class TestMinVotesConfig:
             with patch.dict(os.environ, env, clear=True):
                 from trading_config import TradingConfig
                 config = TradingConfig()
-                assert config.min_votes_required == 3, (
-                    f"Expected default min_votes=3, got {config.min_votes_required}"
+                assert config.min_votes_required == 2, (
+                    f"Expected default min_votes=2, got {config.min_votes_required}"
                 )
 
 

@@ -82,10 +82,11 @@ REGIME_ACTION_MAP = {
     },
     "panic": {
         "preferred_actions": ["skip"],
-        "acceptable_actions": ["skip"],
-        "forbidden_actions": ["go", "flip"],
-        "sizing_range": "0.0-0.3",
-        "notes": "Panic = stay out. Only enter if confidence >= 0.8 AND playing the reversal.",
+        "acceptable_actions": ["skip", "go"],
+        "forbidden_actions": [],
+        "sizing_range": "0.0-0.5",
+        "notes": "Panic has big moves = big opportunity IF thesis is strong. "
+                 "Require conf >= 0.70 and clear reversal/continuation thesis. Small size.",
     },
     "high_volatility": {
         "preferred_actions": ["skip"],
@@ -115,6 +116,178 @@ REGIME_ACTION_MAP = {
         "sizing_range": "0.0",
         "notes": "Unknown = no edge. Wait for clarity.",
     },
+}
+
+
+# ── Strategy Theory (HOW and WHY each strategy works) ────────────
+
+STRATEGY_THEORY = {
+    "regime_trend": {
+        "how": "WaveTrend cross on 1h + MACD/MFI regime filter on 6h/16h. align=0-4 (cross+MFI+6h_regime+16h_regime).",
+        "trust": "Best in trend. 4/4 align=strong conviction. Momentum entry (recent cross, not this-bar)=slightly weaker.",
+        "fail": "Ranges produce false WT crosses. MFI<40 in bull regime=divergence, caution.",
+    },
+    "monte_carlo_zones": {
+        "how": "SMA20±k*stdev zones + 1000 MC sims projecting 12h fwd. Buys in buy zone when MC>60% up.",
+        "trust": "Best in range/mean-reversion. Stronger when RSI14 confirms (oversold for buys, overbought for sells).",
+        "fail": "Trends blow through zones without reverting. News dislocations make historical distribution useless.",
+    },
+    "confidence_scorer": {
+        "how": "Same zones as MC + historical win rate per (symbol, action). Adjusts confidence by observed outcomes.",
+        "trust": "Trust grows with sample size. 20+ trades=statistically meaningful. Best arbitrator between strategies.",
+        "fail": "Cold start (<10 trades)=unreliable. Lags regime shifts. Can overfit to recent conditions.",
+    },
+    "multi_tier_quality": {
+        "how": "5m EMA20/50 crossover + VWAP alignment + 1h EMA trend. 3 tiers: PRIORITY(75%+), REGULAR(65%+), MANUAL(<65%).",
+        "trust": "Best for scalps (5-30min). When EMA+VWAP+1h all align=high conviction micro-entry.",
+        "fail": "Noisy in ranges (EMA whipsaw). Must confirm with slower strategy. MANUAL tier=low conviction.",
+    },
+}
+
+# When two strategies agree, the QUALITY of that agreement varies:
+# Convergent = different methodologies reaching same conclusion (highest value)
+# Timeframe = fast + slow confirming each other (high value)
+# Redundant = similar inputs/methodology (moderate value — less independent)
+STRATEGY_CONFLUENCE = {
+    ("regime_trend", "monte_carlo_zones"): "convergent — trend momentum + statistical zone agree. If both BUY: macro trend AND price at statistical buy level. Very strong.",
+    ("regime_trend", "multi_tier_quality"): "timeframe — 6h/16h macro direction + 5m micro entry. If both BUY: regime confirms + exact entry bar found. Best timing.",
+    ("regime_trend", "confidence_scorer"): "convergent — momentum + historical win rate. If both BUY: trend direction AND history validates this setup type.",
+    ("monte_carlo_zones", "confidence_scorer"): "redundant — both use SMA20/stdev zones. Agreement is expected. Less independent confirmation.",
+    ("monte_carlo_zones", "multi_tier_quality"): "convergent — statistical zone + EMA micro-trend. If both BUY: mean-reversion level confirmed by short-term momentum shift.",
+    ("confidence_scorer", "multi_tier_quality"): "timeframe — historical validation + real-time micro entry. If both BUY: setup type historically profitable + clean current entry.",
+}
+
+# Confluence quality weights: convergent > timeframe > redundant
+_CONFLUENCE_TYPE_SCORES = {
+    "convergent": 1.0,
+    "timeframe": 0.8,
+    "redundant": 0.5,
+}
+
+
+def score_confluence(agreeing_strategies: List[str], regime: str = "") -> Dict[str, Any]:
+    """Score the quality of strategy agreement — not just count, but type.
+
+    Returns:
+        {
+            "count": int,
+            "quality": float (0-1, quality-weighted),
+            "best_pair": str (best confluence type found),
+            "pairs": [{"s1": x, "s2": y, "type": t}],
+            "regime_fit": float (0-1, how well agreeing strategies fit current regime),
+            "setup_type": str (classified setup pattern),
+        }
+    """
+    count = len(agreeing_strategies)
+    if count < 2:
+        setup_type = agreeing_strategies[0] if agreeing_strategies else "none"
+        regime_fit_score = 0.5
+        if regime and agreeing_strategies:
+            fit = STRATEGY_REGIME_FIT.get(regime, {})
+            fit_val = fit.get(agreeing_strategies[0], "moderate")
+            regime_fit_score = {"strong": 1.0, "moderate": 0.6, "weak": 0.3, "avoid": 0.0}.get(fit_val, 0.5)
+        return {
+            "count": count,
+            "quality": 0.3 if count == 1 else 0.0,
+            "best_pair": "none",
+            "pairs": [],
+            "regime_fit": regime_fit_score,
+            "setup_type": f"solo_{setup_type}",
+        }
+
+    pairs = []
+    best_type = "redundant"
+    best_score = 0.0
+
+    for i, s1 in enumerate(agreeing_strategies):
+        for s2 in agreeing_strategies[i + 1:]:
+            key = (s1, s2) if (s1, s2) in STRATEGY_CONFLUENCE else (s2, s1)
+            desc = STRATEGY_CONFLUENCE.get(key, "redundant — unknown pair")
+            confl_type = desc.split(" — ")[0].strip()
+            score = _CONFLUENCE_TYPE_SCORES.get(confl_type, 0.4)
+            pairs.append({"s1": s1, "s2": s2, "type": confl_type})
+            if score > best_score:
+                best_score = score
+                best_type = confl_type
+
+    # Quality = average pair quality, boosted by count
+    avg_pair_score = sum(_CONFLUENCE_TYPE_SCORES.get(p["type"], 0.4) for p in pairs) / max(len(pairs), 1)
+    count_boost = min(count / 4.0, 1.0)  # 4 strategies = max boost
+    quality = avg_pair_score * 0.7 + count_boost * 0.3
+
+    # Regime fit: average fit of agreeing strategies
+    regime_fit_score = 0.5
+    if regime:
+        fit = STRATEGY_REGIME_FIT.get(regime, {})
+        fit_scores = []
+        for s in agreeing_strategies:
+            fit_val = fit.get(s, "moderate")
+            fit_scores.append({"strong": 1.0, "moderate": 0.6, "weak": 0.3, "avoid": 0.0}.get(fit_val, 0.5))
+        regime_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0.5
+
+    # Classify setup type
+    setup_type = _classify_setup(agreeing_strategies, best_type, regime)
+
+    return {
+        "count": count,
+        "quality": round(quality, 2),
+        "best_pair": best_type,
+        "pairs": pairs,
+        "regime_fit": round(regime_fit_score, 2),
+        "setup_type": setup_type,
+    }
+
+
+def _classify_setup(strategies: List[str], best_confluence: str, regime: str) -> str:
+    """Classify the trade setup into a named pattern for tracking.
+
+    Setup types become the DNA of the trading system — the Learning Agent
+    tracks which setups win and which lose, building a statistical edge map.
+    """
+    strats = set(strategies)
+    n = len(strats)
+
+    # 4-strategy full agreement
+    if n >= 4:
+        return f"full_confluence_{regime}" if regime else "full_confluence"
+
+    # Named 3-strategy setup patterns (check before 2-strategy to capture specifics)
+    if n >= 3:
+        if {"regime_trend", "monte_carlo_zones", "multi_tier_quality"}.issubset(strats):
+            return "trend_zone_micro"  # Macro trend + statistical zone + micro entry
+        if {"regime_trend", "monte_carlo_zones", "confidence_scorer"}.issubset(strats):
+            return "trend_zone_validated"  # Macro trend + zone + historical validation
+        if {"regime_trend", "multi_tier_quality", "confidence_scorer"}.issubset(strats):
+            return "trend_micro_validated"  # Macro trend + micro + validated
+        if {"monte_carlo_zones", "multi_tier_quality", "confidence_scorer"}.issubset(strats):
+            return "zone_micro_validated"  # Mean-reversion zone + micro + validated
+
+    # Named 2-strategy setup patterns
+    if {"regime_trend", "monte_carlo_zones"}.issubset(strats):
+        return "trend_at_zone"  # Trending + at statistical buy/sell zone
+    if {"regime_trend", "multi_tier_quality"}.issubset(strats):
+        return "trend_micro_entry"  # Macro trend + micro timing
+    if {"monte_carlo_zones", "confidence_scorer"}.issubset(strats):
+        return "zone_validated"  # Zone + historical validation
+    if {"monte_carlo_zones", "multi_tier_quality"}.issubset(strats):
+        return "zone_momentum"  # Zone level + EMA momentum shift
+    if {"confidence_scorer", "multi_tier_quality"}.issubset(strats):
+        return "validated_scalp"  # Historical edge + scalp entry
+    if {"regime_trend", "confidence_scorer"}.issubset(strats):
+        return "trend_validated"  # Trend + historically validated
+
+    # Fallback: generic
+    return f"pair_{best_confluence}" if n >= 2 else f"solo_{best_confluence}"
+
+
+STRATEGY_REGIME_FIT = {
+    "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
+    "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "strong",   "multi_tier_quality": "weak"},
+    "panic":            {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
+    "high_volatility":  {"regime_trend": "weak",   "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
+    "low_liquidity":    {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "avoid",    "multi_tier_quality": "avoid"},
+    "news_dislocation": {"regime_trend": "avoid",  "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "avoid"},
+    "unknown":          {"regime_trend": "weak",   "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "weak"},
 }
 
 
@@ -243,6 +416,8 @@ def build_shared_context_block(
     shared_lessons: Optional[SharedLessons] = None,
     include_axioms: bool = True,
     include_regime_map: bool = False,
+    include_strategy_theory: bool = False,
+    current_regime: str = "",
 ) -> str:
     """Build a compact shared context block for an agent.
 
@@ -251,6 +426,7 @@ def build_shared_context_block(
     - Upstream agent scratchpad entries
     - Shared lessons relevant to this agent
     - Regime-action mapping (if requested)
+    - Strategy theory + regime fit (if requested)
 
     Returns a compact string to minimize token usage.
     """
@@ -283,6 +459,28 @@ def build_shared_context_block(
                 "sz": mapping["sizing_range"],
             }
         parts.append(f"REGIME_RULES: {json.dumps(compact_map, separators=(',', ':'))}")
+
+    # Strategy theory: HOW/TRUST/FAIL + regime fit for current regime
+    if include_strategy_theory:
+        theory_lines = []
+        for strat, info in STRATEGY_THEORY.items():
+            short_name = strat.replace("_", "")[:8]
+            theory_lines.append(f"{short_name}: {info['how']} Trust: {info['trust']} Fail: {info['fail']}")
+        parts.append("STRAT_THEORY: " + " | ".join(theory_lines))
+
+        # Regime-specific strategy trust mapping
+        regime_key = current_regime.lower().strip() if current_regime else ""
+        fit = STRATEGY_REGIME_FIT.get(regime_key)
+        if fit:
+            fit_str = ", ".join(f"{k}={v}" for k, v in fit.items())
+            parts.append(f"REGIME_FIT({regime_key}): {fit_str}")
+
+        # Confluence quality guide (compact)
+        confl_lines = []
+        for (s1, s2), desc in STRATEGY_CONFLUENCE.items():
+            label = desc.split(" — ")[0]  # Just "convergent", "timeframe", "redundant"
+            confl_lines.append(f"{s1[:5]}+{s2[:5]}={label}")
+        parts.append("CONFLUENCE: " + ", ".join(confl_lines))
 
     return " || ".join(parts) if parts else ""
 

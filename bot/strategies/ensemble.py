@@ -57,10 +57,28 @@ class EnsembleStrategy:
         self.confidence_floor = confidence_floor
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
+        self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
         self._disabled_strategies = set(names)
+
+    def get_last_signal(self, symbol: str, strategy_name: str) -> Optional[Signal]:
+        """Get the last signal from a specific strategy for a symbol."""
+        return self._last_signals.get(symbol, {}).get(strategy_name)
+
+    # Map driving strategy → likely trade duration for TF weight selection.
+    # Short-term strategies shouldn't get vetoed by daily bearish signals.
+    STRATEGY_DURATION_MAP = {
+        "multi_tier_quality": "SCALP",    # Uses 5m+1h → short-term trades
+        "confidence_scorer": "MEDIUM",     # Multi-factor → medium-term
+        "regime_trend": "TREND",           # Uses 1h+6h → trend following
+        "monte_carlo_zones": "TREND",      # Uses daily → longer-term levels
+    }
+
+    def _infer_duration(self, strategy_name: str) -> str:
+        """Infer trade duration from the driving strategy."""
+        return self.STRATEGY_DURATION_MAP.get(strategy_name, "")
 
     def _refresh_dynamic_weights(self):
         """Refresh ensemble weights using rolling strategy performance."""
@@ -105,6 +123,9 @@ class EnsembleStrategy:
             except Exception as e:
                 error_count += 1
                 logger.warning(f"[{symbol}] {strategy.name} error: {e}")
+
+        # Cache individual strategy signals for context extraction
+        self._last_signals[symbol] = {s.strategy: s for s in signals}
 
         if not signals:
             return None
@@ -160,7 +181,11 @@ class EnsembleStrategy:
             return None
 
         # 2. Trend alignment: FLIP counter-trend signals to ride the trend
-        result = self._trend_alignment_adjust(symbol, data, result)
+        # Use duration-aware weights: short-term strategies don't get killed
+        # by daily bearish signals, and long-term strategies don't flip on 5m noise.
+        _driver = result.strategy or ""
+        _duration_hint = self._infer_duration(_driver)
+        result = self._trend_alignment_adjust(symbol, data, result, _duration_hint)
 
         # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
         if result.confidence < self.confidence_floor:
@@ -189,19 +214,32 @@ class EnsembleStrategy:
             return True
         return False
 
-    # Timeframe weights: higher TFs matter more for trend determination.
+    # Default timeframe weights: higher TFs matter more for trend determination.
     # 5m noise should NOT cancel out a confirmed daily trend.
     TIMEFRAME_WEIGHTS = {"5m": 0.5, "1h": 1.0, "6h": 1.5, "daily": 2.0}
 
-    def _compute_trend_scores(self, symbol: str, data: Dict[str, pd.DataFrame]):
+    # Trade-duration-aware weights: short trades care about short TFs,
+    # long trades care about long TFs. A daily bearish signal shouldn't
+    # kill a clean 5m scalp setup.
+    DURATION_WEIGHTS = {
+        "SCALP":  {"5m": 2.0, "1h": 1.0, "6h": 0.3, "daily": 0.1},
+        "MEDIUM": {"5m": 0.8, "1h": 1.5, "6h": 1.0, "daily": 0.5},
+        "TREND":  {"5m": 0.3, "1h": 0.8, "6h": 1.5, "daily": 2.0},
+        "REGIME": {"5m": 0.2, "1h": 0.5, "6h": 1.5, "daily": 2.0},
+    }
+
+    def _compute_trend_scores(self, symbol: str, data: Dict[str, pd.DataFrame],
+                              entry_type: str = ""):
         """Compute weighted multi-timeframe trend scores.
         Returns (total_score, num_timeframes, detail_string).
-        Score range: -5.0 (strong bear) to +5.0 (strong bull).
+        Score range varies by weight set.
 
-        Each timeframe's raw score (±1) is multiplied by its weight:
-          5m=0.5, 1h=1.0, 6h=1.5, D=2.0
-        This prevents 5m noise from overriding higher-TF trend confirmation.
+        Each timeframe's raw score (±1) is multiplied by its weight.
+        If entry_type is provided, uses duration-aware weights so that
+        short trades prioritize short TFs and long trades prioritize long TFs.
         """
+        # Use duration-aware weights if entry_type matches, else default
+        tf_weights = self.DURATION_WEIGHTS.get(entry_type, self.TIMEFRAME_WEIGHTS)
         scores = []
         weights = []
         details = []
@@ -214,7 +252,7 @@ class EnsembleStrategy:
             e50 = float(c.ewm(span=50, adjust=False).mean().iloc[-1])
             s = 1 if e20 > e50 else -1
             scores.append(s)
-            weights.append(self.TIMEFRAME_WEIGHTS["5m"])
+            weights.append(tf_weights["5m"])
             details.append(f"5m={'B' if s > 0 else 'S'}")
 
         # ── 1h: core trend + MACD momentum (weight: 1.0) ──
@@ -240,7 +278,7 @@ class EnsembleStrategy:
             else:
                 s = 0
             scores.append(s)
-            weights.append(self.TIMEFRAME_WEIGHTS["1h"])
+            weights.append(tf_weights["1h"])
             details.append(f"1h={'B' if s > 0 else 'S' if s < 0 else 'N'}")
 
         # ── 6h: higher timeframe structure (weight: 1.5) ──
@@ -255,7 +293,7 @@ class EnsembleStrategy:
             price_above = price > ema50_val
             s = 1 if (ema_bull and price_above) else (-1 if (not ema_bull and not price_above) else 0)
             scores.append(s)
-            weights.append(self.TIMEFRAME_WEIGHTS["6h"])
+            weights.append(tf_weights["6h"])
             details.append(f"6h={'B' if s > 0 else 'S' if s < 0 else 'N'}")
 
         # ── Daily: macro trend + RSI (weight: 2.0) ──
@@ -280,24 +318,27 @@ class EnsembleStrategy:
             else:
                 s = 0
             scores.append(s)
-            weights.append(self.TIMEFRAME_WEIGHTS["daily"])
+            weights.append(tf_weights["daily"])
             details.append(f"D={'B' if s > 0 else 'S' if s < 0 else 'N'}")
 
-        # Weighted total: daily trend (2.0) matters 4x more than 5m noise (0.5)
+        # Weighted total: weights vary by trade duration (entry_type)
         total = sum(s * w for s, w in zip(scores, weights)) if scores else 0
         n = len(scores)
         detail_str = " ".join(details)
         return total, n, detail_str
 
     def _trend_alignment_adjust(
-        self, symbol: str, data: Dict[str, pd.DataFrame], result: "Signal"
+        self, symbol: str, data: Dict[str, pd.DataFrame], result: "Signal",
+        entry_type: str = ""
     ) -> "Signal":
         """Multi-timeframe trend alignment: flip or boost signals.
 
-        Uses WEIGHTED scores so daily trend (2.0) dominates over 5m noise (0.5).
-        Max possible score: ±5.0 (all 4 TFs agree: 0.5+1.0+1.5+2.0).
+        Uses duration-aware WEIGHTED scores so trade-relevant timeframes dominate.
+        For SCALP: 5m (2.0) + 1h (1.0) dominate, daily (0.1) barely matters.
+        For TREND: daily (2.0) + 6h (1.5) dominate, 5m (0.3) barely matters.
+        Default (no entry_type): daily (2.0) dominates per original behavior.
 
-        Strong trend (score >= 2.5 = daily + one more):
+        Strong trend (score >= 2.5):
           - Counter-trend → FLIP side, recalculate levels, +5 bonus
           - Aligned → +8 bonus
         Moderate trend (score >= 1.0):
@@ -305,7 +346,7 @@ class EnsembleStrategy:
           - Aligned → +3 bonus
         Neutral (< 1.0): no adjustment
         """
-        total, n, detail_str = self._compute_trend_scores(symbol, data)
+        total, n, detail_str = self._compute_trend_scores(symbol, data, entry_type)
 
         if n == 0:
             return result
@@ -501,9 +542,12 @@ class EnsembleStrategy:
 
         merged = self._merge_signals(symbol, chosen)
 
-        # Weighted opposition penalty (scaled by opposer's accuracy weight)
+        # Weighted opposition penalty (scaled by opposer's weight AND confidence)
         if opposition:
-            penalty = sum(self._get_strategy_weight(s.strategy) * 15 for s in opposition)
+            penalty = sum(
+                self._get_strategy_weight(s.strategy) * 15 * (s.confidence / 100)
+                for s in opposition
+            )
             merged.confidence = max(0, merged.confidence - penalty)
             merged.metadata["opposition_penalty"] = round(penalty, 1)
             opp_names = [s.strategy for s in opposition]
@@ -561,12 +605,13 @@ class EnsembleStrategy:
         else:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
-        # Consensus bonus: more strategies agree -> higher confidence
-        # Unanimous bonus: if ALL *active* strategies agree, extra +5
-        consensus_bonus = (len(signals) - 1) * 3
+        # Consensus bonus: diminishing returns per additional strategy agreeing
+        # 2 agree: +3, 3 agree: +5, 4 agree: +6 (was +14 linear — too generous)
+        n_agree = len(signals)
+        consensus_bonus = min(3 * (n_agree - 1), 3 + 2 * (n_agree - 2)) if n_agree >= 2 else 0
         active_count = len(self.strategies) - len(self._disabled_strategies)
-        if len(signals) == active_count and len(signals) >= 3:
-            consensus_bonus += 5  # Unanimous agreement bonus
+        if n_agree == active_count and n_agree >= 3:
+            consensus_bonus += 3  # Unanimous agreement bonus (reduced from 5)
         combined_conf = min(100, weighted_conf + consensus_bonus)
 
         # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)

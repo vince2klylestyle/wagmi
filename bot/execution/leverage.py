@@ -51,7 +51,10 @@ def get_maintenance_margin_rate(notional_usd: float) -> float:
 
 # Minimum stop width as a fraction of entry price.
 # Prevents near-zero stops from creating infinite R:R and giant positions.
-MIN_STOP_WIDTH_PCT = 0.003  # 0.3% of entry price
+# NOTE: Also configurable via trading_config.py (MIN_STOP_WIDTH_PCT env var).
+# Lowered from 0.003 to 0.002 — 0.3% was killing valid scalp setups
+# on Hyperliquid perps where tight stops (0.2-0.3%) are profitable.
+MIN_STOP_WIDTH_PCT = 0.002  # 0.2% of entry price
 
 
 @dataclass
