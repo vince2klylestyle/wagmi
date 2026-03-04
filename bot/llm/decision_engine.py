@@ -590,7 +590,7 @@ def get_trading_decision(
                     if decision.confidence < rd.get("c", 0) + 0.10:
                         # Penalize confidence instead of forcing flat — markets change
                         old_conf = decision.confidence
-                        decision.confidence = max(0.0, decision.confidence - 0.08)
+                        decision.confidence = max(0.0, decision.confidence - 0.05)
                         logger.info(
                             f"[LLM-ENGINE] Consistency penalty: {_sym_for_consistency} "
                             f"was recently {prev_action} (conf={rd.get('c', 0):.2f}), "

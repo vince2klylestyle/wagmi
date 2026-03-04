@@ -98,13 +98,13 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         tp1_atr_mult=1.0,
         tp2_atr_mult=2.0,
         sl_atr_mult=0.75,
-        tp1_close_pct=0.60,
+        tp1_close_pct=0.50,         # was 0.60 — let more ride for trailing
         trailing_style="medium",
-        trailing_tighten_start=0.67,
-        trailing_tighten_end=0.33,
-        floor_progress_start=0.3,
-        floor_lock_start=0.30,
-        floor_lock_max=0.65,
+        trailing_tighten_start=0.60, # was 0.67 — slightly looser to survive pullbacks
+        trailing_tighten_end=0.30,   # was 0.33 — slightly looser
+        floor_progress_start=0.35,   # was 0.30 — delay profit lock slightly
+        floor_lock_start=0.25,       # was 0.30 — lock less early
+        floor_lock_max=0.60,         # was 0.65 — cap profit lock lower
     ),
     TREND: ExitParams(
         tp1_atr_mult=1.5,
@@ -300,9 +300,10 @@ def _adjust_params_for_regime(params: ExitParams, regime: str, volatility: str) 
         p.trailing_tighten_end = max(0.20, p.trailing_tighten_end - 0.05)
     elif regime == "ranging":
         # Take profits quicker: tighten TP1, raise TP1%, tighter trailing
+        # Reduced from +0.15 to +0.10 — was taking too much at TP1 in ranging
         p.tp1_atr_mult *= 0.8
         p.tp2_atr_mult *= 0.8
-        p.tp1_close_pct = min(1.0, p.tp1_close_pct + 0.15)
+        p.tp1_close_pct = min(1.0, p.tp1_close_pct + 0.10)
         p.trailing_tighten_start = min(0.90, p.trailing_tighten_start + 0.10)
     elif regime == "illiquid":
         # Conservative: tighter everything, close more at TP1

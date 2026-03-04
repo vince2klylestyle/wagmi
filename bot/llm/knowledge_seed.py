@@ -558,6 +558,46 @@ STRATEGY_KNOWLEDGE = [
         "category": "strategy",
         "tags": ["veto", "prediction", "counter_thesis"],
     },
+
+    # ── Confidence interpretation per strategy ──
+    {
+        "type": "principle",
+        "content": "RegimeTrend confidence = align × 25: 75% means 3/4 criteria met (cross + MFI + one HTF). 100% means 4/4 = all timeframes confirming. Momentum entries (-5% penalty) are slightly weaker but catch trends earlier. Read ctx for which criteria are missing.",
+        "category": "strategy",
+        "tags": ["regime_trend", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "MonteCarlo confidence = zone depth + MC probability + RSI confirmation. DEEP_BUY with MC>70%up and RSI<30 → maximum conviction (~85%). Regular BUY with MC~55% → moderate conviction (~65%). The MC probability is forward-looking — it tells you the statistical odds, not just current position.",
+        "category": "strategy",
+        "tags": ["monte_carlo", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "ConfidenceScorer adjusts base zone confidence by historical win rate. If hist_WR=70% for BUY signals on this symbol, confidence gets boosted. If hist_WR=35%, confidence gets crushed. hist_WR=n/a means cold start — treat as 50% baseline, don't discount or boost.",
+        "category": "strategy",
+        "tags": ["confidence_scorer", "confidence", "interpretation"],
+    },
+    {
+        "type": "principle",
+        "content": "MultiTier confidence maps to tiers: PRIORITY (75%+) = all alignments (EMA cross + VWAP + 1h). REGULAR (65-74%) = 2/3 aligned. MANUAL (<65%) = weak, should not drive decisions alone. VWAP opposition is a strong negative — price fighting VWAP rarely sustains.",
+        "category": "strategy",
+        "tags": ["multi_tier", "confidence", "interpretation"],
+    },
+
+    # ── Regime transition prediction ──
+    {
+        "type": "axiom",
+        "content": "REGIME TRANSITION SIGNALS: Volume rising + OI expanding + funding tilting one way = trend forming. Volume dying + OI flat + funding normalizing = trend exhausting → range. Volume spike + OI contracting = panic/liquidation cascade. Detect transitions EARLY for profit.",
+        "category": "strategy",
+        "tags": ["regime", "transition", "prediction"],
+    },
+    {
+        "type": "principle",
+        "content": "Trend regime is where 70%+ of all profit is made. Be aggressive entering trend trades, patient exiting them. Range regime: most trades are small winners or small losers — reduce frequency, tighten targets. Panic: stay flat. The regime determines your playbook, not individual signals.",
+        "category": "strategy",
+        "tags": ["regime", "profitability", "playbook"],
+    },
 ]
 
 
@@ -695,6 +735,18 @@ def get_course_summary_for_prompt(symbol: str = "", regime: str = "") -> str:
             parts.append(
                 "REGIME(low_liq): STAY FLAT. All strategies=avoid. "
                 "Thin market, wide spreads, unreliable signals."
+            )
+        elif "news" in regime_lower or "disloc" in regime_lower:
+            parts.append(
+                "REGIME(news_dislocation): Wait for dust to settle. "
+                "confidence_scorer(moderate—if historical data exists). "
+                "All others=avoid or weak. Wide stops, small size if entering."
+            )
+        elif "unknown" in regime_lower:
+            parts.append(
+                "REGIME(unknown): No edge identified. Default to SKIP. "
+                "confidence_scorer(moderate) only if hist_WR>60%. "
+                "All others=weak. Wait for regime clarity."
             )
 
     # Symbol-specific knowledge
