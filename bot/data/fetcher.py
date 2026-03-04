@@ -168,6 +168,14 @@ class DataFetcher:
         self._last_cg_request_ts = 0.0
         self._min_cg_request_gap = 1.5
 
+        # Per-exchange rate limiting (minimum seconds between requests)
+        self._exchange_rate_limits: Dict[str, float] = {
+            "hyperliquid": 0.25,  # 4 req/s max (HL limits at ~10/s, leave margin)
+            "kraken": 0.5,
+            "bybit": 0.15,
+        }
+        self._last_exchange_request_ts: Dict[str, float] = {}
+
         # Stats
         self._ccxt_requests = 0
         self._cg_requests = 0
@@ -217,6 +225,15 @@ class DataFetcher:
         except ImportError:
             logger.warning("ccxt not installed (pip install ccxt), using CoinGecko only")
             self._ccxt_module = None
+
+    def _ccxt_rate_limit(self, ex_name: str):
+        """Enforce per-exchange rate limiting."""
+        min_gap = self._exchange_rate_limits.get(ex_name, 0.2)
+        last_ts = self._last_exchange_request_ts.get(ex_name, 0.0)
+        gap = time.time() - last_ts
+        if gap < min_gap:
+            time.sleep(min_gap - gap + random.uniform(0, 0.05))
+        self._last_exchange_request_ts[ex_name] = time.time()
 
     # ─── Cache ────────────────────────────────────────────────────
 
@@ -280,10 +297,27 @@ class DataFetcher:
                 tf_ms = TIMEFRAME_MS.get(fetch_tf, 60 * 60_000)
                 since_ms = int((time.time() * 1000) - (limit * tf_ms * 1.1))
 
-                self._ccxt_requests += 1
-                candles = exchange.fetch_ohlcv(
-                    pair, fetch_tf, since=since_ms, limit=limit
-                )
+                # Rate limit + retry on 429
+                candles = None
+                for attempt in range(3):
+                    self._ccxt_rate_limit(ex_name)
+                    self._ccxt_requests += 1
+                    try:
+                        candles = exchange.fetch_ohlcv(
+                            pair, fetch_tf, since=since_ms, limit=limit
+                        )
+                        break  # success
+                    except Exception as fetch_err:
+                        err_str = str(fetch_err)
+                        if "429" in err_str or "Too Many" in err_str or "rate" in err_str.lower():
+                            wait = (2 ** attempt) + random.uniform(0.5, 1.5)
+                            logger.info(
+                                f"[{symbol_name}] {ex_name} rate limited on {timeframe}, "
+                                f"retry {attempt + 1}/3 in {wait:.1f}s"
+                            )
+                            time.sleep(wait)
+                            continue
+                        raise  # re-raise non-429 errors
 
                 if not candles or len(candles) < 5:
                     continue
@@ -359,6 +393,7 @@ class DataFetcher:
             if exchange is None:
                 continue
             try:
+                self._ccxt_rate_limit(ex_name)
                 self._ccxt_requests += 1
                 ticker = exchange.fetch_ticker(pair)
                 price = ticker.get("last") or ticker.get("close")
