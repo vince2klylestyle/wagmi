@@ -1498,6 +1498,11 @@ class MultiStrategyBot:
                     )
                     self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
 
+        # Accrue funding costs on open positions (paper trading doesn't auto-deduct)
+        _fr = self._last_funding_rates.get(symbol, 0.0)
+        if _fr:
+            self.pos_mgr.accrue_funding(symbol, _fr)
+
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
         events = self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m)

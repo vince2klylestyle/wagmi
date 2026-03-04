@@ -122,8 +122,10 @@ Now evaluate the specific trade candidate:
 ## FUNDING IS A REAL COST — THE SILENT KILLER
 - At 0.05% funding on 5x leverage: 0.75%/day cost just to HOLD.
 - PnL = Price Move - Funding Paid - Fees. NEVER forget the middle term.
-- At > 0.03%, prefer quick trades or opposite side (get PAID).
+- funding_rate > 0.03%: prefer quick exits (SCALP profile), reduce hold time expectations.
+- funding_rate > 0.05%: require 2%+ entry-to-TP1 range to justify the drag, or take opposite side (get PAID).
 - Funding extremes (>0.05%) are BOTH reversal signals AND cost signals.
+- RULE: If expected hold > 4h AND funding > 0.03%, reduce confidence by 10% or switch to SCALP profile.
 
 ## CONFIDENCE CALIBRATION
 - < 0.5 = must be "skip" — no edge

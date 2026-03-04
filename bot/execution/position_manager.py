@@ -159,6 +159,32 @@ class PositionManager:
     def _fee(self, price: float, qty: float) -> float:
         return price * qty * (self.taker_fee_bps / 10000.0)
 
+    def accrue_funding(self, symbol: str, funding_rate: float, interval_hours: float = 8.0) -> None:
+        """Accumulate funding cost on an open position.
+
+        In paper trading, funding isn't deducted automatically like on exchange.
+        Call this every tick to track the real cost of holding.
+
+        Args:
+            symbol: Position symbol
+            funding_rate: Funding rate per interval (e.g., 0.0001 = 0.01% per 8h)
+            interval_hours: Funding interval in hours (default 8h for Hyperliquid)
+        """
+        if symbol not in self.positions:
+            return
+        pos = self.positions[symbol]
+        if pos.state == CLOSED or pos.qty <= 0:
+            return
+        # Funding cost per tick: rate * notional * (tick_duration / interval)
+        # For a 30s tick in an 8h interval: fraction = 30 / 28800 = 0.00104
+        # We approximate: each call = 1 scan interval (~30s)
+        scan_interval_s = 30.0
+        fraction_of_interval = scan_interval_s / (interval_hours * 3600)
+        notional = pos.entry * pos.qty * pos.leverage
+        cost = abs(funding_rate) * notional * fraction_of_interval
+        if cost > 0:
+            pos.funding_costs += cost
+
     def open_position(
         self,
         symbol: str,
@@ -420,8 +446,9 @@ class PositionManager:
         pos.realized_pnl += (pnl - fee)
         pos.qty = round_qty(pos.symbol, pos.qty - close_qty)
 
-        # Move SL to breakeven + buffer covering round-trip fees (entry + exit)
-        fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0)
+        # Move SL to breakeven + buffer covering round-trip fees + slippage margin
+        # 2x taker fee (entry+exit) + 0.1% slippage/noise buffer to avoid false SL hits
+        fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
         if pos.side == "LONG":
             pos.sl = round_price(pos.symbol, pos.entry + fee_buffer)
         else:
@@ -567,7 +594,8 @@ class PositionManager:
         else:
             pnl = (pos.entry - price) * qty * pos.leverage
 
-        pos.realized_pnl += (pnl - fee)
+        # Deduct accumulated funding costs at final close
+        pos.realized_pnl += (pnl - fee - pos.funding_costs)
         pos.qty = 0
         pos.close_time = datetime.now(timezone.utc)
 
@@ -580,6 +608,7 @@ class PositionManager:
         logger.info(
             f"[{pos.symbol}] {action} @ {price} | PnL={pnl:.2f} | "
             f"Total={pos.realized_pnl:.2f} | Fees={pos.fees_paid:.2f} | "
+            f"Funding={pos.funding_costs:.2f} | "
             f"Outcome={pos.outcome} | Path={pos.state_path_str}"
         )
 
@@ -598,6 +627,7 @@ class PositionManager:
             metadata={
                 "total_pnl": pos.realized_pnl,
                 "total_fees": pos.fees_paid,
+                "funding_costs": pos.funding_costs,
                 "hold_time_s": (pos.close_time - pos.open_time).total_seconds(),
                 "peak_price": pos.peak_price,
                 "outcome": pos.outcome,
