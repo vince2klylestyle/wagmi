@@ -152,6 +152,61 @@ def process_agent_decision_for_learning(
                 pass
 
 
+def process_exit_feedback(
+    exit_data: Dict[str, Any],
+    position_data: Dict[str, Any],
+) -> None:
+    """Feed Exit Agent reasoning into learning systems when it triggers a close.
+
+    When the Exit Agent closes a position (thesis invalidated, urgency close, etc.),
+    its reasoning contains high-alpha learning signals that should persist:
+    - Why the thesis broke (e.g., "regime shifted from trend to range")
+    - What the agent would do differently
+    - Pattern: "exit on funding flip when in range regime"
+
+    Args:
+        exit_data: Parsed exit agent output (action, reason, thesis_still_valid, etc.)
+        position_data: The position that was closed (symbol, side, entry, pnl, etc.)
+    """
+    action = exit_data.get("action", "hold")
+    if action not in ("full_close", "partial_close", "close"):
+        return  # Only learn from close actions
+
+    reason = exit_data.get("reason", "")
+    if not reason or len(reason) < 10:
+        return  # Skip empty/trivial reasons
+
+    symbol = position_data.get("symbol", "")
+    thesis_valid = exit_data.get("thesis_still_valid", True)
+
+    # 1. Feed to deep memory insights
+    try:
+        from llm.deep_memory import get_deep_memory
+        dm = get_deep_memory()
+        category = "exit_pattern" if not thesis_valid else "trade_management"
+        dm.insights.add_insight(
+            category=category,
+            insight=f"Exit [{symbol}]: {reason[:150]}",
+            confidence=0.75 if not thesis_valid else 0.5,
+            evidence=f"action={action}, thesis_valid={thesis_valid}",
+            source="exit_agent",
+        )
+    except Exception as e:
+        logger.debug(f"[EXIT-LEARN] Deep memory insight error: {e}")
+
+    # 2. Feed to post-trade learner ring buffer
+    try:
+        lesson = f"Exit agent closed {symbol}: {reason[:120]}"
+        _inject_into_post_trade_learner(lesson, symbol, position_data)
+    except Exception as e:
+        logger.debug(f"[EXIT-LEARN] Post-trade learner error: {e}")
+
+    logger.info(
+        f"[EXIT-LEARN] Exit feedback recorded: {symbol} action={action} "
+        f"thesis_valid={thesis_valid} reason={reason[:60]}"
+    )
+
+
 # ── Internal helpers ────────────────────────────────────────────
 
 def _inject_into_post_trade_learner(lesson: str, symbol: str, trade_data: Dict):

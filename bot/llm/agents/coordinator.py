@@ -82,6 +82,7 @@ class AgentCoordinator:
         # Preserve per-agent outputs from last pipeline run for external consumers
         self.last_pipeline_results: Dict[AgentRole, AgentOutput] = {}
         self.last_exit_output: Optional[AgentOutput] = None
+        self.last_consistency_score: Optional[float] = None
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -295,6 +296,7 @@ class AgentCoordinator:
 
         agents_called = sum(1 for r in pipeline_results.values() if r.ok)
         consistency_score = consistency_report.score
+        self.last_consistency_score = consistency_score
         logger.info(
             f"[MULTI-AGENT] Pipeline done: {agents_called} agents, "
             f"{elapsed_ms}ms total, action={decision.action} "
@@ -388,6 +390,15 @@ class AgentCoordinator:
                 f"thesis_valid={out.data.get('thesis_still_valid', '?')} "
                 f"reason={out.data.get('reason', '')[:60]}"
             )
+
+            # Feed exit reasoning to learning systems when closing
+            if action in ("full_close", "partial_close", "close"):
+                try:
+                    from llm.agents.learning_integration import process_exit_feedback
+                    process_exit_feedback(out.data, position_data)
+                except Exception as ef:
+                    logger.debug(f"[MULTI-AGENT] Exit feedback error: {ef}")
+
             return out.data
         return None
 
@@ -788,6 +799,8 @@ class AgentCoordinator:
                 "ok": output.ok,
                 "error": output.error,
             }
+        if self.last_consistency_score is not None:
+            detail["consistency_score"] = self.last_consistency_score
         return detail
 
     # ── Agent calling ───────────────────────────────────────────
@@ -852,8 +865,17 @@ class AgentCoordinator:
         )
 
         self._call_count += 1
-        self._total_input_tokens += usage.get("input_tokens", 0)
-        self._total_output_tokens += usage.get("output_tokens", 0)
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        self._total_input_tokens += in_tok
+        self._total_output_tokens += out_tok
+
+        # Feed cost tracker so daily budget enforcement stays accurate
+        try:
+            from llm.cost_tracker import get_cost_tracker
+            get_cost_tracker().record_call(in_tok, out_tok, model)
+        except Exception:
+            pass
 
         if raw_text is None:
             return AgentOutput(
@@ -1274,6 +1296,15 @@ class AgentCoordinator:
                 relevant["prior_lessons"] = " | ".join(lessons)
         except Exception:
             pass
+        # Inject exit agent reasoning if it was involved in closing this trade
+        if self.last_exit_output and self.last_exit_output.ok:
+            exit_data = self.last_exit_output.data
+            exit_reason = exit_data.get("reason", "")
+            exit_action = exit_data.get("action", "")
+            if exit_reason and exit_action in ("full_close", "partial_close", "close"):
+                relevant["exit_agent_reasoning"] = exit_reason[:200]
+                relevant["exit_thesis_valid"] = exit_data.get("thesis_still_valid", True)
+
         # Add deep memory context for this symbol/regime
         try:
             from llm.deep_memory import get_deep_memory

@@ -701,6 +701,66 @@ class BacktestLearningBridge:
         except Exception as e:
             logger.warning(f"[LEARN-BRIDGE] LLM decision feed failed: {e}")
 
+    def finalize(self, merge_to_live: bool = False) -> Dict:
+        """Merge backtest learning data into live/paper trading data stores.
+
+        Call after ingest() to transfer backtest-learned strategy weights into
+        the production weights file so the ensemble can use them immediately.
+
+        Args:
+            merge_to_live: If True, merge seed data into live files.
+        Returns:
+            Summary dict of what was merged.
+        """
+        if not merge_to_live:
+            return {"status": "skipped"}
+
+        merged = {}
+
+        # Merge backtest strategy weights into live weights file
+        try:
+            from data.strategy_weights import StrategyWeightManager
+
+            seed_path = "ml_data/strategy_weights_backtest_seed.json"
+            live_path = "ml_data/strategy_weights.json"
+
+            seed_mgr = StrategyWeightManager(path=seed_path)
+            if not seed_mgr.data:
+                logger.info("[LEARN-BRIDGE] No backtest seed weights to merge")
+                return {"status": "no_seed_data"}
+
+            live_mgr = StrategyWeightManager(path=live_path)
+
+            for name, entry in seed_mgr.data.items():
+                seed_wins = entry.get("wins", 0)
+                seed_trials = entry.get("trials", 0)
+                seed_recent = entry.get("recent_outcomes", [])
+
+                if name not in live_mgr.data:
+                    live_mgr.data[name] = entry.copy()
+                else:
+                    # Merge: add seed counts to live counts
+                    live_mgr.data[name]["wins"] = live_mgr.data[name].get("wins", 0) + seed_wins
+                    live_mgr.data[name]["trials"] = live_mgr.data[name].get("trials", 0) + seed_trials
+                    # Append recent outcomes (keep last 20)
+                    existing = live_mgr.data[name].get("recent_outcomes", [])
+                    combined = existing + seed_recent
+                    live_mgr.data[name]["recent_outcomes"] = combined[-20:]
+
+                live_mgr.data[name]["weight"] = live_mgr.get_weight(name)
+
+            live_mgr._save()
+            merged["strategy_weights_merged"] = len(seed_mgr.data)
+            logger.info(
+                f"[LEARN-BRIDGE] Merged {len(seed_mgr.data)} strategy weights "
+                f"from backtest into live: {list(seed_mgr.data.keys())}"
+            )
+        except Exception as e:
+            logger.warning(f"[LEARN-BRIDGE] Strategy weight merge failed: {e}")
+            merged["strategy_weights_error"] = str(e)
+
+        return {"status": "merged", **merged}
+
     def get_summary(self) -> str:
         """Get a human-readable summary of what was ingested."""
         lines = [
