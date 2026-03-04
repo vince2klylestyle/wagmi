@@ -82,10 +82,11 @@ REGIME_ACTION_MAP = {
     },
     "panic": {
         "preferred_actions": ["skip"],
-        "acceptable_actions": ["skip"],
-        "forbidden_actions": ["go", "flip"],
-        "sizing_range": "0.0-0.3",
-        "notes": "Panic = stay out. Only enter if confidence >= 0.8 AND playing the reversal.",
+        "acceptable_actions": ["skip", "go"],
+        "forbidden_actions": [],
+        "sizing_range": "0.0-0.5",
+        "notes": "Panic has big moves = big opportunity IF thesis is strong. "
+                 "Require conf >= 0.70 and clear reversal/continuation thesis. Small size.",
     },
     "high_volatility": {
         "preferred_actions": ["skip"],
