@@ -542,9 +542,12 @@ class EnsembleStrategy:
 
         merged = self._merge_signals(symbol, chosen)
 
-        # Weighted opposition penalty (scaled by opposer's accuracy weight)
+        # Weighted opposition penalty (scaled by opposer's weight AND confidence)
         if opposition:
-            penalty = sum(self._get_strategy_weight(s.strategy) * 15 for s in opposition)
+            penalty = sum(
+                self._get_strategy_weight(s.strategy) * 15 * (s.confidence / 100)
+                for s in opposition
+            )
             merged.confidence = max(0, merged.confidence - penalty)
             merged.metadata["opposition_penalty"] = round(penalty, 1)
             opp_names = [s.strategy for s in opposition]
@@ -602,12 +605,13 @@ class EnsembleStrategy:
         else:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
-        # Consensus bonus: more strategies agree -> higher confidence
-        # Unanimous bonus: if ALL *active* strategies agree, extra +5
-        consensus_bonus = (len(signals) - 1) * 3
+        # Consensus bonus: diminishing returns per additional strategy agreeing
+        # 2 agree: +3, 3 agree: +5, 4 agree: +6 (was +14 linear — too generous)
+        n_agree = len(signals)
+        consensus_bonus = min(3 * (n_agree - 1), 3 + 2 * (n_agree - 2)) if n_agree >= 2 else 0
         active_count = len(self.strategies) - len(self._disabled_strategies)
-        if len(signals) == active_count and len(signals) >= 3:
-            consensus_bonus += 5  # Unanimous agreement bonus
+        if n_agree == active_count and n_agree >= 3:
+            consensus_bonus += 3  # Unanimous agreement bonus (reduced from 5)
         combined_conf = min(100, weighted_conf + consensus_bonus)
 
         # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
