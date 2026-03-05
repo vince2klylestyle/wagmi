@@ -829,7 +829,11 @@ class BacktestEngine:
             strategy=signal.strategy,
             confidence=signal.confidence,
             tp1_close_pct=adjusted["tp1_close_pct"],
-            entry_reasons={"backtest": True, "strategy": signal.strategy},
+            entry_reasons={
+                "backtest": True,
+                "strategy": signal.strategy,
+                "strategies_agree": signal.metadata.get("strategies_agree", []),
+            },
             trade_profile=trade_prof,
             notes=position_notes,
         )
@@ -900,6 +904,7 @@ class BacktestEngine:
                 **trade_summary,
             },
             "by_strategy": self._report_by_strategy(),
+            "by_contributing_strategy": self._report_by_contributing_strategy(),
             "by_symbol": self._report_by_symbol(),
             "leverage_stats": self._report_leverage(),
             "equity_curve_length": len(self.equity_curve),
@@ -936,6 +941,32 @@ class BacktestEngine:
                 if event.pnl > 0:
                     result[strat]["wins"] += 1
                 result[strat]["pnl"] += event.pnl
+        for strat, stats in result.items():
+            stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
+        return result
+
+    def _report_by_contributing_strategy(self) -> Dict:
+        """Break down win rate per individual strategy that contributed to ensemble trades.
+
+        Each trade may have multiple contributing strategies (e.g. regime_trend + confidence_scorer).
+        This counts each strategy's participation and win/loss record independently.
+        """
+        result = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action in self._CLOSE_ACTIONS:
+                meta = event.metadata or {}
+                entry_reasons = meta.get("entry_reasons", {})
+                strategies = entry_reasons.get("strategies_agree", [])
+                if not strategies:
+                    # Fallback: use the event strategy name
+                    strategies = [event.strategy or "unknown"]
+                for strat in strategies:
+                    if strat not in result:
+                        result[strat] = {"trades": 0, "wins": 0, "pnl": 0.0}
+                    result[strat]["trades"] += 1
+                    if event.pnl > 0:
+                        result[strat]["wins"] += 1
+                    result[strat]["pnl"] += event.pnl
         for strat, stats in result.items():
             stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
         return result
@@ -1101,6 +1132,11 @@ def print_report(report: Dict):
     if report.get("by_strategy"):
         print("\n  By Strategy:")
         for strat, stats in report["by_strategy"].items():
+            print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
+
+    if report.get("by_contributing_strategy"):
+        print("\n  By Contributing Strategy:")
+        for strat, stats in sorted(report["by_contributing_strategy"].items(), key=lambda x: -x[1]["trades"]):
             print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
 
     if report.get("by_symbol"):
