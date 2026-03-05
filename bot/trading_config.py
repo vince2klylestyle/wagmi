@@ -341,14 +341,14 @@ class TradingConfig:
 
     # ── Cooldowns & Time Intervals ──
     loss_cooldown_s: int = field(
-        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 3600)
-    )  # 1 hour after a loss (was 3 min — way too short for hourly candles)
+        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 900)
+    )  # 15 min after a loss
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 1800)
-    )  # 30 min after a win (was 2 min)
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 300)
+    )  # 5 min after a win
     signal_dedup_window_s: int = field(
-        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 3600)
-    )
+        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 900)
+    )  # 15 min dedup to prevent same-candle repeats
 
     # ── Timeframe Trend Weights ──
     tf_weight_5m: float = field(
