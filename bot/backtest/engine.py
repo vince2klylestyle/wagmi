@@ -1098,6 +1098,19 @@ def print_report(report: Dict):
     print(f"  Win Rate:        {r.get('win_rate', 0):.1%}")
     print(f"  Net PnL:         ${r.get('net_pnl', 0):,.2f}")
 
+    # Avg win vs avg loss analysis
+    timeline = report.get("trade_timeline", [])
+    if timeline:
+        wins = [t["pnl"] for t in timeline if t.get("pnl", 0) > 0]
+        losses = [t["pnl"] for t in timeline if t.get("pnl", 0) < -0.01]
+        avg_win = sum(wins) / len(wins) if wins else 0
+        avg_loss = sum(losses) / len(losses) if losses else 0
+        profit_factor = abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else 0
+        print(f"  Avg Win:         ${avg_win:,.2f}  ({len(wins)} wins)")
+        print(f"  Avg Loss:        ${avg_loss:,.2f}  ({len(losses)} losses)")
+        print(f"  Win/Loss Ratio:  {abs(avg_win/avg_loss):.2f}x" if avg_loss else "")
+        print(f"  Profit Factor:   {profit_factor:.2f}")
+
     if report.get("by_strategy"):
         print("\n  By Strategy:")
         for strat, stats in report["by_strategy"].items():
