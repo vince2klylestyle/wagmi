@@ -180,14 +180,14 @@ class TestCircuitBreakerHighConfOverride(unittest.TestCase):
         # Normal trade (70% confidence) should be blocked
         self.assertFalse(cb.is_trading_allowed(confidence=70.0))
 
-    def test_cb_allows_high_conf_trades_when_tripped(self):
-        """High-confidence trades should pass through tripped CB."""
+    def test_cb_blocks_all_trades_when_tripped(self):
+        """All trades should be blocked when CB is tripped — no overrides."""
         cb = CircuitBreaker(daily_loss_limit_pct=0.05, cooldown_minutes=60)
         cb.peak_equity = 10000
         cb.record_trade(-600, 9400)  # triggers CB
         self.assertTrue(cb.tripped)
-        # High confidence (92%+) should be allowed
-        self.assertTrue(cb.is_trading_allowed(confidence=93.0, cb_conf_override_pct=0.92))
+        # Even high confidence should be blocked (overrides disabled)
+        self.assertFalse(cb.is_trading_allowed(confidence=93.0, cb_conf_override_pct=0.92))
 
     def test_cb_blocks_below_override_threshold(self):
         """Trades below override threshold should still be blocked."""
@@ -195,7 +195,7 @@ class TestCircuitBreakerHighConfOverride(unittest.TestCase):
         cb.peak_equity = 10000
         cb.record_trade(-600, 9400)
         self.assertTrue(cb.tripped)
-        # 91% < 92% threshold
+        # All trades blocked when CB tripped
         self.assertFalse(cb.is_trading_allowed(confidence=91.0, cb_conf_override_pct=0.92))
 
     def test_cb_not_tripped_allows_all(self):
@@ -204,8 +204,8 @@ class TestCircuitBreakerHighConfOverride(unittest.TestCase):
         cb.peak_equity = 10000
         self.assertTrue(cb.is_trading_allowed(confidence=50.0))
 
-    def test_risk_manager_passes_confidence(self):
-        """RiskManager.can_open_position should pass confidence to CB."""
+    def test_risk_manager_blocks_all_when_tripped(self):
+        """RiskManager.can_open_position should block all trades when CB tripped."""
         rm = RiskManager(starting_equity=10000)
         # Trip the CB
         rm.circuit_breaker.peak_equity = 10000
@@ -213,8 +213,8 @@ class TestCircuitBreakerHighConfOverride(unittest.TestCase):
         self.assertTrue(rm.circuit_breaker.tripped)
         # Normal confidence blocked
         self.assertFalse(rm.can_open_position(0, confidence=70.0))
-        # High confidence allowed
-        self.assertTrue(rm.can_open_position(0, confidence=93.0, cb_conf_override_pct=0.92))
+        # High confidence also blocked (overrides disabled)
+        self.assertFalse(rm.can_open_position(0, confidence=93.0, cb_conf_override_pct=0.92))
 
     def test_safety_event_logged_on_trip(self):
         """Circuit breaker trip should log to safety_events.csv."""

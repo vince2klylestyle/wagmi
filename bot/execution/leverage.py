@@ -1,21 +1,21 @@
 """
-Dynamic leverage manager with conservative-moderate scaling.
+Dynamic leverage manager with CONSERVATIVE scaling.
 Determines leverage AND risk_multiplier based on confidence and consensus.
 
-Leverage tiers (tightened for risk control):
+Leverage tiers (survival-first — max 4x until win rate > 40%):
   <60%  confidence  -> No trade
-  60-64%            -> 2x lev, 1.0x risk
-  65-69%            -> 2-3x lev, 1.0-1.2x risk
-  70-74%            -> 3-5x lev, 1.2-1.5x risk (needs 2+ strats)
-  75-79%            -> 3-5x lev, 1.3-1.7x risk (needs 2+ strats)
-  80-89%            -> 5-8x lev, 1.7-2.0x risk (needs 2+ strats)
-  90%+              -> 8-12x lev, 2.0-2.5x risk (needs 3+ strats)
+  60-64%            -> 1x lev, 0.8x risk (minimum viable)
+  65-69%            -> 1-2x lev, 0.8-1.0x risk
+  70-74%            -> 2x lev, 1.0x risk (needs 2+ strats)
+  75-79%            -> 2-3x lev, 1.0-1.2x risk (needs 2+ strats)
+  80-89%            -> 3-4x lev, 1.2-1.3x risk (needs 2+ strats)
+  90%+              -> 4-5x lev, 1.3-1.5x risk (needs 3+ strats)
 
-risk_multiplier scales risk_per_trade so higher conviction = bigger position.
-Combined with leverage, this delivers "big wins" on high-confidence setups.
+Philosophy: survive first, scale later. High leverage with low win rate
+is guaranteed ruin. Keep leverage low, let edge compound.
 
 Safety:
-  - Max 2 extreme leverage positions (>10x) at a time
+  - Max 2 extreme leverage positions (>5x) at a time
   - Liquidation distance monitoring using Hyperliquid's tiered maintenance margins
   - Automatic deleveraging if equity drops
   - Position sizing guards against near-zero stop widths
@@ -109,14 +109,14 @@ class LeverageManager:
 
         # ── Tier 1: 60-64% — minimum viable trade ──
         if confidence < 65:
-            return LeverageDecision(2.0, "leverage", "low",
-                                    f"2x: confidence {confidence:.0f}%", 1.0)
+            return LeverageDecision(1.0, "leverage", "low",
+                                    f"1x: confidence {confidence:.0f}%", 0.8)
 
         # ── Tier 2: 65-69% — building conviction ──
         if confidence < 70:
             t = (confidence - 65) / 5.0  # 0..1
-            lev = min(2.0 + t * 1.0, cap)  # 2-3x
-            rm = 1.0 + t * 0.2  # 1.0-1.2x
+            lev = min(1.0 + t * 1.0, cap)  # 1-2x
+            rm = 0.8 + t * 0.2  # 0.8-1.0x
             return LeverageDecision(lev, "leverage", "low",
                                     f"{lev:.1f}x: confidence {confidence:.0f}%", rm)
 
@@ -124,63 +124,62 @@ class LeverageManager:
         if confidence < 75:
             t = (confidence - 70) / 5.0
             if num_strategies_agree < 2:
-                lev = min(3.0, cap)
+                lev = min(1.5, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 1.2)
-            lev = min(3.0 + t * 2.0, cap)  # 3-5x
-            rm = 1.2 + t * 0.3  # 1.2-1.5x
-            return LeverageDecision(lev, "leverage", "medium",
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.9)
+            lev = min(2.0, cap)  # flat 2x (was 3-5x)
+            rm = 1.0  # flat 1.0x (was 1.2-1.5x)
+            return LeverageDecision(lev, "leverage", "low",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
         # ── Tier 4: 75-79% — strong conviction ──
         if confidence < 80:
             t = (confidence - 75) / 5.0
             if num_strategies_agree < 2:
-                lev = min(3.0, cap)
-                return LeverageDecision(lev, "leverage", "medium",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 1.3)
-            lev = min(3.0 + t * 2.0, cap)  # 3-5x (was 5-8x)
-            rm = 1.3 + t * 0.4  # 1.3-1.7x (was 1.5-2.0x)
-            tier = "high" if lev > 4.0 else "medium"
-            return LeverageDecision(lev, "leverage", tier,
+                lev = min(2.0, cap)
+                return LeverageDecision(lev, "leverage", "low",
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 1.0)
+            lev = min(2.0 + t * 1.0, cap)  # 2-3x (was 3-5x)
+            rm = 1.0 + t * 0.2  # 1.0-1.2x (was 1.3-1.7x)
+            return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
         # ── Tier 5: 80-89% — high conviction ──
         if confidence < 90:
             t = (confidence - 80) / 10.0
             if num_strategies_agree < 2:
-                lev = min(4.0, cap)
-                return LeverageDecision(lev, "leverage", "medium",
-                                        f"{lev:.1f}x: need 2+ strats for high lev", 1.5)
-            lev = min(5.0 + t * 3.0, cap)  # 5-8x (was 8-15x)
-            rm = 1.7 + t * 0.3  # 1.7-2.0x (was 2.0-2.5x)
+                lev = min(2.0, cap)
+                return LeverageDecision(lev, "leverage", "low",
+                                        f"{lev:.1f}x: need 2+ strats for high lev", 1.0)
+            lev = min(3.0 + t * 1.0, cap)  # 3-4x (was 5-8x)
+            rm = 1.2 + t * 0.1  # 1.2-1.3x (was 1.7-2.0x)
             # Check extreme position limit
-            if lev > 7.0 and current_extreme_count >= self.max_extreme_positions:
-                lev = 7.0
+            if lev > 5.0 and current_extreme_count >= self.max_extreme_positions:
+                lev = 5.0
                 return LeverageDecision(lev, "leverage", "high",
                                         f"{lev:.1f}x: extreme limit reached", rm)
-            tier = "extreme" if lev >= 7.0 else "high"
+            tier = "high" if lev >= 4.0 else "medium"
             return LeverageDecision(lev, "leverage", tier,
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
-        # ── Tier 6: 90%+ — EXTREME (rare, max conviction) ──
+        # ── Tier 6: 90%+ — high conviction, still conservative ──
         t = min((confidence - 90) / 10.0, 1.0)
         if num_strategies_agree >= 3:
-            lev = min(8.0 + t * 4.0, cap)  # 8-12x (was 15-25x)
-            rm = 2.0 + t * 0.5  # 2.0-2.5x (was 2.5-3.5x)
+            lev = min(4.0 + t * 1.0, cap)  # 4-5x (was 8-12x)
+            rm = 1.3 + t * 0.2  # 1.3-1.5x (was 2.0-2.5x)
         elif num_strategies_agree >= 2:
-            lev = min(6.0 + t * 4.0, cap)  # 6-10x (was 12-17x)
-            rm = 1.8 + t * 0.4  # 1.8-2.2x (was 2.0-2.5x)
+            lev = min(3.0 + t * 1.0, cap)  # 3-4x (was 6-10x)
+            rm = 1.2 + t * 0.1  # 1.2-1.3x (was 1.8-2.2x)
         else:
-            lev = min(5.0, cap)  # was 8.0
-            rm = 1.5  # was 1.8
+            lev = min(2.0, cap)  # was 5.0
+            rm = 1.0  # was 1.5
 
-        if lev > 10.0 and current_extreme_count >= self.max_extreme_positions:
-            lev = 10.0
+        if lev > 5.0 and current_extreme_count >= self.max_extreme_positions:
+            lev = 5.0
             return LeverageDecision(lev, "leverage", "high",
                                     f"{lev:.1f}x: extreme limit reached", rm)
 
-        tier = "extreme" if lev >= 15.0 else "high"
+        tier = "high" if lev >= 4.0 else "medium"
         return LeverageDecision(lev, "leverage", tier,
                                 f"{lev:.1f}x: {num_strategies_agree}/{total_strategies} strats, {confidence:.0f}%", rm)
 

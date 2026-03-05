@@ -123,7 +123,7 @@ class TestClassificationLogic:
         profile = classify_trade(metadata, confidence=78, atr=2.0, entry=100.0, side="BUY")
         assert profile.entry_type == TREND
         assert profile.primary_driver in ("regime_trend", "multi_tier_quality")
-        assert profile.exit_params.tp1_close_pct <= 0.65  # TREND closes less (base 0.50 + confidence adjustment)
+        assert profile.exit_params.tp1_close_pct <= 0.75  # TREND base 0.60, regime adjustment may increase
 
     def test_classify_medium_signal(self):
         """Two MEDIUM strategies -> MEDIUM classification."""

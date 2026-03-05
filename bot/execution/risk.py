@@ -80,6 +80,7 @@ class CircuitBreaker:
         self._trip_sim_time = None
         self.trip_reason = ""
         self._override_count = 0
+        self.last_reset_date = None  # Force daily reset on next check
         # Note: peak_equity is NOT reset here — caller should set it explicitly
 
     def _maybe_reset_daily(self, equity: float = 0.0, sim_time: Optional[datetime] = None):
@@ -191,48 +192,46 @@ class CircuitBreaker:
                 cooldown_elapsed = True
 
             if cooldown_elapsed:
-                # Re-check if underlying conditions are still violated.
-                # Don't blindly resume — if drawdown is still beyond limit,
-                # stay tripped. This prevents the bot from losing 8%/hour.
-                # Only the CONSECUTIVE LOSSES condition resets on cooldown.
+                # Cooldown complete — reset state and allow trading to resume.
+                # The cooldown period IS the penalty. Resetting daily_pnl
+                # prevents an infinite trip→cooldown→re-trip loop where the
+                # accumulated daily loss keeps re-triggering the breaker
+                # every cooldown cycle, effectively halting all trading for
+                # the rest of the day (or backtest).
+                #
+                # Drawdown from peak is NOT reset — that protects against
+                # sustained catastrophic loss across multiple days.
                 self.consecutive_losses = 0
                 self._override_count = 0
+                self.daily_pnl = 0.0  # Reset so cooldown actually allows resumption
                 self.tripped = False
                 self.trip_time = None
                 self._trip_sim_time = None
                 self.trip_reason = ""
 
-                # Re-check daily loss and drawdown — re-trip if still violated
-                # (pass equity=0 to skip equity-based checks if we don't have it)
-                # _check_breakers will re-trip if conditions are still bad
-                # We need equity to check, but we don't have it here.
-                # Instead, just check if daily_pnl is still beyond limit.
-                base = self.start_of_day_equity or self.peak_equity
-                if base > 0 and self.daily_pnl < 0:
-                    daily_loss_pct = abs(self.daily_pnl) / base
-                    if daily_loss_pct >= self.daily_loss_limit_pct:
-                        self._trip(f"Daily loss still {daily_loss_pct:.1%} >= {self.daily_loss_limit_pct:.1%} (post-cooldown)", sim_time=sim_time)
+                # Re-check drawdown from peak — this condition persists
+                # across cooldowns since it measures total damage, not daily.
+                if self.peak_equity > 0:
+                    base = self.start_of_day_equity or self.peak_equity
+                    drawdown = (self.peak_equity - base) / self.peak_equity
+                    if drawdown >= self.max_drawdown_pct:
+                        self._trip(
+                            f"Drawdown {drawdown:.1%} >= {self.max_drawdown_pct:.1%} (post-cooldown)",
+                            sim_time=sim_time,
+                        )
                         return False
 
                 logger.info("Circuit breaker cooldown complete, trading resumed")
                 return True
 
-        # High-confidence override: allow exceptional setups through
-        # but limit the number of overrides per trip to prevent CB bypass
-        if confidence >= cb_conf_override_pct * 100:
-            if self._override_count >= max_overrides:
-                logger.warning(
-                    f"[SAFETY] CB override limit reached ({max_overrides}), "
-                    f"hard-locked until cooldown"
-                )
-                return False
-            self._override_count += 1
-            logger.info(
-                f"[SAFETY] Circuit breaker override {self._override_count}/{max_overrides}: "
-                f"confidence {confidence:.0f}% >= {cb_conf_override_pct:.0%}"
-            )
-            return True
-
+        # CB override DISABLED — when the breaker trips, trading stops.
+        # Previously allowed 2 high-confidence trades through, but with
+        # low win rates this just added losses on top of losses.
+        # The circuit breaker exists to protect capital. Respect it.
+        logger.debug(
+            f"[SAFETY] Circuit breaker active, no overrides allowed. "
+            f"Confidence {confidence:.0f}% ignored until cooldown."
+        )
         return False
 
     def get_override_constraints(self, confidence: float = 0.0) -> Dict[str, Any]:

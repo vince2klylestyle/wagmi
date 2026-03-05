@@ -64,16 +64,15 @@ class TestFlashCrash:
         assert cb.tripped is True
         assert "drawdown" in cb.trip_reason.lower()
 
-    def test_high_confidence_overrides_circuit_breaker(self):
+    def test_cb_blocks_all_when_tripped(self):
         from execution.risk import CircuitBreaker
         cb = CircuitBreaker(max_consecutive_losses=2)
         cb.peak_equity = 10000
         cb.record_trade(-50, 9950)
         cb.record_trade(-50, 9900)
         assert cb.tripped is True
-        # High confidence should override
-        assert cb.is_trading_allowed(confidence=95, cb_conf_override_pct=0.92) is True
-        # Low confidence should not
+        # All trades blocked when CB tripped — no overrides
+        assert cb.is_trading_allowed(confidence=95, cb_conf_override_pct=0.92) is False
         assert cb.is_trading_allowed(confidence=80, cb_conf_override_pct=0.92) is False
 
 

@@ -77,14 +77,15 @@ class BacktestEngine:
             max_leverage=self.config.max_leverage,
         )
 
-        # Widen circuit breakers for backtest to avoid cascading starvation
-        # Live: 5% daily / 10% drawdown (tight, protects real money)
-        # Backtest: 8% daily / 15% drawdown (looser, prioritizes learning data)
+        # Match live circuit breaker settings — backtest should reflect
+        # real trading behavior. Wider CB just hides risk.
+        # Live: 5% daily / 10% drawdown
+        # Backtest: same defaults, unless env overridden for learning runs.
         self.risk_mgr.circuit_breaker.daily_loss_limit_pct = float(
-            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.08")
+            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.05")
         )
         self.risk_mgr.circuit_breaker.max_drawdown_pct = float(
-            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.15")
+            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.10")
         )
 
         # Results
@@ -192,9 +193,11 @@ class BacktestEngine:
             if self.llm:
                 self.llm.reset_for_symbol(symbol)
 
-            # Reset circuit breaker trip state between symbols so one bad
-            # symbol doesn't starve the next. But keep daily_pnl and
-            # peak_equity so overall drawdown protection still works.
+            # Soft reset between symbols: clear the tripped flag so the next
+            # symbol can trade, but KEEP cumulative daily_pnl and drawdown
+            # tracking. This prevents the old bug where each symbol got a
+            # fresh 8% budget (3 symbols × 8% = 24% potential daily loss).
+            # Now the 8% budget is shared across ALL symbols in a day.
             if hasattr(self.risk_mgr, "circuit_breaker") and self.risk_mgr.circuit_breaker:
                 cb = self.risk_mgr.circuit_breaker
                 cb.tripped = False
@@ -203,8 +206,9 @@ class BacktestEngine:
                 cb.trip_reason = ""
                 cb.consecutive_losses = 0
                 cb._override_count = 0
-                # Update peak to current equity for per-symbol drawdown tracking
-                cb.peak_equity = self.risk_mgr.equity
+                # DO NOT reset daily_pnl — portfolio-level daily loss tracking
+                # DO NOT reset last_reset_date — let daily boundary handle it
+                # DO NOT reset peak_equity — track drawdown across all symbols
 
             data = all_data.get(symbol, {})
             df_1h = data.get("1h", pd.DataFrame())
@@ -829,7 +833,11 @@ class BacktestEngine:
             strategy=signal.strategy,
             confidence=signal.confidence,
             tp1_close_pct=adjusted["tp1_close_pct"],
-            entry_reasons={"backtest": True, "strategy": signal.strategy},
+            entry_reasons={
+                "backtest": True,
+                "strategy": signal.strategy,
+                "strategies_agree": signal.metadata.get("strategies_agree", []),
+            },
             trade_profile=trade_prof,
             notes=position_notes,
         )
@@ -900,6 +908,7 @@ class BacktestEngine:
                 **trade_summary,
             },
             "by_strategy": self._report_by_strategy(),
+            "by_contributing_strategy": self._report_by_contributing_strategy(),
             "by_symbol": self._report_by_symbol(),
             "leverage_stats": self._report_leverage(),
             "equity_curve_length": len(self.equity_curve),
@@ -936,6 +945,32 @@ class BacktestEngine:
                 if event.pnl > 0:
                     result[strat]["wins"] += 1
                 result[strat]["pnl"] += event.pnl
+        for strat, stats in result.items():
+            stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
+        return result
+
+    def _report_by_contributing_strategy(self) -> Dict:
+        """Break down win rate per individual strategy that contributed to ensemble trades.
+
+        Each trade may have multiple contributing strategies (e.g. regime_trend + confidence_scorer).
+        This counts each strategy's participation and win/loss record independently.
+        """
+        result = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action in self._CLOSE_ACTIONS:
+                meta = event.metadata or {}
+                entry_reasons = meta.get("entry_reasons", {})
+                strategies = entry_reasons.get("strategies_agree", [])
+                if not strategies:
+                    # Fallback: use the event strategy name
+                    strategies = [event.strategy or "unknown"]
+                for strat in strategies:
+                    if strat not in result:
+                        result[strat] = {"trades": 0, "wins": 0, "pnl": 0.0}
+                    result[strat]["trades"] += 1
+                    if event.pnl > 0:
+                        result[strat]["wins"] += 1
+                    result[strat]["pnl"] += event.pnl
         for strat, stats in result.items():
             stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
         return result
@@ -1101,6 +1136,11 @@ def print_report(report: Dict):
     if report.get("by_strategy"):
         print("\n  By Strategy:")
         for strat, stats in report["by_strategy"].items():
+            print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
+
+    if report.get("by_contributing_strategy"):
+        print("\n  By Contributing Strategy:")
+        for strat, stats in sorted(report["by_contributing_strategy"].items(), key=lambda x: -x[1]["trades"]):
             print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
 
     if report.get("by_symbol"):

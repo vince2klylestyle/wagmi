@@ -230,19 +230,17 @@ class TestDailyLossCalculation:
         cb.record_trade(100.0, 10100.0)
         assert cb.start_of_day_equity > 0
 
-    def test_cb_override_limit(self):
-        """Circuit breaker overrides should be capped per trip."""
+    def test_cb_override_disabled(self):
+        """Circuit breaker overrides are disabled — CB means STOP."""
         from execution.risk import CircuitBreaker
         cb = CircuitBreaker(daily_loss_limit_pct=0.01, cooldown_minutes=9999)
         cb.peak_equity = 10000
         cb.record_trade(-200.0, 9800.0)  # Trip it
         assert cb.tripped
 
-        # First 2 overrides should work (max_overrides=2)
-        assert cb.is_trading_allowed(confidence=95, max_overrides=2)
-        assert cb.is_trading_allowed(confidence=95, max_overrides=2)
-        # Third should be blocked
+        # No overrides allowed, even at very high confidence
         assert not cb.is_trading_allowed(confidence=95, max_overrides=2)
+        assert not cb.is_trading_allowed(confidence=99, max_overrides=2)
 
     def test_position_sizing_min_stop_width(self):
         """RiskManager.calculate_qty should reject near-zero stops."""
