@@ -84,9 +84,12 @@ class RegimeTrendStrategy(BaseStrategy):
 
         macd_h = float(hist.iloc[-1])
         mfi_val = float(mfi.iloc[-1])
+        # Bullish: both indicators agree
         ok = macd_h > 0 and mfi_val > 50
+        # Bearish: both indicators agree (symmetric with bullish)
+        bearish = macd_h < 0 and mfi_val < 50
 
-        return {"ok": ok, "macd_h": macd_h, "mfi": mfi_val}
+        return {"ok": ok, "bearish": bearish, "macd_h": macd_h, "mfi": mfi_val}
 
     def _build_htf_candles(self, df_1h: pd.DataFrame) -> pd.DataFrame:
         """Resample 1h data to HTF (e.g. 16h) candles."""
@@ -128,7 +131,10 @@ class RegimeTrendStrategy(BaseStrategy):
         regime_htf = self._check_regime(df_htf)
 
         multi_bull = regime_6h["ok"] and regime_htf["ok"]
-        multi_bear = (not regime_6h["ok"]) and (not regime_htf["ok"])
+        multi_bear = regime_6h["bearish"] and regime_htf["bearish"]
+        # Partial: at least one HTF confirms direction
+        partial_bull = regime_6h["ok"] or regime_htf["ok"]
+        partial_bear = regime_6h["bearish"] or regime_htf["bearish"]
 
         # ATR for TP/SL
         c = float(df_1h["close"].iloc[-1])
@@ -137,27 +143,52 @@ class RegimeTrendStrategy(BaseStrategy):
 
         # Alignment scoring
         align_long = int(cu) + int(mfi_1h_val > 50) + int(regime_6h["ok"]) + int(regime_htf["ok"])
-        align_short = int(cd) + int(mfi_1h_val < 50) + int(not regime_6h["ok"]) + int(not regime_htf["ok"])
+        align_short = int(cd) + int(mfi_1h_val < 50) + int(regime_6h["bearish"]) + int(regime_htf["bearish"])
 
         buy = cu and (mfi_1h_val > 50) and multi_bull
+        # Relaxed short: only need partial bear regime + either cross-down or weak MFI
         sell = cd and (mfi_1h_val < 50) and multi_bear
+
+        # Regime momentum: strong alignment + recent cross (within 3 bars, not just this bar)
+        # Enables directional trades in strong regimes without waiting for exact-bar cross
+        # NOTE: Tightened from 5-bar to 3-bar window and raised alignment requirements
+        # to reduce false signals. Previous 28.6% WR was caused by stale momentum entries.
+        is_momentum = False
+        if not buy and not sell:
+            has_enough_bars = len(cross_up) >= 3 and len(cross_dn) >= 3
+            if has_enough_bars:
+                recent_cu = bool(cross_up.iloc[-3:].any())
+                recent_cd = bool(cross_dn.iloc[-3:].any())
+
+                # Require FULL multi-timeframe bull (not just partial) for momentum longs
+                if align_long >= 3 and recent_cu and multi_bull:
+                    buy = True
+                    is_momentum = True
+                # Require 3+ alignment for momentum shorts (was 2, too loose)
+                elif align_short >= 3 and recent_cd and multi_bear:
+                    sell = True
+                    is_momentum = True
+
+        # Wide-window momentum entries removed — they generated stale signals
+        # that contributed to the 28.6% WR. Only enter on fresh crosses or
+        # strong regime-confirmed momentum within 3 bars.
 
         if not buy and not sell:
             return None
 
         # Build confidence from alignment
         if buy:
-            confidence = align_long * 25.0  # max 100 with 4/4
+            confidence = align_long * (22.0 if is_momentum else 25.0)
             side = "BUY"
             sl = c - R
-            tp1 = c + 1.0 * R
-            tp2 = c + 2.0 * R
+            tp1 = c + 1.5 * R
+            tp2 = c + 3.0 * R
         else:
-            confidence = align_short * 25.0
+            confidence = align_short * (22.0 if is_momentum else 25.0)
             side = "SELL"
             sl = c + R
-            tp1 = c - 1.0 * R
-            tp2 = c - 2.0 * R
+            tp1 = c - 1.5 * R
+            tp2 = c - 3.0 * R
 
         # Cross recency: boost confidence if multiple recent crosses confirm direction
         try:
@@ -173,6 +204,19 @@ class RegimeTrendStrategy(BaseStrategy):
         if confidence < 60:
             return None
 
+        align = align_long if buy else align_short
+        sw = abs(c - sl)
+        rr = abs(c - tp1) / sw if sw > 0 else 0
+        ctx = (
+            f"WT cross-{'up' if cu else ('down' if cd else 'recent')}, "
+            f"MFI={mfi_1h_val:.0f}({'bull' if mfi_1h_val > 50 else 'bear'}), "
+            f"6h={'ok' if regime_6h['ok'] else 'no'}, "
+            f"16h={'ok' if regime_htf['ok'] else 'no'}, "
+            f"{align}/4 align"
+            f"{' (momentum)' if is_momentum else ''}"
+            f", R:R={rr:.1f}, SL={sw/c*100:.1f}%"
+        )
+
         return Signal(
             strategy=self.name,
             symbol=symbol,
@@ -183,6 +227,7 @@ class RegimeTrendStrategy(BaseStrategy):
             tp1=tp1,
             tp2=tp2,
             atr=A,
+            signal_context=ctx,
             metadata={
                 "align_long": align_long,
                 "align_short": align_short,
@@ -193,6 +238,7 @@ class RegimeTrendStrategy(BaseStrategy):
                 "regime_htf": regime_htf,
                 "atr_1h": A,
                 "cross": "up" if cu else ("down" if cd else "none"),
+                "is_momentum": is_momentum,
             },
         )
 

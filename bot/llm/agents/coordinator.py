@@ -1,0 +1,1848 @@
+"""
+Agent Coordinator: orchestrates the multi-agent LLM decision pipeline.
+
+Instead of one big LLM call that does everything (regime + decision + sizing
++ learning + self-critique), the coordinator runs focused specialist agents
+in a logical chain:
+
+  1. Regime Agent   → classify regime (Haiku — fast, cheap)
+  2. Trade Agent    → decide action (Sonnet — main brain)
+  3. Risk Agent     → size position + strategy weights (Haiku)
+  4. Critic Agent   → review & adjust before execution (Sonnet)
+  5. Learning Agent → extract lesson from closed trade (Haiku, async)
+
+Benefits over monolithic:
+  - Each agent gets a focused prompt → better at its domain
+  - Smaller max_tokens per call → faster response, lower cost
+  - Critic can veto overconfident decisions the trade agent wouldn't catch
+  - Learning agent runs *after* trade closes, not mixed into pre-trade call
+  - Easy to A/B test or swap individual agents
+
+Enable: LLM_MULTI_AGENT=true
+"""
+
+import json
+import logging
+import os
+import time
+from typing import Any, Dict, List, Optional
+
+from llm.agents.base import (
+    AgentConfig,
+    AgentOutput,
+    AgentRole,
+    DEFAULT_AGENT_CONFIGS,
+)
+from llm.agents.prompts import AGENT_PROMPTS
+from llm.agents.shared_context import (
+    build_shared_context_block,
+    get_pipeline_scratchpad,
+    get_shared_lessons,
+    reset_pipeline_scratchpad,
+    score_confluence,
+)
+from llm.agents.thought_protocol import build_protocol_prefix
+from llm.agents.consistency_checker import (
+    check_pipeline_consistency,
+    get_consistency_tracker,
+)
+from llm.client import call_llm
+from llm.decision_types import LLMDecision, StrategyWeights
+
+logger = logging.getLogger("bot.llm.agents.coordinator")
+
+
+def is_multi_agent_enabled() -> bool:
+    """Check if multi-agent mode is enabled."""
+    return os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes")
+
+
+class AgentCoordinator:
+    """Orchestrates specialist agents for trading decisions.
+
+    The coordinator manages:
+      - Agent sequencing (regime → trade → risk → critic)
+      - Context passing between agents (each sees prior agents' output)
+      - Model routing per agent (uses tier system or per-agent override)
+      - Failure handling (required agents abort pipeline, optional degrade)
+      - Token budget tracking
+    """
+
+    def __init__(self, agent_configs: Optional[Dict[AgentRole, AgentConfig]] = None):
+        self.configs = agent_configs or dict(DEFAULT_AGENT_CONFIGS)
+        self._call_count = 0
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
+        self._total_latency_ms = 0
+        # Delta tracking: return per-pipeline usage, not cumulative
+        self._last_reported_calls = 0
+        self._last_reported_input = 0
+        self._last_reported_output = 0
+        self._last_reported_latency = 0
+        # Preserve per-agent outputs from last pipeline run for external consumers
+        self.last_pipeline_results: Dict[AgentRole, AgentOutput] = {}
+        self.last_exit_output: Optional[AgentOutput] = None
+        self.last_consistency_score: Optional[float] = None
+
+    # ── Public API ──────────────────────────────────────────────
+
+    def get_trading_decision(
+        self,
+        snapshot_data: dict,
+        trigger_reason: str = "",
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[LLMDecision]:
+        """Run the multi-agent pipeline and return a merged LLMDecision.
+
+        Args:
+            snapshot_data: The compact snapshot dict (same format as monolithic).
+            trigger_reason: Why the LLM was called.
+            model_for_trigger: Tier-routed model (fallback for agents without override).
+
+        Returns:
+            Merged LLMDecision or None on failure.
+        """
+        start = time.monotonic()
+        pipeline_results: Dict[AgentRole, AgentOutput] = {}
+
+        # Reset per-pipeline shared state
+        scratchpad = reset_pipeline_scratchpad()
+        shared_lessons = get_shared_lessons()
+
+        # ── Step 1: Regime Agent ────────────────────────────────
+        regime_input = self._build_regime_input(snapshot_data)
+        regime_out = self._call_agent(
+            AgentRole.REGIME, regime_input, model_for_trigger
+        )
+        pipeline_results[AgentRole.REGIME] = regime_out
+
+        if not regime_out.ok:
+            if self.configs[AgentRole.REGIME].required:
+                logger.warning("[MULTI-AGENT] Regime agent failed — aborting pipeline")
+                self.last_pipeline_results = pipeline_results
+                return None
+            # Fallback: unknown regime
+            regime_out = AgentOutput(
+                role=AgentRole.REGIME,
+                data={"rg": "unknown", "conf": 0.3, "factors": "regime agent failed",
+                      "bias": "neutral", "transition": "uncertain"},
+            )
+
+        # Write regime output to scratchpad for downstream agents
+        scratchpad.write("regime", "regime", regime_out.data.get("rg", "unknown"))
+        scratchpad.write("regime", "regime_conf", regime_out.data.get("conf", 0.5))
+        scratchpad.write("regime", "bias", regime_out.data.get("bias", "neutral"))
+        if regime_out.data.get("outlook"):
+            scratchpad.write("regime", "outlook", regime_out.data["outlook"])
+        # Gap 3: Regime transition prediction fields
+        if regime_out.data.get("regime_momentum"):
+            scratchpad.write("regime", "regime_momentum", regime_out.data["regime_momentum"])
+        if regime_out.data.get("expected_duration_h"):
+            scratchpad.write("regime", "expected_duration_h", regime_out.data["expected_duration_h"])
+
+        # ── Step 1.5: Quant Agent (optional) ─────────────────────
+        quant_out = None
+        if self.configs.get(AgentRole.QUANT, AgentConfig(role=AgentRole.QUANT)).enabled:
+            quant_input = self._build_quant_input(snapshot_data, regime_out)
+            quant_out = self._call_agent(
+                AgentRole.QUANT, quant_input, model_for_trigger
+            )
+            pipeline_results[AgentRole.QUANT] = quant_out
+            if quant_out and quant_out.ok:
+                # Write quant analysis to scratchpad for Trade Agent
+                scratchpad.write("quant", "ev", quant_out.data.get("ev", {}))
+                if quant_out.data.get("conditional_edge"):
+                    scratchpad.write("quant", "conditional_edge", quant_out.data["conditional_edge"])
+                if quant_out.data.get("probability"):
+                    scratchpad.write("quant", "probability", quant_out.data["probability"])
+                if quant_out.data.get("kelly_fraction") is not None:
+                    scratchpad.write("quant", "kelly_fraction", quant_out.data["kelly_fraction"])
+                if quant_out.data.get("signal_quality"):
+                    scratchpad.write("quant", "signal_quality", quant_out.data["signal_quality"])
+                if quant_out.data.get("risk_profile"):
+                    scratchpad.write("quant", "risk_profile", quant_out.data["risk_profile"])
+            else:
+                quant_out = None  # Degrade gracefully
+
+        # ── Step 2: Trade Agent ─────────────────────────────────
+        trade_input = self._build_trade_input(snapshot_data, regime_out, quant_out)
+        trade_out = self._call_agent(
+            AgentRole.TRADE, trade_input, model_for_trigger
+        )
+        pipeline_results[AgentRole.TRADE] = trade_out
+
+        if not trade_out.ok:
+            if self.configs[AgentRole.TRADE].required:
+                logger.warning("[MULTI-AGENT] Trade agent failed — aborting pipeline")
+                self.last_pipeline_results = pipeline_results
+                return None
+            # Fallback: skip
+            trade_out = AgentOutput(
+                role=AgentRole.TRADE,
+                data={"a": "skip", "c": 0.0, "n": "trade agent failed"},
+            )
+
+        # Write trade output to scratchpad for downstream agents
+        scratchpad.write("trade", "action", trade_out.data.get("a", "skip"))
+        scratchpad.write("trade", "confidence", trade_out.data.get("c", 0.0))
+        if trade_out.data.get("thesis"):
+            scratchpad.write("trade", "thesis", trade_out.data["thesis"])
+
+        # ── Step 3: Risk Agent (optional) ───────────────────────
+        risk_out = None
+        if self.configs.get(AgentRole.RISK, AgentConfig(role=AgentRole.RISK)).enabled:
+            risk_input = self._build_risk_input(snapshot_data, regime_out, trade_out, quant_out)
+            risk_out = self._call_agent(
+                AgentRole.RISK, risk_input, model_for_trigger
+            )
+            pipeline_results[AgentRole.RISK] = risk_out
+            if not risk_out.ok:
+                risk_out = None  # Degrade gracefully
+
+        # ── Step 4: Critic Agent (optional) ─────────────────────
+        critic_out = None
+        if self.configs.get(AgentRole.CRITIC, AgentConfig(role=AgentRole.CRITIC)).enabled:
+            critic_input = self._build_critic_input(
+                snapshot_data, regime_out, trade_out, risk_out
+            )
+            critic_out = self._call_agent(
+                AgentRole.CRITIC, critic_input, model_for_trigger
+            )
+            pipeline_results[AgentRole.CRITIC] = critic_out
+            if not critic_out.ok:
+                critic_out = None
+
+        # ── Consistency Check ──────────────────────────────────────
+        consistency_report = check_pipeline_consistency(
+            regime_data=regime_out.data if regime_out.ok else {},
+            trade_data=trade_out.data if trade_out.ok else {},
+            risk_data=risk_out.data if risk_out and risk_out.ok else None,
+            critic_data=critic_out.data if critic_out and critic_out.ok else None,
+        )
+        get_consistency_tracker().record(consistency_report)
+
+        if not consistency_report.is_consistent:
+            logger.warning(
+                f"[MULTI-AGENT] Pipeline inconsistency detected: "
+                f"{consistency_report.summary()}"
+            )
+            # On critical inconsistency: override action to skip but preserve
+            # a fraction of the agent's confidence for downstream analysis.
+            # Previously zeroed confidence, losing all signal information.
+            critical_issues = [
+                i for i in consistency_report.issues if i.severity == "critical"
+            ]
+            if critical_issues:
+                original_conf = float(
+                    trade_out.data.get("c", trade_out.data.get("confidence", 0.0))
+                )
+                logger.warning(
+                    f"[MULTI-AGENT] Critical issues found — overriding to skip "
+                    f"(original conf={original_conf:.2f}): "
+                    f"{[i.description[:80] for i in critical_issues]}"
+                )
+                trade_out = AgentOutput(
+                    role=AgentRole.TRADE,
+                    data={
+                        "a": "skip",
+                        "c": original_conf * 0.5,  # halve instead of zero
+                        "n": f"consistency_override: {critical_issues[0].description[:100]}",
+                    },
+                )
+
+        # ── Quant Agent confidence adjustment ─────────────────
+        # If Quant Agent flagged signal as noise or adjusted confidence, apply.
+        # Skip if consistency already overrode to avoid cascading reductions.
+        _consistency_overrode = "consistency_override" in trade_out.data.get("n", "")
+        if quant_out and quant_out.ok and not _consistency_overrode:
+            sq_raw = quant_out.data.get("signal_quality", {})
+            sq = sq_raw if isinstance(sq_raw, dict) else {}
+            quant_adj = sq.get("confidence_adjustment", 0)
+            if quant_adj and isinstance(quant_adj, (int, float)):
+                # Cap quant adjustment to prevent cascading reductions
+                quant_adj = max(-0.15, min(0.15, quant_adj))
+                td = trade_out.data
+                old_c = float(td.get("c", td.get("confidence", 0.0)))
+                new_c = max(0.0, min(1.0, old_c + quant_adj))
+                # Update trade_out data in-place for downstream consensus
+                trade_out = AgentOutput(
+                    role=AgentRole.TRADE,
+                    data={**trade_out.data, "c": new_c,
+                          "n": (td.get("n", "") + f" | QUANT_ADJ: {quant_adj:+.2f}")},
+                    raw_text=trade_out.raw_text,
+                    model_used=trade_out.model_used,
+                    input_tokens=trade_out.input_tokens,
+                    output_tokens=trade_out.output_tokens,
+                    latency_ms=trade_out.latency_ms,
+                )
+            # If quant says it's noise, apply graduated response:
+            # - Very low confidence (<0.20): hard skip (genuinely garbage)
+            # - Low confidence (0.20-0.40): reduce size 50% but let Critic review
+            # - Above 0.40: leave alone (may have positive EV with good R:R)
+            # NOTE: Thresholds relaxed from 0.35/0.50 to 0.20/0.40 — previous
+            # values killed 88% of signals as quant_noise, far too aggressive.
+            if sq.get("is_noise"):
+                trade_conf = float(trade_out.data.get("c", 0))
+                noise_reason = sq.get("reason", "statistical noise")
+                if trade_conf < 0.20:
+                    trade_out = AgentOutput(
+                        role=AgentRole.TRADE,
+                        data={**trade_out.data, "a": "skip", "c": 0.0,
+                              "n": f"QUANT_NOISE: {noise_reason}"},
+                        raw_text=trade_out.raw_text,
+                        model_used=trade_out.model_used,
+                    )
+                elif trade_conf < 0.40:
+                    # Reduce size but let trade proceed for Critic review
+                    td = trade_out.data
+                    old_sm = float(td.get("sm", td.get("size_multiplier", 1.0)))
+                    trade_out = AgentOutput(
+                        role=AgentRole.TRADE,
+                        data={**td, "sm": round(old_sm * 0.5, 2),
+                              "n": (td.get("n", "") + f" | QUANT_NOISE_REDUCE: {noise_reason}")},
+                        raw_text=trade_out.raw_text,
+                        model_used=trade_out.model_used,
+                        input_tokens=trade_out.input_tokens,
+                        output_tokens=trade_out.output_tokens,
+                        latency_ms=trade_out.latency_ms,
+                    )
+
+        # ── Confidence Consensus & Consistency Scaling ─────────
+        # Gap 1: Compound conviction across agents
+        # Gap 7: Consistency score scales confidence
+        consensus_conf = _compute_confidence_consensus(
+            trade_out, regime_out, risk_out, critic_out, consistency_report.score,
+        )
+        if consensus_conf is not None:
+            # Write to scratchpad for audit trail
+            scratchpad.write("system", "consensus_confidence", round(consensus_conf, 3))
+
+        # ── Merge into LLMDecision ──────────────────────────────
+        decision = self._merge_outputs(
+            regime_out, trade_out, risk_out, critic_out, snapshot_data,
+            consistency_score=consistency_report.score,
+            consensus_confidence=consensus_conf,
+        )
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        self._total_latency_ms += elapsed_ms
+
+        agents_called = sum(1 for r in pipeline_results.values() if r.ok)
+        consistency_score = consistency_report.score
+        self.last_consistency_score = consistency_score
+        logger.info(
+            f"[MULTI-AGENT] Pipeline done: {agents_called} agents, "
+            f"{elapsed_ms}ms total, action={decision.action} "
+            f"conf={decision.confidence:.2f} regime={decision.regime} "
+            f"consistency={consistency_score:.2f}"
+        )
+
+        # Append consistency score to decision notes for audit trail
+        if decision.notes and consistency_score < 1.0:
+            decision = LLMDecision(
+                action=decision.action,
+                confidence=decision.confidence,
+                regime=decision.regime,
+                strategy_weights=decision.strategy_weights,
+                memory_update=decision.memory_update,
+                notes=f"{decision.notes} | CONSISTENCY={consistency_score:.2f}",
+                size_multiplier=decision.size_multiplier,
+                entry_adjustment=decision.entry_adjustment,
+            )
+
+        # ── Feed decision pipeline into learning systems ────────
+        try:
+            from llm.agents.learning_integration import process_agent_decision_for_learning
+            process_agent_decision_for_learning(
+                decision_notes=decision.notes,
+                regime_data=regime_out.data if regime_out.ok else {},
+                critic_data=critic_out.data if critic_out and critic_out.ok else None,
+                trade_context=trigger_reason,
+            )
+        except Exception as e:
+            logger.debug(f"[MULTI-AGENT] Decision learning error: {e}")
+
+        # Store pipeline results for external consumers (backtest logging, etc.)
+        self.last_pipeline_results = pipeline_results
+
+        return decision
+
+    def get_post_trade_lesson(
+        self,
+        trade_data: Dict[str, Any],
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Learning Agent on a closed trade.
+
+        Returns parsed lesson dict or None.
+        """
+        if not self.configs.get(AgentRole.LEARNING, AgentConfig(role=AgentRole.LEARNING)).enabled:
+            return None
+
+        learning_input = self._build_learning_input(trade_data)
+        out = self._call_agent(AgentRole.LEARNING, learning_input, model_for_trigger)
+
+        if out.ok:
+            logger.info(
+                f"[MULTI-AGENT] Learning agent lesson: "
+                f"{out.data.get('lesson', '')[:80]}"
+            )
+            return out.data
+        return None
+
+    def get_exit_intelligence(
+        self,
+        position_data: Dict[str, Any],
+        market_data: Optional[dict] = None,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Exit Intelligence Agent on an open position.
+
+        Args:
+            position_data: Open position state (symbol, side, entry, sl, tp1, tp2,
+                           unrealized_pnl, hold_time_s, state, thesis, setup_type)
+            market_data: Current market snapshot (regime, BTC direction, funding, signals)
+            model_for_trigger: Model override (defaults to Haiku for cost efficiency)
+
+        Returns:
+            Parsed exit recommendation dict or None.
+        """
+        if not self.configs.get(AgentRole.EXIT, AgentConfig(role=AgentRole.EXIT)).enabled:
+            return None
+
+        exit_input = self._build_exit_input(position_data, market_data)
+        out = self._call_agent(AgentRole.EXIT, exit_input, model_for_trigger)
+        self.last_exit_output = out
+
+        if out.ok:
+            action = out.data.get("action", "hold")
+            urgency = out.data.get("urgency", "low")
+            logger.info(
+                f"[MULTI-AGENT] Exit agent: {position_data.get('symbol', '?')} "
+                f"action={action} urgency={urgency} "
+                f"thesis_valid={out.data.get('thesis_still_valid', '?')} "
+                f"reason={out.data.get('reason', '')[:60]}"
+            )
+
+            # Feed exit reasoning to learning systems when closing
+            if action in ("full_close", "partial_close", "close"):
+                try:
+                    from llm.agents.learning_integration import process_exit_feedback
+                    process_exit_feedback(out.data, position_data)
+                except Exception as ef:
+                    logger.debug(f"[MULTI-AGENT] Exit feedback error: {ef}")
+
+            return out.data
+        return None
+
+    def _build_exit_input(
+        self, position_data: Dict[str, Any], market_data: Optional[dict] = None
+    ) -> str:
+        """Build exit agent input: position state + current market + thesis context."""
+        exit_data = dict(position_data)
+
+        # Inject current market context if available
+        if market_data:
+            if "m" in market_data:
+                # Extract just the relevant market for this symbol
+                symbol = position_data.get("symbol", "")
+                for m in market_data.get("m", []):
+                    if m.get("s") == symbol or m.get("sym") == symbol:
+                        exit_data["current_market"] = m
+                        break
+            if "g" in market_data:
+                exit_data["global"] = market_data["g"]
+
+            # Run a quick regime classification from scratchpad if available
+            scratchpad = get_pipeline_scratchpad()
+            regime = scratchpad.read_by_key("regime")
+            if regime:
+                exit_data["current_regime"] = regime
+                exit_data["regime_bias"] = scratchpad.read_by_key("bias") or "neutral"
+                exit_data["regime_outlook"] = scratchpad.read_by_key("outlook") or ""
+
+        # Add deep memory context for this symbol's exit patterns
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            symbol = position_data.get("symbol", "")
+            regime = position_data.get("regime", "")
+            summary = dm.build_llm_knowledge_summary(
+                symbol=symbol, regime=regime, max_tokens=300
+            )
+            if summary:
+                exit_data["exit_history"] = summary[:300]
+        except Exception:
+            pass
+
+        return json.dumps(exit_data, separators=(",", ":"))
+
+    def run_scout(
+        self,
+        scout_data: Dict[str, Any],
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Scout/Preparation Agent during idle time.
+
+        The Scout Agent runs between signal evaluations to:
+        - Identify setups forming (approaching key levels)
+        - Pre-form directional theses for likely trades
+        - Forecast regime transitions
+        - Surface lead-lag opportunities
+        - Calculate risk budget and correlation warnings
+
+        Results are written to the pipeline scratchpad so downstream
+        agents (Trade, Risk) can read preparation data.
+
+        Args:
+            scout_data: Market overview (all symbols, prices, levels, regime, positions)
+            model_for_trigger: Model override (defaults to Haiku)
+
+        Returns:
+            Parsed scout output dict or None.
+        """
+        if not self.configs.get(AgentRole.SCOUT, AgentConfig(role=AgentRole.SCOUT)).enabled:
+            return None
+
+        scout_input = json.dumps(scout_data, separators=(",", ":"))
+        out = self._call_agent(AgentRole.SCOUT, scout_input, model_for_trigger)
+
+        if out.ok:
+            # Write scout findings to scratchpad for Trade Agent to consume
+            scratchpad = get_pipeline_scratchpad()
+
+            watchlist = out.data.get("watchlist", [])
+            if watchlist:
+                scratchpad.write("scout", "watchlist", watchlist)
+                high_priority = [w for w in watchlist if w.get("priority") == "high"]
+                if high_priority:
+                    scratchpad.write("scout", "high_priority_setups", high_priority)
+
+            regime_forecast = out.data.get("regime_forecast")
+            if regime_forecast:
+                scratchpad.write("scout", "regime_forecast", regime_forecast)
+
+            lead_lag = out.data.get("lead_lag_alerts", [])
+            if lead_lag:
+                scratchpad.write("scout", "lead_lag_alerts", lead_lag)
+
+            corr_warning = out.data.get("correlation_warning")
+            if corr_warning:
+                scratchpad.write("scout", "correlation_warning", corr_warning)
+
+            risk_budget = out.data.get("risk_budget")
+            if risk_budget:
+                scratchpad.write("scout", "risk_budget", risk_budget)
+
+            logger.info(
+                f"[MULTI-AGENT] Scout: {len(watchlist)} watchlist items, "
+                f"regime_forecast={regime_forecast.get('direction', '?') if regime_forecast else 'none'}, "
+                f"lead_lag={len(lead_lag)} alerts"
+            )
+            return out.data
+        return None
+
+    def run_overseer(
+        self,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Overseer meta-optimizer agent.
+
+        The Overseer runs periodically (every 30-60 min) to:
+        - Analyze cross-trade patterns invisible to individual agents
+        - Identify systematic drift and strategy degradation
+        - Generate long-term theses for the system to learn from
+        - Recommend strategy adjustments, model routing, parameter changes
+        - Assess agent quality and calibration
+
+        Results feed into the growth orchestrator as recommendations and
+        are written to scratchpad for downstream agents to read.
+
+        Returns:
+            Parsed overseer output dict or None.
+        """
+        cfg = self.configs.get(
+            AgentRole.OVERSEER,
+            AgentConfig(role=AgentRole.OVERSEER),
+        )
+        if not cfg.enabled:
+            return None
+
+        # Build comprehensive system state for the Overseer
+        overseer_input = self._build_overseer_input()
+        out = self._call_agent(AgentRole.OVERSEER, overseer_input, model_for_trigger)
+
+        if not out.ok:
+            logger.warning("[MULTI-AGENT] Overseer call failed")
+            return None
+
+        data = out.data
+
+        # Write Overseer findings to scratchpad for Trade/Risk/Critic to read
+        scratchpad = get_pipeline_scratchpad()
+
+        # Strategy adjustments become context for Trade Agent
+        strat_adj = data.get("strategy_adjustments")
+        if strat_adj:
+            scratchpad.write("overseer", "strategy_adjustments", strat_adj)
+
+        # Symbol focus becomes context for Trade Agent
+        sym_focus = data.get("symbol_focus")
+        if sym_focus:
+            scratchpad.write("overseer", "symbol_focus", sym_focus)
+
+        # Agent feedback becomes context for respective agents
+        agent_fb = data.get("agent_feedback")
+        if agent_fb:
+            scratchpad.write("overseer", "agent_feedback", agent_fb)
+
+        # System health for all agents to see
+        health = data.get("system_health", "stable")
+        diagnosis = data.get("diagnosis", "")
+        scratchpad.write("overseer", "health", health)
+        if diagnosis:
+            scratchpad.write("overseer", "diagnosis", diagnosis[:200])
+
+        # Feed recommendations into the growth orchestrator
+        recs = data.get("recommendations", [])
+        if recs:
+            try:
+                from llm.growth.orchestrator import get_growth_orchestrator
+                growth = get_growth_orchestrator()
+                for rec in recs[:5]:
+                    growth.on_recommendation_from_llm(
+                        rec_type=rec.get("type", "parameter"),
+                        title=rec.get("title", "Overseer recommendation"),
+                        description=rec.get("rationale", ""),
+                        suggested_action=rec.get("action", ""),
+                        confidence=0.7 if rec.get("priority") in ("critical", "high") else 0.5,
+                    )
+            except Exception as e:
+                logger.debug(f"[OVERSEER] Failed to feed recommendations: {e}")
+
+        # Feed theses into hypothesis tracker
+        theses = data.get("theses", [])
+        if theses:
+            try:
+                from llm.growth.hypothesis_tracker import get_hypothesis_tracker
+                tracker = get_hypothesis_tracker()
+                for th in theses[:3]:
+                    tracker.propose(
+                        hypothesis=th.get("thesis", ""),
+                        source="overseer",
+                        confidence=th.get("confidence", 0.5),
+                    )
+            except Exception as e:
+                logger.debug(f"[OVERSEER] Failed to feed theses: {e}")
+
+        logger.info(
+            f"[MULTI-AGENT] Overseer: health={health}, "
+            f"{len(recs)} recommendations, {len(theses)} theses, "
+            f"diagnosis={diagnosis[:80]}"
+        )
+        return data
+
+    def _build_overseer_input(self) -> str:
+        """Build comprehensive system state for the Overseer agent."""
+        state: Dict[str, Any] = {}
+
+        # 1. Self-performance stats
+        try:
+            from llm.self_performance import get_performance_stats
+            perf = get_performance_stats()
+            if perf:
+                state["self_perf"] = {
+                    "accuracy": round(perf.get("accuracy", 0.5), 2),
+                    "veto_accuracy": round(perf.get("veto_accuracy", 0.5), 2),
+                    "calibration": round(perf.get("calibration", 0), 2),
+                    "streak": perf.get("streak", ""),
+                    "total_decisions": perf.get("total_decisions", 0),
+                    "regime_accuracy": perf.get("regime_accuracy", {}),
+                    "symbol_accuracy": perf.get("symbol_accuracy", {}),
+                    "go_count": perf.get("go_count", 0),
+                    "skip_count": perf.get("skip_count", 0),
+                    "flip_count": perf.get("flip_count", 0),
+                }
+        except Exception:
+            pass
+
+        # 2. Survival metrics
+        try:
+            from llm.survival_pressure import get_survival_state
+            surv = get_survival_state()
+            state["survival"] = {
+                "score": round(surv.survival_score, 0),
+                "trajectory": surv.trajectory,
+                "total_trades": surv.total_trades,
+                "total_wins": surv.total_wins,
+                "total_pnl": round(surv.total_pnl, 1),
+                "drawdown_pct": round(surv.current_drawdown_pct, 1),
+                "funding_paid": round(surv.total_funding_paid, 1),
+                "streak": surv.current_streak,
+            }
+        except Exception:
+            pass
+
+        # 3. Strategy performance (from deep memory)
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            strat_wr = dm.trade_dna.get_win_rate_by("strategy")
+            if strat_wr:
+                state["strategy_perf"] = {
+                    k: {"wr": round(v.get("wins", 0) / max(v.get("total", 1), 1) * 100),
+                        "n": v.get("total", 0),
+                        "pnl": round(v.get("pnl", 0), 1)}
+                    for k, v in strat_wr.items() if v.get("total", 0) >= 3
+                }
+            # Setup edge map
+            setup_wr = dm.trade_dna.get_win_rate_by("setup_type")
+            if setup_wr:
+                state["setup_edge"] = {
+                    k: {"wr": round(v.get("wins", 0) / max(v.get("total", 1), 1) * 100),
+                        "n": v.get("total", 0)}
+                    for k, v in setup_wr.items() if v.get("total", 0) >= 5
+                }
+        except Exception:
+            pass
+
+        # 4. Growth state (enriched with integrator context)
+        try:
+            from llm.learning_integrator import get_learning_integrator
+            integrator = get_learning_integrator()
+            # Get enriched context (includes growth + veto accuracy + session perf +
+            # symbol patterns + feedback status + self-improvement)
+            enriched = integrator.get_enriched_llm_context()
+            if enriched:
+                state["growth"] = enriched[:600]
+        except Exception:
+            # Fallback to basic growth context
+            try:
+                from llm.growth.orchestrator import get_growth_orchestrator
+                growth = get_growth_orchestrator()
+                ctx = growth.get_llm_context()
+                if ctx:
+                    state["growth"] = ctx[:400]
+            except Exception:
+                pass
+
+        # 5. Cost tracking
+        try:
+            from llm.cost_tracker import get_daily_summary
+            cost = get_daily_summary()
+            if cost:
+                state["cost"] = cost
+        except Exception:
+            pass
+
+        # 6. Recent trade outcomes
+        try:
+            from llm.survival_pressure import get_survival_state
+            surv = get_survival_state()
+            recent = surv.recent_outcomes[-20:]
+            recent_pnl = surv.recent_pnls[-20:]
+            if recent:
+                state["recent_trades"] = {
+                    "outcomes": "".join("W" if o == "WIN" else "L" for o in recent),
+                    "pnls": [round(p, 1) for p in recent_pnl[-10:]],
+                }
+        except Exception:
+            pass
+
+        # 7. Agent pipeline scratchpad (what other agents have written)
+        try:
+            scratchpad = get_pipeline_scratchpad()
+            sp_data = scratchpad.read_all()
+            if sp_data:
+                state["agent_outputs"] = {
+                    k: v for k, v in sp_data.items()
+                    if k in ("regime", "trade", "risk", "critic", "scout")
+                }
+        except Exception:
+            pass
+
+        # 8. Historical patterns from replay engine (free — no API calls)
+        try:
+            from llm.replay_engine import get_historical_patterns
+            patterns = get_historical_patterns(max_decisions=200)
+            if patterns and "error" not in patterns:
+                state["historical_patterns"] = patterns
+        except Exception:
+            pass
+
+        # 9. Per-agent calibration ledger summaries
+        try:
+            from llm.agents.calibration_ledger import get_calibration_ledger
+            ledger = get_calibration_ledger()
+            agent_cals = {}
+            for agent_name in ("trade", "critic", "regime"):
+                summary = ledger.get_agent_summary(agent_name)
+                if summary.get("total_decisions", 0) >= 5:
+                    agent_cals[agent_name] = summary
+            if agent_cals:
+                state["agent_calibrations"] = agent_cals
+        except Exception:
+            pass
+
+        return json.dumps(state, separators=(",", ":"), default=str)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Return coordinator statistics SINCE LAST CALL to get_stats().
+
+        Returns delta (per-pipeline) usage, not cumulative. This prevents
+        cost_tracker from double-counting tokens on each successive call.
+        """
+        delta_calls = self._call_count - self._last_reported_calls
+        delta_input = self._total_input_tokens - self._last_reported_input
+        delta_output = self._total_output_tokens - self._last_reported_output
+        delta_latency = self._total_latency_ms - self._last_reported_latency
+
+        # Update watermarks
+        self._last_reported_calls = self._call_count
+        self._last_reported_input = self._total_input_tokens
+        self._last_reported_output = self._total_output_tokens
+        self._last_reported_latency = self._total_latency_ms
+
+        return {
+            "total_calls": delta_calls,
+            "total_input_tokens": delta_input,
+            "total_output_tokens": delta_output,
+            "total_latency_ms": delta_latency,
+            "avg_latency_ms": (
+                delta_latency // max(delta_calls, 1)
+            ),
+        }
+
+    def get_last_pipeline_detail(self) -> Optional[Dict[str, Any]]:
+        """Return serialized per-agent outputs from the last pipeline run.
+
+        Returns None if no pipeline has run yet.
+        """
+        if not self.last_pipeline_results:
+            return None
+
+        detail = {}
+        for role, output in self.last_pipeline_results.items():
+            detail[role.value] = {
+                "data": output.data,
+                "model": output.model_used,
+                "input_tokens": output.input_tokens,
+                "output_tokens": output.output_tokens,
+                "latency_ms": output.latency_ms,
+                "ok": output.ok,
+                "error": output.error,
+            }
+        if self.last_consistency_score is not None:
+            detail["_meta"] = {"consistency_score": self.last_consistency_score}
+        return detail
+
+    # ── Agent calling ───────────────────────────────────────────
+
+    def _call_agent(
+        self,
+        role: AgentRole,
+        input_json: str,
+        fallback_model: Optional[str] = None,
+    ) -> AgentOutput:
+        """Call a single specialist agent."""
+        config = self.configs.get(role, DEFAULT_AGENT_CONFIGS.get(role))
+        if config is None or not config.enabled:
+            return AgentOutput(role=role, data={}, error="disabled")
+
+        prompt = AGENT_PROMPTS.get(role.value)
+        if not prompt:
+            return AgentOutput(role=role, data={}, error="no_prompt")
+
+        # Inject thought protocol and shared context into the prompt
+        protocol_prefix = build_protocol_prefix(role.value)
+        scratchpad = get_pipeline_scratchpad()
+        shared_context = build_shared_context_block(
+            agent_role=role.value,
+            scratchpad=scratchpad,
+            shared_lessons=get_shared_lessons(),
+            include_axioms=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER, AgentRole.QUANT)),
+            include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
+            include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER, AgentRole.QUANT)),
+            current_regime=scratchpad.read_by_key("regime") or "",
+        )
+
+        # Dynamic calibration injection for Trade, Critic, and Regime agents
+        calibration_prefix = ""
+        if role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.REGIME):
+            try:
+                from llm.agents.calibration_ledger import get_calibration_ledger
+                ledger = get_calibration_ledger()
+                current_regime = scratchpad.read_by_key("regime") or ""
+                calibration_prefix = ledger.get_prompt_calibration(role.value, current_regime)
+            except Exception:
+                pass
+
+        # Prepend protocol, calibration, and context to the agent's system prompt
+        enhanced_prompt = prompt
+        if calibration_prefix:
+            enhanced_prompt = f"CALIBRATION: {calibration_prefix}\n\n{enhanced_prompt}"
+        if protocol_prefix:
+            enhanced_prompt = f"{protocol_prefix}\n\n{enhanced_prompt}"
+        if shared_context:
+            enhanced_prompt = f"{enhanced_prompt}\n\nSHARED CONTEXT: {shared_context}"
+
+        model = config.model_override or fallback_model or _get_default_model(role)
+
+        raw_text, usage = call_llm(
+            system_prompt=enhanced_prompt,
+            snapshot_json=input_json,
+            model=model,
+            max_tokens=config.max_tokens,
+            max_retries=1,  # Agents get 1 retry (speed > reliability)
+            timeout=config.timeout_s,
+        )
+
+        self._call_count += 1
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        self._total_input_tokens += in_tok
+        self._total_output_tokens += out_tok
+
+        # Feed cost tracker so daily budget enforcement stays accurate
+        try:
+            from llm.cost_tracker import get_cost_tracker
+            get_cost_tracker().record_call(in_tok, out_tok, model)
+        except Exception:
+            pass
+
+        if raw_text is None:
+            return AgentOutput(
+                role=role,
+                data={},
+                model_used=model,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                latency_ms=usage.get("latency_ms", 0),
+                error=f"api_error: {usage.get('error', 'unknown')}",
+            )
+
+        # Parse JSON response
+        parsed = _parse_agent_json(raw_text)
+        if parsed is None:
+            return AgentOutput(
+                role=role,
+                data={},
+                raw_text=raw_text[:500],
+                model_used=model,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                latency_ms=usage.get("latency_ms", 0),
+                error=f"json_parse_failed",
+            )
+
+        return AgentOutput(
+            role=role,
+            data=parsed,
+            raw_text=raw_text[:500],
+            model_used=model,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            latency_ms=usage.get("latency_ms", 0),
+        )
+
+    # ── Input builders ──────────────────────────────────────────
+    # Each agent gets the FULL context relevant to its domain.
+    # The snapshot dict contains these rich knowledge fields:
+    #   knowledge      — axioms, principles, anti-patterns from self-teaching curriculum
+    #   deep_memory    — trade DNA, strategy fingerprints, pattern library, regime history
+    #   examples       — few-shot examples of similar past trades
+    #   growth         — growth intelligence (hypotheses, recommendations, recent outcomes)
+    #   survival       — accountability/survival pressure context
+    #   self_perf      — LLM's own track record (accuracy, calibration, regime WR)
+    #   recent_dec     — last 3 decisions for consistency
+    #   recent_lessons — immediate feedback from closed trades
+    #   autopsy        — structured analysis of last 5 trades
+    #   mem            — short-term memory notes
+    #   session_perf   — win rates by trading session
+    #   regime_shifts  — symbols with regime transitions
+    #   cross_sym      — cross-symbol lead-lag signals
+    #   cross_pat      — validated cross-symbol patterns
+
+    def _build_quant_input(self, snapshot: dict, regime_out: AgentOutput) -> str:
+        """Build quant agent input: market data + regime + historical stats.
+
+        The Quant Agent needs:
+        - Raw market data (prices, volume, funding, signals) for statistical analysis
+        - Regime classification for conditional probability computation
+        - Historical win rates per setup type, strategy, regime, symbol
+        - Recent trade outcomes for variance/drawdown analysis
+        - Confluence quality for signal vs noise assessment
+        """
+        quant_data = {}
+
+        # Market data
+        if "m" in snapshot:
+            quant_data["markets"] = snapshot["m"]
+        if "g" in snapshot:
+            quant_data["global"] = snapshot["g"]
+
+        # Regime from Regime Agent
+        quant_data["regime"] = regime_out.data
+
+        # Compute confluence quality
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            quant_data["confluence"] = confluence
+
+        # Historical stats for conditional probability computation
+        # Setup edge: per-setup-type win rates
+        if "g" in snapshot:
+            g = snapshot["g"]
+            if isinstance(g, dict):
+                if "edge" in g:
+                    quant_data["setup_edge"] = g["edge"]
+                if "stperf" in g:
+                    quant_data["strategy_perf"] = g["stperf"]
+
+        # Self-performance for calibration/drawdown context
+        if "self_perf" in snapshot:
+            quant_data["self_perf"] = snapshot["self_perf"]
+
+        # Recent outcomes for variance analysis
+        if "autopsy" in snapshot:
+            quant_data["autopsy"] = snapshot["autopsy"]
+
+        # Funding data for cost computation
+        for key in ("funding_cost_pct", "funding_alert", "port_lev"):
+            if key in snapshot:
+                quant_data[key] = snapshot[key]
+
+        # Per-agent calibration for Bayesian updating
+        try:
+            from llm.agents.calibration_ledger import get_calibration_ledger
+            ledger = get_calibration_ledger()
+            regime = regime_out.data.get("rg", "unknown")
+            cal = ledger.get_calibration("trade", regime)
+            if cal.get("reliable"):
+                quant_data["trade_calibration"] = cal
+        except Exception:
+            pass
+
+        # Historical patterns from replay engine
+        try:
+            from llm.replay_engine import get_historical_patterns
+            patterns = get_historical_patterns(max_decisions=100)
+            if patterns and "error" not in patterns:
+                # Only pass the most relevant stats
+                compact = {}
+                for k in ("regime_wr", "conf_low_wr", "conf_mid_wr", "conf_high_wr",
+                           "conf_low_n", "conf_mid_n", "conf_high_n",
+                           "max_win_streak", "max_loss_streak", "recent_outcomes"):
+                    if k in patterns:
+                        compact[k] = patterns[k]
+                if compact:
+                    quant_data["historical"] = compact
+        except Exception:
+            pass
+
+        return json.dumps(quant_data, separators=(",", ":"))
+
+    def _build_regime_input(self, snapshot: dict) -> str:
+        """Build regime agent input: markets + global + regime history.
+
+        The Regime Agent needs:
+        - Raw market data (prices, volume, funding, OI) to classify regime
+        - Regime transition history to detect shifts
+        - Cross-symbol data for correlation analysis
+        - Deep memory regime history for pattern matching
+        """
+        regime_data = {}
+        if "m" in snapshot:
+            regime_data["markets"] = snapshot["m"]
+        if "g" in snapshot:
+            regime_data["global"] = snapshot["g"]
+        # Regime-specific knowledge
+        if "regime_shifts" in snapshot:
+            regime_data["regime_shifts"] = snapshot["regime_shifts"]
+        if "cross_sym" in snapshot:
+            regime_data["cross_symbol_signals"] = snapshot["cross_sym"]
+        if "cross_pat" in snapshot:
+            regime_data["cross_patterns"] = snapshot["cross_pat"]
+        # Deep memory regime section (extract just regime history if available)
+        if "deep_memory" in snapshot:
+            dm = str(snapshot["deep_memory"])
+            # Find regime-relevant sections
+            regime_section = _extract_section(dm, "REGIME", 300)
+            if regime_section:
+                regime_data["regime_history"] = regime_section
+        return json.dumps(regime_data, separators=(",", ":"))
+
+    def _build_trade_input(self, snapshot: dict, regime_out: AgentOutput, quant_out: Optional[AgentOutput] = None) -> str:
+        """Build trade agent input: FULL context for the main decision-maker.
+
+        The Trade Agent is the primary brain — it gets EVERYTHING:
+        - Full market snapshot (prices, signals, volume, funding, OI)
+        - Regime classification from the Regime Agent
+        - Knowledge base (axioms, principles from self-teaching curriculum)
+        - Deep memory (trade DNA, strategy fingerprints, pattern library)
+        - Few-shot examples of similar past trades
+        - Growth intelligence (hypotheses, recommendations, learning progress)
+        - Recent decisions (for consistency)
+        - Recent lessons (immediate feedback from closed trades)
+        - Trade autopsy (structured analysis of last batch)
+        - Memory notes (short-term observations)
+        - Session performance (time-of-day edge)
+        - Survival pressure (accountability context)
+        """
+        trade_data = dict(snapshot)
+        # Inject regime agent's output so trade agent knows the classified regime
+        trade_data["regime_analysis"] = regime_out.data
+
+        # Compute and inject confluence quality scoring
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            trade_data["confluence"] = confluence
+
+        # Ensure all knowledge/learning fields are present with generous limits
+        # (the Trade Agent is the decision-maker — don't starve it of context)
+        _ensure_field(trade_data, "knowledge", snapshot, max_len=1000)
+        _ensure_field(trade_data, "deep_memory", snapshot, max_len=1000)
+        _ensure_field(trade_data, "examples", snapshot, max_len=600)
+        _ensure_field(trade_data, "growth", snapshot, max_len=500)
+        _ensure_field(trade_data, "survival", snapshot, max_len=300)
+        _ensure_field(trade_data, "self_perf", snapshot)
+        _ensure_field(trade_data, "recent_dec", snapshot)
+        _ensure_field(trade_data, "recent_lessons", snapshot)
+        _ensure_field(trade_data, "autopsy", snapshot)
+        _ensure_field(trade_data, "mem", snapshot, max_len=800)
+        _ensure_field(trade_data, "session_perf", snapshot)
+        _ensure_field(trade_data, "cross_sym", snapshot)
+        _ensure_field(trade_data, "cross_pat", snapshot)
+        _ensure_field(trade_data, "corr_risk", snapshot)
+        _ensure_field(trade_data, "port_lev", snapshot)
+        _ensure_field(trade_data, "funding_cost_pct", snapshot)
+        _ensure_field(trade_data, "funding_alert", snapshot)
+
+        # Inject Quant Agent's statistical analysis if available
+        if quant_out and quant_out.ok:
+            trade_data["quant_analysis"] = quant_out.data
+
+        # Gap 4+5: Inject per-agent calibration data into trade input
+        try:
+            from llm.agents.calibration_ledger import get_calibration_ledger
+            ledger = get_calibration_ledger()
+            cal_data = ledger.get_compact_for_snapshot("trade")
+            if cal_data:
+                trade_data["agent_cal"] = cal_data
+        except Exception:
+            pass
+
+        # Inject similar patterns + known failure modes from deep memory
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
+            # Find signals that have patterns from this market context
+            signals = snapshot.get("signals", [])
+            symbol = ""
+            if signals:
+                symbol = signals[0].get("sym", "") if isinstance(signals[0], dict) else ""
+
+            # PatternLibrary: find similar historical patterns for context
+            similar = dm.patterns.find_similar(
+                pattern_type="trade_setup",
+                symbol=symbol,
+                regime=regime,
+                limit=3,
+            )
+            if similar:
+                trade_data["similar_patterns"] = [
+                    {k: v for k, v in p.items() if k in ("type", "symbol", "regime", "outcome", "lesson")}
+                    for p in similar[:3]
+                ]
+
+            # TradeDNAStore: get recent failure patterns to avoid
+            failures = dm.trade_dna.get_failures(limit=5)
+            if failures:
+                trade_data["recent_failures"] = [
+                    {k: v for k, v in f.items() if k in ("symbol", "side", "regime", "strategy", "pnl", "lesson")}
+                    for f in failures[:3]
+                ]
+        except Exception:
+            pass
+
+        return json.dumps(trade_data, separators=(",", ":"))
+
+    def _build_risk_input(
+        self, snapshot: dict, regime_out: AgentOutput, trade_out: AgentOutput,
+        quant_out: Optional[AgentOutput] = None,
+    ) -> str:
+        """Build risk agent input: portfolio state + trade decision + regime + risk knowledge.
+
+        The Risk Agent needs:
+        - The trade decision (to size it)
+        - Regime classification (sizing depends on regime)
+        - Full portfolio state (positions, leverage, correlation, funding)
+        - Session performance (time-of-day risk)
+        - Self-performance (are we on a losing streak?)
+        - Recent autopsy (are we declining?)
+        - Deep memory risk insights
+        """
+        risk_data = {
+            "regime": regime_out.data,
+            "trade_decision": trade_out.data,
+        }
+        # Portfolio data
+        for key in ("g", "pos", "corr_risk", "port_lev", "funding_cost_pct",
+                     "funding_alert", "session_perf"):
+            if key in snapshot:
+                risk_data[key] = snapshot[key]
+        # Self-awareness for risk decisions (losing streak → reduce size)
+        if "self_perf" in snapshot:
+            risk_data["self_perf"] = snapshot["self_perf"]
+        if "autopsy" in snapshot:
+            risk_data["autopsy"] = snapshot["autopsy"]
+        # Deep memory risk-relevant sections
+        if "deep_memory" in snapshot:
+            dm = str(snapshot["deep_memory"])
+            risk_section = _extract_section(dm, "RISK", 200)
+            strat_section = _extract_section(dm, "STRATEGY", 200)
+            if risk_section:
+                risk_data["risk_history"] = risk_section
+            if strat_section:
+                risk_data["strategy_history"] = strat_section
+        # Recent lessons about sizing/risk
+        if "recent_lessons" in snapshot:
+            risk_data["recent_lessons"] = snapshot["recent_lessons"]
+        # Inject Quant Agent analysis for Kelly-informed sizing
+        if quant_out and quant_out.ok:
+            q = quant_out.data
+            quant_compact = {}
+            if "kelly_fraction" in q:
+                quant_compact["kelly"] = q["kelly_fraction"]
+            if "ev" in q:
+                quant_compact["ev"] = q["ev"]
+            if "risk_profile" in q:
+                quant_compact["risk_profile"] = q["risk_profile"]
+            if "signal_quality" in q:
+                quant_compact["signal_quality"] = q["signal_quality"]
+            if quant_compact:
+                risk_data["quant"] = quant_compact
+
+        # Confluence quality for informed sizing (convergent setups → size up)
+        if "confluence" in snapshot:
+            risk_data["confluence"] = snapshot["confluence"]
+        else:
+            # Compute confluence from market signals if available
+            markets = snapshot.get("m", [])
+            if markets:
+                try:
+                    confluence = score_confluence(markets[0].get("signals", []))
+                    if confluence.get("count", 0) > 0:
+                        risk_data["confluence"] = confluence
+                except Exception:
+                    pass
+        return json.dumps(risk_data, separators=(",", ":"))
+
+    def _build_critic_input(
+        self,
+        snapshot: dict,
+        regime_out: AgentOutput,
+        trade_out: AgentOutput,
+        risk_out: Optional[AgentOutput],
+    ) -> str:
+        """Build critic input: all prior agent outputs + full self-awareness context.
+
+        The Critic Agent is the quality gate — it needs:
+        - All prior agent outputs (to check consistency)
+        - Self-performance stats (to detect overconfidence/underconfidence)
+        - Recent decisions (to check for flip-flopping)
+        - Recent lessons (to check if similar setups failed)
+        - Trade autopsy (to check for declining performance)
+        - Knowledge base (axioms to verify against)
+        - Growth intelligence (hypotheses to validate)
+        """
+        critic_data = {
+            "regime_analysis": regime_out.data,
+            "trade_decision": trade_out.data,
+        }
+        if risk_out and risk_out.ok:
+            critic_data["risk_assessment"] = risk_out.data
+
+        # Inject confluence quality so Critic can assess agreement type
+        confluence = _compute_confluence_from_snapshot(
+            snapshot, regime_out.data.get("rg", "unknown")
+        )
+        if confluence:
+            critic_data["confluence"] = confluence
+        # Full self-awareness context — the critic's primary tool
+        for key in ("self_perf", "recent_dec", "recent_lessons", "autopsy"):
+            if key in snapshot:
+                critic_data[key] = snapshot[key]
+        # Knowledge for verifying the decision against learned principles
+        _ensure_field(critic_data, "knowledge", snapshot, max_len=500)
+        # Growth context (hypotheses, recommendations)
+        _ensure_field(critic_data, "growth", snapshot, max_len=300)
+        # Portfolio state for risk validation
+        for key in ("corr_risk", "port_lev", "funding_cost_pct"):
+            if key in snapshot:
+                critic_data[key] = snapshot[key]
+        # Memory notes for pattern checking
+        _ensure_field(critic_data, "mem", snapshot, max_len=400)
+
+        # Gap 4+5: Inject calibration data for the critic
+        try:
+            from llm.agents.calibration_ledger import get_calibration_ledger
+            ledger = get_calibration_ledger()
+            cal_data = ledger.get_compact_for_snapshot("critic")
+            if cal_data:
+                critic_data["agent_cal"] = cal_data
+        except Exception:
+            pass
+
+        return json.dumps(critic_data, separators=(",", ":"))
+
+    def _build_learning_input(self, trade_data: Dict[str, Any]) -> str:
+        """Build learning agent input from closed trade data + context.
+
+        The Learning Agent needs:
+        - Full trade outcome data (symbol, side, pnl, regime, timing, exit)
+        - Prior knowledge context (what did we know going in?)
+        - Self-performance (what's our track record for this type of trade?)
+        """
+        relevant = {}
+        for key in (
+            "symbol", "side", "outcome", "pnl", "regime", "strategy",
+            "confidence", "hold_time_s", "exit_action", "exit_reason",
+            "funding_rate", "entry_price", "exit_price",
+            "llm_action", "llm_confidence", "num_strategies_agreed",
+            "ensemble_confidence", "chop_score", "entry_type",
+            "funding_paid", "leverage", "size_multiplier",
+            "thesis", "counter_thesis", "setup_type", "confluence_quality",
+        ):
+            if key in trade_data:
+                relevant[key] = trade_data[key]
+        # Add any recent lessons for context (what have we learned before?)
+        try:
+            from llm.post_trade_learner import get_recent_lessons
+            lessons = get_recent_lessons(3)
+            if lessons:
+                relevant["prior_lessons"] = " | ".join(lessons)
+        except Exception:
+            pass
+        # Inject exit agent reasoning if it was involved in closing this trade
+        if self.last_exit_output and self.last_exit_output.ok:
+            exit_data = self.last_exit_output.data
+            exit_reason = exit_data.get("reason", "")
+            exit_action = exit_data.get("action", "")
+            if exit_reason and exit_action in ("full_close", "partial_close", "close"):
+                relevant["exit_agent_reasoning"] = exit_reason[:200]
+                relevant["exit_thesis_valid"] = exit_data.get("thesis_still_valid", True)
+
+        # Add deep memory context for this symbol/regime
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            sym = trade_data.get("symbol", "")
+            regime = trade_data.get("regime", "")
+            summary = dm.build_llm_knowledge_summary(
+                symbol=sym, regime=regime, max_tokens=400
+            )
+            if summary:
+                relevant["prior_knowledge"] = summary[:400]
+        except Exception:
+            pass
+        return json.dumps(relevant, separators=(",", ":"))
+
+    # ── Output merger ───────────────────────────────────────────
+
+    def _merge_outputs(
+        self,
+        regime_out: AgentOutput,
+        trade_out: AgentOutput,
+        risk_out: Optional[AgentOutput],
+        critic_out: Optional[AgentOutput],
+        snapshot_data: Optional[dict] = None,
+        consistency_score: float = 1.0,
+        consensus_confidence: Optional[float] = None,
+    ) -> LLMDecision:
+        """Merge all agent outputs into a single LLMDecision.
+
+        Priority chain:
+          1. Critic can override action + adjust confidence
+          2. Risk agent provides sizing + strategy weights
+          3. Trade agent provides base action + confidence + reasoning
+          4. Regime agent provides regime classification
+        """
+        # Start with Trade Agent's core decision
+        td = trade_out.data
+        action = _normalize_action(td.get("a", td.get("action", "flat")))
+        confidence = float(td.get("c", td.get("confidence", 0.0)))
+        notes = td.get("n", td.get("notes", ""))
+        memory_update = td.get("mu", td.get("memory_update"))
+        entry_adj = td.get("ea", td.get("entry_adjustment"))
+
+        # Regime from Regime Agent
+        rd = regime_out.data
+        regime = rd.get("rg", rd.get("regime", "unknown"))
+        regime_conf = float(rd.get("conf", rd.get("confidence", 0.5)))
+        regime_bias = rd.get("bias", "neutral")
+        regime_transition = rd.get("transition", "stable")
+
+        # Enrich notes with regime info
+        regime_note = f"regime={regime}({regime_conf:.0%})"
+        if regime_bias != "neutral":
+            regime_note += f" bias={regime_bias}"
+        if regime_transition != "stable":
+            regime_note += f" {regime_transition}"
+        regime_outlook = rd.get("outlook", "")
+
+        # Trade thesis
+        trade_thesis = td.get("thesis", "")
+
+        # Risk Agent: sizing + strategy weights
+        size_mult = 1.0
+        strategy_weights = StrategyWeights()
+        risk_flags = []
+
+        if risk_out and risk_out.ok:
+            rk = risk_out.data
+            size_mult = float(rk.get("sz", rk.get("size_multiplier", 1.0)))
+            size_mult = max(0.0, min(2.0, size_mult))
+
+            # Parse strategy weights
+            sw_raw = rk.get("sw", rk.get("strategy_weights", {}))
+            if isinstance(sw_raw, dict):
+                strategy_weights = _parse_strategy_weights(sw_raw)
+
+            risk_flags = rk.get("risks", [])
+            override = rk.get("override")
+            if override == "skip":
+                action = "flat"
+                risk_reason = rk.get("reason", rk.get("n", "unspecified"))
+                notes += f" | RISK: override to skip ({risk_reason})"
+            elif override == "reduce":
+                old_mult = size_mult
+                size_mult = min(size_mult, 0.7)
+                risk_reason = rk.get("reason", rk.get("n", ""))
+                notes += f" | RISK: sizing {old_mult:.1f}x→{size_mult:.1f}x ({risk_reason})"
+
+        # Critic Agent: can adjust or override
+        # Treat any non-"approve" verdict as a challenge (defensive normalization)
+        # PROFITABILITY GATE: if Critic's veto accuracy is poor, limit its power
+        counter_thesis = ""
+        _critic_vacc = 0.5  # default assumption
+        if snapshot_data:
+            _sp = snapshot_data.get("self_perf", {})
+            if isinstance(_sp, dict):
+                _critic_vacc = _sp.get("vacc", 0.5)
+
+        if critic_out and critic_out.ok:
+            cd = critic_out.data
+            verdict = cd.get("verdict", "approve").lower().strip()
+            counter_thesis = cd.get("counter_thesis", "")
+
+            # If Critic veto accuracy < 0.45, block full vetoes — only allow
+            # confidence adjustment. Bad vetoes lose more money than bad trades.
+            if verdict != "approve" and _critic_vacc < 0.45:
+                adj_conf = cd.get("adjusted_confidence")
+                if adj_conf is not None:
+                    old_conf = confidence
+                    confidence = max(confidence * 0.85, float(adj_conf))
+                    confidence = max(0.0, min(1.0, confidence))
+                    notes += (f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45), "
+                              f"conf {old_conf:.2f}→{confidence:.2f}")
+                else:
+                    notes += f" | CRITIC: challenge blocked (vacc={_critic_vacc:.2f}<0.45)"
+                logger.info(
+                    f"[COORDINATOR] Critic veto blocked: vacc={_critic_vacc:.2f} < 0.45 "
+                    f"— vetoes are losing money, allowing trade with adjusted confidence"
+                )
+            elif verdict != "approve":
+                adj_action = cd.get("adjusted_action")
+                adj_conf = cd.get("adjusted_confidence")
+                reason = cd.get("reason", "")
+
+                if adj_action:
+                    old_action = action
+                    action = _normalize_action(adj_action)
+                    notes += f" | CRITIC: {old_action}→{action} ({reason[:60]})"
+
+                if adj_conf is not None:
+                    old_conf = confidence
+                    confidence = float(adj_conf)
+                    confidence = max(0.0, min(1.0, confidence))
+                    notes += f" | CRITIC: conf {old_conf:.2f}→{confidence:.2f}"
+
+                if counter_thesis:
+                    notes += f" | COUNTER: {counter_thesis[:80]}"
+
+            cal_note = cd.get("calibration_note")
+            if cal_note:
+                # Store as memory update if we don't already have one
+                if not memory_update:
+                    memory_update = cal_note[:100]
+
+        # Gap 7: Scale confidence by consistency score (soft circuit breaker)
+        if consistency_score < 0.7 and action != "flat":
+            old_conf = confidence
+            # Scale: consistency 0.5 → reduce 15%, consistency 0.3 → reduce 35%
+            scale = 0.5 + consistency_score * 0.5  # maps [0, 1] → [0.5, 1.0]
+            confidence = round(confidence * scale, 3)
+            confidence = max(0.0, min(1.0, confidence))
+            notes += (f" | CONSISTENCY_ADJ: {old_conf:.2f}→{confidence:.2f} "
+                      f"(agents disagreeing, score={consistency_score:.2f})")
+
+        # Gap 1: Apply consensus confidence if it significantly differs
+        if consensus_confidence is not None and action != "flat":
+            # If consensus is much lower than trade agent's confidence, reduce
+            if consensus_confidence < confidence - 0.1:
+                old_conf = confidence
+                # Blend: 60% trade agent, 40% consensus
+                confidence = round(confidence * 0.6 + consensus_confidence * 0.4, 3)
+                confidence = max(0.0, min(1.0, confidence))
+                notes += (f" | CONSENSUS_ADJ: {old_conf:.2f}→{confidence:.2f} "
+                          f"(agents not fully aligned)")
+
+        # Add risk flags to notes
+        if risk_flags:
+            notes += f" | RISKS: {', '.join(str(f) for f in risk_flags[:3])}"
+
+        # Confluence quality for notes
+        confluence_info = _compute_confluence_from_snapshot(
+            snapshot_data or {}, regime,
+        )
+        confl_note = ""
+        setup_type = ""
+        if confluence_info:
+            setup_type = confluence_info.get("setup_type", "")
+            confl_note = (
+                f"CONFLUENCE: {confluence_info['count']}strat "
+                f"q={confluence_info['quality']:.0%} "
+                f"type={confluence_info['best_pair']} "
+                f"setup={setup_type}"
+            )
+
+        # Build the final notes: regime + thesis + confluence + trade + risk + critic
+        thesis_parts = []
+        if regime_outlook:
+            thesis_parts.append(f"OUTLOOK: {regime_outlook[:80]}")
+        if trade_thesis:
+            thesis_parts.append(f"THESIS: {trade_thesis[:80]}")
+        thesis_block = " | ".join(thesis_parts)
+        combined_notes = f"[MA] {regime_note}"
+        if thesis_block:
+            combined_notes += f" | {thesis_block}"
+        if confl_note:
+            combined_notes += f" | {confl_note}"
+        combined_notes = f"{combined_notes} | {notes}"[:1500]
+
+        # Default memory note from thesis if Trade Agent didn't provide mu
+        if not memory_update and trade_thesis and action in ("go", "proceed"):
+            memory_update = trade_thesis[:100]
+
+        return LLMDecision(
+            action=action,
+            confidence=confidence,
+            regime=regime,
+            strategy_weights=strategy_weights,
+            memory_update=memory_update[:200] if memory_update else None,
+            notes=combined_notes,
+            size_multiplier=size_mult,
+            entry_adjustment=entry_adj,
+        )
+
+
+# ── Module-level helpers ────────────────────────────────────────
+
+def _compute_confidence_consensus(
+    trade_out: AgentOutput,
+    regime_out: AgentOutput,
+    risk_out: Optional[AgentOutput],
+    critic_out: Optional[AgentOutput],
+    consistency_score: float,
+) -> Optional[float]:
+    """Compute compound conviction score across all agents.
+
+    Returns a consensus confidence that reflects how aligned ALL agents are,
+    not just the Trade Agent's confidence. Returns None if insufficient data.
+    """
+    trade_conf = float(trade_out.data.get("c", trade_out.data.get("confidence", 0.0)))
+    if trade_conf == 0.0:
+        return None  # Skip decisions don't need consensus
+
+    # Regime Agent: high regime confidence boosts, low reduces
+    regime_conf = float(regime_out.data.get("conf", regime_out.data.get("confidence", 0.5)))
+    regime_factor = 0.7 + regime_conf * 0.3  # maps [0, 1] → [0.7, 1.0]
+
+    # Risk Agent: sizing as proxy for agreement
+    risk_factor = 1.0
+    if risk_out and risk_out.ok:
+        size_mult = float(risk_out.data.get("sz", risk_out.data.get("size_multiplier", 1.0)))
+        override = risk_out.data.get("override")
+        if override == "skip":
+            risk_factor = 0.3  # Risk Agent strongly disagrees
+        elif override == "reduce":
+            risk_factor = 0.7
+        else:
+            # size_mult maps: 0.5→0.75, 1.0→1.0, 1.5→1.15
+            risk_factor = 0.5 + min(size_mult, 2.0) * 0.5
+
+    # Critic Agent: approval boosts, challenge reduces
+    critic_factor = 1.0
+    if critic_out and critic_out.ok:
+        verdict = critic_out.data.get("verdict", "approve").lower().strip()
+        if verdict == "approve":
+            critic_factor = 1.05  # Small boost for explicit approval
+        else:
+            adj_conf = critic_out.data.get("adjusted_confidence")
+            if adj_conf is not None:
+                # How much did critic reduce? More reduction = more disagreement
+                reduction = trade_conf - float(adj_conf)
+                critic_factor = max(0.5, 1.0 - reduction)
+            else:
+                critic_factor = 0.6  # Challenge without adjustment = moderate disagreement
+
+    # Consistency score directly factors in
+    consistency_factor = 0.7 + consistency_score * 0.3  # maps [0, 1] → [0.7, 1.0]
+
+    # Compound consensus
+    consensus = trade_conf * regime_factor * risk_factor * critic_factor * consistency_factor
+    return max(0.0, min(1.0, round(consensus, 3)))
+
+
+_ACTION_MAP = {
+    "go": "proceed", "proceed": "proceed", "long": "proceed", "short": "proceed",
+    "buy": "proceed", "sell": "proceed", "enter": "proceed", "trade": "proceed",
+    "skip": "flat", "flat": "flat", "hold": "flat", "pass": "flat",
+    "wait": "flat", "no": "flat", "none": "flat",
+    "flip": "flip", "reverse": "flip",
+}
+
+
+def _normalize_action(raw: str) -> str:
+    """Normalize agent action output to canonical form."""
+    return _ACTION_MAP.get(str(raw).lower().strip(), "flat")
+
+
+def _parse_agent_json(raw_text: str) -> Optional[dict]:
+    """Parse JSON from agent response, handling markdown fences and truncation."""
+    import re
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```\s*$", "", text)
+        text = text.strip()
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        # Try extracting JSON from mixed text
+        match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        # Try repairing truncated JSON by closing open braces/brackets
+        repaired = _try_repair_truncated_json(text)
+        if repaired:
+            return repaired
+    return None
+
+
+def _try_repair_truncated_json(text: str) -> Optional[dict]:
+    """Attempt to repair truncated JSON by closing open braces/brackets."""
+    # Find the start of JSON
+    start = text.find("{")
+    if start < 0:
+        return None
+    fragment = text[start:]
+    # Remove any trailing partial string (e.g., `"key": "some text` without closing quote)
+    # by finding the last complete key-value pair
+    # Strategy: progressively close open brackets/braces
+    open_braces = fragment.count("{") - fragment.count("}")
+    open_brackets = fragment.count("[") - fragment.count("]")
+    if open_braces <= 0 and open_brackets <= 0:
+        return None  # Not a truncation issue
+    # Strip trailing partial values (e.g., incomplete strings)
+    # Find last comma or colon, trim after that, then close
+    last_complete = max(fragment.rfind(","), fragment.rfind(":"), fragment.rfind("}"), fragment.rfind("]"))
+    if last_complete > 0:
+        # If last char before our closing is a colon, drop the incomplete key-value pair
+        trimmed = fragment[:last_complete]
+        if trimmed.rstrip().endswith(":") or trimmed.rstrip().endswith(","):
+            trimmed = trimmed.rstrip().rstrip(":,")
+        suffix = "]" * max(0, open_brackets) + "}" * max(0, open_braces)
+        try:
+            parsed = json.loads(trimmed + suffix)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+_WEIGHT_KEY_MAP = {
+    "rt": "regime_trend", "mc": "monte_carlo_zones",
+    "cs": "confidence_scorer", "mq": "multi_tier_quality",
+    "fr": "funding_rate", "oi": "open_interest",
+    "vm": "volume_momentum", "ca": "cross_asset",
+}
+
+
+def _parse_strategy_weights(raw: dict) -> StrategyWeights:
+    """Parse compact or full strategy weight keys."""
+    expanded = {}
+    for k, v in raw.items():
+        full_key = _WEIGHT_KEY_MAP.get(k, k)
+        try:
+            expanded[full_key] = max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            pass
+    return StrategyWeights.from_dict(expanded)
+
+
+def _ensure_field(
+    target: dict, key: str, source: dict, max_len: Optional[int] = None
+):
+    """Copy a field from source to target if present, with optional truncation."""
+    if key in source:
+        val = source[key]
+        if max_len and isinstance(val, str) and len(val) > max_len:
+            val = val[:max_len]
+        target[key] = val
+
+
+def _extract_section(text: str, keyword: str, max_len: int = 300) -> Optional[str]:
+    """Extract a section from deep memory text by keyword.
+
+    Looks for lines containing the keyword and returns surrounding context.
+    Stops at the next blank line after the keyword section to prevent bleeding.
+    """
+    lines = text.split("\n")
+    result_lines = []
+    capturing = False
+    chars = 0
+    for line in lines:
+        if not capturing and keyword.upper() in line.upper():
+            capturing = True
+            result_lines.append(line)
+            chars += len(line)
+        elif capturing:
+            if not line.strip():
+                break  # End of section (blank line)
+            result_lines.append(line)
+            chars += len(line)
+            if chars >= max_len:
+                break
+    return "\n".join(result_lines) if result_lines else None
+
+
+def _compute_confluence_from_snapshot(
+    snapshot: dict, regime: str
+) -> Optional[Dict[str, Any]]:
+    """Extract agreeing strategies from the snapshot and compute confluence quality."""
+    try:
+        markets = snapshot.get("m", [])
+        if not markets:
+            return None
+
+        # Find the primary market (first one with signals)
+        for market in markets:
+            sigs = market.get("sg", [])
+            if not sigs:
+                continue
+
+            # Find the consensus side
+            side_counts: Dict[str, list] = {}
+            for sig in sigs:
+                sd = sig.get("sd", "neutral")
+                if sd in ("neutral",):
+                    continue
+                side_counts.setdefault(sd, []).append(sig.get("st", ""))
+
+            if not side_counts:
+                continue
+
+            # Get the majority side
+            majority_side = max(side_counts, key=lambda s: len(side_counts[s]))
+            agreeing = side_counts[majority_side]
+
+            if agreeing:
+                return score_confluence(agreeing, regime)
+
+    except Exception:
+        pass
+    return None
+
+
+def _get_default_model(role: AgentRole) -> str:
+    """Default model per agent role when no tier routing is available."""
+    # Regime + Risk + Learning use cheaper Haiku; Trade + Critic use Sonnet
+    try:
+        from llm.usage_tiers import MODEL_HAIKU, MODEL_SONNET
+    except ImportError:
+        return "claude-sonnet-4-5-20250929"
+
+    if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING, AgentRole.EXIT, AgentRole.SCOUT, AgentRole.QUANT):
+        return MODEL_HAIKU
+    return MODEL_SONNET
+
+
+# ── Singleton ───────────────────────────────────────────────────
+
+_coordinator: Optional[AgentCoordinator] = None
+
+
+def _build_configs_from_env() -> Dict[AgentRole, AgentConfig]:
+    """Build agent configs from environment variables."""
+    configs = dict(DEFAULT_AGENT_CONFIGS)
+
+    # Per-agent model overrides
+    env_model_map = {
+        AgentRole.REGIME: "AGENT_REGIME_MODEL",
+        AgentRole.TRADE: "AGENT_TRADE_MODEL",
+        AgentRole.RISK: "AGENT_RISK_MODEL",
+        AgentRole.LEARNING: "AGENT_LEARNING_MODEL",
+        AgentRole.CRITIC: "AGENT_CRITIC_MODEL",
+        AgentRole.EXIT: "AGENT_EXIT_MODEL",
+        AgentRole.SCOUT: "AGENT_SCOUT_MODEL",
+        AgentRole.OVERSEER: "AGENT_OVERSEER_MODEL",
+        AgentRole.QUANT: "AGENT_QUANT_MODEL",
+    }
+    for role, env_key in env_model_map.items():
+        model = os.getenv(env_key, "").strip()
+        if model and role in configs:
+            configs[role].model_override = model
+            logger.info(f"[MULTI-AGENT] {role.value} model override: {model}")
+
+    # Per-agent enable/disable
+    env_enabled_map = {
+        AgentRole.RISK: "AGENT_RISK_ENABLED",
+        AgentRole.LEARNING: "AGENT_LEARNING_ENABLED",
+        AgentRole.CRITIC: "AGENT_CRITIC_ENABLED",
+        AgentRole.EXIT: "AGENT_EXIT_ENABLED",
+        AgentRole.SCOUT: "AGENT_SCOUT_ENABLED",
+        AgentRole.OVERSEER: "AGENT_OVERSEER_ENABLED",
+        AgentRole.QUANT: "AGENT_QUANT_ENABLED",
+    }
+    for role, env_key in env_enabled_map.items():
+        val = os.getenv(env_key, "true").lower()
+        if val in ("0", "false", "no") and role in configs:
+            configs[role].enabled = False
+            logger.info(f"[MULTI-AGENT] {role.value} agent disabled via {env_key}")
+
+    return configs
+
+
+def get_coordinator() -> AgentCoordinator:
+    """Get or create the singleton AgentCoordinator."""
+    global _coordinator
+    if _coordinator is None:
+        configs = _build_configs_from_env()
+        _coordinator = AgentCoordinator(agent_configs=configs)
+        logger.info("[MULTI-AGENT] Coordinator initialized")
+    return _coordinator

@@ -224,8 +224,8 @@ class MultiTierQualityStrategy(BaseStrategy):
             stop_width = abs(entry - stop)
 
         # TPs based on R-multiple
-        tp1 = entry + stop_width if side == "BUY" else entry - stop_width
-        tp2 = entry + 2 * stop_width if side == "BUY" else entry - 2 * stop_width
+        tp1 = entry + 1.5 * stop_width if side == "BUY" else entry - 1.5 * stop_width
+        tp2 = entry + 3.0 * stop_width if side == "BUY" else entry - 3.0 * stop_width
 
         # Confidence
         conf = self._compute_confidence(regime, ema5m_side, side, vwap_align, stop_width, atr_val)
@@ -250,8 +250,25 @@ class MultiTierQualityStrategy(BaseStrategy):
         if tier == "PRIORITY" and not ema_1h_align and conf < 80:
             tier = "REGULAR"
 
-        if conf < 50:
-            return None  # Too low even for manual
+        # Regime alignment gate: this is a momentum/trend strategy.
+        # In non-trending regimes (regime_score == 0), require higher confidence
+        # and 1h EMA alignment to avoid false EMA crossover signals in chop.
+        if abs(regime) == 0:
+            # No trend alignment across timeframes — require extra confirmation
+            if not ema_1h_align or not vwap_align:
+                return None  # No edge in range without both VWAP and 1h alignment
+            conf = min(conf, 68)  # Cap confidence — we're not in a trend
+
+        if conf < 55:
+            return None  # Raised from 50 — reduce weak signal noise
+
+        rr = abs(entry - tp1) / stop_width if stop_width > 0 else 0
+        ctx = (
+            f"5m EMA20{'>' if ema5m_side == 'above' else '<'}EMA50, "
+            f"VWAP {'aligned' if vwap_align else 'opposed'}, "
+            f"1h EMA {'aligned' if ema_1h_align else 'opposed'}, "
+            f"tier={tier}, R:R={rr:.1f}"
+        )
 
         return Signal(
             strategy=self.name,
@@ -263,6 +280,7 @@ class MultiTierQualityStrategy(BaseStrategy):
             tp1=tp1,
             tp2=tp2,
             atr=atr_val or 0,
+            signal_context=ctx,
             metadata={
                 "tier": tier,
                 "regime_score": regime,

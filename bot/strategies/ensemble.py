@@ -1,16 +1,26 @@
 """
-Multi-strategy ensemble / voting system.
+Multi-strategy ensemble / voting system with quality gates.
 Combines signals from all 4 strategies into consensus decisions.
+
+Quality gates (applied to ALL modes):
+1. Volume chop filter: skip if volume < 50% of 20-bar avg
+2. Require 2+ strategies agreeing on same direction (weighted_veto)
+3. Minimum 65% confidence after merge
+4. Multi-TF trend consensus (5m+1h+6h+daily): aligned +3..+8, counter -8..-15
 
 Modes:
 - "voting": Require min_votes strategies to agree on side before trading.
   Confidence = average of agreeing strategies.
+- "weighted_veto": Weight-aware voting with graduated veto.
+  Chosen side must have veto_ratio × opposition strength.
 - "weighted": Weight each strategy by historical performance.
   Combined confidence = weighted average.
 - "best": Take the highest-confidence signal.
 """
 
 import logging
+from copy import deepcopy
+from dataclasses import replace
 from typing import Optional, Dict, Any, List
 
 import pandas as pd
@@ -32,11 +42,69 @@ class EnsembleStrategy:
         mode: str = "voting",
         min_votes: int = 2,
         weights: Optional[Dict[str, float]] = None,
+        weight_manager=None,
+        veto_ratio: float = 1.1,
+        chop_detector=None,
+        confidence_floor: float = 65.0,
     ):
         self.strategies = strategies
         self.mode = mode
         self.min_votes = min_votes
         self.weights = weights or {s.name: 1.0 for s in strategies}
+        self.weight_manager = weight_manager  # StrategyWeightManager instance
+        self.veto_ratio = veto_ratio
+        self.chop_detector = chop_detector  # ChopDetector instance (Wave 1)
+        self.confidence_floor = confidence_floor
+        self._disabled_strategies: set = set()  # Strategy names to skip
+        self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
+        self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
+
+    def set_disabled_strategies(self, names: set):
+        """Temporarily disable specific strategies (e.g., for regime filtering)."""
+        self._disabled_strategies = set(names)
+
+    def get_last_signal(self, symbol: str, strategy_name: str) -> Optional[Signal]:
+        """Get the last signal from a specific strategy for a symbol."""
+        return self._last_signals.get(symbol, {}).get(strategy_name)
+
+    # Map driving strategy → likely trade duration for TF weight selection.
+    # Short-term strategies shouldn't get vetoed by daily bearish signals.
+    STRATEGY_DURATION_MAP = {
+        "multi_tier_quality": "SCALP",    # Uses 5m+1h → short-term trades
+        "confidence_scorer": "MEDIUM",     # Multi-factor → medium-term
+        "regime_trend": "TREND",           # Uses 1h+6h → trend following
+        "monte_carlo_zones": "TREND",      # Uses daily → longer-term levels
+    }
+
+    def _infer_duration(self, strategy_name: str) -> str:
+        """Infer trade duration from the driving strategy."""
+        return self.STRATEGY_DURATION_MAP.get(strategy_name, "")
+
+    def _refresh_dynamic_weights(self):
+        """Refresh ensemble weights using rolling strategy performance."""
+        if self.weight_manager is not None:
+            try:
+                dynamic = self.weight_manager.get_rolling_weights()
+                if dynamic:
+                    self.weights = dynamic
+                else:
+                    # Weights empty — likely no trade history yet.
+                    # Try loading persisted weights from file as fallback.
+                    # get_all_weights() reads from persisted file (smoothed, not rolling)
+                    fallback = self.weight_manager.get_all_weights()
+                    if fallback:
+                        self.weights = fallback
+                        logger.info(
+                            "[ENSEMBLE] Loaded persisted strategy weights as fallback "
+                            f"(no rolling data yet): {fallback}"
+                        )
+                        return
+                    logger.warning(
+                        "[ENSEMBLE] Dynamic strategy weights empty — using default equal weights. "
+                        "Run a backtest with learning bridge to seed performance data."
+                    )
+            except Exception as e:
+                logger.debug(f"Dynamic weight refresh failed: {e}")
 
     def get_all_required_timeframes(self) -> List[str]:
         """Get the union of all timeframes needed by all strategies."""
@@ -52,41 +120,464 @@ class EnsembleStrategy:
         Run all strategies and combine their signals.
         Returns a single consensus Signal or None.
         """
+        # Dynamic weight refresh: pull rolling weights before each evaluation
+        self._refresh_dynamic_weights()
+
         signals: List[Signal] = []
+        active_count = 0  # Strategies that ran (didn't error or get disabled)
+        error_count = 0
 
         for strategy in self.strategies:
+            # Regime-based strategy filter: skip disabled strategies
+            if strategy.name in self._disabled_strategies:
+                continue
+            active_count += 1
             try:
                 sig = strategy.evaluate(symbol, data)
                 if sig is not None:
                     signals.append(sig)
             except Exception as e:
+                error_count += 1
                 logger.warning(f"[{symbol}] {strategy.name} error: {e}")
+
+        # Cache individual strategy signals for context extraction (originals)
+        self._last_signals[symbol] = {s.strategy: s for s in signals}
+
+        # Deep copy signals before mutation — originals stay clean in cache
+        signals = [deepcopy(s) for s in signals]
 
         if not signals:
             return None
 
-        if self.mode == "voting":
-            return self._voting(symbol, signals)
-        elif self.mode == "weighted":
-            return self._weighted(symbol, signals)
-        elif self.mode == "best":
-            return self._best(symbol, signals)
-        else:
-            return self._voting(symbol, signals)
+        # ── Graceful strategy degradation ──
+        # If strategies errored, lower min_votes so the system doesn't deadlock.
+        # With 4 strategies and MIN_VOTES=3, a single error means max 3 signals.
+        # If one of those 3 abstains, we'd have 2 signals and can never trade.
+        effective_min_votes = self.min_votes
+        if error_count > 0 and active_count > 0:
+            # Lower min_votes proportionally, but never below 2
+            effective_min_votes = max(2, min(self.min_votes, active_count - error_count))
+            if effective_min_votes != self.min_votes:
+                logger.info(
+                    f"[{symbol}] Strategy degradation: {error_count} errors, "
+                    f"min_votes {self.min_votes} → {effective_min_votes}"
+                )
 
-    def _voting(self, symbol: str, signals: List[Signal]) -> Optional[Signal]:
-        """Require min_votes strategies to agree on direction."""
+        # Chop detector: multi-factor choppy market filter (replaces simple volume check)
+        if self.chop_detector:
+            is_chop, chop_score, chop_detail = self.chop_detector.is_choppy(symbol, data)
+            if is_chop:
+                return None
+            # Attach chop score to metadata for downstream use
+            for sig in signals:
+                sig.metadata["chop_score"] = round(chop_score, 3)
+        elif self._is_low_volume(symbol, data):
+            # Fallback to simple volume filter if no chop detector
+            logger.info(f"[{symbol}] Signal skipped: low volume (chop filter)")
+            return None
+
+        if self.mode == "voting":
+            result = self._voting(symbol, signals, effective_min_votes)
+        elif self.mode == "weighted_veto":
+            result = self._weighted_veto(symbol, signals, effective_min_votes)
+        elif self.mode == "weighted":
+            result = self._weighted(symbol, signals)
+        elif self.mode == "best":
+            result = self._best(symbol, signals)
+        else:
+            result = self._voting(symbol, signals, effective_min_votes)
+
+        if result is None:
+            return None
+
+        # ── Post-merge quality gates ──
+
+        # 1. Minimum confidence floor — reject weak consensus signals
+        if result.confidence < self.confidence_floor:
+            logger.info(
+                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% < {self.confidence_floor}% floor"
+            )
+            return None
+
+        # 2. Trend alignment: FLIP counter-trend signals to ride the trend
+        # Use duration-aware weights: short-term strategies don't get killed
+        # by daily bearish signals, and long-term strategies don't flip on 5m noise.
+        _driver = result.strategy or ""
+        _duration_hint = self._infer_duration(_driver)
+        result = self._trend_alignment_adjust(symbol, data, result, _duration_hint)
+
+        # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
+        if result.confidence < self.confidence_floor:
+            logger.info(
+                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
+                f"after trend adjustment"
+            )
+            return None
+
+        return result
+
+    def _is_low_volume(self, symbol: str, data: Dict[str, pd.DataFrame]) -> bool:
+        """Check if current volume is too low for reliable signals.
+        Returns True if volume < 50% of 20-bar average (choppy market)."""
+        df_1h = data.get("1h")
+        if df_1h is None or df_1h.empty or len(df_1h) < 20:
+            return False  # can't determine, allow trading
+        vol = df_1h["volume"]
+        avg_vol = float(vol.tail(20).mean())
+        if avg_vol <= 0:
+            return False
+        current_vol = float(vol.iloc[-1])
+        ratio = current_vol / avg_vol
+        if ratio < 0.5:
+            logger.info(f"[{symbol}] Volume ratio {ratio:.2f} (current={current_vol:.0f}, avg={avg_vol:.0f})")
+            return True
+        return False
+
+    # Default timeframe weights: higher TFs matter more for trend determination.
+    # 5m noise should NOT cancel out a confirmed daily trend.
+    TIMEFRAME_WEIGHTS = {"5m": 0.5, "1h": 1.0, "6h": 1.5, "daily": 2.0}
+
+    # Trade-duration-aware weights: short trades care about short TFs,
+    # long trades care about long TFs. A daily bearish signal shouldn't
+    # kill a clean 5m scalp setup.
+    DURATION_WEIGHTS = {
+        "SCALP":  {"5m": 2.0, "1h": 1.0, "6h": 0.3, "daily": 0.1},
+        "MEDIUM": {"5m": 0.8, "1h": 1.5, "6h": 1.0, "daily": 0.5},
+        "TREND":  {"5m": 0.3, "1h": 0.8, "6h": 1.5, "daily": 2.0},
+        "REGIME": {"5m": 0.2, "1h": 0.5, "6h": 1.5, "daily": 2.0},
+    }
+
+    def _compute_trend_scores(self, symbol: str, data: Dict[str, pd.DataFrame],
+                              entry_type: str = ""):
+        """Compute weighted multi-timeframe trend scores.
+        Returns (total_score, num_timeframes, detail_string).
+        Score range varies by weight set.
+
+        Each timeframe's raw score (±1) is multiplied by its weight.
+        If entry_type is provided, uses duration-aware weights so that
+        short trades prioritize short TFs and long trades prioritize long TFs.
+        """
+        # Use duration-aware weights if entry_type matches, else default
+        tf_weights = self.DURATION_WEIGHTS.get(entry_type, self.TIMEFRAME_WEIGHTS)
+        scores = []
+        weights = []
+        details = []
+
+        # ── 5m: fast momentum (weight: 0.5) ──
+        df_5m = data.get("5m")
+        if df_5m is not None and not df_5m.empty and len(df_5m) >= 50:
+            c = df_5m["close"].astype(float)
+            e20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
+            e50 = float(c.ewm(span=50, adjust=False).mean().iloc[-1])
+            s = 1 if e20 > e50 else -1
+            scores.append(s)
+            weights.append(tf_weights["5m"])
+            details.append(f"5m={'B' if s > 0 else 'S'}")
+
+        # ── 1h: core trend + MACD momentum (weight: 1.0) ──
+        df_1h = data.get("1h")
+        if df_1h is not None and not df_1h.empty and len(df_1h) >= 50:
+            c = df_1h["close"].astype(float)
+            e20 = c.ewm(span=20, adjust=False).mean()
+            e50 = c.ewm(span=50, adjust=False).mean()
+            ema_bull = float(e20.iloc[-1]) > float(e50.iloc[-1])
+
+            # MACD direction (12/26/9)
+            e12 = c.ewm(span=12, adjust=False).mean()
+            e26 = c.ewm(span=26, adjust=False).mean()
+            macd_line = e12 - e26
+            macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+            macd_hist = float((macd_line - macd_signal).iloc[-1])
+            macd_bull = macd_hist > 0
+
+            if ema_bull and macd_bull:
+                s = 1
+            elif not ema_bull and not macd_bull:
+                s = -1
+            else:
+                s = 0
+            scores.append(s)
+            weights.append(tf_weights["1h"])
+            details.append(f"1h={'B' if s > 0 else 'S' if s < 0 else 'N'}")
+
+        # ── 6h: higher timeframe structure (weight: 1.5) ──
+        df_6h = data.get("6h")
+        if df_6h is not None and not df_6h.empty and len(df_6h) >= 20:
+            c = df_6h["close"].astype(float)
+            e20 = c.ewm(span=20, adjust=False).mean()
+            e50 = c.ewm(span=50, min_periods=10, adjust=False).mean()
+            price = float(c.iloc[-1])
+            ema50_val = float(e50.iloc[-1])
+            ema_bull = float(e20.iloc[-1]) > ema50_val
+            price_above = price > ema50_val
+            s = 1 if (ema_bull and price_above) else (-1 if (not ema_bull and not price_above) else 0)
+            scores.append(s)
+            weights.append(tf_weights["6h"])
+            details.append(f"6h={'B' if s > 0 else 'S' if s < 0 else 'N'}")
+
+        # ── Daily: macro trend + RSI (weight: 2.0) ──
+        df_d = data.get("daily")
+        if df_d is not None and not df_d.empty and len(df_d) >= 50:
+            c = df_d["close"].astype(float)
+            sma50 = float(c.rolling(50).mean().iloc[-1])
+            price = float(c.iloc[-1])
+
+            delta = c.diff()
+            gain = delta.clip(lower=0).rolling(14).mean()
+            loss = (-delta.clip(upper=0)).rolling(14).mean()
+            rs = gain / loss.replace(0, 1e-9)
+            rsi = float((100 - 100 / (1 + rs)).iloc[-1])
+
+            price_bull = price > sma50
+            rsi_bull = rsi > 50
+            if price_bull and rsi_bull:
+                s = 1
+            elif not price_bull and not rsi_bull:
+                s = -1
+            else:
+                s = 0
+            scores.append(s)
+            weights.append(tf_weights["daily"])
+            details.append(f"D={'B' if s > 0 else 'S' if s < 0 else 'N'}")
+
+        # Weighted total: weights vary by trade duration (entry_type)
+        total = sum(s * w for s, w in zip(scores, weights)) if scores else 0
+        n = len(scores)
+        detail_str = " ".join(details)
+        return total, n, detail_str
+
+    def _trend_alignment_adjust(
+        self, symbol: str, data: Dict[str, pd.DataFrame], result: "Signal",
+        entry_type: str = ""
+    ) -> "Signal":
+        """Multi-timeframe trend alignment: flip or boost signals.
+
+        Uses duration-aware WEIGHTED scores so trade-relevant timeframes dominate.
+        For SCALP: 5m (2.0) + 1h (1.0) dominate, daily (0.1) barely matters.
+        For TREND: daily (2.0) + 6h (1.5) dominate, 5m (0.3) barely matters.
+        Default (no entry_type): daily (2.0) dominates per original behavior.
+
+        Strong trend (score >= 2.5):
+          - Counter-trend → FLIP side, recalculate levels, +5 bonus
+          - Aligned → +8 bonus
+        Moderate trend (score >= 1.0):
+          - Counter-trend → FLIP side, recalculate levels, +0 (neutral)
+          - Aligned → +3 bonus
+        Neutral (< 1.0): no adjustment
+        """
+        total, n, detail_str = self._compute_trend_scores(symbol, data, entry_type)
+
+        if n == 0:
+            return result
+
+        side = result.side
+        is_buy = side == "BUY"
+
+        # Thresholds adjusted for weighted scoring (max ±5.0 instead of ±4)
+        if abs(total) >= 2.5:
+            trend_bullish = total > 0
+            if is_buy == trend_bullish:
+                # Aligned with strong trend — bonus
+                result.confidence = min(100, result.confidence + 8)
+                result.metadata["trend_adjustment"] = 8
+                logger.info(
+                    f"[{symbol}] Strong trend aligned {side}: "
+                    f"score={total:.1f}/{n} [{detail_str}] +8 bonus"
+                )
+            else:
+                # Strong counter-trend — FLIP the signal (returns new object)
+                # No confidence bonus: flipped signals have zero original strategy
+                # conviction in the new direction. Let them prove themselves.
+                result = self._flip_signal(symbol, result, data)
+                result.metadata["trend_adjustment"] = 0
+                result.metadata["trend_flipped"] = True
+                logger.info(
+                    f"[{symbol}] FLIP {side}->{result.side}: strong trend "
+                    f"score={total:.1f}/{n} [{detail_str}] -- sniper mode"
+                )
+        elif abs(total) >= 1.0:
+            trend_bullish = total > 0
+            if is_buy == trend_bullish:
+                # Mild alignment — small bonus
+                result.confidence = min(100, result.confidence + 3)
+                result.metadata["trend_adjustment"] = 3
+                logger.info(
+                    f"[{symbol}] Trend aligned {side}: "
+                    f"score={total:.1f}/{n} [{detail_str}] +3 bonus"
+                )
+            else:
+                # Moderate counter-trend — FLIP the signal (returns new object)
+                result = self._flip_signal(symbol, result, data)
+                result.metadata["trend_adjustment"] = 0
+                result.metadata["trend_flipped"] = True
+                logger.info(
+                    f"[{symbol}] FLIP {side}->{result.side}: moderate trend "
+                    f"score={total:.1f}/{n} [{detail_str}] -- sniper mode"
+                )
+        else:
+            result.metadata["trend_adjustment"] = 0
+            logger.info(f"[{symbol}] Neutral trend: score={total:.1f}/{n} [{detail_str}]")
+
+        return result
+
+    def _flip_signal(
+        self, symbol: str, signal: "Signal", data: Dict[str, pd.DataFrame]
+    ) -> "Signal":
+        """Flip a signal's direction: BUY→SELL or SELL→BUY.
+        Returns a NEW Signal object — never mutates the original.
+        Uses asymmetric ATR multiples for minimum 1.5:1 R:R on TP1."""
+        entry = signal.entry
+        atr = signal.atr
+
+        if atr <= 0:
+            # Estimate ATR from 1h data if not available
+            df_1h = data.get("1h")
+            if df_1h is not None and not df_1h.empty and len(df_1h) >= 14:
+                prev = df_1h["close"].shift(1)
+                tr = pd.concat([
+                    df_1h["high"] - df_1h["low"],
+                    (df_1h["high"] - prev).abs(),
+                    (df_1h["low"] - prev).abs(),
+                ], axis=1).max(axis=1)
+                atr = float(tr.rolling(14, min_periods=1).mean().iloc[-1])
+            else:
+                atr = entry * 0.02  # fallback: 2% of price
+
+        # Asymmetric levels: SL tight (1.2 ATR), TP1 wide (2.0 ATR) = 1.67:1 R:R
+        # This ensures flipped signals are worth taking after fees.
+        if signal.side == "BUY":
+            new_side = "SELL"
+            sl = entry + 1.2 * atr
+            tp1 = entry - 2.0 * atr
+            tp2 = entry - 3.5 * atr
+        else:
+            new_side = "BUY"
+            sl = entry - 1.2 * atr
+            tp1 = entry + 2.0 * atr
+            tp2 = entry + 3.5 * atr
+
+        # Return a NEW Signal — never mutate the original (downstream may reference it)
+        return replace(
+            signal,
+            side=new_side,
+            sl=sl,
+            tp1=tp1,
+            tp2=tp2,
+            atr=atr,
+            metadata={**signal.metadata, "flipped_from": signal.side},
+        )
+
+    def _voting(self, symbol: str, signals: List[Signal],
+                effective_min_votes: int = 0) -> Optional[Signal]:
+        """Require min_votes strategies to agree on direction.
+        Opposition veto: if any strategy actively votes the opposite side,
+        require min_votes + len(opposition) to override."""
+        min_v = effective_min_votes or self.min_votes
         buy_signals = [s for s in signals if s.side == "BUY"]
         sell_signals = [s for s in signals if s.side == "SELL"]
 
-        if len(buy_signals) >= self.min_votes:
-            chosen = buy_signals
-        elif len(sell_signals) >= self.min_votes:
-            chosen = sell_signals
+        # Determine which side has enough base votes
+        buy_enough = len(buy_signals) >= min_v
+        sell_enough = len(sell_signals) >= min_v
+
+        if buy_enough and sell_enough:
+            # Both sides have min_votes - break tie using weighted confidence
+            buy_w = self._weighted_confidence_sum(buy_signals)
+            sell_w = self._weighted_confidence_sum(sell_signals)
+            if buy_w > sell_w:
+                chosen, opposition = buy_signals, sell_signals
+            elif sell_w > buy_w:
+                chosen, opposition = sell_signals, buy_signals
+            else:
+                return None  # tied
+        elif buy_enough:
+            chosen, opposition = buy_signals, sell_signals
+        elif sell_enough:
+            chosen, opposition = sell_signals, buy_signals
         else:
             return None
 
-        return self._merge_signals(symbol, chosen)
+        # Opposition veto: if strategies actively disagree, raise the bar
+        if opposition:
+            required = min_v + len(opposition)
+            if len(chosen) < required:
+                logger.info(
+                    f"[{symbol}] Signal vetoed: {len(chosen)} {chosen[0].side} vs "
+                    f"{len(opposition)} {opposition[0].side} (need {required} votes)"
+                )
+                return None
+
+        merged = self._merge_signals(symbol, chosen)
+
+        # Confidence penalty for opposition (even when vote passes)
+        if opposition:
+            penalty = len(opposition) * 10
+            merged.confidence = max(0, merged.confidence - penalty)
+            merged.metadata["opposition_penalty"] = penalty
+            logger.info(
+                f"[{symbol}] Opposition penalty: -{penalty} confidence "
+                f"(opposed by {[s.strategy for s in opposition]})"
+            )
+
+        return merged
+
+    def _weighted_veto(self, symbol: str, signals: List[Signal],
+                       effective_min_votes: int = 0) -> Optional[Signal]:
+        """Weight-aware voting with graduated veto.
+        Uses strategy accuracy weights * confidence to determine direction.
+        Requires chosen side to have veto_ratio times the opposition's strength.
+        Minimum min_votes strategies must agree on the same side for a trade."""
+        min_v = effective_min_votes or self.min_votes
+        buy_signals = [s for s in signals if s.side == "BUY"]
+        sell_signals = [s for s in signals if s.side == "SELL"]
+
+        # Require at least min_votes strategies agreeing on the same direction
+        if len(buy_signals) < min_v and len(sell_signals) < min_v:
+            if buy_signals:
+                logger.info(f"[{symbol}] Only {len(buy_signals)} BUY signal(s), need {min_v}+ same-side")
+            elif sell_signals:
+                logger.info(f"[{symbol}] Only {len(sell_signals)} SELL signal(s), need {min_v}+ same-side")
+            return None
+
+        buy_strength = self._weighted_confidence_sum(buy_signals) if buy_signals else 0
+        sell_strength = self._weighted_confidence_sum(sell_signals) if sell_signals else 0
+
+        if buy_strength > sell_strength and buy_signals:
+            chosen, opposition = buy_signals, sell_signals
+            chosen_strength, oppose_strength = buy_strength, sell_strength
+        elif sell_strength > buy_strength and sell_signals:
+            chosen, opposition = sell_signals, buy_signals
+            chosen_strength, oppose_strength = sell_strength, buy_strength
+        else:
+            return None  # tied or empty
+
+        # Weighted veto: chosen side must be meaningfully stronger
+        if opposition and chosen_strength < oppose_strength * self.veto_ratio:
+            logger.info(
+                f"[{symbol}] Weighted veto: {chosen[0].side} strength={chosen_strength:.1f} "
+                f"< {opposition[0].side} strength={oppose_strength:.1f} * {self.veto_ratio} "
+                f"= {oppose_strength * self.veto_ratio:.1f}"
+            )
+            return None
+
+        merged = self._merge_signals(symbol, chosen)
+
+        # Weighted opposition penalty (scaled by opposer's weight AND confidence)
+        if opposition:
+            penalty = sum(
+                self._get_strategy_weight(s.strategy) * 15 * (s.confidence / 100)
+                for s in opposition
+            )
+            merged.confidence = max(0, merged.confidence - penalty)
+            merged.metadata["opposition_penalty"] = round(penalty, 1)
+            opp_names = [s.strategy for s in opposition]
+            logger.info(
+                f"[{symbol}] {chosen[0].side} passes weighted veto "
+                f"({chosen_strength:.1f} vs {oppose_strength:.1f}), "
+                f"penalty -{penalty:.1f} from {opp_names}"
+            )
+
+        return merged
 
     def _weighted(self, symbol: str, signals: List[Signal]) -> Optional[Signal]:
         """Weight strategies by performance and combine."""
@@ -110,27 +601,58 @@ class EnsembleStrategy:
         best = max(signals, key=lambda s: s.confidence)
         return best
 
-    def _merge_signals(self, symbol: str, signals: List[Signal]) -> Signal:
-        """Merge multiple agreeing signals into one consensus signal."""
-        side = signals[0].side
-        avg_conf = sum(s.confidence for s in signals) / len(signals)
-        # Consensus bonus: more strategies agree -> higher confidence
-        consensus_bonus = (len(signals) - 1) * 3
-        combined_conf = min(100, avg_conf + consensus_bonus)
+    def _get_strategy_weight(self, strategy_name: str) -> float:
+        """Get weight for a strategy from weight manager, falling back to static weights."""
+        if self.weight_manager is not None:
+            return self.weight_manager.get_weight(strategy_name)
+        return self.weights.get(strategy_name, 1.0)
 
-        # Use the most conservative stop (widest) and most conservative TP
+    def _weighted_confidence_sum(self, signals: List[Signal]) -> float:
+        """Compute sum of weight * confidence for a list of signals."""
+        return sum(self._get_strategy_weight(s.strategy) * s.confidence for s in signals)
+
+    def _merge_signals(self, symbol: str, signals: List[Signal]) -> Signal:
+        """Merge multiple agreeing signals into one consensus signal.
+        Uses strategy accuracy weights for weighted-average confidence."""
+        side = signals[0].side
+
+        # Weighted average confidence using strategy accuracy weights
+        total_weight = sum(self._get_strategy_weight(s.strategy) for s in signals)
+        if total_weight > 0:
+            weighted_conf = sum(
+                self._get_strategy_weight(s.strategy) * s.confidence for s in signals
+            ) / total_weight
+        else:
+            weighted_conf = sum(s.confidence for s in signals) / len(signals)
+
+        # Consensus bonus: diminishing returns per additional strategy agreeing
+        # 2 agree: +3, 3 agree: +5, 4 agree: +6 (was +14 linear — too generous)
+        n_agree = len(signals)
+        consensus_bonus = min(3 * (n_agree - 1), 3 + 2 * (n_agree - 2)) if n_agree >= 2 else 0
+        active_count = len(self.strategies) - len(self._disabled_strategies)
+        if n_agree == active_count and n_agree >= 3:
+            consensus_bonus += 3  # Unanimous agreement bonus (reduced from 5)
+        combined_conf = min(100, weighted_conf + consensus_bonus)
+
+        # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
+        # Using average TP1 prevents zone-based strategies from pulling targets too close
         if side == "BUY":
             best_sl = min(s.sl for s in signals)
-            best_tp1 = min(s.tp1 for s in signals)
+            best_tp1 = sum(s.tp1 for s in signals) / len(signals)
             best_tp2 = max(s.tp2 for s in signals)
             entry = sum(s.entry for s in signals) / len(signals)
         else:
             best_sl = max(s.sl for s in signals)
-            best_tp1 = max(s.tp1 for s in signals)
+            best_tp1 = sum(s.tp1 for s in signals) / len(signals)
             best_tp2 = min(s.tp2 for s in signals)
             entry = sum(s.entry for s in signals) / len(signals)
 
         atr = max((s.atr for s in signals), default=0)
+
+        # Preserve per-signal ATR and SL for profile classification
+        per_signal_atr = {s.strategy: s.atr for s in signals}
+        per_signal_sl = {s.strategy: s.sl for s in signals}
+        per_signal_tp1 = {s.strategy: s.tp1 for s in signals}
 
         return Signal(
             strategy="ensemble",
@@ -147,6 +669,10 @@ class EnsembleStrategy:
                 "num_agree": len(signals),
                 "total_strategies": len(self.strategies),
                 "individual_confidences": {s.strategy: s.confidence for s in signals},
+                "strategy_weights": {s.strategy: round(self._get_strategy_weight(s.strategy), 3) for s in signals},
+                "per_signal_atr": per_signal_atr,
+                "per_signal_sl": per_signal_sl,
+                "per_signal_tp1": per_signal_tp1,
                 "mode": self.mode,
             },
         )

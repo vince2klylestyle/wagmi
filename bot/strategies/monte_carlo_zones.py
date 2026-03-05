@@ -111,6 +111,59 @@ class MonteCarloZonesStrategy(BaseStrategy):
             return "SELL"
         return "HOLD"
 
+    def _detect_bounce_short(self, df: pd.DataFrame, zones: Dict) -> Optional[Dict]:
+        """Detect bounce-to-resistance short setups in downtrends.
+
+        In a sustained downtrend, price often bounces from buy zones back toward
+        SMA20 or resistance. Instead of buying the dip (which gets killed by
+        trend penalties), detect these bounces as short opportunities.
+
+        Criteria:
+          - Price is below SMA20 (downtrend structure)
+          - SMA20 < SMA50 (confirmed downtrend)
+          - Price has bounced up from recent low (at least 0.3 * stdev)
+          - Price is approaching resistance (SMA20 or regular_sell zone)
+          - MC simulation favors downside
+        """
+        if len(df) < 20:
+            return None
+
+        current = zones["current"]
+        sma20 = zones["sma20"]
+        stdev = zones["stdev"]
+
+        sma50 = df["SMA50"].iloc[-1] if "SMA50" in df.columns else None
+        if sma50 is None or pd.isna(sma50):
+            return None
+
+        # Downtrend structure: SMA20 < SMA50 and price below SMA20
+        if not (sma20 < sma50 and current < sma50):
+            return None
+
+        # Check for bounce: price moved up from recent low
+        recent_low = float(df["close"].iloc[-5:].min())
+        bounce = current - recent_low
+
+        if bounce < 0.3 * stdev:
+            return None  # no meaningful bounce
+
+        # How close to resistance (SMA20)?
+        distance_to_sma20 = sma20 - current
+        if distance_to_sma20 < 0:
+            # Price already above SMA20 — even better short if it's a failed breakout
+            proximity = "above_sma20"
+        elif distance_to_sma20 < 0.5 * stdev:
+            proximity = "near_sma20"
+        else:
+            proximity = "approaching"
+
+        return {
+            "bounce": bounce,
+            "proximity": proximity,
+            "distance_to_sma20": distance_to_sma20,
+            "recent_low": recent_low,
+        }
+
     def evaluate(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
         df = data.get("daily")
         if df is None or len(df) < 50:
@@ -188,13 +241,29 @@ class MonteCarloZonesStrategy(BaseStrategy):
             tp1 = zones["sma20"]
             tp2 = zones["regular_buy"]
 
+        elif action == "HOLD":
+            # HOLD = no zone-based edge. Previously had a bounce-short
+            # special case here that created asymmetric SHORT bias.
+            # Removed: HOLD means no trade.
+            return None
+
         else:
-            return None  # HOLD
+            return None
 
         confidence = min(confidence, 100)
 
         if confidence < 60:
             return None
+
+        # Build context: which zone, MC probabilities, RSI, R:R
+        mc_dir = f"MC {mc['up_prob']:.0%}up/{mc['down_prob']:.0%}dn"
+        sw = abs(current - sl)
+        rr = abs(current - tp1) / sw if sw > 0 else 0
+        ctx = (
+            f"zone={action}, RSI={rsi:.0f}, {mc_dir}"
+            f"{', vol_spike' if vol_spike else ''}"
+            f", R:R={rr:.1f}, target=SMA20"
+        )
 
         return Signal(
             strategy=self.name,
@@ -205,6 +274,7 @@ class MonteCarloZonesStrategy(BaseStrategy):
             sl=sl,
             tp1=tp1,
             tp2=tp2,
+            signal_context=ctx,
             metadata={
                 "action": action,
                 "zones": zones,

@@ -28,6 +28,9 @@ def cmd_paper(args):
     os.makedirs("logs", exist_ok=True)
     os.makedirs("ml_data", exist_ok=True)
 
+    from data.db import init_db
+    init_db()
+
     from trading_config import TradingConfig, DEFAULT_SYMBOLS
     from multi_strategy_main import MultiStrategyBot
 
@@ -64,18 +67,63 @@ def cmd_backtest(args):
     config = TradingConfig()
     config.starting_equity = args.equity
 
-    engine = BacktestEngine(config)
+    # LLM integration (opt-in)
+    llm_integration = None
+    use_llm = getattr(args, "llm", False)
+    budget = getattr(args, "budget", 5.0)
+    resume = getattr(args, "resume", False)
+
+    if use_llm:
+        from backtest.llm_integration import BacktestLLMIntegration
+        llm_integration = BacktestLLMIntegration(
+            budget_usd=budget,
+            checkpoint_dir="data/backtest_checkpoints",
+            resume=resume,
+        )
+
+    engine = BacktestEngine(config, llm_integration=llm_integration)
     symbols = [s.strip().upper() for s in args.symbols.split(",")]
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()] or None
 
-    print(f"Running backtest: {symbols} | {args.days} days | equity=${args.equity:,.0f}")
-    report = engine.run(symbols, args.days, strategies)
+    learn = getattr(args, "learn", False)
+    if learn:
+        print(f"Running backtest with LEARNING: {symbols} | {args.days} days | equity=${args.equity:,.0f}")
+        print("  Results will feed: strategy weights, deep memory, feedback loop,")
+        print("  self-teaching knowledge base, growth orchestrator, insight journal")
+    else:
+        print(f"Running backtest: {symbols} | {args.days} days | equity=${args.equity:,.0f}")
+
+    if use_llm:
+        print(f"  LLM Agents: ENABLED (budget=${budget:.2f})")
+        print("  Pipeline: Regime -> Trade -> Risk -> Critic (entry)")
+        print("  + Exit Agent (open positions) + Learning Agent (closed trades)")
+        if resume:
+            print("  Resume: from last checkpoint")
+
+    report = engine.run(symbols, args.days, strategies, learn=learn)
+
+    if report.get("error") == "preflight_failed":
+        print("\nBACKTEST ABORTED: LLM preflight checks failed.")
+        for err in report.get("errors", []):
+            print(f"  ERROR: {err}")
+        return
+
+    if report.get("error") == "user_cancelled":
+        print("\nBacktest cancelled by user.")
+        return
+
     print_report(report)
 
     if args.output:
         with open(args.output, "w") as f:
             json.dump(report, f, indent=2, default=str)
         print(f"\nResults saved to {args.output}")
+
+    csv_path = getattr(args, "csv", "")
+    if csv_path:
+        from backtest.engine import export_trade_csv
+        export_trade_csv(report, csv_path)
+        print(f"Trade log exported to {csv_path}")
 
 
 def cmd_signals(args):
@@ -99,7 +147,7 @@ def cmd_signals(args):
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
     ]
-    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required)
+    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())
@@ -140,6 +188,95 @@ def cmd_signals(args):
     print("\n" + "=" * 60)
 
 
+def cmd_positions(args):
+    """Show open positions and unrealized PnL."""
+    from trading_config import TradingConfig, DEFAULT_SYMBOLS
+    from data.fetcher import DataFetcher
+    from multi_strategy_main import MultiStrategyBot
+
+    config = TradingConfig()
+    bot = MultiStrategyBot(config)
+
+    open_pos = bot.pos_mgr.get_open_positions()
+    if not open_pos:
+        print("No open positions.")
+        return
+
+    print("=" * 80)
+    print(f"Open Positions ({len(open_pos)})")
+    print("=" * 80)
+
+    prices = {}
+    for symbol in open_pos.keys():
+        sym_cfg = DEFAULT_SYMBOLS.get(symbol)
+        if sym_cfg:
+            price = bot.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
+            if price:
+                prices[symbol] = price
+
+    total_unrealized = 0.0
+    for symbol, pos in open_pos.items():
+        price = prices.get(symbol)
+        if price:
+            if pos.side == "LONG":
+                unrealized = (price - pos.entry) * pos.qty * pos.leverage
+            else:
+                unrealized = (pos.entry - price) * pos.qty * pos.leverage
+            total_unrealized += unrealized
+
+            pct_move = ((price - pos.entry) / pos.entry * 100) if pos.side == "LONG" else ((pos.entry - price) / pos.entry * 100)
+            print(
+                f"  {symbol:10s} | {pos.side:5s} | "
+                f"Entry: ${pos.entry:>12,.4f} | "
+                f"Price: ${price:>12,.4f} | "
+                f"Qty: {pos.qty:>10.4f} | "
+                f"Lev: {pos.leverage:>4.1f}x | "
+                f"Unrealized: ${unrealized:>10,.2f} | "
+                f"Move: {pct_move:>+6.2f}%"
+            )
+            if pos.state != "CLOSED":
+                print(f"    State: {pos.state_path_str} | SL: ${pos.sl:,.4f} | TP1: ${pos.tp1:,.4f} | TP2: ${pos.tp2:,.4f}")
+
+    print("=" * 80)
+    print(f"Total Unrealized PnL: ${total_unrealized:+,.2f}")
+    print(f"Equity: ${bot.risk_mgr.equity:,.2f}")
+    print("=" * 80)
+
+
+def cmd_rl_train(args):
+    """Train RL policy from transition buffer."""
+    from rl.train_offline import train
+    from rl.buffer import get_buffer_stats, load_buffer
+
+    transitions = load_buffer()
+    stats = get_buffer_stats(transitions)
+
+    print("=" * 60)
+    print("NunuIRL RL Offline Training")
+    print("=" * 60)
+    print(f"  Buffer transitions: {stats.get('total', 0)}")
+
+    if stats.get("total", 0) == 0:
+        print("  No transitions in buffer. Run paper trading first.")
+        return
+
+    print(f"  Avg reward: {stats.get('avg_reward', 0):.4f}")
+    print(f"  Win rate: {stats.get('win_rate', 0):.1%}")
+    print(f"  By regime: {json.dumps(stats.get('by_regime', {}), indent=4)}")
+    print()
+
+    policy = train()
+    if policy:
+        print("Training complete!")
+        print(f"  Regime multipliers: {json.dumps(policy.get('regime_multipliers', {}), indent=4)}")
+        print(f"  Symbol risk caps: {json.dumps(policy.get('symbol_risk_caps', {}), indent=4)}")
+        print(f"  Policy saved to: data/rl/rl_policy.json")
+        print()
+        print("To enable: set ENABLE_RL_POLICY=true in .env")
+    else:
+        print("Training skipped (insufficient data).")
+
+
 def cmd_status(args):
     """Show market assessment from all strategies without trading."""
     from trading_config import TradingConfig, DEFAULT_SYMBOLS
@@ -159,7 +296,7 @@ def cmd_status(args):
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
     ]
-    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required)
+    ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())
@@ -193,10 +330,24 @@ def cmd_status(args):
 
 
 def main():
-    # Load .env if present
+    # Fix Windows console encoding (cp1252 can't handle Unicode in log messages)
+    if sys.platform == 'win32':
+        for stream in [sys.stdout, sys.stderr]:
+            if hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8', errors='replace')
+
+    # Load .env: bot/.env first (specific config), then root .env (fallback)
+    # load_dotenv does NOT override existing vars, so first-loaded wins
     try:
         from dotenv import load_dotenv
-        load_dotenv()
+        local_env = Path(__file__).parent / ".env"
+        root_env = Path(__file__).parent.parent / ".env"
+        if local_env.exists():
+            load_dotenv(local_env)
+        if root_env.exists():
+            load_dotenv(root_env)
+        if not local_env.exists() and not root_env.exists():
+            load_dotenv()  # fallback to cwd
     except ImportError:
         pass
 
@@ -223,6 +374,11 @@ Commands:
     sub_bt.add_argument("--strategies", default="", help="Strategy names (empty=all)")
     sub_bt.add_argument("--equity", type=float, default=10000, help="Starting equity")
     sub_bt.add_argument("--output", default="", help="Save JSON results to file")
+    sub_bt.add_argument("--learn", action="store_true", help="Feed results into all learning systems (strategy weights, deep memory, feedback, knowledge base, growth)")
+    sub_bt.add_argument("--llm", action="store_true", help="Enable LLM multi-agent pipeline during backtest (requires ANTHROPIC_API_KEY)")
+    sub_bt.add_argument("--budget", type=float, default=5.0, help="Max LLM API spend in USD (default: $5)")
+    sub_bt.add_argument("--resume", action="store_true", help="Resume LLM backtest from last checkpoint")
+    sub_bt.add_argument("--csv", default="", help="Export per-trade timeline to CSV file")
 
     # Signals
     sub_sig = subparsers.add_parser("signals", help="One-shot signal check")
@@ -231,6 +387,12 @@ Commands:
     # Status
     sub_status = subparsers.add_parser("status", help="Market assessment")
     sub_status.add_argument("--symbols", default="", help="Comma-separated symbols (empty=all)")
+
+    # Positions
+    sub_pos = subparsers.add_parser("positions", help="Show open positions")
+
+    # RL training
+    sub_rl = subparsers.add_parser("rl-train", help="Train RL policy from buffer")
 
     args = parser.parse_args()
 
@@ -242,6 +404,10 @@ Commands:
         cmd_signals(args)
     elif args.command == "status":
         cmd_status(args)
+    elif args.command == "positions":
+        cmd_positions(args)
+    elif args.command == "rl-train":
+        cmd_rl_train(args)
     else:
         parser.print_help()
 

@@ -1,0 +1,18 @@
+Risk model preferences:
+- Prioritize capital preservation and safety over aggressiveness.
+- Reject or downgrade trades when:
+  - snapshot age exceeds configured thresholds,
+  - slippage exceeds configured thresholds,
+  - spread is too wide,
+  - liquidity is too low,
+  - volatility is spiking,
+  - correlation guard or circuit breaker is active.
+- Human copy-tradable signals must be:
+  - rare,
+  - high-confidence,
+  - high-quality drivers,
+  - stable regime,
+  - low/medium volatility,
+  - tight spread and acceptable slippage,
+  - sufficient liquidity,
+  - R:R >= configured minimum.
