@@ -47,10 +47,12 @@ class CircuitBreaker:
         self,
         daily_loss_limit_pct: float = 0.05,
         max_consecutive_losses: int = 5,
-        max_drawdown_pct: float = 0.10,
+        max_drawdown_pct: float = None,
         cooldown_minutes: int = 60,
         max_cb_overrides: int = 2,
     ):
+        if max_drawdown_pct is None:
+            max_drawdown_pct = float(os.getenv("MAX_DRAWDOWN_PCT", "0.10"))
         self.daily_loss_limit_pct = daily_loss_limit_pct
         self.max_consecutive_losses = max_consecutive_losses
         self.max_cb_overrides = max_cb_overrides
@@ -270,9 +272,9 @@ class RiskManager:
     def __init__(
         self,
         starting_equity: float = 10000.0,
-        risk_per_trade: float = 0.015,
-        max_open_positions: int = 6,
-        max_portfolio_leverage: float = 3.0,
+        risk_per_trade: float = 0.02,
+        max_open_positions: int = 3,
+        max_portfolio_leverage: float = 5.0,
         circuit_breaker: Optional[CircuitBreaker] = None,
         max_risk_multiplier: float = 1.5,
     ):
