@@ -80,6 +80,7 @@ class CircuitBreaker:
         self._trip_sim_time = None
         self.trip_reason = ""
         self._override_count = 0
+        self.last_reset_date = None  # Force daily reset on next check
         # Note: peak_equity is NOT reset here — caller should set it explicitly
 
     def _maybe_reset_daily(self, equity: float = 0.0, sim_time: Optional[datetime] = None):

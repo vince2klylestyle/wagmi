@@ -192,9 +192,10 @@ class BacktestEngine:
             if self.llm:
                 self.llm.reset_for_symbol(symbol)
 
-            # Reset circuit breaker trip state between symbols so one bad
-            # symbol doesn't starve the next. But keep daily_pnl and
-            # peak_equity so overall drawdown protection still works.
+            # Reset circuit breaker fully between symbols so one bad
+            # symbol doesn't starve the next. Each symbol gets a fresh
+            # daily_pnl budget. Peak equity is updated to current equity
+            # so drawdown tracking is per-symbol.
             if hasattr(self.risk_mgr, "circuit_breaker") and self.risk_mgr.circuit_breaker:
                 cb = self.risk_mgr.circuit_breaker
                 cb.tripped = False
@@ -203,6 +204,8 @@ class BacktestEngine:
                 cb.trip_reason = ""
                 cb.consecutive_losses = 0
                 cb._override_count = 0
+                cb.daily_pnl = 0.0  # Fresh daily budget per symbol
+                cb.last_reset_date = None  # Force daily reset on first candle
                 # Update peak to current equity for per-symbol drawdown tracking
                 cb.peak_equity = self.risk_mgr.equity
 
