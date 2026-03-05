@@ -297,8 +297,14 @@ class BacktestEngine:
             # Check existing positions
             events = self.pos_mgr.update_price(symbol, current_price)
             for event in events:
+                # Set sim timestamp on event for accurate duration tracking
+                event.timestamp = sim_dt
                 self.risk_mgr.update_equity(event.pnl - event.fee, sim_time=sim_dt)
                 if event.action in self._CLOSE_ACTIONS:
+                    # Also set close_time on position for hold_time_s calculation
+                    pos = self.pos_mgr.positions.get(symbol)
+                    if pos:
+                        pos.close_time = sim_dt
                     self._record_trade_outcome(event, current_price)
                 # LLM: run Learning Agent on closed trades
                 if self.llm and event.action in self._CLOSE_ACTIONS:
@@ -348,7 +354,7 @@ class BacktestEngine:
                         candidate.llm_confidence = signal.confidence
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
-                        self._execute_signal(signal, current_price)
+                        self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         # LLM vetoed — log candidate with flat action
                         candidate.llm_action = "flat"
@@ -409,8 +415,12 @@ class BacktestEngine:
 
             events = self.pos_mgr.update_price(symbol, current_price)
             for event in events:
+                event.timestamp = sim_dt
                 self.risk_mgr.update_equity(event.pnl - event.fee, sim_time=sim_dt)
                 if event.action in self._CLOSE_ACTIONS:
+                    pos = self.pos_mgr.positions.get(symbol)
+                    if pos:
+                        pos.close_time = sim_dt
                     self._record_trade_outcome(event, current_price)
                 if self.llm and event.action in self._CLOSE_ACTIONS:
                     self.llm.clear_exit_counter(event.symbol)
@@ -452,7 +462,7 @@ class BacktestEngine:
                         candidate.llm_confidence = signal.confidence
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
-                        self._execute_signal(signal, current_price)
+                        self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         candidate.llm_action = "flat"
                         self._candidate_logger.log_candidate(candidate)
@@ -752,7 +762,7 @@ class BacktestEngine:
                 self._record_trade_outcome(event, last_price)
                 logger.info(f"[{symbol}] Force-closed at backtest end: PnL={event.pnl:.2f}")
 
-    def _execute_signal(self, signal: Signal, current_price: float):
+    def _execute_signal(self, signal: Signal, current_price: float, sim_dt=None):
         """Execute a signal in backtest mode with slippage simulation."""
         from execution.trade_profile import classify_trade, apply_profile_to_signal
 
@@ -833,6 +843,11 @@ class BacktestEngine:
             trade_profile=trade_prof,
             notes=position_notes,
         )
+
+        # Set sim_time on position for accurate duration tracking in CSV
+        pos = self.pos_mgr.positions.get(signal.symbol)
+        if pos and sim_dt:
+            pos.open_time = sim_dt
 
         llm_tag = signal.metadata.get("llm_status", "unknown")
         logger.info(
