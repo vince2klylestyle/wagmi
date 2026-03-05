@@ -224,22 +224,14 @@ class CircuitBreaker:
                 logger.info("Circuit breaker cooldown complete, trading resumed")
                 return True
 
-        # High-confidence override: allow exceptional setups through
-        # but limit the number of overrides per trip to prevent CB bypass
-        if confidence >= cb_conf_override_pct * 100:
-            if self._override_count >= max_overrides:
-                logger.warning(
-                    f"[SAFETY] CB override limit reached ({max_overrides}), "
-                    f"hard-locked until cooldown"
-                )
-                return False
-            self._override_count += 1
-            logger.info(
-                f"[SAFETY] Circuit breaker override {self._override_count}/{max_overrides}: "
-                f"confidence {confidence:.0f}% >= {cb_conf_override_pct:.0%}"
-            )
-            return True
-
+        # CB override DISABLED — when the breaker trips, trading stops.
+        # Previously allowed 2 high-confidence trades through, but with
+        # low win rates this just added losses on top of losses.
+        # The circuit breaker exists to protect capital. Respect it.
+        logger.debug(
+            f"[SAFETY] Circuit breaker active, no overrides allowed. "
+            f"Confidence {confidence:.0f}% ignored until cooldown."
+        )
         return False
 
     def get_override_constraints(self, confidence: float = 0.0) -> Dict[str, Any]:

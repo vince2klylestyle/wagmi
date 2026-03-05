@@ -77,14 +77,15 @@ class BacktestEngine:
             max_leverage=self.config.max_leverage,
         )
 
-        # Widen circuit breakers for backtest to avoid cascading starvation
-        # Live: 5% daily / 10% drawdown (tight, protects real money)
-        # Backtest: 8% daily / 15% drawdown (looser, prioritizes learning data)
+        # Match live circuit breaker settings — backtest should reflect
+        # real trading behavior. Wider CB just hides risk.
+        # Live: 5% daily / 10% drawdown
+        # Backtest: same defaults, unless env overridden for learning runs.
         self.risk_mgr.circuit_breaker.daily_loss_limit_pct = float(
-            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.08")
+            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.05")
         )
         self.risk_mgr.circuit_breaker.max_drawdown_pct = float(
-            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.15")
+            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.10")
         )
 
         # Results
@@ -192,10 +193,11 @@ class BacktestEngine:
             if self.llm:
                 self.llm.reset_for_symbol(symbol)
 
-            # Reset circuit breaker fully between symbols so one bad
-            # symbol doesn't starve the next. Each symbol gets a fresh
-            # daily_pnl budget. Peak equity is updated to current equity
-            # so drawdown tracking is per-symbol.
+            # Soft reset between symbols: clear the tripped flag so the next
+            # symbol can trade, but KEEP cumulative daily_pnl and drawdown
+            # tracking. This prevents the old bug where each symbol got a
+            # fresh 8% budget (3 symbols × 8% = 24% potential daily loss).
+            # Now the 8% budget is shared across ALL symbols in a day.
             if hasattr(self.risk_mgr, "circuit_breaker") and self.risk_mgr.circuit_breaker:
                 cb = self.risk_mgr.circuit_breaker
                 cb.tripped = False
@@ -204,10 +206,9 @@ class BacktestEngine:
                 cb.trip_reason = ""
                 cb.consecutive_losses = 0
                 cb._override_count = 0
-                cb.daily_pnl = 0.0  # Fresh daily budget per symbol
-                cb.last_reset_date = None  # Force daily reset on first candle
-                # Update peak to current equity for per-symbol drawdown tracking
-                cb.peak_equity = self.risk_mgr.equity
+                # DO NOT reset daily_pnl — portfolio-level daily loss tracking
+                # DO NOT reset last_reset_date — let daily boundary handle it
+                # DO NOT reset peak_equity — track drawdown across all symbols
 
             data = all_data.get(symbol, {})
             df_1h = data.get("1h", pd.DataFrame())
