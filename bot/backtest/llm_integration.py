@@ -87,6 +87,9 @@ class BacktestLLMIntegration:
         # Cost tracking
         self.total_cost_usd: float = 0.0
         self.budget_exhausted: bool = False
+        self._symbol_cost_usd: float = 0.0
+        self._budget_per_symbol: float = budget_usd  # updated when symbols known
+        self._num_symbols: int = 1
 
         # Call tracking
         self.llm_calls: int = 0
@@ -310,6 +313,14 @@ class BacktestLLMIntegration:
             f"({result.estimated_llm_calls} API calls, {total_candles} candles)"
         )
 
+        # Set per-symbol budget so each symbol gets a fair share
+        self._num_symbols = max(len(symbols), 1)
+        self._budget_per_symbol = self.budget_usd / self._num_symbols
+        logger.info(
+            f"[PREFLIGHT] Per-symbol budget: ${self._budget_per_symbol:.2f} "
+            f"({self._num_symbols} symbols)"
+        )
+
         # 8. Learning systems validation — prevent spend-then-crash
         try:
             from llm.agents.learning_integration import process_agent_lesson  # noqa: F401
@@ -322,6 +333,22 @@ class BacktestLLMIntegration:
             )
 
         return result
+
+    def reset_for_symbol(self, symbol: str):
+        """Reset per-symbol budget tracking at the start of each symbol walk.
+
+        This ensures each symbol gets a fair share of the total LLM budget
+        instead of the first symbol consuming everything.
+        """
+        self._symbol_cost_usd = 0.0
+        # Re-enable LLM if global budget not yet exhausted
+        if self.total_cost_usd < self.budget_usd:
+            self.budget_exhausted = False
+        logger.info(
+            f"[BACKTEST-LLM] Starting {symbol}: "
+            f"symbol budget ${self._budget_per_symbol:.2f}, "
+            f"global spent ${self.total_cost_usd:.2f}/${self.budget_usd:.2f}"
+        )
 
     # ── Entry Evaluation ──────────────────────────────────────────
 
@@ -352,15 +379,33 @@ class BacktestLLMIntegration:
                 snapshot_data, trigger_reason=trigger_reason
             )
 
-            # Track cost
+            # Track cost (global + per-symbol)
             stats = self._coordinator.get_stats()
             call_cost = self._compute_cost_from_stats(stats)
             self.total_cost_usd += call_cost
+            self._symbol_cost_usd += call_cost
             self.llm_calls += stats.get("total_calls", 0)
 
             if decision:
                 self.candles_with_llm += 1
                 self._log_decision(decision, snapshot_data, call_cost, trigger_reason)
+
+                # Persist memory update from Trade Agent's 'mu' field
+                # (mirrors decision_engine.py:726-730 behavior)
+                if decision.memory_update:
+                    try:
+                        from llm.memory_store import apply_memory_update
+                        symbol = ""
+                        markets = snapshot_data.get("m", []) if snapshot_data else []
+                        if markets:
+                            symbol = markets[0].get("s", "")
+                        apply_memory_update(
+                            decision.memory_update,
+                            symbol=symbol,
+                            regime=decision.regime or "",
+                        )
+                    except Exception as e:
+                        logger.debug(f"[BACKTEST-LLM] Memory update failed: {e}")
             else:
                 self.candles_fallback += 1
                 self._log_skipped_decision(
@@ -368,8 +413,15 @@ class BacktestLLMIntegration:
                     reason="coordinator_returned_none",
                 )
 
-            # Check budget
-            if self.total_cost_usd >= self.budget_usd:
+            # Check budget (per-symbol first, then global)
+            if self._symbol_cost_usd >= self._budget_per_symbol:
+                self.budget_exhausted = True
+                logger.warning(
+                    f"[BACKTEST-LLM] Symbol budget exhausted: "
+                    f"${self._symbol_cost_usd:.2f} >= ${self._budget_per_symbol:.2f}. "
+                    f"Remaining candles for this symbol use strategy-only."
+                )
+            elif self.total_cost_usd >= self.budget_usd:
                 self.budget_exhausted = True
                 logger.warning(
                     f"[BACKTEST-LLM] Budget exhausted: "
@@ -808,6 +860,8 @@ class BacktestLLMIntegration:
                 entry["agents"] = agent_detail
                 # Track per-agent costs with actual model pricing
                 for agent_name, detail in agent_detail.items():
+                    if not isinstance(detail, dict):
+                        continue
                     if detail.get("ok"):
                         model = detail.get("model", "")
                         pricing = _MODEL_PRICING.get(model, _DEFAULT_PRICING)

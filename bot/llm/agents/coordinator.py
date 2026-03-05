@@ -226,27 +226,35 @@ class AgentCoordinator:
                 f"[MULTI-AGENT] Pipeline inconsistency detected: "
                 f"{consistency_report.summary()}"
             )
-            # On critical inconsistency: override to skip for safety
+            # On critical inconsistency: override action to skip but preserve
+            # a fraction of the agent's confidence for downstream analysis.
+            # Previously zeroed confidence, losing all signal information.
             critical_issues = [
                 i for i in consistency_report.issues if i.severity == "critical"
             ]
             if critical_issues:
+                original_conf = float(
+                    trade_out.data.get("c", trade_out.data.get("confidence", 0.0))
+                )
                 logger.warning(
-                    f"[MULTI-AGENT] Critical issues found — overriding to skip: "
+                    f"[MULTI-AGENT] Critical issues found — overriding to skip "
+                    f"(original conf={original_conf:.2f}): "
                     f"{[i.description[:80] for i in critical_issues]}"
                 )
                 trade_out = AgentOutput(
                     role=AgentRole.TRADE,
                     data={
                         "a": "skip",
-                        "c": 0.0,
+                        "c": original_conf * 0.5,  # halve instead of zero
                         "n": f"consistency_override: {critical_issues[0].description[:100]}",
                     },
                 )
 
         # ── Quant Agent confidence adjustment ─────────────────
-        # If Quant Agent flagged signal as noise or adjusted confidence, apply
-        if quant_out and quant_out.ok:
+        # If Quant Agent flagged signal as noise or adjusted confidence, apply.
+        # Skip if consistency already overrode to avoid cascading reductions.
+        _consistency_overrode = "consistency_override" in trade_out.data.get("n", "")
+        if quant_out and quant_out.ok and not _consistency_overrode:
             sq_raw = quant_out.data.get("signal_quality", {})
             sq = sq_raw if isinstance(sq_raw, dict) else {}
             quant_adj = sq.get("confidence_adjustment", 0)
@@ -265,15 +273,35 @@ class AgentCoordinator:
                     output_tokens=trade_out.output_tokens,
                     latency_ms=trade_out.latency_ms,
                 )
-            # If quant says it's noise, force skip for very low-confidence signals
-            if sq.get("is_noise") and float(trade_out.data.get("c", 0)) < 0.55:
-                trade_out = AgentOutput(
-                    role=AgentRole.TRADE,
-                    data={**trade_out.data, "a": "skip", "c": 0.0,
-                          "n": f"QUANT_NOISE: {sq.get('reason', 'statistical noise')}"},
-                    raw_text=trade_out.raw_text,
-                    model_used=trade_out.model_used,
-                )
+            # If quant says it's noise, apply graduated response:
+            # - Very low confidence (<0.35): hard skip (genuinely noise)
+            # - Marginal confidence (0.35-0.50): reduce size 50% but let Critic review
+            # - Above 0.50: leave alone (may have positive EV with good R:R)
+            if sq.get("is_noise"):
+                trade_conf = float(trade_out.data.get("c", 0))
+                noise_reason = sq.get("reason", "statistical noise")
+                if trade_conf < 0.35:
+                    trade_out = AgentOutput(
+                        role=AgentRole.TRADE,
+                        data={**trade_out.data, "a": "skip", "c": 0.0,
+                              "n": f"QUANT_NOISE: {noise_reason}"},
+                        raw_text=trade_out.raw_text,
+                        model_used=trade_out.model_used,
+                    )
+                elif trade_conf < 0.50:
+                    # Reduce size but let trade proceed for Critic review
+                    td = trade_out.data
+                    old_sm = float(td.get("sm", td.get("size_multiplier", 1.0)))
+                    trade_out = AgentOutput(
+                        role=AgentRole.TRADE,
+                        data={**td, "sm": round(old_sm * 0.5, 2),
+                              "n": (td.get("n", "") + f" | QUANT_NOISE_REDUCE: {noise_reason}")},
+                        raw_text=trade_out.raw_text,
+                        model_used=trade_out.model_used,
+                        input_tokens=trade_out.input_tokens,
+                        output_tokens=trade_out.output_tokens,
+                        latency_ms=trade_out.latency_ms,
+                    )
 
         # ── Confidence Consensus & Consistency Scaling ─────────
         # Gap 1: Compound conviction across agents
@@ -801,7 +829,7 @@ class AgentCoordinator:
                 "error": output.error,
             }
         if self.last_consistency_score is not None:
-            detail["consistency_score"] = self.last_consistency_score
+            detail["_meta"] = {"consistency_score": self.last_consistency_score}
         return detail
 
     # ── Agent calling ───────────────────────────────────────────
