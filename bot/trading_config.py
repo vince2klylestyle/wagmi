@@ -94,7 +94,7 @@ class TradingConfig:
 
     # Leverage tiers: (min_confidence, max_confidence) -> leverage
     enable_leverage: bool = field(default_factory=lambda: _env_bool("ENABLE_LEVERAGE", True))
-    max_leverage: float = field(default_factory=lambda: _env_float("MAX_LEVERAGE", 25.0))
+    max_leverage: float = field(default_factory=lambda: _env_float("MAX_LEVERAGE", 4.0))
     max_risk_multiplier: float = field(default_factory=lambda: _env_float("MAX_RISK_MULTIPLIER", 1.5))
 
     # Trailing stop

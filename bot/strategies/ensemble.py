@@ -45,7 +45,7 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.1,
         chop_detector=None,
-        confidence_floor: float = 65.0,
+        confidence_floor: float = 72.0,
     ):
         self.strategies = strategies
         self.mode = mode
