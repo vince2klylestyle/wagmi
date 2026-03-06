@@ -934,7 +934,8 @@ class BacktestEngine:
     # Actions that represent trade closes (not OPEN events)
     _CLOSE_ACTIONS = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                       "EMERGENCY", "BACKTEST_END", "HOLD_LIMIT",
-                      "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
+                      "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
+                      "CIRCUIT_BREAKER")
 
     def _report_by_strategy(self) -> Dict:
         result = {}

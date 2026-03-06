@@ -767,7 +767,8 @@ class PositionManager:
         """Summary of all trades taken."""
         closed = [e for e in self.trade_log if e.action in
                   ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT", "EMERGENCY",
-                   "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE", "BACKTEST_END", "HOLD_LIMIT")]
+                   "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE", "BACKTEST_END", "HOLD_LIMIT",
+                   "CIRCUIT_BREAKER")]
         if not closed:
             return {"total_trades": 0}
 
@@ -789,6 +790,7 @@ class PositionManager:
             "by_action": {
                 action: sum(1 for e in closed if e.action == action)
                 for action in ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT", "EMERGENCY",
-                               "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE", "BACKTEST_END", "HOLD_LIMIT")
+                               "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE", "BACKTEST_END", "HOLD_LIMIT",
+                               "CIRCUIT_BREAKER")
             },
         }
