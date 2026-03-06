@@ -70,6 +70,7 @@ class CircuitBreaker:
         self.last_reset_date: Optional[str] = None
         self._override_count = 0  # Track CB overrides per trip
         self._trip_count = 0  # Total trips for log deduplication
+        self.post_cooldown_caution = 0  # Trades remaining at reduced size after CB cooldown
 
     def reset(self):
         """Full reset of circuit breaker state. Used between backtest symbols."""
@@ -102,6 +103,11 @@ class CircuitBreaker:
         """
         self._maybe_reset_daily(equity, sim_time=sim_time)
         self.daily_pnl += pnl
+
+        # Decrement post-cooldown caution counter
+        if self.post_cooldown_caution > 0:
+            self.post_cooldown_caution -= 1
+            logger.info(f"Post-cooldown caution: {self.post_cooldown_caution} trades remaining at reduced size")
 
         if pnl < 0:
             self.consecutive_losses += 1
@@ -191,30 +197,19 @@ class CircuitBreaker:
                 cooldown_elapsed = True
 
             if cooldown_elapsed:
-                # Re-check if underlying conditions are still violated.
-                # Don't blindly resume — if drawdown is still beyond limit,
-                # stay tripped. This prevents the bot from losing 8%/hour.
-                # Only the CONSECUTIVE LOSSES condition resets on cooldown.
+                # Reset trip state and allow trading again.
+                # Instead of re-tripping (which causes permanent lockout),
+                # enter "caution mode" with reduced position sizes for
+                # the next 2 trades. This lets the bot recover with
+                # smaller bets rather than sitting out entirely.
                 self.consecutive_losses = 0
                 self._override_count = 0
                 self.tripped = False
                 self.trip_time = None
                 self._trip_sim_time = None
                 self.trip_reason = ""
-
-                # Re-check daily loss and drawdown — re-trip if still violated
-                # (pass equity=0 to skip equity-based checks if we don't have it)
-                # _check_breakers will re-trip if conditions are still bad
-                # We need equity to check, but we don't have it here.
-                # Instead, just check if daily_pnl is still beyond limit.
-                base = self.start_of_day_equity or self.peak_equity
-                if base > 0 and self.daily_pnl < 0:
-                    daily_loss_pct = abs(self.daily_pnl) / base
-                    if daily_loss_pct >= self.daily_loss_limit_pct:
-                        self._trip(f"Daily loss still {daily_loss_pct:.1%} >= {self.daily_loss_limit_pct:.1%} (post-cooldown)", sim_time=sim_time)
-                        return False
-
-                logger.info("Circuit breaker cooldown complete, trading resumed")
+                self.post_cooldown_caution = 2  # Next 2 trades at half size
+                logger.info("Circuit breaker cooldown complete, trading resumed (caution mode: 2 trades at reduced size)")
                 return True
 
         # High-confidence override: allow exceptional setups through
@@ -250,6 +245,14 @@ class CircuitBreaker:
             If CB is not tripped, returns unconstrained defaults.
         """
         if not self.tripped:
+            # Post-cooldown caution: reduce size for first N trades after CB reset
+            if self.post_cooldown_caution > 0:
+                return {
+                    "max_leverage": 3.0,
+                    "size_multiplier": 0.5,
+                    "constrained": True,
+                    "reason": f"post_cooldown_caution: {self.post_cooldown_caution} trades remaining at reduced size",
+                }
             return {
                 "max_leverage": 25.0,
                 "size_multiplier": 1.0,
