@@ -70,8 +70,8 @@ class EnsembleStrategy:
     # Map driving strategy → likely trade duration for TF weight selection.
     # Short-term strategies shouldn't get vetoed by daily bearish signals.
     STRATEGY_DURATION_MAP = {
-        "multi_tier_quality": "SCALP",    # Uses 5m+1h → short-term trades
-        "confidence_scorer": "MEDIUM",     # Multi-factor → medium-term
+        "multi_tier_quality": "MEDIUM",    # Uses 1h+6h → medium-term trades
+        "confidence_scorer": "MEDIUM",     # ADX/MACD/squeeze momentum → medium-term
         "regime_trend": "TREND",           # Uses 1h+6h → trend following
         "monte_carlo_zones": "TREND",      # Uses daily → longer-term levels
     }
@@ -625,13 +625,14 @@ class EnsembleStrategy:
         else:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
-        # Consensus bonus: diminishing returns per additional strategy agreeing
-        # 2 agree: +3, 3 agree: +5, 4 agree: +6 (was +14 linear — too generous)
+        # Consensus bonus: higher rewards now that strategies use different methodologies
+        # 2 agree: +5, 3 agree: +9, 4 agree: +13
+        # (Previously: +3/+5/+6 when strategies were redundant)
         n_agree = len(signals)
-        consensus_bonus = min(3 * (n_agree - 1), 3 + 2 * (n_agree - 2)) if n_agree >= 2 else 0
+        consensus_bonus = min(5 * (n_agree - 1), 5 + 4 * (n_agree - 2)) if n_agree >= 2 else 0
         active_count = len(self.strategies) - len(self._disabled_strategies)
         if n_agree == active_count and n_agree >= 3:
-            consensus_bonus += 3  # Unanimous agreement bonus (reduced from 5)
+            consensus_bonus += 5  # Unanimous agreement bonus
         combined_conf = min(100, weighted_conf + consensus_bonus)
 
         # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)

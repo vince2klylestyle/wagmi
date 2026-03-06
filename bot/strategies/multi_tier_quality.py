@@ -3,13 +3,13 @@ Strategy 4: Multi-Tier Quality Signal Bot
 Ported from the user's original profitable leverage bot (Bot 4).
 
 Core logic:
-- 5m EMA20/EMA50 crossover determines side
-- Session VWAP alignment confirmation
-- 1h EMA trend for regime scoring
+- 1h EMA20/EMA50 crossover determines side
+- Session VWAP alignment confirmation (from 1h data)
+- 6h EMA trend for regime scoring
 - ATR-based stop placement with swing detection
 - Confidence scoring: regime + EMA alignment + VWAP + volatility fit
 - Three signal tiers: PRIORITY (75%+), REGULAR (65%+), MANUAL (<65%)
-- Adapted from 1m/5m/1h to 5m/30m/1h for CoinGecko data
+- Adapted to 1h/6h for backtest compatibility (CoinGecko provides 30d of 1h data)
 """
 
 import logging
@@ -46,14 +46,14 @@ class MultiTierQualityStrategy(BaseStrategy):
     """
     EMA crossover + VWAP + multi-timeframe regime.
     Produces tiered signals (priority/regular/manual) based on confidence.
-    Originally used for leverage trading with 3-25x.
+    Uses 1h for entry signals and 6h for regime confirmation.
     """
 
     def __init__(self, symbols: Dict[str, Any]):
         super().__init__("multi_tier_quality", symbols)
 
     def get_required_timeframes(self) -> List[str]:
-        return ["5m", "30m", "1h"]
+        return ["1h", "6h"]
 
     def _ema_side_slope(self, df: pd.DataFrame) -> tuple:
         """Get EMA50 side (above/below) and slope (up/down)."""
@@ -63,10 +63,10 @@ class MultiTierQualityStrategy(BaseStrategy):
         slope = "up" if df["EMA50"].iloc[-1] > df["EMA50"].iloc[-5] else "down"
         return side, slope
 
-    def _trend_score(self, df_1h: pd.DataFrame, df_5m: pd.DataFrame) -> int:
-        """Score trend alignment across timeframes."""
+    def _trend_score(self, df_6h: pd.DataFrame, df_1h: pd.DataFrame) -> int:
+        """Score trend alignment across timeframes (6h + 1h)."""
         s = 0
-        for df in [df_1h, df_5m]:
+        for df in [df_6h, df_1h]:
             side, slope = self._ema_side_slope(df)
             if side == "above" and slope == "up":
                 s += 1
@@ -75,7 +75,7 @@ class MultiTierQualityStrategy(BaseStrategy):
         return s
 
     def _compute_vwap(self, df: pd.DataFrame) -> Optional[float]:
-        """Compute session VWAP from intraday data."""
+        """Compute session VWAP from 1h data."""
         if df is None or df.empty:
             return None
         # Use last trading day's data
@@ -92,11 +92,11 @@ class MultiTierQualityStrategy(BaseStrategy):
         vwap = (tp * vol).cumsum() / vol.cumsum()
         return float(vwap.iloc[-1]) if not vwap.empty else None
 
-    def _five_min_side(self, df_5m: pd.DataFrame) -> str:
-        """Determine EMA20 vs EMA50 side on 5m chart."""
-        if df_5m is None or df_5m.empty or "EMA20" not in df_5m.columns or "EMA50" not in df_5m.columns:
+    def _one_hour_side(self, df_1h: pd.DataFrame) -> str:
+        """Determine EMA20 vs EMA50 side on 1h chart."""
+        if df_1h is None or df_1h.empty or "EMA20" not in df_1h.columns or "EMA50" not in df_1h.columns:
             return "na"
-        return "above" if df_5m["EMA20"].iloc[-1] > df_5m["EMA50"].iloc[-1] else "below"
+        return "above" if df_1h["EMA20"].iloc[-1] > df_1h["EMA50"].iloc[-1] else "below"
 
     def _detect_swing(self, df: pd.DataFrame, side: str) -> Optional[float]:
         """Detect recent swing high/low for stop placement."""
@@ -104,7 +104,6 @@ class MultiTierQualityStrategy(BaseStrategy):
             return None
         h = df["high"]
         l = df["low"]
-        # Find swing highs and swing lows
         swing_highs = h[(h > h.shift(1)) & (h > h.shift(-1))].dropna()
         swing_lows = l[(l < l.shift(1)) & (l < l.shift(-1))].dropna()
         if side == "SELL" and not swing_highs.empty:
@@ -113,12 +112,12 @@ class MultiTierQualityStrategy(BaseStrategy):
             return float(swing_lows.iloc[-1])
         return None
 
-    def _ema_slope_bonus(self, df_5m: pd.DataFrame, side: str) -> int:
-        """Bonus confidence if EMA50 slope aligns with trade direction."""
+    def _ema_slope_bonus(self, df_1h: pd.DataFrame, side: str) -> int:
+        """Bonus confidence if 1h EMA50 slope aligns with trade direction."""
         try:
-            if df_5m is None or df_5m.empty or "EMA50" not in df_5m.columns:
+            if df_1h is None or df_1h.empty or "EMA50" not in df_1h.columns:
                 return 0
-            e = df_5m["EMA50"].iloc[-5:]
+            e = df_1h["EMA50"].iloc[-5:]
             if len(e) < 5:
                 return 0
             rising = e.iloc[-1] > e.iloc[0]
@@ -127,13 +126,13 @@ class MultiTierQualityStrategy(BaseStrategy):
             return 0
 
     def _compute_confidence(
-        self, regime_score: int, ema5m_side: str, side: str,
+        self, regime_score: int, ema1h_side: str, side: str,
         vwap_align: bool, stop_width: float, atr: Optional[float]
     ) -> int:
         """
-        Confidence scoring from the original bot:
-        - Regime alignment: up to 30
-        - 5m EMA alignment: up to 20
+        Confidence scoring:
+        - Regime alignment (6h+1h): up to 30
+        - 1h EMA alignment: up to 20
         - VWAP alignment: up to 10
         - ATR stop fit: up to 15
         """
@@ -144,8 +143,8 @@ class MultiTierQualityStrategy(BaseStrategy):
             conf += 15
 
         ema_aligned = (
-            (ema5m_side == "below" and side == "SELL") or
-            (ema5m_side == "above" and side == "BUY")
+            (ema1h_side == "below" and side == "SELL") or
+            (ema1h_side == "above" and side == "BUY")
         )
         if ema_aligned:
             conf += 20
@@ -162,32 +161,30 @@ class MultiTierQualityStrategy(BaseStrategy):
         return min(100, conf)
 
     def evaluate(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
-        df_5m = data.get("5m")
-        df_30m = data.get("30m")
         df_1h = data.get("1h")
+        df_6h = data.get("6h")
 
-        if df_5m is None or df_5m.empty or len(df_5m) < 20:
+        if df_1h is None or df_1h.empty or len(df_1h) < 20:
             return None
-        if df_1h is None or df_1h.empty or len(df_1h) < 10:
+        if df_6h is None or df_6h.empty or len(df_6h) < 5:
             return None
 
         # Add indicators
-        df_5m = _add_emas(df_5m)
-        df_30m = _add_emas(df_30m) if df_30m is not None and not df_30m.empty else df_30m
         df_1h = _add_emas(df_1h)
+        df_6h = _add_emas(df_6h)
 
-        # Determine side from 5m EMA crossover
-        side_5m = self._five_min_side(df_5m)
-        if side_5m == "na":
+        # Determine side from 1h EMA crossover
+        side_1h = self._one_hour_side(df_1h)
+        if side_1h == "na":
             return None
-        side = "BUY" if side_5m == "above" else "SELL"
+        side = "BUY" if side_1h == "above" else "SELL"
 
-        entry = float(df_5m["close"].iloc[-1])
+        entry = float(df_1h["close"].iloc[-1])
         if pd.isna(entry):
             return None
 
-        # VWAP check
-        vwap = self._compute_vwap(df_5m)
+        # VWAP check from 1h data
+        vwap = self._compute_vwap(df_1h)
         vwap_align = bool(
             vwap and (
                 (entry > vwap and side == "BUY") or
@@ -195,13 +192,13 @@ class MultiTierQualityStrategy(BaseStrategy):
             )
         )
 
-        # Regime from 1h + 5m trend alignment
-        ema5m_side, _ = self._ema_side_slope(df_5m)
-        regime = self._trend_score(df_1h, df_5m)
+        # Regime from 6h + 1h trend alignment
+        ema1h_side, _ = self._ema_side_slope(df_1h)
+        regime = self._trend_score(df_6h, df_1h)
 
-        # Stop placement: prefer swing, fallback to ATR
-        atr_val = float(df_5m["ATR14"].iloc[-1]) if "ATR14" in df_5m.columns and not df_5m["ATR14"].isna().all() else None
-        swing = self._detect_swing(df_5m, side)
+        # Stop placement: prefer swing on 1h, fallback to ATR
+        atr_val = float(df_1h["ATR14"].iloc[-1]) if "ATR14" in df_1h.columns and not df_1h["ATR14"].isna().all() else None
+        swing = self._detect_swing(df_1h, side)
 
         K = 1.8
         if swing is None or pd.isna(swing):
@@ -228,8 +225,8 @@ class MultiTierQualityStrategy(BaseStrategy):
         tp2 = entry + 3.0 * stop_width if side == "BUY" else entry - 3.0 * stop_width
 
         # Confidence
-        conf = self._compute_confidence(regime, ema5m_side, side, vwap_align, stop_width, atr_val)
-        conf = min(100, max(0, conf + self._ema_slope_bonus(df_5m, side)))
+        conf = self._compute_confidence(regime, ema1h_side, side, vwap_align, stop_width, atr_val)
+        conf = min(100, max(0, conf + self._ema_slope_bonus(df_1h, side)))
 
         # Determine tier
         if conf >= 75:
@@ -239,34 +236,32 @@ class MultiTierQualityStrategy(BaseStrategy):
         else:
             tier = "MANUAL"
 
-        # Higher timeframe alignment gate for priority
-        ema_1h_align = False
-        if "EMA20" in df_1h.columns and "EMA50" in df_1h.columns:
+        # Higher timeframe (6h) alignment gate for priority
+        ema_6h_align = False
+        if "EMA20" in df_6h.columns and "EMA50" in df_6h.columns:
             if side == "BUY":
-                ema_1h_align = df_1h["EMA20"].iloc[-1] > df_1h["EMA50"].iloc[-1]
+                ema_6h_align = df_6h["EMA20"].iloc[-1] > df_6h["EMA50"].iloc[-1]
             else:
-                ema_1h_align = df_1h["EMA20"].iloc[-1] < df_1h["EMA50"].iloc[-1]
+                ema_6h_align = df_6h["EMA20"].iloc[-1] < df_6h["EMA50"].iloc[-1]
 
-        if tier == "PRIORITY" and not ema_1h_align and conf < 80:
+        if tier == "PRIORITY" and not ema_6h_align and conf < 80:
             tier = "REGULAR"
 
-        # Regime alignment gate: this is a momentum/trend strategy.
-        # In non-trending regimes (regime_score == 0), require higher confidence
-        # and 1h EMA alignment to avoid false EMA crossover signals in chop.
+        # Soft regime gate: in non-trending regimes, cap confidence instead of hard reject
         if abs(regime) == 0:
-            # No trend alignment across timeframes — require extra confirmation
-            if not ema_1h_align or not vwap_align:
-                return None  # No edge in range without both VWAP and 1h alignment
-            conf = min(conf, 68)  # Cap confidence — we're not in a trend
+            if not ema_6h_align or not vwap_align:
+                conf = min(conf, 45)  # Soft cap — still allows signal through
+            else:
+                conf = min(conf, 68)  # Both align but no trend — moderate cap
 
         if conf < 55:
-            return None  # Raised from 50 — reduce weak signal noise
+            return None
 
         rr = abs(entry - tp1) / stop_width if stop_width > 0 else 0
         ctx = (
-            f"5m EMA20{'>' if ema5m_side == 'above' else '<'}EMA50, "
+            f"1h EMA20{'>' if ema1h_side == 'above' else '<'}EMA50, "
             f"VWAP {'aligned' if vwap_align else 'opposed'}, "
-            f"1h EMA {'aligned' if ema_1h_align else 'opposed'}, "
+            f"6h EMA {'aligned' if ema_6h_align else 'opposed'}, "
             f"tier={tier}, R:R={rr:.1f}"
         )
 
@@ -284,39 +279,39 @@ class MultiTierQualityStrategy(BaseStrategy):
             metadata={
                 "tier": tier,
                 "regime_score": regime,
-                "ema5m_side": ema5m_side,
+                "ema1h_side": ema1h_side,
                 "vwap": vwap,
                 "vwap_align": vwap_align,
-                "ema_1h_align": ema_1h_align,
+                "ema_6h_align": ema_6h_align,
                 "stop_width": stop_width,
                 "swing_used": swing is not None,
             },
         )
 
     def get_status(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-        df_5m = data.get("5m")
         df_1h = data.get("1h")
+        df_6h = data.get("6h")
 
-        if df_5m is None or df_5m.empty:
+        if df_1h is None or df_1h.empty:
             return {"symbol": symbol, "strategy": self.name, "status": "insufficient_data"}
 
-        df_5m = _add_emas(df_5m)
-        df_1h = _add_emas(df_1h) if df_1h is not None and not df_1h.empty else df_1h
+        df_1h = _add_emas(df_1h)
+        df_6h = _add_emas(df_6h) if df_6h is not None and not df_6h.empty else df_6h
 
-        side_5m = self._five_min_side(df_5m)
-        side = "BUY" if side_5m == "above" else ("SELL" if side_5m == "below" else "NEUTRAL")
-        ema5m_side, ema5m_slope = self._ema_side_slope(df_5m)
-        regime = self._trend_score(df_1h, df_5m) if df_1h is not None else 0
-        vwap = self._compute_vwap(df_5m)
+        side_1h = self._one_hour_side(df_1h)
+        side = "BUY" if side_1h == "above" else ("SELL" if side_1h == "below" else "NEUTRAL")
+        ema1h_side, ema1h_slope = self._ema_side_slope(df_1h)
+        regime = self._trend_score(df_6h, df_1h) if df_6h is not None else 0
+        vwap = self._compute_vwap(df_1h)
 
         return {
             "symbol": symbol,
             "strategy": self.name,
-            "price": float(df_5m["close"].iloc[-1]),
+            "price": float(df_1h["close"].iloc[-1]),
             "side": side,
-            "ema5m_side": ema5m_side,
-            "ema5m_slope": ema5m_slope,
+            "ema1h_side": ema1h_side,
+            "ema1h_slope": ema1h_slope,
             "regime_score": regime,
             "vwap": vwap,
-            "atr": float(df_5m["ATR14"].iloc[-1]) if "ATR14" in df_5m.columns else None,
+            "atr": float(df_1h["ATR14"].iloc[-1]) if "ATR14" in df_1h.columns else None,
         }
