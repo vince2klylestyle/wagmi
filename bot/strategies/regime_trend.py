@@ -145,9 +145,10 @@ class RegimeTrendStrategy(BaseStrategy):
         align_long = int(cu) + int(mfi_1h_val > 50) + int(regime_6h["ok"]) + int(regime_htf["ok"])
         align_short = int(cd) + int(mfi_1h_val < 50) + int(regime_6h["bearish"]) + int(regime_htf["bearish"])
 
-        buy = cu and (mfi_1h_val > 50) and multi_bull
-        # Relaxed short: only need partial bear regime + either cross-down or weak MFI
-        sell = cd and (mfi_1h_val < 50) and multi_bear
+        # Relaxed: at least one HTF must confirm direction (was: BOTH required)
+        # Full alignment (multi_bull) still gets higher confidence via align scoring
+        buy = cu and (mfi_1h_val > 50) and partial_bull
+        sell = cd and (mfi_1h_val < 50) and partial_bear
 
         # Regime momentum: strong alignment + recent cross (within 3 bars, not just this bar)
         # Enables directional trades in strong regimes without waiting for exact-bar cross
@@ -160,12 +161,12 @@ class RegimeTrendStrategy(BaseStrategy):
                 recent_cu = bool(cross_up.iloc[-3:].any())
                 recent_cd = bool(cross_dn.iloc[-3:].any())
 
-                # Require FULL multi-timeframe bull (not just partial) for momentum longs
-                if align_long >= 3 and recent_cu and multi_bull:
+                # Require partial HTF alignment for momentum entries (relaxed from full)
+                if align_long >= 3 and recent_cu and partial_bull:
                     buy = True
                     is_momentum = True
-                # Require 3+ alignment for momentum shorts (was 2, too loose)
-                elif align_short >= 3 and recent_cd and multi_bear:
+                # Require 3+ alignment for momentum shorts
+                elif align_short >= 3 and recent_cd and partial_bear:
                     sell = True
                     is_momentum = True
 
@@ -177,14 +178,21 @@ class RegimeTrendStrategy(BaseStrategy):
             return None
 
         # Build confidence from alignment
+        # Full alignment (both HTFs) gets 25/22 per factor; partial gets 20/18
+        full_bull = regime_6h["ok"] and regime_htf["ok"]
+        full_bear = regime_6h["bearish"] and regime_htf["bearish"]
         if buy:
-            confidence = align_long * (22.0 if is_momentum else 25.0)
+            full_align = full_bull
+            base_mult = 20.0 if not full_align else (22.0 if is_momentum else 25.0)
+            confidence = align_long * base_mult
             side = "BUY"
             sl = c - R
             tp1 = c + 1.5 * R
             tp2 = c + 3.0 * R
         else:
-            confidence = align_short * (22.0 if is_momentum else 25.0)
+            full_align = full_bear
+            base_mult = 20.0 if not full_align else (22.0 if is_momentum else 25.0)
+            confidence = align_short * base_mult
             side = "SELL"
             sl = c + R
             tp1 = c - 1.5 * R
@@ -201,7 +209,7 @@ class RegimeTrendStrategy(BaseStrategy):
 
         confidence = max(0, min(100, confidence))
 
-        if confidence < 60:
+        if confidence < 55:
             return None
 
         align = align_long if buy else align_short

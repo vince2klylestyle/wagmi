@@ -284,8 +284,8 @@ class TestWeightedEnsemble:
         ]
 
         merged = ensemble._merge_signals("BTC", signals)
-        # Plain average: (80+60)/2 = 70, + consensus bonus 3 = 73
-        assert merged.confidence == pytest.approx(73.0)
+        # Plain average: (80+60)/2 = 70, + consensus bonus 5 = 75
+        assert merged.confidence == pytest.approx(75.0)
 
 
 # ─── Weighted veto mode tests ────────────────────────────────────

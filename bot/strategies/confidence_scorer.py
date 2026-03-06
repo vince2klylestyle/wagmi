@@ -1,34 +1,101 @@
 """
-Strategy 2: Confidence Scoring Bot
-Ported from the user's original profitable bot (Bot 2).
+Strategy 2: Momentum Scorer
+Redesigned from the original zone-based confidence scorer.
 
 Core logic:
-- Same zone system as Monte Carlo bot
-- Tracks historical signal accuracy per (symbol, signal_type)
-- Adjusts confidence based on observed win rates
-- Evaluates signals after the fact to build confidence scores
+- ADX + Directional Index for trend strength & direction
+- MACD histogram for momentum acceleration
+- Bollinger Band / Keltner Channel squeeze for breakout detection
+- RSI divergence for reversal detection
+- Historical accuracy tracking per (symbol, signal_type) — carried forward
+- Uses 1h data only (backtest-compatible: CoinGecko provides 30d of 1h)
 """
 
 import json
-import os
-import statistics
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from .base import BaseStrategy, Signal
-from trading_config import RISK_MULTIPLIERS
 
-logger = logging.getLogger("bot.strategy.confidence_scorer")
+logger = logging.getLogger("bot.strategy.momentum_scorer")
+
+
+def _ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=max(2, span), adjust=False).mean()
+
+
+def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    prev = df["close"].shift(1)
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - prev).abs(),
+        (df["low"] - prev).abs(),
+    ], axis=1).max(axis=1)
+    return tr.rolling(period, min_periods=1).mean()
+
+
+def _adx_di(df: pd.DataFrame, period: int = 14) -> Dict[str, pd.Series]:
+    """Compute ADX, +DI, -DI."""
+    high, low, close = df["high"], df["low"], df["close"]
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=df.index)
+
+    atr_vals = _atr(df, period)
+    atr_safe = atr_vals.replace(0, 1e-12)
+
+    plus_di = 100 * _ema(plus_dm, period) / atr_safe
+    minus_di = 100 * _ema(minus_dm, period) / atr_safe
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-12)
+    adx = _ema(dx, period)
+
+    return {"adx": adx, "plus_di": plus_di, "minus_di": minus_di}
+
+
+def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+    """MACD line, signal line, histogram."""
+    macd_line = _ema(close, fast) - _ema(close, slow)
+    signal_line = _ema(macd_line, signal)
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+def _bollinger_bands(close: pd.Series, period: int = 20, std_mult: float = 2.0):
+    """Bollinger Bands: upper, middle, lower."""
+    mid = close.rolling(period, min_periods=1).mean()
+    std = close.rolling(period, min_periods=1).std().fillna(0)
+    return mid + std_mult * std, mid, mid - std_mult * std
+
+
+def _keltner_channels(df: pd.DataFrame, period: int = 20, atr_mult: float = 1.5):
+    """Keltner Channels: upper, middle, lower."""
+    mid = _ema(df["close"], period)
+    atr_vals = _atr(df, period)
+    return mid + atr_mult * atr_vals, mid, mid - atr_mult * atr_vals
+
+
+def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    delta = close.diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    roll_up = up.rolling(period, min_periods=1).mean()
+    roll_down = down.rolling(period, min_periods=1).mean().replace(0, 1e-12)
+    return 100 - (100 / (1 + roll_up / roll_down))
 
 
 class ConfidenceScorerStrategy(BaseStrategy):
     """
-    Zone-based strategy that tracks its own accuracy and adjusts
-    confidence based on historical performance per (symbol, signal_type).
+    Multi-factor momentum strategy that combines ADX, MACD, Bollinger squeeze,
+    and RSI for signal generation. Tracks historical accuracy per (symbol, signal_type)
+    and adjusts confidence based on observed win rates.
     """
 
     def __init__(self, symbols: Dict[str, Any], data_dir: str = "ml_data"):
@@ -39,7 +106,7 @@ class ConfidenceScorerStrategy(BaseStrategy):
         self.signal_log = self._load_signal_log()
 
     def get_required_timeframes(self) -> List[str]:
-        return ["daily"]
+        return ["1h"]
 
     def _load_signal_log(self) -> Dict:
         if self.signal_log_path.exists():
@@ -57,83 +124,6 @@ class ConfidenceScorerStrategy(BaseStrategy):
         except Exception as e:
             logger.warning(f"Failed to save signal log: {e}")
 
-    def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        if len(df) < 50:
-            return df
-        df = df.copy()
-        df["SMA20"] = df["close"].rolling(20).mean()
-        df["SMA50"] = df["close"].rolling(50).mean()
-        delta = df["close"].diff()
-        up = delta.clip(lower=0)
-        down = -delta.clip(upper=0)
-        roll_up = up.rolling(14).mean()
-        roll_down = down.rolling(14).mean()
-        df["RSI14"] = 100 - (100 / (1 + roll_up / roll_down.replace(0, 1e-12)))
-        df["vol_spike"] = df["volume"] > 2 * df["volume"].rolling(20).mean()
-        return df
-
-    def _compute_zones(self, df: pd.DataFrame, risk_tier: str) -> Optional[Dict]:
-        if len(df) < 20 or risk_tier not in RISK_MULTIPLIERS:
-            return None
-        sma20 = df["SMA20"].iloc[-1]
-        if pd.isna(sma20):
-            return None
-        stdev = statistics.pstdev(df["close"].iloc[-20:].tolist())
-        if stdev == 0:
-            return None
-        reg_k, deep_k = RISK_MULTIPLIERS[risk_tier]
-        return {
-            "deep_buy": max(0, sma20 - deep_k * stdev),
-            "regular_buy": max(0, sma20 - reg_k * stdev),
-            "regular_sell": sma20 + reg_k * stdev,
-            "safe_sell": sma20 + deep_k * stdev,
-            "current": df["close"].iloc[-1],
-            "sma20": sma20,
-            "stdev": stdev,
-        }
-
-    def _zone_action(self, zones: Dict) -> str:
-        c = zones["current"]
-        if c <= zones["deep_buy"]:
-            return "DEEP_BUY"
-        if c <= zones["regular_buy"]:
-            return "BUY"
-        if c >= zones["safe_sell"]:
-            return "SAFE_SELL"
-        if c >= zones["regular_sell"]:
-            return "SELL"
-        return "HOLD"
-
-    def _detect_bounce_short(self, df: pd.DataFrame, zones: Dict) -> bool:
-        """Detect bounce-to-resistance in downtrend (short setup).
-        Returns True if price is bouncing toward SMA20 in a confirmed downtrend."""
-        if len(df) < 20:
-            return False
-
-        current = zones["current"]
-        sma20 = zones["sma20"]
-        stdev = zones["stdev"]
-
-        sma50 = df["SMA50"].iloc[-1] if "SMA50" in df.columns else None
-        if sma50 is None or pd.isna(sma50):
-            return False
-
-        # Downtrend: SMA20 < SMA50
-        if not (sma20 < sma50):
-            return False
-
-        # Price bounced from recent low
-        recent_low = float(df["close"].iloc[-5:].min())
-        bounce = current - recent_low
-        if bounce < 0.3 * stdev:
-            return False
-
-        # Price near or above SMA20 (resistance)
-        if current > sma20 - 0.5 * stdev:
-            return True
-
-        return False
-
     def _log_signal(self, symbol: str, action: str, price: float):
         """Record a signal for later evaluation."""
         if symbol not in self.signal_log:
@@ -144,7 +134,6 @@ class ConfidenceScorerStrategy(BaseStrategy):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "evaluated": False,
         })
-        # Keep last 200 signals per symbol
         self.signal_log[symbol] = self.signal_log[symbol][-200:]
         self._save_signal_log()
 
@@ -161,27 +150,24 @@ class ConfidenceScorerStrategy(BaseStrategy):
         return wins / len(evaluated)
 
     def evaluate_past_signals(self, symbol: str, current_price: float):
-        """
-        Look back at unresolved signals and mark them as success/failure
-        based on price movement since signal.
-        """
+        """Evaluate unresolved signals based on subsequent price movement."""
         entries = self.signal_log.get(symbol, [])
         changed = False
         for e in entries:
             if e["evaluated"]:
                 continue
-            # Only evaluate if signal is at least a few data points old
             price_at_signal = e["price"]
             pct_move = (current_price - price_at_signal) / price_at_signal * 100
 
             success = False
-            if e["signal"] == "DEEP_BUY" and pct_move > 1.0:
+            sig = e["signal"]
+            if sig == "STRONG_BUY" and pct_move > 1.0:
                 success = True
-            elif e["signal"] == "BUY" and pct_move > 0.5:
+            elif sig == "BUY" and pct_move > 0.5:
                 success = True
-            elif e["signal"] == "SELL" and pct_move < -0.5:
+            elif sig == "SELL" and pct_move < -0.5:
                 success = True
-            elif e["signal"] == "SAFE_SELL" and pct_move < -1.0:
+            elif sig == "STRONG_SELL" and pct_move < -1.0:
                 success = True
 
             e["evaluated"] = True
@@ -193,113 +179,176 @@ class ConfidenceScorerStrategy(BaseStrategy):
         if changed:
             self._save_signal_log()
 
-    def evaluate(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
-        df = data.get("daily")
-        if df is None or len(df) < 50:
-            return None
+    def _detect_squeeze(self, df: pd.DataFrame) -> bool:
+        """Detect Bollinger Band inside Keltner Channel (volatility squeeze)."""
+        bb_upper, _, bb_lower = _bollinger_bands(df["close"])
+        kc_upper, _, kc_lower = _keltner_channels(df)
 
-        sym_config = self.symbols.get(symbol)
-        if sym_config is None:
-            return None
+        # Squeeze: BB inside KC (compressed volatility)
+        squeeze = (bb_lower.iloc[-1] > kc_lower.iloc[-1]) and (bb_upper.iloc[-1] < kc_upper.iloc[-1])
+        return squeeze
 
-        df = self._calculate_indicators(df)
-        risk_tier = sym_config.risk_tier if hasattr(sym_config, "risk_tier") else sym_config.get("risk", "medium")
-        zones = self._compute_zones(df, risk_tier)
-        if zones is None:
-            return None
+    def _detect_rsi_divergence(self, df: pd.DataFrame, rsi_vals: pd.Series, side: str, lookback: int = 10) -> bool:
+        """Detect bullish or bearish RSI divergence."""
+        if len(df) < lookback + 2:
+            return False
 
-        current = zones["current"]
-        stdev = zones["stdev"]
+        price = df["close"].iloc[-lookback:]
+        rsi_window = rsi_vals.iloc[-lookback:]
 
-        # Evaluate past signals with current price
-        self.evaluate_past_signals(symbol, current)
-
-        action = self._zone_action(zones)
-
-        rsi = df["RSI14"].iloc[-1] if "RSI14" in df.columns else 50
-        vol_spike = bool(df["vol_spike"].iloc[-1]) if "vol_spike" in df.columns else False
-
-        # Bounce-short in HOLD zone: detect downtrend bounces to resistance
-        if action == "HOLD":
-            if self._detect_bounce_short(df, zones):
-                action = "BOUNCE_SHORT"
-            else:
-                return None
-
-        # Base confidence from zone position
-        confidence = 50.0
-        if action in ("DEEP_BUY", "SAFE_SELL"):
-            confidence += 20
-        elif action == "BOUNCE_SHORT":
-            confidence += 12
+        if side == "BUY":
+            # Bullish divergence: price makes lower low but RSI makes higher low
+            price_ll = price.iloc[-1] < price.iloc[:lookback // 2].min()
+            rsi_hl = rsi_window.iloc[-1] > rsi_window.iloc[:lookback // 2].min()
+            return price_ll and rsi_hl
         else:
-            confidence += 10
+            # Bearish divergence: price makes higher high but RSI makes lower high
+            price_hh = price.iloc[-1] > price.iloc[:lookback // 2].max()
+            rsi_lh = rsi_window.iloc[-1] < rsi_window.iloc[:lookback // 2].max()
+            return price_hh and rsi_lh
 
-        # RSI boost
-        if action in ("DEEP_BUY", "BUY") and rsi < 35:
-            confidence += 10
-        elif action in ("SELL", "SAFE_SELL") and rsi > 65:
-            confidence += 10
-        elif action == "BOUNCE_SHORT" and rsi > 45:
-            confidence += 8  # not oversold = room to drop
+    def evaluate(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
+        df = data.get("1h")
+        if df is None or df.empty or len(df) < 50:
+            return None
 
-        # Volume spike boost
-        if vol_spike:
-            confidence += 5
+        close = df["close"]
+        entry = float(close.iloc[-1])
+        if pd.isna(entry):
+            return None
 
-        # Historical accuracy adjustment (the key differentiator of this strategy)
-        hist_action = action if action != "BOUNCE_SHORT" else "SELL"
-        hist_conf = self._get_historical_confidence(symbol, hist_action)
+        # Evaluate past signals
+        self.evaluate_past_signals(symbol, entry)
+
+        # Compute all indicators
+        di = _adx_di(df)
+        adx = float(di["adx"].iloc[-1])
+        plus_di = float(di["plus_di"].iloc[-1])
+        minus_di = float(di["minus_di"].iloc[-1])
+
+        macd_line, signal_line, histogram = _macd(close)
+        macd_hist = float(histogram.iloc[-1])
+        macd_hist_prev = float(histogram.iloc[-2]) if len(histogram) > 1 else 0
+        macd_rising = macd_hist > macd_hist_prev
+
+        rsi_vals = _rsi(close)
+        rsi_val = float(rsi_vals.iloc[-1])
+
+        atr_val = float(_atr(df).iloc[-1])
+
+        squeeze = self._detect_squeeze(df)
+
+        # --- Scoring system: 4 factors, each 0-25 points ---
+
+        # Factor 1: ADX + DI direction (0-25)
+        adx_score = 0
+        di_bullish = plus_di > minus_di
+        if adx > 25:
+            adx_score = 25 if adx > 35 else 20  # Strong vs moderate trend
+        elif adx > 20:
+            adx_score = 12  # Weak trend
+        # No score if ADX < 20 (no trend)
+
+        # Factor 2: MACD histogram (0-25)
+        macd_score = 0
+        if di_bullish:
+            if macd_hist > 0 and macd_rising:
+                macd_score = 25  # Positive and accelerating
+            elif macd_hist > 0:
+                macd_score = 15  # Positive but decelerating
+            elif macd_rising:
+                macd_score = 8   # Negative but improving
+        else:
+            if macd_hist < 0 and not macd_rising:
+                macd_score = 25  # Negative and accelerating down
+            elif macd_hist < 0:
+                macd_score = 15  # Negative but decelerating
+            elif not macd_rising:
+                macd_score = 8   # Positive but weakening
+
+        # Factor 3: Squeeze / volatility (0-25)
+        squeeze_score = 0
+        if squeeze:
+            squeeze_score = 20  # Squeeze detected — breakout imminent
+            # Direction of breakout determined by DI
+        else:
+            # No squeeze — reward if momentum aligns
+            if (di_bullish and macd_hist > 0) or (not di_bullish and macd_hist < 0):
+                squeeze_score = 10  # Momentum aligned without squeeze
+
+        # Factor 4: RSI confirmation (0-25)
+        rsi_score = 0
+        if di_bullish:
+            if rsi_val < 30:
+                rsi_score = 25  # Oversold + bullish DI = strong reversal setup
+            elif rsi_val < 50:
+                rsi_score = 15  # Below midline, room to run
+            elif rsi_val < 70:
+                rsi_score = 10  # In bullish territory but not overbought
+            # rsi > 70: overbought, no RSI score
+        else:
+            if rsi_val > 70:
+                rsi_score = 25  # Overbought + bearish DI = strong reversal setup
+            elif rsi_val > 50:
+                rsi_score = 15  # Above midline, room to fall
+            elif rsi_val > 30:
+                rsi_score = 10  # In bearish territory but not oversold
+            # rsi < 30: oversold, no RSI score
+
+        # RSI divergence bonus
+        side = "BUY" if di_bullish else "SELL"
+        if self._detect_rsi_divergence(df, rsi_vals, side):
+            rsi_score = min(25, rsi_score + 10)
+
+        # Total confidence
+        confidence = float(adx_score + macd_score + squeeze_score + rsi_score)
+
+        # Classify signal strength
+        if confidence >= 75:
+            action = "STRONG_BUY" if di_bullish else "STRONG_SELL"
+        elif confidence >= 55:
+            action = "BUY" if di_bullish else "SELL"
+        else:
+            return None  # Not enough momentum factors agree
+
+        # Historical accuracy adjustment (key differentiator)
+        hist_conf = self._get_historical_confidence(symbol, action)
         if hist_conf is not None:
             adjustment = (hist_conf - 0.5) * 30  # -15 to +15
             confidence += adjustment
             logger.info(
-                f"[{symbol}] {action} historical confidence={hist_conf:.0%}, "
-                f"adjustment={adjustment:+.1f}, final={confidence:.1f}"
+                f"[{symbol}] {action} hist WR={hist_conf:.0%}, "
+                f"adj={adjustment:+.1f}, final={confidence:.1f}"
             )
 
-        # If BUY or SELL action has terrible historical win rate, reduce
-        # confidence instead of trading. Don't flip direction — that
-        # introduces asymmetric SHORT bias.
+        # Penalize terrible historical WR
         if hist_conf is not None and hist_conf < 0.15:
             confidence -= 15
-            logger.info(
-                f"[{symbol}] {action} win rate {hist_conf:.0%} too low, "
-                f"reducing confidence by 15"
-            )
+            logger.info(f"[{symbol}] {action} WR {hist_conf:.0%} too low, -15 penalty")
 
         confidence = max(0, min(100, confidence))
 
-        # Log this signal
-        self._log_signal(symbol, action, current)
+        # Log signal
+        self._log_signal(symbol, action, entry)
 
-        if confidence < 60:
+        if confidence < 55:
             return None
 
-        # Determine side and levels
-        if action in ("DEEP_BUY", "BUY"):
-            side = "BUY"
-            sl = zones["deep_buy"] - stdev if action == "BUY" else current - 2.5 * stdev
-            tp1 = zones["sma20"]
-            tp2 = zones["regular_sell"]
-        elif action == "BOUNCE_SHORT":
-            side = "SELL"
-            sl = zones["sma20"] + 0.8 * stdev  # stop above SMA20 resistance
-            tp1 = zones["regular_buy"]
-            tp2 = zones["deep_buy"]
-        else:
-            side = "SELL"
-            sl = zones["safe_sell"] + stdev if action == "SELL" else current + 2.5 * stdev
-            tp1 = zones["sma20"]
-            tp2 = zones["regular_buy"]
+        # Stop/TP placement using ATR
+        K = 1.8
+        sl = entry - K * atr_val if side == "BUY" else entry + K * atr_val
+        stop_width = abs(entry - sl)
+        tp1 = entry + 1.5 * stop_width if side == "BUY" else entry - 1.5 * stop_width
+        tp2 = entry + 3.0 * stop_width if side == "BUY" else entry - 3.0 * stop_width
 
+        rr = abs(entry - tp1) / stop_width if stop_width > 0 else 0
         hist_str = f"hist_WR={hist_conf:.0%}" if hist_conf is not None else "hist_WR=n/a"
-        sw = abs(current - sl)
-        rr = abs(current - tp1) / sw if sw > 0 else 0
         ctx = (
-            f"zone={action}, RSI={rsi:.0f}, {hist_str}"
-            f"{', vol_spike' if vol_spike else ''}"
-            f", R:R={rr:.1f}"
+            f"ADX={adx:.0f}({'+DI' if di_bullish else '-DI'}), "
+            f"MACD={'rising' if macd_rising else 'falling'}, "
+            f"RSI={rsi_val:.0f}, "
+            f"{'SQUEEZE ' if squeeze else ''}"
+            f"{hist_str}, R:R={rr:.1f}"
         )
 
         return Signal(
@@ -307,37 +356,49 @@ class ConfidenceScorerStrategy(BaseStrategy):
             symbol=symbol,
             side=side,
             confidence=confidence,
-            entry=current,
+            entry=entry,
             sl=sl,
             tp1=tp1,
             tp2=tp2,
+            atr=atr_val,
             signal_context=ctx,
             metadata={
                 "action": action,
-                "zones": zones,
-                "rsi": float(rsi),
-                "vol_spike": vol_spike,
+                "adx": adx,
+                "plus_di": plus_di,
+                "minus_di": minus_di,
+                "macd_hist": macd_hist,
+                "macd_rising": macd_rising,
+                "rsi": rsi_val,
+                "squeeze": squeeze,
                 "historical_confidence": hist_conf,
+                "factor_scores": {
+                    "adx": adx_score,
+                    "macd": macd_score,
+                    "squeeze": squeeze_score,
+                    "rsi": rsi_score,
+                },
             },
         )
 
     def get_status(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-        df = data.get("daily")
-        if df is None or len(df) < 50:
+        df = data.get("1h")
+        if df is None or df.empty or len(df) < 50:
             return {"symbol": symbol, "strategy": self.name, "status": "insufficient_data"}
 
-        sym_config = self.symbols.get(symbol)
-        if sym_config is None:
-            return {"symbol": symbol, "strategy": self.name, "status": "no_config"}
+        close = df["close"]
+        di = _adx_di(df)
+        adx = float(di["adx"].iloc[-1])
+        plus_di = float(di["plus_di"].iloc[-1])
+        minus_di = float(di["minus_di"].iloc[-1])
 
-        df = self._calculate_indicators(df)
-        risk_tier = sym_config.risk_tier if hasattr(sym_config, "risk_tier") else sym_config.get("risk", "medium")
-        zones = self._compute_zones(df, risk_tier)
-        action = self._zone_action(zones) if zones else "UNKNOWN"
+        _, _, histogram = _macd(close)
+        rsi_vals = _rsi(close)
+        squeeze = self._detect_squeeze(df)
 
-        # Get all historical confidence scores
+        # Historical confidence scores
         conf_scores = {}
-        for act in ["DEEP_BUY", "BUY", "SELL", "SAFE_SELL"]:
+        for act in ["STRONG_BUY", "BUY", "SELL", "STRONG_SELL"]:
             hc = self._get_historical_confidence(symbol, act)
             if hc is not None:
                 conf_scores[act] = hc
@@ -345,15 +406,16 @@ class ConfidenceScorerStrategy(BaseStrategy):
         return {
             "symbol": symbol,
             "strategy": self.name,
-            "action": action,
-            "zones": zones,
-            "rsi": float(df["RSI14"].iloc[-1]) if "RSI14" in df.columns else None,
-            "vol_spike": bool(df["vol_spike"].iloc[-1]) if "vol_spike" in df.columns else None,
+            "price": float(close.iloc[-1]),
+            "adx": adx,
+            "plus_di": plus_di,
+            "minus_di": minus_di,
+            "macd_hist": float(histogram.iloc[-1]),
+            "rsi": float(rsi_vals.iloc[-1]),
+            "squeeze": squeeze,
+            "di_direction": "bullish" if plus_di > minus_di else "bearish",
             "historical_confidence": conf_scores,
-            "total_signals_logged": sum(
-                len(v) for v in self.signal_log.values()
-            ),
-            "price": float(df["close"].iloc[-1]),
+            "total_signals_logged": sum(len(v) for v in self.signal_log.values()),
         }
 
     def get_performance_report(self) -> Dict[str, Any]:
@@ -365,7 +427,7 @@ class ConfidenceScorerStrategy(BaseStrategy):
                 continue
 
             by_type = {}
-            for sig_type in ["DEEP_BUY", "BUY", "SELL", "SAFE_SELL"]:
+            for sig_type in ["STRONG_BUY", "BUY", "SELL", "STRONG_SELL"]:
                 sigs = [e for e in evaluated if e["signal"] == sig_type]
                 if sigs:
                     wins = sum(1 for s in sigs if s["success"])

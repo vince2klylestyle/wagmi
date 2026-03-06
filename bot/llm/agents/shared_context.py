@@ -133,13 +133,13 @@ STRATEGY_THEORY = {
         "fail": "Trends blow through zones without reverting. News dislocations make historical distribution useless.",
     },
     "confidence_scorer": {
-        "how": "Same zones as MC + historical win rate per (symbol, action). Adjusts confidence by observed outcomes.",
-        "trust": "Trust grows with sample size. 20+ trades=statistically meaningful. Best arbitrator between strategies.",
-        "fail": "Cold start (<10 trades)=unreliable. Lags regime shifts. Can overfit to recent conditions.",
+        "how": "Multi-factor momentum: ADX+DI direction, MACD histogram acceleration, BB/KC squeeze detection, RSI divergence. 1h data. Historical win rate tracking per (symbol, action).",
+        "trust": "Best in trending markets (ADX>25). Squeeze signals catch breakouts. Historical WR tracking improves over time.",
+        "fail": "Choppy markets (ADX<20) produce no signals. Cold start (<10 trades)=no historical adjustment. Squeeze can false-fire.",
     },
     "multi_tier_quality": {
-        "how": "5m EMA20/50 crossover + VWAP alignment + 1h EMA trend. 3 tiers: PRIORITY(75%+), REGULAR(65%+), MANUAL(<65%).",
-        "trust": "Best for scalps (5-30min). When EMA+VWAP+1h all align=high conviction micro-entry.",
+        "how": "1h EMA20/50 crossover + VWAP alignment + 6h EMA trend. 3 tiers: PRIORITY(75%+), REGULAR(65%+), MANUAL(<65%).",
+        "trust": "Best for confirmed multi-TF entries. When EMA+VWAP+6h all align=high conviction entry.",
         "fail": "Noisy in ranges (EMA whipsaw). Must confirm with slower strategy. MANUAL tier=low conviction.",
     },
 }
@@ -151,10 +151,10 @@ STRATEGY_THEORY = {
 STRATEGY_CONFLUENCE = {
     ("regime_trend", "monte_carlo_zones"): "convergent — trend momentum + statistical zone agree. If both BUY: macro trend AND price at statistical buy level. Very strong.",
     ("regime_trend", "multi_tier_quality"): "timeframe — 6h/16h macro direction + 5m micro entry. If both BUY: regime confirms + exact entry bar found. Best timing.",
-    ("regime_trend", "confidence_scorer"): "convergent — momentum + historical win rate. If both BUY: trend direction AND history validates this setup type.",
-    ("monte_carlo_zones", "confidence_scorer"): "redundant — both use SMA20/stdev zones. Agreement is expected. Less independent confirmation.",
-    ("monte_carlo_zones", "multi_tier_quality"): "convergent — statistical zone + EMA micro-trend. If both BUY: mean-reversion level confirmed by short-term momentum shift.",
-    ("confidence_scorer", "multi_tier_quality"): "timeframe — historical validation + real-time micro entry. If both BUY: setup type historically profitable + clean current entry.",
+    ("regime_trend", "confidence_scorer"): "convergent — WT regime + ADX/MACD momentum. If both BUY: macro trend AND momentum acceleration both confirm. Very strong.",
+    ("monte_carlo_zones", "confidence_scorer"): "convergent — statistical zones + momentum indicators. Different methodologies (mean-reversion vs trend-following). High-value agreement.",
+    ("monte_carlo_zones", "multi_tier_quality"): "convergent — statistical zone + EMA multi-TF trend. If both BUY: mean-reversion level confirmed by 1h+6h momentum shift.",
+    ("confidence_scorer", "multi_tier_quality"): "convergent — ADX/MACD momentum + EMA multi-TF quality. If both BUY: momentum + multi-timeframe structure both confirm entry.",
 }
 
 # Confluence quality weights: convergent > timeframe > redundant
@@ -281,12 +281,12 @@ def _classify_setup(strategies: List[str], best_confluence: str, regime: str) ->
 
 
 STRATEGY_REGIME_FIT = {
-    "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
-    "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "strong",   "multi_tier_quality": "weak"},
+    "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "strong",   "multi_tier_quality": "moderate"},
+    "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "weak",     "multi_tier_quality": "weak"},
     "panic":            {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
     "high_volatility":  {"regime_trend": "weak",   "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
     "low_liquidity":    {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "avoid",    "multi_tier_quality": "avoid"},
-    "news_dislocation": {"regime_trend": "avoid",  "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "avoid"},
+    "news_dislocation": {"regime_trend": "avoid",  "monte_carlo_zones": "weak",     "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
     "unknown":          {"regime_trend": "weak",   "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "weak"},
 }
 
