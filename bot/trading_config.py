@@ -94,7 +94,7 @@ class TradingConfig:
 
     # Leverage tiers: (min_confidence, max_confidence) -> leverage
     enable_leverage: bool = field(default_factory=lambda: _env_bool("ENABLE_LEVERAGE", True))
-    max_leverage: float = field(default_factory=lambda: _env_float("MAX_LEVERAGE", 5.0))
+    max_leverage: float = field(default_factory=lambda: _env_float("MAX_LEVERAGE", 25.0))
     max_risk_multiplier: float = field(default_factory=lambda: _env_float("MAX_RISK_MULTIPLIER", 1.5))
 
     # Trailing stop
@@ -425,17 +425,21 @@ class SymbolOverrides:
     atr_mult_tp1: Optional[float] = None
     atr_mult_tp2: Optional[float] = None
     enabled: bool = True
+    # Volatility profile: "low" (BTC-like), "medium" (SOL-like), "high" (HYPE/meme)
+    # Affects chop detection sensitivity and ensemble confidence floor
+    volatility_profile: str = "medium"
 
 
 # Default per-symbol overrides
 # Leverage caps align with Hyperliquid exchange maximums in symbol_precision.json
 # risk_per_trade overrides let memecoins risk slightly less than large caps
+# volatility_profile tunes chop detection + strategy sensitivity per asset
 DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
-    "BTC": SymbolOverrides(max_leverage=5.0),
-    "SOL": SymbolOverrides(max_leverage=5.0),
-    "HYPE": SymbolOverrides(max_leverage=4.0),
-    "DOGE": SymbolOverrides(max_leverage=3.0),
-    "FARTCOIN": SymbolOverrides(max_leverage=3.0),
+    "BTC": SymbolOverrides(max_leverage=25.0, volatility_profile="low"),
+    "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium"),
+    "HYPE": SymbolOverrides(max_leverage=20.0, volatility_profile="high"),
+    "DOGE": SymbolOverrides(max_leverage=12.0, volatility_profile="high"),
+    "FARTCOIN": SymbolOverrides(max_leverage=10.0, volatility_profile="high"),
 }
 
 
@@ -452,18 +456,18 @@ def get_symbol_param(symbol: str, param: str, config: TradingConfig) -> float:
 # ── Paper vs Live Config Profiles ─────────────────────────────────────
 
 PAPER_PROFILE_OVERRIDES = {
-    "max_leverage": 5.0,        # Conservative cap — survive first, scale later
-    "risk_per_trade": 0.02,     # 2% risk per trade
+    "max_leverage": 25.0,       # Match live — paper should test real sizing
+    "risk_per_trade": 0.02,     # 2% risk per trade (was 5% — too aggressive with leverage)
     "max_open_positions": 3,
-    "max_portfolio_leverage": 3.0,  # Notional cap: equity * 3x (tighter portfolio risk)
+    "max_portfolio_leverage": 5.0,  # Notional cap: equity * 5x (leveraged trades need headroom)
     "enable_smart_orders": False,
 }
 
 LIVE_PROFILE_OVERRIDES = {
-    "max_leverage": 5.0,        # Conservative cap — earn the right to higher leverage
-    "risk_per_trade": 0.02,     # 2% risk per trade
+    "max_leverage": 25.0,       # Full leverage in live
+    "risk_per_trade": 0.02,     # 2% risk per trade (was 5% — too aggressive with leverage)
     "max_open_positions": 3,
-    "max_portfolio_leverage": 3.0,  # Notional cap: equity * 3x (tighter portfolio risk)
+    "max_portfolio_leverage": 5.0,  # Notional cap: equity * 5x (leveraged trades need headroom)
     "enable_smart_orders": True,
 }
 

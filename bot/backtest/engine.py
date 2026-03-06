@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data.fetcher import DataFetcher
-from trading_config import TradingConfig, DEFAULT_SYMBOLS
+from trading_config import TradingConfig, DEFAULT_SYMBOLS, DEFAULT_SYMBOL_OVERRIDES
 from strategies.base import Signal
 from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
@@ -35,6 +35,7 @@ from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
 from execution.risk import RiskManager, CircuitBreaker
 from execution.candidate import TradeCandidate, CandidateLogger
+from strategies.chop_detector import ChopDetector
 
 logger = logging.getLogger("bot.backtest")
 
@@ -78,20 +79,21 @@ class BacktestEngine:
             max_leverage=self.config.max_leverage,
         )
 
-        # Match live circuit breaker settings — backtest should reflect
-        # real trading behavior. Wider CB just hides risk.
-        # Live: 5% daily / 10% drawdown
-        # Backtest: same defaults, unless env overridden for learning runs.
+        # Widen circuit breakers for backtest to avoid cascading starvation
+        # Live: 5% daily / 10% drawdown (tight, protects real money)
+        # Backtest: 8% daily / 15% drawdown (looser, prioritizes learning data)
         self.risk_mgr.circuit_breaker.daily_loss_limit_pct = float(
-            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.05")
+            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.08")
         )
         self.risk_mgr.circuit_breaker.max_drawdown_pct = float(
-            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.10")
+            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.15")
         )
 
         # Results
         self.equity_curve: List[Dict] = []
         self.signals_generated: List[Dict] = []
+        self.cb_events: List[Dict] = []  # Circuit breaker trip log
+        self.signals_blocked_by_cb = 0  # Signals skipped due to CB
 
         # Candidate tracking for counterfactual analysis
         self._candidate_logger = None
@@ -136,11 +138,19 @@ class BacktestEngine:
         sym_configs = {s: DEFAULT_SYMBOLS[s] for s in symbols if s in DEFAULT_SYMBOLS}
         active_strategies = self._build_strategies(sym_configs, strategies)
 
+        # Build chop detector with per-symbol volatility profiles
+        chop = ChopDetector(threshold=getattr(self.config, "chop_threshold", 0.55))
+        for sym in symbols:
+            sym_overrides = DEFAULT_SYMBOL_OVERRIDES.get(sym)
+            if sym_overrides and hasattr(sym_overrides, "volatility_profile"):
+                chop.set_symbol_profile(sym, sym_overrides.volatility_profile)
+
         ensemble = EnsembleStrategy(
             strategies=active_strategies,
             mode=self.config.ensemble_mode,
             min_votes=self.config.min_votes_required,
             veto_ratio=self.config.veto_ratio,
+            chop_detector=chop,
         )
 
         # Fetch historical data for all symbols
@@ -215,24 +225,14 @@ class BacktestEngine:
             if self.llm:
                 self.llm.reset_for_symbol(symbol)
 
-            # Between symbols: re-evaluate circuit breaker against current
-            # equity. If thresholds are still exceeded (daily loss, drawdown),
-            # the breaker stays tripped and the next symbol won't trade.
-            # Only reset override count so cooldown logic works cleanly.
+            # Circuit breaker persists across symbols (matches live behavior).
+            # Only reset the consecutive_losses counter (which is symbol-specific
+            # noise) — drawdown, daily PnL, and trip state carry over so the
+            # backtest reflects real account-level protection.
             if hasattr(self.risk_mgr, "circuit_breaker") and self.risk_mgr.circuit_breaker:
                 cb = self.risk_mgr.circuit_breaker
-                cb._override_count = 0
-                # Re-check breakers: if daily_pnl or drawdown still exceed
-                # limits, the breaker stays tripped. If a cooldown elapsed
-                # (checked in is_trading_allowed), it will clear naturally.
-                if cb.tripped:
-                    # Keep it tripped — don't reset between symbols.
-                    # The cooldown mechanism in is_trading_allowed() will
-                    # clear it when enough sim-time has passed.
-                    pass
-                # DO NOT reset daily_pnl — portfolio-level daily loss tracking
-                # DO NOT reset last_reset_date — let daily boundary handle it
-                # DO NOT reset peak_equity — track drawdown across all symbols
+                cb.consecutive_losses = 0  # New symbol = fresh streak
+                # Do NOT reset: tripped, trip_time, peak_equity, daily_pnl, _override_count
 
             data = all_data.get(symbol, {})
             df_1h = data.get("1h", pd.DataFrame())
@@ -356,6 +356,14 @@ class BacktestEngine:
                         if self.llm and cb_event.action in self._CLOSE_ACTIONS:
                             self.llm.clear_exit_counter(cb_event.symbol)
                             self._run_llm_learning(cb_event, current_price)
+                        self.cb_events.append({
+                            "time": str(df_1h["time"].iloc[i]),
+                            "symbol": symbol,
+                            "action": "force_close",
+                            "reason": self.risk_mgr.circuit_breaker.trip_reason,
+                            "equity": self.risk_mgr.equity,
+                            "pnl": cb_event.pnl,
+                        })
 
             # LLM: run Exit Agent on open positions
             if self.llm:
@@ -366,8 +374,9 @@ class BacktestEngine:
             if i <= last_close_idx + 1:
                 continue  # Let the market breathe for 1 candle after a close
 
-            # Try to generate signal
-            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt):
+            # Try to generate signal — track CB blocks
+            cb_blocked = not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt)
+            if not cb_blocked:
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal:
                     # Create candidate for dual-world tracking
@@ -388,12 +397,19 @@ class BacktestEngine:
                         # LLM vetoed — log candidate with flat action
                         candidate.llm_action = "flat"
                         self._candidate_logger.log_candidate(candidate)
+            else:
+                self.signals_blocked_by_cb += 1
 
-            # Record equity
+            # Record equity with CB state
             self.equity_curve.append({
                 "time": str(df_1h["time"].iloc[i]),
                 "equity": self.risk_mgr.equity,
                 "open_positions": self.pos_mgr.get_open_count(),
+                "cb_active": self.risk_mgr.circuit_breaker.tripped,
+                "drawdown_pct": round(
+                    (self.risk_mgr.circuit_breaker.peak_equity - self.risk_mgr.equity)
+                    / self.risk_mgr.circuit_breaker.peak_equity * 100, 1
+                ) if self.risk_mgr.circuit_breaker.peak_equity > 0 else 0,
             })
 
             # LLM: checkpoint and progress
@@ -480,7 +496,8 @@ class BacktestEngine:
             if i <= last_close_idx + 1:
                 continue
 
-            if self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt):
+            cb_blocked = not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt)
+            if not cb_blocked:
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal:
                     # Create candidate for dual-world tracking
@@ -498,11 +515,18 @@ class BacktestEngine:
                     else:
                         candidate.llm_action = "flat"
                         self._candidate_logger.log_candidate(candidate)
+            else:
+                self.signals_blocked_by_cb += 1
 
             self.equity_curve.append({
                 "time": str(df["time"].iloc[i]),
                 "equity": self.risk_mgr.equity,
                 "open_positions": self.pos_mgr.get_open_count(),
+                "cb_active": self.risk_mgr.circuit_breaker.tripped,
+                "drawdown_pct": round(
+                    (self.risk_mgr.circuit_breaker.peak_equity - self.risk_mgr.equity)
+                    / self.risk_mgr.circuit_breaker.peak_equity * 100, 1
+                ) if self.risk_mgr.circuit_breaker.peak_equity > 0 else 0,
             })
 
             if self.llm:
@@ -871,11 +895,7 @@ class BacktestEngine:
             strategy=signal.strategy,
             confidence=signal.confidence,
             tp1_close_pct=adjusted["tp1_close_pct"],
-            entry_reasons={
-                "backtest": True,
-                "strategy": signal.strategy,
-                "strategies_agree": signal.metadata.get("strategies_agree", []),
-            },
+            entry_reasons={"backtest": True, "strategy": signal.strategy},
             trade_profile=trade_prof,
             notes=position_notes,
         )
@@ -946,11 +966,14 @@ class BacktestEngine:
                 **trade_summary,
             },
             "by_strategy": self._report_by_strategy(),
-            "by_contributing_strategy": self._report_by_contributing_strategy(),
-            "by_agreement_level": self._report_by_agreement_level(),
             "by_symbol": self._report_by_symbol(),
             "leverage_stats": self._report_leverage(),
             "equity_curve_length": len(self.equity_curve),
+            "circuit_breaker_stats": self._report_circuit_breaker(),
+            "by_agreement": self._report_by_agreement(),
+            "strategy_health": self._report_strategy_health(),
+            "recommendations": self._generate_recommendations(),
+            "equity_curve": self.equity_curve,
         }
 
         # Add LLM stats and detailed data if LLM integration was used
@@ -971,8 +994,7 @@ class BacktestEngine:
     # Actions that represent trade closes (not OPEN events)
     _CLOSE_ACTIONS = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                       "EMERGENCY", "BACKTEST_END", "HOLD_LIMIT",
-                      "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
-                      "CIRCUIT_BREAKER")
+                      "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
 
     def _report_by_strategy(self) -> Dict:
         result = {}
@@ -986,57 +1008,6 @@ class BacktestEngine:
                     result[strat]["wins"] += 1
                 result[strat]["pnl"] += event.pnl
         for strat, stats in result.items():
-            stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
-        return result
-
-    def _report_by_contributing_strategy(self) -> Dict:
-        """Break down win rate per individual strategy that contributed to ensemble trades.
-
-        Each trade may have multiple contributing strategies (e.g. regime_trend + confidence_scorer).
-        This counts each strategy's participation and win/loss record independently.
-        """
-        result = {}
-        for event in self.pos_mgr.trade_log:
-            if event.action in self._CLOSE_ACTIONS:
-                meta = event.metadata or {}
-                entry_reasons = meta.get("entry_reasons", {})
-                strategies = entry_reasons.get("strategies_agree", [])
-                if not strategies:
-                    # Fallback: use the event strategy name
-                    strategies = [event.strategy or "unknown"]
-                for strat in strategies:
-                    if strat not in result:
-                        result[strat] = {"trades": 0, "wins": 0, "pnl": 0.0, "by_action": {}}
-                    result[strat]["trades"] += 1
-                    if event.pnl > 0:
-                        result[strat]["wins"] += 1
-                    result[strat]["pnl"] += event.pnl
-                    # Track close action breakdown
-                    act = event.action
-                    result[strat]["by_action"][act] = result[strat]["by_action"].get(act, 0) + 1
-        for strat, stats in result.items():
-            stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
-        return result
-
-    def _report_by_agreement_level(self) -> Dict:
-        """Break down performance by how many strategies agreed on each trade."""
-        result = {}
-        for event in self.pos_mgr.trade_log:
-            if event.action in self._CLOSE_ACTIONS:
-                meta = event.metadata or {}
-                entry_reasons = meta.get("entry_reasons", {})
-                strategies = entry_reasons.get("strategies_agree", [])
-                n = len(strategies) if strategies else 0
-                key = f"{n}_agree"
-                if key not in result:
-                    result[key] = {"trades": 0, "wins": 0, "pnl": 0.0, "by_action": {}}
-                result[key]["trades"] += 1
-                if event.pnl > 0:
-                    result[key]["wins"] += 1
-                result[key]["pnl"] += event.pnl
-                act = event.action
-                result[key]["by_action"][act] = result[key]["by_action"].get(act, 0) + 1
-        for level, stats in result.items():
             stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
         return result
 
@@ -1072,6 +1043,203 @@ class BacktestEngine:
             leveraged["avg_leverage"] = sum(levs) / len(levs)
         return {"spot": spot, "leveraged": leveraged}
 
+    def _report_circuit_breaker(self) -> Dict[str, Any]:
+        """Report circuit breaker impact on backtest."""
+        cb = self.risk_mgr.circuit_breaker
+        # Count candles spent in CB-tripped state
+        cb_candles = sum(1 for e in self.equity_curve if e.get("cb_active"))
+        total_candles = len(self.equity_curve) or 1
+        # Track equity curve valleys during CB
+        cb_force_close_pnl = sum(e.get("pnl", 0) for e in self.cb_events)
+        return {
+            "total_trips": cb._trip_count,
+            "signals_blocked": self.signals_blocked_by_cb,
+            "candles_locked_out": cb_candles,
+            "lockout_pct": round(cb_candles / total_candles * 100, 1),
+            "force_close_events": len(self.cb_events),
+            "force_close_pnl": round(cb_force_close_pnl, 2),
+            "peak_equity": round(cb.peak_equity, 2),
+        }
+
+    def _report_by_agreement(self) -> Dict[str, Any]:
+        """Report performance by number of strategies agreeing."""
+        result = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action in self._CLOSE_ACTIONS:
+                meta = event.metadata or {}
+                num_agree = meta.get("num_agree", 0)
+                strategies = meta.get("strategies_agree", [])
+                key = f"{num_agree}_agree"
+                if key not in result:
+                    result[key] = {
+                        "trades": 0, "wins": 0, "pnl": 0.0,
+                        "close_types": {}, "strategy_combos": {},
+                    }
+                bucket = result[key]
+                bucket["trades"] += 1
+                if event.pnl > 0:
+                    bucket["wins"] += 1
+                bucket["pnl"] += event.pnl
+                # Track close types
+                ct = bucket["close_types"]
+                ct[event.action] = ct.get(event.action, 0) + 1
+                # Track which strategy combos appear
+                combo = "+".join(sorted(strategies)) if strategies else "unknown"
+                sc = bucket["strategy_combos"]
+                sc[combo] = sc.get(combo, 0) + 1
+        for key, stats in result.items():
+            stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
+            stats["avg_pnl"] = stats["pnl"] / stats["trades"] if stats["trades"] else 0
+            # Add profit factor per combo
+            combo_details = {}
+            for combo_key, combo_count in stats.get("strategy_combos", {}).items():
+                combo_details[combo_key] = {
+                    "trades": combo_count, "wins": 0, "gross_win": 0.0, "gross_loss": 0.0,
+                }
+            # Re-walk to compute combo-level PF
+            for event in self.pos_mgr.trade_log:
+                if event.action in self._CLOSE_ACTIONS:
+                    meta = event.metadata or {}
+                    n = meta.get("num_agree", 0)
+                    if f"{n}_agree" != key:
+                        continue
+                    strats = meta.get("strategies_agree", [])
+                    combo = "+".join(sorted(strats)) if strats else "unknown"
+                    if combo in combo_details:
+                        if event.pnl > 0:
+                            combo_details[combo]["wins"] += 1
+                            combo_details[combo]["gross_win"] += event.pnl
+                        else:
+                            combo_details[combo]["gross_loss"] += abs(event.pnl)
+            for combo, cd in combo_details.items():
+                cd["pf"] = round(cd["gross_win"] / cd["gross_loss"], 2) if cd["gross_loss"] > 0 else 99.0
+                cd["wr"] = round(cd["wins"] / cd["trades"], 2) if cd["trades"] > 0 else 0
+            stats["combo_details"] = combo_details
+        return result
+
+    def _report_strategy_health(self) -> Dict[str, Any]:
+        """Per-strategy health metrics: PF, EV, streaks, worst trade."""
+        # Track contributing strategies, not just "ensemble"
+        contrib: Dict[str, Dict] = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action in self._CLOSE_ACTIONS:
+                meta = event.metadata or {}
+                strategies = meta.get("strategies_agree", [])
+                for strat in strategies:
+                    if strat not in contrib:
+                        contrib[strat] = {
+                            "trades": 0, "wins": 0, "gross_win": 0.0,
+                            "gross_loss": 0.0, "worst_trade": 0.0,
+                            "max_loss_streak": 0, "_cur_streak": 0,
+                            "pnl_curve": [],
+                        }
+                    c = contrib[strat]
+                    c["trades"] += 1
+                    c["pnl_curve"].append(event.pnl)
+                    if event.pnl > 0:
+                        c["wins"] += 1
+                        c["gross_win"] += event.pnl
+                        c["_cur_streak"] = 0
+                    else:
+                        c["gross_loss"] += abs(event.pnl)
+                        c["_cur_streak"] += 1
+                        c["max_loss_streak"] = max(c["max_loss_streak"], c["_cur_streak"])
+                        c["worst_trade"] = min(c["worst_trade"], event.pnl)
+
+        result = {}
+        for strat, c in contrib.items():
+            t = c["trades"]
+            w = c["wins"]
+            wr = w / t if t > 0 else 0
+            pf = round(c["gross_win"] / c["gross_loss"], 2) if c["gross_loss"] > 0 else 99.0
+            avg_win = c["gross_win"] / w if w > 0 else 0
+            avg_loss = c["gross_loss"] / (t - w) if (t - w) > 0 else 0
+            ev = round(avg_win * wr - avg_loss * (1 - wr), 2)
+            net = round(c["gross_win"] - c["gross_loss"], 2)
+            result[strat] = {
+                "trades": t,
+                "win_rate": round(wr, 3),
+                "profit_factor": pf,
+                "expected_value": ev,
+                "net_pnl": net,
+                "max_loss_streak": c["max_loss_streak"],
+                "worst_trade": round(c["worst_trade"], 2),
+                "gross_win": round(c["gross_win"], 2),
+                "gross_loss": round(c["gross_loss"], 2),
+            }
+            del c["_cur_streak"]
+            del c["pnl_curve"]
+        return result
+
+    def _generate_recommendations(self) -> List[str]:
+        """Auto-generate actionable recommendations from backtest results."""
+        recs = []
+        health = self._report_strategy_health()
+
+        # Flag strategies with poor profit factor
+        for strat, h in health.items():
+            if h["profit_factor"] < 0.8 and h["trades"] >= 10:
+                recs.append(
+                    f"CONSIDER DISABLING {strat} -- profit factor {h['profit_factor']}, "
+                    f"net ${h['net_pnl']:,.2f} over {h['trades']} trades"
+                )
+            elif h["profit_factor"] < 1.0 and h["trades"] >= 20:
+                recs.append(
+                    f"WATCH {strat} -- profit factor {h['profit_factor']}, "
+                    f"losing ${abs(h['net_pnl']):,.2f}"
+                )
+
+        # Compare agreement levels
+        by_agree = self._report_by_agreement()
+        agree_keys = sorted(by_agree.keys())
+        if len(agree_keys) >= 2:
+            best_agree = max(agree_keys, key=lambda k: by_agree[k].get("avg_pnl", 0))
+            worst_agree = min(agree_keys, key=lambda k: by_agree[k].get("avg_pnl", 0))
+            if by_agree[worst_agree]["avg_pnl"] < 0:
+                recs.append(
+                    f"{best_agree} outperforms {worst_agree} by "
+                    f"${by_agree[best_agree]['pnl'] - by_agree[worst_agree]['pnl']:,.2f} "
+                    f"-- review losing combos in {worst_agree}"
+                )
+
+        # Flag losing combos
+        for key, stats in by_agree.items():
+            for combo, cd in stats.get("combo_details", {}).items():
+                if cd.get("pf", 99) < 0.8 and cd.get("trades", 0) >= 5:
+                    recs.append(
+                        f"LOSING COMBO in {key}: {combo} -- PF={cd['pf']}, "
+                        f"{cd['trades']} trades"
+                    )
+
+        # Symbol recommendation
+        by_sym = self._report_by_symbol()
+        if by_sym:
+            best_sym = max(by_sym.items(), key=lambda x: x[1].get("win_rate", 0))
+            recs.append(
+                f"Strongest symbol: {best_sym[0]} ({best_sym[1]['win_rate']:.0%} WR, "
+                f"${best_sym[1]['pnl']:,.2f})"
+            )
+
+        # CB lockout warning
+        cb = self._report_circuit_breaker()
+        if cb.get("lockout_pct", 0) > 20:
+            recs.append(
+                f"Circuit breakers locked out {cb['lockout_pct']:.1f}% of backtest "
+                f"-- signals may be too aggressive or risk limits too tight"
+            )
+
+        # Drawdown warning
+        if self.equity_curve:
+            equities = [e["equity"] for e in self.equity_curve]
+            peak = max(equities)
+            max_dd = max((peak - e) / peak for e in equities) * 100
+            if max_dd > 30:
+                recs.append(
+                    f"Max drawdown {max_dd:.1f}% exceeds safe threshold "
+                    f"-- consider reducing leverage or risk_per_trade"
+                )
+
+        return recs
 
     def _report_trade_timeline(self) -> List[Dict[str, Any]]:
         """Build per-trade timeline with full position context for analysis."""
@@ -1178,6 +1346,26 @@ def export_trade_csv(report: Dict, filepath: str):
         writer.writeheader()
         writer.writerows(timeline)
 
+    # Auto-export equity curve alongside trade CSV
+    equity_path = filepath.replace(".csv", "_equity_curve.csv")
+    export_equity_curve_csv(report, equity_path)
+
+
+def export_equity_curve_csv(report: Dict, filepath: str):
+    """Export equity curve as CSV for visualization."""
+    import csv
+
+    curve = report.get("equity_curve", [])
+    if not curve:
+        return
+
+    fieldnames = ["time", "equity", "open_positions", "cb_active", "drawdown_pct"]
+    with open(filepath, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(curve)
+    print(f"  Equity curve exported to {filepath}")
+
 
 def print_report(report: Dict):
     """Pretty-print a backtest report."""
@@ -1203,28 +1391,35 @@ def print_report(report: Dict):
         for strat, stats in report["by_strategy"].items():
             print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
 
-    if report.get("by_contributing_strategy"):
-        print("\n  By Contributing Strategy (NOTE: PnL is multi-counted across contributors):")
-        for strat, stats in sorted(report["by_contributing_strategy"].items(), key=lambda x: -x[1]["trades"]):
-            actions = stats.get("by_action", {})
-            action_str = ", ".join(f"{k}={v}" for k, v in sorted(actions.items()))
-            print(f"    {strat}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
-            if action_str:
-                print(f"      close types: {action_str}")
-
-    if report.get("by_agreement_level"):
-        print("\n  By Agreement Level:")
-        for level, stats in sorted(report["by_agreement_level"].items()):
-            actions = stats.get("by_action", {})
-            action_str = ", ".join(f"{k}={v}" for k, v in sorted(actions.items()))
-            print(f"    {level}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
-            if action_str:
-                print(f"      close types: {action_str}")
-
     if report.get("by_symbol"):
         print("\n  By Symbol:")
         for sym, stats in report["by_symbol"].items():
             print(f"    {sym}: {stats['trades']} trades, {stats['win_rate']:.0%} win rate, ${stats['pnl']:,.2f}")
+
+    # Circuit breaker impact
+    cb = report.get("circuit_breaker_stats", {})
+    if cb:
+        print(f"\n  Circuit Breaker Impact:")
+        print(f"    Total trips:       {cb.get('total_trips', 0)}")
+        print(f"    Signals blocked:   {cb.get('signals_blocked', 0)}")
+        print(f"    Candles locked:    {cb.get('candles_locked_out', 0)} ({cb.get('lockout_pct', 0):.1f}% of backtest)")
+        print(f"    Force closes:      {cb.get('force_close_events', 0)} (PnL: ${cb.get('force_close_pnl', 0):,.2f})")
+
+    # Agreement level breakdown
+    by_agree = report.get("by_agreement", {})
+    if by_agree:
+        print(f"\n  By Agreement Level:")
+        for key in sorted(by_agree.keys()):
+            stats = by_agree[key]
+            wr = stats['win_rate']
+            avg = stats['avg_pnl']
+            print(f"    {key}: {stats['trades']} trades, {wr:.0%} WR, "
+                  f"${stats['pnl']:,.2f} total, ${avg:,.2f} avg/trade")
+            # Show top strategy combos
+            combos = stats.get("strategy_combos", {})
+            top_combos = sorted(combos.items(), key=lambda x: -x[1])[:3]
+            for combo, count in top_combos:
+                print(f"      {combo}: {count} trades")
 
     lev = report.get("leverage_stats", {})
     if lev:
@@ -1278,6 +1473,42 @@ def print_report(report: Dict):
             print(f"\n  Learning Captured:")
             print(f"    Lessons processed:   {lessons}")
             print(f"    Exit evaluations:    {exits}")
+
+    # Strategy health
+    health = report.get("strategy_health", {})
+    if health:
+        print(f"\n  Strategy Health (contributing strategies):")
+        for strat in sorted(health.keys(), key=lambda k: -health[k].get("net_pnl", 0)):
+            h = health[strat]
+            flag = "  !! LOSING" if h["profit_factor"] < 1.0 and h["trades"] >= 10 else ""
+            print(
+                f"    {strat:22s}  PF={h['profit_factor']:<5}  "
+                f"EV=${h['expected_value']:<8}  "
+                f"net=${h['net_pnl']:>9,.2f}  "
+                f"WR={h['win_rate']:.0%}  "
+                f"streak={h['max_loss_streak']}  "
+                f"worst=${h['worst_trade']:,.2f}{flag}"
+            )
+
+    # Agreement combos with PF
+    by_agree = report.get("by_agreement", {})
+    if by_agree:
+        has_losing_combo = False
+        for key in sorted(by_agree.keys()):
+            combo_details = by_agree[key].get("combo_details", {})
+            for combo, cd in sorted(combo_details.items(), key=lambda x: -x[1].get("trades", 0)):
+                if cd.get("pf", 99) < 1.0 and cd.get("trades", 0) >= 5:
+                    if not has_losing_combo:
+                        print(f"\n  Losing Strategy Combos:")
+                        has_losing_combo = True
+                    print(f"    {key} {combo}: PF={cd['pf']} WR={cd['wr']:.0%} ({cd['trades']} trades) -- LOSING")
+
+    # Recommendations
+    recs = report.get("recommendations", [])
+    if recs:
+        print(f"\n  Recommendations:")
+        for rec in recs:
+            print(f"    > {rec}")
 
     # Top trades by PnL
     timeline = report.get("trade_timeline", [])
