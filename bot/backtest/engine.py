@@ -404,10 +404,12 @@ class BacktestEngine:
             if self.llm:
                 self._run_llm_exit(symbol, current_price, windowed, sim_dt)
 
-            # Re-entry gap: skip 1 candle after a close to prevent same-bar artifacts
+            # Re-entry gap: skip 3 candles after a close to prevent revenge-trading
+            # (raised from 1 to 3 — HYPE had 10 consecutive SL losses from rapid re-entry)
+            RE_ENTRY_GAP = 3
             last_close_idx = self._last_close_candle.get(symbol, -2)
-            if i <= last_close_idx + 1:
-                continue  # Let the market breathe for 1 candle after a close
+            if i <= last_close_idx + RE_ENTRY_GAP:
+                continue  # Let the market breathe after a close
 
             # Try to generate signal — track CB blocks
             self.candle_stats["total"] += 1
@@ -534,9 +536,10 @@ class BacktestEngine:
             if self.llm:
                 self._run_llm_exit(symbol, current_price, windowed, sim_dt)
 
-            # Re-entry gap: skip 1 candle after a close
+            # Re-entry gap: skip 3 candles after a close (same as main loop)
+            RE_ENTRY_GAP = 3
             last_close_idx = self._last_close_candle.get(symbol, -2)
-            if i <= last_close_idx + 1:
+            if i <= last_close_idx + RE_ENTRY_GAP:
                 continue
 
             self.candle_stats["total"] += 1
@@ -1352,11 +1355,10 @@ class BacktestEngine:
                         # Final close — position complete
                         pos["final_action"] = event.action
                         meta = event.metadata or {}
-                        # hold_time_s may be 0 in backtest (simulated time).
-                        # Fall back to counting close events as a rough proxy:
-                        # open→close events span = approximate candles held.
+                        # hold_time_s from position_manager is wallclock (~0.001s in backtest).
+                        # Use sim-time fallback if wallclock is < 60s (i.e. not real hold time).
                         hold_s = meta.get("hold_time_s", 0)
-                        if hold_s <= 0:
+                        if hold_s < 60:
                             # In backtest, wallclock hold_time is ~0.
                             # Use sim_time from entry_reasons + close_sim_time.
                             entry_reasons = meta.get("entry_reasons") or {}

@@ -255,6 +255,29 @@ class MonteCarloZonesStrategy(BaseStrategy):
         if confidence < 60:
             return None
 
+        # Trend filter: reject counter-trend signals (SMA20 vs SMA50)
+        sma20 = zones["sma20"]
+        sma50 = float(df["SMA50"].iloc[-1]) if "SMA50" in df.columns else None
+        if sma50 is not None and not pd.isna(sma50):
+            if side == "BUY" and sma20 < sma50:
+                logger.info(f"[{symbol}] monte_carlo BUY rejected: SMA20 < SMA50 (downtrend)")
+                return None
+            if side == "SELL" and sma20 > sma50:
+                logger.info(f"[{symbol}] monte_carlo SELL rejected: SMA20 > SMA50 (uptrend)")
+                return None
+
+        # Enforce minimum R:R — zone-based targets can be too close to entry
+        stop_width = abs(current - sl)
+        if stop_width > 0:
+            min_tp1 = current + 1.5 * stop_width if side == "BUY" else current - 1.5 * stop_width
+            min_tp2 = current + 3.0 * stop_width if side == "BUY" else current - 3.0 * stop_width
+            if side == "BUY":
+                tp1 = max(tp1, min_tp1)
+                tp2 = max(tp2, min_tp2)
+            else:
+                tp1 = min(tp1, min_tp1)
+                tp2 = min(tp2, min_tp2)
+
         # Build context: which zone, MC probabilities, RSI, R:R
         mc_dir = f"MC {mc['up_prob']:.0%}up/{mc['down_prob']:.0%}dn"
         sw = abs(current - sl)
@@ -265,6 +288,9 @@ class MonteCarloZonesStrategy(BaseStrategy):
             f", R:R={rr:.1f}, target=SMA20"
         )
 
+        # Compute ATR proxy from daily data for downstream consumers
+        atr_val = float(stdev) if stdev > 0 else abs(current * 0.02)
+
         return Signal(
             strategy=self.name,
             symbol=symbol,
@@ -274,6 +300,7 @@ class MonteCarloZonesStrategy(BaseStrategy):
             sl=sl,
             tp1=tp1,
             tp2=tp2,
+            atr=atr_val,
             signal_context=ctx,
             metadata={
                 "action": action,

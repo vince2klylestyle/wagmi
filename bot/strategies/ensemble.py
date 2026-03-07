@@ -420,7 +420,8 @@ class EnsembleStrategy:
                     f"[{symbol}] FLIP {side}->{result.side}: strong trend "
                     f"score={total:.1f}/{n} [{detail_str}] -- sniper mode"
                 )
-        elif abs(total) >= 1.0:
+        elif abs(total) >= 1.5:
+            # Raised threshold from 1.0 to 1.5 — moderate trend
             trend_bullish = total > 0
             if is_buy == trend_bullish:
                 # Mild alignment — small multiplicative bonus
@@ -433,14 +434,16 @@ class EnsembleStrategy:
                     f"score={total:.1f}/{n} [{detail_str}] *1.03 (+{adj:.1f})"
                 )
             else:
-                # Moderate counter-trend — FLIP the signal (returns new object)
-                result = self._flip_signal(symbol, result, data)
+                # Moderate counter-trend — REJECT instead of flip.
+                # Flipped signals have zero original conviction in the new direction.
+                # Better to skip entirely than enter with no thesis.
                 result.metadata["trend_adjustment"] = 0
-                result.metadata["trend_flipped"] = True
+                result.metadata["trend_rejected"] = True
                 logger.info(
-                    f"[{symbol}] FLIP {side}->{result.side}: moderate trend "
-                    f"score={total:.1f}/{n} [{detail_str}] -- sniper mode"
+                    f"[{symbol}] Counter-trend {side} REJECTED: moderate trend "
+                    f"score={total:.1f}/{n} [{detail_str}] -- no flip, skip trade"
                 )
+                return None
         else:
             result.metadata["trend_adjustment"] = 0
             logger.info(f"[{symbol}] Neutral trend: score={total:.1f}/{n} [{detail_str}]")
@@ -698,7 +701,10 @@ class EnsembleStrategy:
         active_count = len(self.strategies) - len(self._disabled_strategies)
         if n_agree == active_count and n_agree >= 3:
             consensus_mult += 0.04  # Unanimous bonus
-        combined_conf = min(100, weighted_conf * consensus_mult)
+        # Cap at 85 — 180-day data shows 90-100% confidence has 36% WR and loses money.
+        # This prevents ensemble from reaching the highest leverage tiers (4-5x).
+        MAX_ENSEMBLE_CONFIDENCE = 85.0
+        combined_conf = min(MAX_ENSEMBLE_CONFIDENCE, weighted_conf * consensus_mult)
 
         # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
         # Using average TP1 prevents zone-based strategies from pulling targets too close
