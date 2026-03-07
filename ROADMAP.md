@@ -1,8 +1,8 @@
 # nunuIRL Trading Bot — Complete Roadmap
 
 > **Last updated**: 2026-03-07
-> **Current state**: Profitability fixes landed. 3 active strategies (regime_trend, confidence_scorer, multi_tier_quality). 10d backtest: +14.75%, Sharpe 3.41. Agent consistency 80% built.
-> **What's next**: Validate 180d backtest → Build order execution layer → Go live.
+> **Current state**: Profitability fixes landed + order execution layer built. 3 active strategies (regime_trend, confidence_scorer, multi_tier_quality). 10d backtest: +14.75%, Sharpe 3.41. 944 tests passing.
+> **What's next**: Validate 180d backtest → Paper trade on live exchange API → Go live conservative.
 
 ---
 
@@ -25,7 +25,7 @@
 ### Core Pipeline (Working)
 | Layer | Files | Status |
 |---|---|---|
-| **4 Trading Strategies** | `bot/strategies/{regime_trend,monte_carlo_zones,confidence_scorer,multi_tier_quality}.py` | Working — produce signals |
+| **3 Trading Strategies** | `bot/strategies/{regime_trend,confidence_scorer,multi_tier_quality}.py` | Working — monte_carlo_zones disabled (PF=0.0) |
 | **Ensemble Voting** | `bot/strategies/ensemble.py` (27KB) | Working — weighted veto with chop detection |
 | **LLM Meta-Brain** | `bot/llm/` (50+ files, 595KB) | Working — 6 autonomy levels, smart model routing |
 | **Multi-Agent System** | `bot/llm/agents/{base,coordinator,prompts,learning_integration}.py` | Built — 5 specialist agents |
@@ -41,7 +41,7 @@
 | **Alerts** | `bot/alerts/` | Working — Telegram + Discord with rate limiting |
 | **Dashboard** | `web/` | Working — full web UI with charts |
 | **Database** | `bot/data/db.py` (24KB) + `migrations.py` | Working — SQLite with migrations |
-| **Tests** | `bot/tests/` (20 test files) | 664+ tests passing |
+| **Tests** | `bot/tests/` (20+ test files) | 911 tests passing (0 failures) |
 | **Configuration** | `bot/trading_config.py` (484 lines) | Dataclass-based, per-symbol overrides |
 
 ### Multi-Agent Architecture (Built, Needs Tuning)
@@ -92,6 +92,25 @@
 
 **Results (10-day backtest):** +14.75%, 45.2% WR, Sharpe 3.41, fee drag 16.1%.
 3 active strategies: regime_trend (PF=2.0), multi_tier_quality (PF=1.25), confidence_scorer (PF=1.27).
+
+### Phase 2.6: Order Execution Layer ✅ (March 2026)
+**Built the missing bridge between strategy signals and exchange orders:**
+- [x] `bot/execution/order_executor.py` — OrderExecutor with paper/live modes
+  - Paper mode: simulates fills with realistic slippage and fees
+  - Live mode: submits real orders via CCXT with retry logic and slippage protection
+  - Validates inputs (min qty, symbol mapping, price bounds)
+  - 33 tests covering paper fills, live mocks, validation, slippage, stats
+- [x] Wired into `multi_strategy_main.py` at 3 integration points:
+  - Position open: order submitted before `pos_mgr.open_position()`
+  - Position close events: close orders submitted on SL/TP/trailing hits
+  - Emergency closes: liquidation proximity and funding avoidance
+- [x] Hyperliquid API credential support added to `data/fetcher.py`
+  - Set `HL_API_KEY` and `HL_API_SECRET` in `.env` for live trading
+- [x] CB overrides disabled (max_cb_overrides=0) — CB tripped = hard stop
+- [x] All 7 pre-existing test failures fixed, 944 tests passing
+
+**Status**: Ready for paper trading validation on live exchange API.
+**Next**: Set `ENVIRONMENT=paper` with HL credentials → validate signals match exchange prices → then `ENVIRONMENT=production`.
 
 ---
 
@@ -180,12 +199,12 @@
   - Auto-close new trades if data is stale (safety net)
 
 ### 5.3 Position Reconciliation
-- [ ] **Complete `bot/execution/reconciliation.py`**
-  - On startup: read actual positions from exchange API
-  - Compare with in-memory state
-  - Reconcile differences (orphan positions, missing state)
-  - Alert on mismatches
-  - Periodic reconciliation (every 5 minutes)
+- [x] **`bot/execution/reconciliation.py`** — Built and wired
+  - On startup: reads actual positions from Hyperliquid
+  - Compares with in-memory state, detects phantoms and orphans
+  - Circuit breaker state persistence across restarts
+  - Periodic reconciliation check (detects manual closes)
+- [ ] **Wire periodic reconciliation into main loop** (every 10 scans)
 
 ### 5.4 Logging & Monitoring
 - [ ] **Structured JSON logging** — `bot/core/structured_logging.py` exists, wire it everywhere
@@ -297,13 +316,13 @@
 | No exchange connection resilience | `data/fetcher.py` | Bot crashes on API outage | Open — fetcher has circuit breaker but main loop needs stale data handling |
 | ~~Strategy weights all history equally~~ | `strategy_weights.py` | ~~Ancient trades same as recent~~ | ✅ FIXED — exponential decay exists |
 | No position reconciliation on startup | `execution/reconciliation.py` | Lost positions after restart | Open — code exists, not wired |
-| **No order execution to exchange** | `multi_strategy_main.py` | **All trading is paper-only** | **CRITICAL — the #1 blocker** |
+| ~~No order execution to exchange~~ | `execution/order_executor.py` | ~~All trading is paper-only~~ | ✅ FIXED — OrderExecutor built and wired into main loop |
 
 ### Should Fix for Reliability
 | Bug | Location | Impact | Status |
 |---|---|---|---|
 | `multi_strategy_main.py` is 4,585 lines | `multi_strategy_main.py` | God object, hard to maintain | Open — break into modules |
-| 7 pre-existing test failures | `tests/` | CB override, profile, symbol override tests | Open — not blocking functionality |
+| ~~7 pre-existing test failures~~ | `tests/` | ~~CB override, profile, symbol override tests~~ | ✅ FIXED — 944 tests passing, 0 failures |
 
 ---
 
