@@ -448,13 +448,28 @@ class PositionManager:
         pos.realized_pnl += (pnl - fee)
         pos.qty = round_qty(pos.symbol, pos.qty - close_qty)
 
-        # Move SL to breakeven + buffer covering round-trip fees + slippage margin
-        # 2x taker fee (entry+exit) + 0.1% slippage/noise buffer to avoid false SL hits
+        # Move SL to breakeven accounting for locked-in TP1 profit.
+        # The remaining position has a cost basis adjusted by the profit already banked.
+        # This prevents premature SL hits by giving the remaining qty more room.
+        # Formula: breakeven = entry - (locked_pnl / (remaining_qty * leverage)) for LONG
+        remaining_qty = pos.qty
         fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
-        if pos.side == "LONG":
-            pos.sl = round_price(pos.symbol, pos.entry + fee_buffer)
+        if remaining_qty > 0 and pos.leverage > 0:
+            # How much room does the locked-in profit give us?
+            profit_cushion = pos.realized_pnl / (remaining_qty * pos.leverage)
+            if pos.side == "LONG":
+                # Entry - cushion = adjusted breakeven (lower = more room)
+                be_price = pos.entry - profit_cushion + fee_buffer
+                pos.sl = round_price(pos.symbol, be_price)
+            else:
+                be_price = pos.entry + profit_cushion - fee_buffer
+                pos.sl = round_price(pos.symbol, be_price)
         else:
-            pos.sl = round_price(pos.symbol, pos.entry - fee_buffer)
+            # Fallback to simple breakeven
+            if pos.side == "LONG":
+                pos.sl = round_price(pos.symbol, pos.entry + fee_buffer)
+            else:
+                pos.sl = round_price(pos.symbol, pos.entry - fee_buffer)
 
         pos.peak_price = price
 
