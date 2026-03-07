@@ -82,6 +82,18 @@ def _keltner_channels(df: pd.DataFrame, period: int = 20, atr_mult: float = 1.5)
     return mid + atr_mult * atr_vals, mid, mid - atr_mult * atr_vals
 
 
+def _mfi_like(df: pd.DataFrame, period: int = 60) -> pd.Series:
+    """Money Flow Index approximation (same as regime_trend)."""
+    tp = (df["high"] + df["low"] + df["close"]) / 3.0
+    mf = tp * df["volume"]
+    up = (tp > tp.shift(1)).astype(float)
+    dn = (tp < tp.shift(1)).astype(float)
+    pos = mf.mul(up).rolling(period, min_periods=1).mean()
+    neg = mf.mul(dn).rolling(period, min_periods=1).mean().replace(0, 1e-12)
+    ratio = pos / neg
+    return 100.0 - (100.0 / (1.0 + ratio))
+
+
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     delta = close.diff()
     up = delta.clip(lower=0)
@@ -106,7 +118,7 @@ class ConfidenceScorerStrategy(BaseStrategy):
         self.signal_log = self._load_signal_log()
 
     def get_required_timeframes(self) -> List[str]:
-        return ["1h"]
+        return ["1h", "6h"]
 
     def _load_signal_log(self) -> Dict:
         if self.signal_log_path.exists():
@@ -303,6 +315,29 @@ class ConfidenceScorerStrategy(BaseStrategy):
         # Total confidence
         confidence = float(adx_score + macd_score + squeeze_score + rsi_score)
 
+        # 6h regime filter: reject signals that contradict higher-timeframe regime
+        df_6h = data.get("6h")
+        if df_6h is not None and len(df_6h) >= 10:
+            _, _, hist_6h = _macd(df_6h["close"])
+            macd_h_6h = float(hist_6h.iloc[-1])
+            mfi_6h_val = 50.0
+            if "volume" in df_6h.columns:
+                mfi_6h = _mfi_like(df_6h, period=min(60, len(df_6h)))
+                mfi_6h_val = float(mfi_6h.iloc[-1])
+
+            # Reject if BOTH 6h indicators contradict the 1h direction
+            if di_bullish and macd_h_6h < 0 and mfi_6h_val < 45:
+                logger.info(f"[{symbol}] confidence_scorer BUY rejected: 6h bearish (MACD_h={macd_h_6h:.2f}, MFI={mfi_6h_val:.0f})")
+                return None
+            if not di_bullish and macd_h_6h > 0 and mfi_6h_val > 55:
+                logger.info(f"[{symbol}] confidence_scorer SELL rejected: 6h bullish (MACD_h={macd_h_6h:.2f}, MFI={mfi_6h_val:.0f})")
+                return None
+
+            # 6h confirmation bonus
+            htf_aligned = (di_bullish and macd_h_6h > 0) or (not di_bullish and macd_h_6h < 0)
+            if htf_aligned:
+                confidence += 5
+
         # Classify signal strength
         if confidence >= 75:
             action = "STRONG_BUY" if di_bullish else "STRONG_SELL"
@@ -334,8 +369,8 @@ class ConfidenceScorerStrategy(BaseStrategy):
         if confidence < 55:
             return None
 
-        # Stop/TP placement using ATR
-        K = 1.8
+        # Stop/TP placement using ATR (reduced from 1.8 to 1.2 — tighter stops cut losers faster)
+        K = 1.2
         sl = entry - K * atr_val if side == "BUY" else entry + K * atr_val
         stop_width = abs(entry - sl)
         tp1 = entry + 1.5 * stop_width if side == "BUY" else entry - 1.5 * stop_width

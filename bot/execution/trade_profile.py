@@ -119,9 +119,9 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         "floor_progress": 0.2, "floor_start": 0.40, "floor_max": 0.75,
     }),
     MEDIUM: _build_profile("MEDIUM", {
-        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.50, "tp1_pct": 0.70,
-        # Tightened SL from 0.75 to 0.50 ATR — cuts losers faster.
-        # Raised TP1% from 0.65 to 0.70 — lock in more profit on winners.
+        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.55, "tp1_pct": 0.65,
+        # Widened SL from 0.50 to 0.55 ATR — 42% WR suggests noise whipsaws.
+        # Lowered TP1% from 0.70 to 0.60 — let more capital ride winning trades.
         "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
         "floor_progress": 0.35, "floor_start": 0.25, "floor_max": 0.60,
     }),
@@ -307,16 +307,17 @@ def _adjust_params_for_regime(params: ExitParams, regime: str, volatility: str) 
         p.tp1_close_pct = max(0.20, p.tp1_close_pct - 0.10)
         p.trailing_tighten_end = max(0.20, p.trailing_tighten_end - 0.05)
     elif regime == "ranging":
-        # Take profits quicker: tighten TP1, raise TP1%, tighter trailing
-        # Reduced from +0.15 to +0.10 — was taking too much at TP1 in ranging
+        # Take profits quicker: tighten targets, raise TP1%, tighter trailing
+        # BUT WIDEN stops — ranging markets have more noise, tight SL = whipsaw
         p.tp1_atr_mult *= 0.8
         p.tp2_atr_mult *= 0.8
         p.tp1_close_pct = min(1.0, p.tp1_close_pct + 0.10)
         p.trailing_tighten_start = min(0.90, p.trailing_tighten_start + 0.10)
+        p.sl_atr_mult *= 1.2  # WIDEN stops 20% in ranges to handle noise
     elif regime == "illiquid":
-        # Conservative: tighter everything, close more at TP1
+        # Conservative: close more at TP1, but WIDEN stops for illiquidity noise
         p.tp1_close_pct = min(1.0, p.tp1_close_pct + 0.20)
-        p.sl_atr_mult *= 0.8
+        p.sl_atr_mult *= 1.15  # WIDEN 15% (was TIGHTEN 0.8x — backwards)
 
     # Volatility adjustments
     if volatility == "high":

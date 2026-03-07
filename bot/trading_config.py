@@ -269,7 +269,7 @@ class TradingConfig:
     # ── Strategy Parameters (ATR multiples, confidence floors) ──
     # Previously hardcoded across strategy files. Now centralized.
     ensemble_confidence_floor: float = field(
-        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 65.0)
+        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 70.0)
     )
     min_signal_rr: float = field(
         default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.5)
