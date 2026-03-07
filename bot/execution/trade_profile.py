@@ -334,12 +334,53 @@ def _adjust_params_for_regime(params: ExitParams, regime: str, volatility: str) 
     return p
 
 
+# Per-volatility-profile TP scaling: low-vol assets (BTC) need wider TP targets
+# because their intraday ATR doesn't translate to directional moves as easily.
+# "low" vol profile: widen TP by 50%, TP2 by 40% to match alt hit rates.
+_SYMBOL_TP_SCALE = {
+    "low": {"tp1": 1.5, "tp2": 1.4, "sl": 1.0},     # BTC: widen TPs, keep SL
+    "medium": {"tp1": 1.0, "tp2": 1.0, "sl": 1.0},   # SOL: no change
+    "high": {"tp1": 1.0, "tp2": 1.0, "sl": 1.0},     # HYPE: no change
+}
+
+
+def _adjust_params_for_symbol(params: ExitParams, symbol: str) -> ExitParams:
+    """Apply symbol-specific TP scaling based on volatility profile."""
+    if not symbol:
+        return params
+
+    from trading_config import DEFAULT_SYMBOL_OVERRIDES
+    overrides = DEFAULT_SYMBOL_OVERRIDES.get(symbol)
+    if not overrides:
+        return params
+
+    profile = getattr(overrides, "volatility_profile", "medium")
+    scale = _SYMBOL_TP_SCALE.get(profile)
+    if not scale or (scale["tp1"] == 1.0 and scale["tp2"] == 1.0):
+        return params  # No adjustment needed
+
+    p = ExitParams(
+        tp1_atr_mult=params.tp1_atr_mult * scale["tp1"],
+        tp2_atr_mult=params.tp2_atr_mult * scale["tp2"],
+        sl_atr_mult=params.sl_atr_mult * scale["sl"],
+        tp1_close_pct=params.tp1_close_pct,
+        trailing_style=params.trailing_style,
+        trailing_tighten_start=params.trailing_tighten_start,
+        trailing_tighten_end=params.trailing_tighten_end,
+        floor_progress_start=params.floor_progress_start,
+        floor_lock_start=params.floor_lock_start,
+        floor_lock_max=params.floor_lock_max,
+    )
+    return p
+
+
 def classify_trade(
     signal_metadata: Dict[str, Any],
     confidence: float,
     atr: float,
     entry: float,
     side: str,
+    symbol: str = "",
 ) -> TradeProfile:
     """
     Build a TradeProfile from signal metadata.
@@ -371,6 +412,11 @@ def classify_trade(
 
     # 4. Adjust for regime and volatility
     params = _adjust_params_for_regime(base_params, regime, vol_band)
+
+    # 4b. Symbol-aware TP scaling: BTC's lower intraday volatility means
+    # ATR-based TP targets are too tight (0.9-1.0% moves rarely happen
+    # in BTC's typical ±0.5% intraday range). Widen TP for "low" vol symbols.
+    params = _adjust_params_for_symbol(params, symbol)
 
     # 5. Compute absolute prices
     if atr > 0:

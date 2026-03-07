@@ -811,6 +811,12 @@ class BacktestEngine:
             else:
                 outcome = "BREAKEVEN"
 
+            # Compute MFE/MAE and enriched fields from position
+            entry_reasons = pos.entry_reasons if pos else {}
+            mfe = pos.mfe if pos and hasattr(pos, "mfe") else 0
+            mae = pos.mae if pos and hasattr(pos, "mae") else 0
+            atr_at_entry = entry_reasons.get("atr_at_entry", pos.atr if pos else 0)
+
             record_trade_outcome(
                 symbol=event.symbol,
                 side=event.side,
@@ -826,10 +832,19 @@ class BacktestEngine:
                 leverage=event.leverage,
                 confidence=pos.confidence if pos else 0,
                 strategy=event.strategy or "",
-                entry_reasons=meta.get("entry_reasons", {}),
+                entry_reasons=entry_reasons,
                 entry_type=meta.get("entry_type", ""),
                 primary_driver=event.strategy or "",
                 regime=meta.get("regime", ""),
+                atr_at_entry=atr_at_entry,
+                chop_score=entry_reasons.get("chop_score", 0.0),
+                mfe=mfe,
+                mae=mae,
+                mfe_atr=round(mfe / atr_at_entry, 2) if atr_at_entry > 0 else 0,
+                mae_atr=round(mae / atr_at_entry, 2) if atr_at_entry > 0 else 0,
+                num_agree=entry_reasons.get("num_agree", 1),
+                trade_profile_type=entry_reasons.get("trade_profile_type", ""),
+                volatility_profile=entry_reasons.get("volatility_profile", ""),
             )
 
             # Also update self-teaching system's trade counter
@@ -947,6 +962,7 @@ class BacktestEngine:
             atr=signal.atr,
             entry=fill_price,
             side=signal.side,
+            symbol=signal.symbol,
         )
         adjusted = apply_profile_to_signal(
             trade_prof,
@@ -983,6 +999,12 @@ class BacktestEngine:
                 "num_agree": signal.metadata.get("num_agree", 1),
                 "strategies_agree": signal.metadata.get("strategies_agree", [signal.strategy]),
                 "sim_time": signal.metadata.get("sim_time", ""),
+                "atr_at_entry": signal.atr,
+                "chop_score": signal.metadata.get("chop_score", 0.0),
+                "entry_to_tp1_atr": round(abs(signal.tp1 - fill_price) / signal.atr, 2) if signal.atr > 0 else 0,
+                "entry_to_sl_atr": round(abs(signal.sl - fill_price) / signal.atr, 2) if signal.atr > 0 else 0,
+                "trade_profile_type": trade_prof.entry_type if trade_prof else "",
+                "volatility_profile": trade_prof.volatility_band if trade_prof else "",
             },
             trade_profile=trade_prof,
             notes=position_notes,

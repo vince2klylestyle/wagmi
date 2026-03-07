@@ -70,6 +70,10 @@ class Position:
     trailing_distance: float = 0.0  # absolute distance from peak
     peak_price: float = 0.0         # best price since TP1
 
+    # MFE/MAE tracking (max favorable / adverse excursion from entry)
+    highest_price: float = 0.0      # highest price seen during position lifetime
+    lowest_price: float = 0.0       # lowest price seen during position lifetime
+
     # Timestamps
     open_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     close_time: Optional[datetime] = None
@@ -93,6 +97,10 @@ class Position:
             self.original_sl = self.sl
         if self.peak_price == 0:
             self.peak_price = self.entry
+        if self.highest_price == 0:
+            self.highest_price = self.entry
+        if self.lowest_price == 0:
+            self.lowest_price = self.entry
 
     # ── Derived properties (backward compat) ──
     @property
@@ -110,6 +118,20 @@ class Position:
     @property
     def state_path_str(self) -> str:
         return "->".join(self.state_path)
+
+    @property
+    def mfe(self) -> float:
+        """Max favorable excursion: best unrealized profit during position."""
+        if self.side == "LONG":
+            return self.highest_price - self.entry
+        return self.entry - self.lowest_price
+
+    @property
+    def mae(self) -> float:
+        """Max adverse excursion: worst unrealized loss during position."""
+        if self.side == "LONG":
+            return self.entry - self.lowest_price
+        return self.highest_price - self.entry
 
     def _transition(self, target: str, reason: str = "") -> str:
         """Transition to a new state, updating state_path."""
@@ -303,6 +325,12 @@ class PositionManager:
 
         events = []
         is_long = pos.side == "LONG"
+
+        # Track MFE/MAE (max favorable/adverse excursion from entry)
+        if current_price > pos.highest_price:
+            pos.highest_price = current_price
+        if current_price < pos.lowest_price:
+            pos.lowest_price = current_price
 
         # 0. Check stop loss FIRST — on flash crashes, SL must fire before early exit
         # to prevent closing at a worse price than the SL level

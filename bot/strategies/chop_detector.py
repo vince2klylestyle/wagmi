@@ -36,7 +36,7 @@ _WEIGHTS = {
 # BTC raised from 0.50→0.55: the tighter threshold was over-filtering BTC
 # in normal sideways markets, suppressing valid signals (38% WR on 10d backtest).
 VOLATILITY_THRESHOLDS = {
-    "low": 0.55,     # BTC: match default — intraday futures chop != spot calm
+    "low": 0.60,     # BTC: raised from 0.55 — was over-filtering valid BTC signals
     "medium": 0.55,  # SOL: default
     "high": 0.65,    # HYPE/memes: looser — allow more volatility through
 }

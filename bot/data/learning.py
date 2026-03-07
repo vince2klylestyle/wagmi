@@ -23,6 +23,8 @@ _OUTCOMES_HEADERS = [
     "tp1_hit", "sl_after_tp1", "state_path", "leverage", "confidence",
     "strategy", "entry_reasons",
     "entry_type", "primary_driver", "regime", "volatility_band",
+    "atr_at_entry", "chop_score", "mfe", "mae", "mfe_atr", "mae_atr",
+    "num_agree", "trade_profile_type", "volatility_profile",
 ]
 
 _PERF_FILE = os.path.join(_OUTCOMES_DIR, "performance.json")
@@ -59,6 +61,15 @@ def record_trade_outcome(
     primary_driver: str = "",
     regime: str = "",
     volatility_band: str = "",
+    atr_at_entry: float = 0.0,
+    chop_score: float = 0.0,
+    mfe: float = 0.0,
+    mae: float = 0.0,
+    mfe_atr: float = 0.0,
+    mae_atr: float = 0.0,
+    num_agree: int = 1,
+    trade_profile_type: str = "",
+    volatility_profile: str = "",
 ):
     """Record a trade outcome to CSV and update rolling metrics."""
     _ensure_outcomes_file()
@@ -75,6 +86,9 @@ def record_trade_outcome(
         f"{leverage:.1f}", f"{confidence:.1f}", strategy,
         json.dumps(entry_reasons or {}),
         entry_type, primary_driver, regime, volatility_band,
+        f"{atr_at_entry:.4f}", f"{chop_score:.3f}",
+        f"{mfe:.4f}", f"{mae:.4f}", f"{mfe_atr:.2f}", f"{mae_atr:.2f}",
+        str(num_agree), trade_profile_type, volatility_profile,
     ]
 
     try:
