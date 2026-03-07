@@ -173,6 +173,22 @@ def main():
     b = bucket_stats(trades, rr_bucket)
     print_bucket(b, order=["<=0R", "0-1R", "1-2R", "2-3R", "3R+"])
 
+    # ── STRATEGY AGREEMENT ──
+    has_agree = any(t.get("num_agree", "") not in ("", "0") for t in trades)
+    if has_agree:
+        print(f"\n{'─' * 70}")
+        print("  STRATEGY AGREEMENT — do more strategies agreeing = better trades?")
+        print(f"{'─' * 70}")
+
+        def agree_bucket(t):
+            v = t.get("num_agree", "")
+            if v == "":
+                return None
+            return f"{v}_agree"
+
+        b = bucket_stats(trades, agree_bucket)
+        print_bucket(b)
+
     # ── SYMBOL x CLOSE REASON ──
     print(f"\n{'─' * 70}")
     print("  SYMBOL x CLOSE REASON — where does each coin bleed?")

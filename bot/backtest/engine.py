@@ -1767,15 +1767,28 @@ class BacktestEngine:
                 except (TypeError, ValueError):
                     rr_achieved = 0
 
-                # Duration in hours
+                # Duration in hours — use sim-time for backtest accuracy
                 hold_s = meta.get("hold_time_s", 0)
-                if hold_s:
+                if hold_s and hold_s >= 60:
                     duration_h = round(hold_s / 3600, 1)
-                elif open_ev:
-                    delta = event.timestamp - open_ev.timestamp
-                    duration_h = round(delta.total_seconds() / 3600, 1)
                 else:
-                    duration_h = 0
+                    # Backtest wallclock is ~0s; use sim-time from entry/close metadata
+                    entry_reasons = meta.get("entry_reasons") or open_meta
+                    open_sim = entry_reasons.get("sim_time", "")
+                    close_sim = meta.get("close_sim_time", "")
+                    if open_sim and close_sim:
+                        try:
+                            import pandas as pd
+                            open_t = pd.Timestamp(open_sim)
+                            close_t = pd.Timestamp(close_sim)
+                            duration_h = round(max((close_t - open_t).total_seconds(), 0) / 3600, 1)
+                        except Exception:
+                            duration_h = 0
+                    elif open_ev:
+                        delta = event.timestamp - open_ev.timestamp
+                        duration_h = round(delta.total_seconds() / 3600, 1)
+                    else:
+                        duration_h = 0
 
                 # State path from metadata
                 state_path = meta.get("state_path", "")
@@ -1798,6 +1811,7 @@ class BacktestEngine:
                     "duration_h": duration_h,
                     "state_path": state_path,
                     "outcome": "WIN" if event.pnl > 0 else ("LOSS" if event.pnl < -0.01 else "BE"),
+                    "num_agree": meta.get("num_agree", open_meta.get("num_agree", "")),
                 }
 
                 # LLM context
@@ -1825,7 +1839,7 @@ def export_trade_csv(report: Dict, filepath: str):
         "symbol", "side", "strategy", "close_reason",
         "entry", "exit", "sl", "tp1", "tp2",
         "pnl", "fee", "leverage", "confidence",
-        "rr_achieved", "duration_h", "state_path", "outcome",
+        "rr_achieved", "duration_h", "state_path", "outcome", "num_agree",
         "llm_action", "llm_regime", "llm_confidence",
     ]
     with open(filepath, "w", newline="") as f:
