@@ -56,8 +56,11 @@ DEFAULT_SYMBOLS = {
 }
 
 # Risk multipliers for zone computation (from user's original bots)
+# BTC "low" widened from (1.0, 1.8) → (1.3, 2.2): original tight zones designed
+# for spot trading caused 1-2% intraday futures swings to hit stops consistently.
+# BTC had 38% WR and -$2,120 loss on 10d backtest with the tight multipliers.
 RISK_MULTIPLIERS: Dict[str, Tuple[float, float]] = {
-    "low": (1.0, 1.8),
+    "low": (1.3, 2.2),
     "medium": (1.5, 2.5),
     "high": (2.0, 3.5),
 }
@@ -435,7 +438,10 @@ class SymbolOverrides:
 # risk_per_trade overrides let memecoins risk slightly less than large caps
 # volatility_profile tunes chop detection + strategy sensitivity per asset
 DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
-    "BTC": SymbolOverrides(max_leverage=25.0, volatility_profile="low"),
+    # BTC: reduced leverage (was 25x), halved risk_per_trade — BTC lost -$2,120 on
+    # 10d backtest (38% WR). Lower volatility = ATR stops proportionally tighter,
+    # needs less risk per trade to compensate.
+    "BTC": SymbolOverrides(max_leverage=10.0, risk_per_trade=0.01, volatility_profile="low"),
     "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium"),
     "HYPE": SymbolOverrides(max_leverage=20.0, volatility_profile="high"),
     "DOGE": SymbolOverrides(max_leverage=12.0, volatility_profile="high"),

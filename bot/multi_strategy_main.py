@@ -364,14 +364,17 @@ class MultiStrategyBot:
         sym_configs = DEFAULT_SYMBOLS
         self.strategies = [
             RegimeTrendStrategy(sym_configs, config.htf_hours),
-            MonteCarloZonesStrategy(
-                sym_configs,
-                mc_sims=config.mc_num_sims,
-                mc_hours=config.mc_forward_hours,
-            ),
             ConfidenceScorerStrategy(sym_configs, data_dir="ml_data"),
             MultiTierQualityStrategy(sym_configs),
         ]
+        # monte_carlo_zones disabled — PF=0.0 in backtests, consistent loser.
+        # Re-enable via STRATEGY_MONTE_CARLO_ENABLED=true if needed.
+        if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "false").lower() == "true":
+            self.strategies.insert(1, MonteCarloZonesStrategy(
+                sym_configs,
+                mc_sims=config.mc_num_sims,
+                mc_hours=config.mc_forward_hours,
+            ))
         # Chop detector: multi-factor choppy market filter
         chop = None
         if config.enable_chop_detector:
@@ -417,6 +420,21 @@ class MultiStrategyBot:
             enable_leverage=config.enable_leverage,
             max_leverage=config.max_leverage,
         )
+
+        # Order executor: bridges PositionManager with exchange
+        from execution.order_executor import create_executor
+        _exec_mode = "live" if not config.is_paper else "paper"
+        _max_slip = float(os.getenv("MAX_ENTRY_SLIPPAGE_PCT", "1.5"))
+        try:
+            self.order_executor = create_executor(
+                fetcher=self.fetcher,
+                mode=_exec_mode,
+                max_slippage_pct=_max_slip,
+            )
+        except ValueError:
+            # Live mode without exchange credentials — fall back to paper
+            logger.warning("[INIT] No exchange credentials for live mode, falling back to paper executor")
+            self.order_executor = create_executor(fetcher=self.fetcher, mode="paper")
 
         # ML
         self.ml = SignalLearner(
@@ -1482,6 +1500,12 @@ class MultiStrategyBot:
                     f"{_liq_dist:.1%} from liquidation at {_liq_check.get('liquidation_price', 0):.4f}. "
                     f"Force closing."
                 )
+                _fc_pos = self.pos_mgr.positions.get(symbol)
+                if _fc_pos:
+                    _close_side = "SELL" if _fc_pos.side == "LONG" else "BUY"
+                    self.order_executor.close_position(
+                        symbol, _close_side, _fc_pos.qty, current_price, "LIQUIDATION_PROXIMITY"
+                    )
                 self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
             elif _liq_dist < 0.03:
                 # < 3% from liquidation — tighten SL
@@ -1516,6 +1540,12 @@ class MultiStrategyBot:
                         f"PnL={_unrealized_pct:.2f}%, rate={_fr:.5f}, "
                         f"lev={_fund_pos.leverage:.0f}x"
                     )
+                    _fc_pos = self.pos_mgr.positions.get(symbol)
+                    if _fc_pos:
+                        _close_side = "SELL" if _fc_pos.side == "LONG" else "BUY"
+                        self.order_executor.close_position(
+                            symbol, _close_side, _fc_pos.qty, current_price, "FUNDING_AVOIDANCE"
+                        )
                     self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
 
         # Accrue funding costs on open positions (paper trading doesn't auto-deduct)
@@ -1527,6 +1557,26 @@ class MultiStrategyBot:
         df_5m = data.get("5m")
         events = self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m)
         for event in events:
+            # Submit close order to exchange for full/partial closes
+            _close_actions = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
+                              "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
+                              "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
+            if event.action in _close_actions and event.qty > 0:
+                # Determine close side (opposite of position side)
+                close_side = "SELL" if event.side == "LONG" else "BUY"
+                close_result = self.order_executor.close_position(
+                    symbol=event.symbol,
+                    side=close_side,
+                    qty=event.qty,
+                    price=event.price,
+                    reason=event.action,
+                )
+                if not close_result.filled:
+                    logger.warning(
+                        f"[{trace_id}][{symbol}] Close order FAILED for {event.action}: "
+                        f"{close_result.error}"
+                    )
+
             self.risk_mgr.update_equity(event.pnl - event.fee)
 
             # Log trade event to database
@@ -3342,6 +3392,24 @@ class MultiStrategyBot:
                 _setup_type = _st[:30]
             except Exception:
                 pass
+
+        # Submit order to exchange (paper=simulated, live=real)
+        order_result = self.order_executor.open_position(
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            price=actual_entry,
+            leverage=int(lev_decision.leverage),
+        )
+        if not order_result.filled:
+            logger.warning(
+                f"[{trace_id}][{symbol}] Order FAILED: {order_result.error}"
+            )
+            return
+
+        # Use actual fill price and qty from exchange
+        actual_entry = order_result.fill_price if order_result.fill_price > 0 else actual_entry
+        qty = order_result.fill_qty if order_result.fill_qty > 0 else qty
 
         self.pos_mgr.open_position(
             symbol=symbol,

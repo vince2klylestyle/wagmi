@@ -12,6 +12,7 @@ CCXT provides real OHLCV candles with open/high/low/close/volume.
 CoinGecko is automatic fallback if CCXT exchanges are unavailable.
 """
 
+import os
 import time
 import random
 import logging
@@ -192,10 +193,20 @@ class DataFetcher:
             import ccxt
             self._ccxt_module = ccxt
 
+            # Hyperliquid API credentials (required for live trading, optional for data)
+            hl_config = {"enableRateLimit": True, "timeout": 15000}
+            hl_key = os.getenv("HL_API_KEY", "")
+            hl_secret = os.getenv("HL_API_SECRET", "")
+            if hl_key and hl_secret:
+                hl_config["apiKey"] = hl_key
+                hl_config["secret"] = hl_secret
+                hl_config["walletAddress"] = hl_key
+                logger.info("Hyperliquid API credentials configured (live trading enabled)")
+
             exchange_configs = {
                 "kraken": {"enableRateLimit": True, "timeout": 15000},
                 "bybit": {"enableRateLimit": True, "timeout": 15000},
-                "hyperliquid": {"enableRateLimit": True, "timeout": 15000},
+                "hyperliquid": hl_config,
             }
 
             needed = set()
