@@ -81,13 +81,19 @@ class BacktestEngine:
 
         # Widen circuit breakers for backtest to avoid cascading starvation
         # Live: 5% daily / 10% drawdown (tight, protects real money)
-        # Backtest: 8% daily / 15% drawdown (looser, prioritizes learning data)
+        # Backtest: 15% daily / 30% drawdown (loose, prioritizes learning data)
         self.risk_mgr.circuit_breaker.daily_loss_limit_pct = float(
-            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.08")
+            os.getenv("BACKTEST_CB_DAILY_LOSS_PCT", "0.15")
         )
         self.risk_mgr.circuit_breaker.max_drawdown_pct = float(
-            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.15")
+            os.getenv("BACKTEST_CB_MAX_DRAWDOWN_PCT", "0.30")
         )
+        # Widen consecutive loss limit for backtest (live default is often 3, too tight)
+        bt_consec = int(os.getenv("BACKTEST_CB_MAX_CONSEC", "0"))
+        if bt_consec > 0:
+            self.risk_mgr.circuit_breaker.max_consecutive_losses = bt_consec
+        elif self.risk_mgr.circuit_breaker.max_consecutive_losses <= 3:
+            self.risk_mgr.circuit_breaker.max_consecutive_losses = 6
 
         # Results
         self.equity_curve: List[Dict] = []
@@ -102,6 +108,19 @@ class BacktestEngine:
         # Per-symbol re-entry gap: skip 1 candle after a close to prevent
         # same-bar re-entry artifacts in backtest
         self._last_close_candle: Dict[str, int] = {}  # symbol -> candle index
+
+        # Raw mode: disable all risk gates for pure strategy analysis
+        self._raw_mode = False
+
+    def enable_raw_mode(self):
+        """Disable all risk gates for pure strategy analysis."""
+        self._raw_mode = True
+        cb = self.risk_mgr.circuit_breaker
+        cb.daily_loss_limit_pct = 1.0
+        cb.max_drawdown_pct = 1.0
+        cb.max_consecutive_losses = 999999
+        self.risk_mgr.max_open_positions = 50
+        self.risk_mgr.max_portfolio_leverage = 100.0
 
     def run(
         self,
@@ -225,14 +244,18 @@ class BacktestEngine:
             if self.llm:
                 self.llm.reset_for_symbol(symbol)
 
-            # Circuit breaker persists across symbols (matches live behavior).
-            # Only reset the consecutive_losses counter (which is symbol-specific
-            # noise) — drawdown, daily PnL, and trip state carry over so the
-            # backtest reflects real account-level protection.
+            # Reset CB trip state between symbols so each gets fair evaluation.
+            # peak_equity intentionally persists (account-level metric).
+            # daily_pnl resets naturally at day boundaries.
             if hasattr(self.risk_mgr, "circuit_breaker") and self.risk_mgr.circuit_breaker:
                 cb = self.risk_mgr.circuit_breaker
-                cb.consecutive_losses = 0  # New symbol = fresh streak
-                # Do NOT reset: tripped, trip_time, peak_equity, daily_pnl, _override_count
+                cb.consecutive_losses = 0
+                cb.tripped = False
+                cb.trip_time = None
+                cb._trip_sim_time = None
+                cb.trip_reason = ""
+                cb._override_count = 0
+                cb.post_cooldown_caution = 0
 
             data = all_data.get(symbol, {})
             df_1h = data.get("1h", pd.DataFrame())
@@ -852,6 +875,7 @@ class BacktestEngine:
         qty = self.risk_mgr.calculate_qty(
             fill_price, signal.sl, lev_decision.leverage, lev_decision.risk_multiplier,
             slippage_bps=slippage_bps,
+            skip_notional_cap=self._raw_mode,
         )
         if qty <= 0:
             return
@@ -895,7 +919,12 @@ class BacktestEngine:
             strategy=signal.strategy,
             confidence=signal.confidence,
             tp1_close_pct=adjusted["tp1_close_pct"],
-            entry_reasons={"backtest": True, "strategy": signal.strategy},
+            entry_reasons={
+                "backtest": True,
+                "strategy": signal.strategy,
+                "num_agree": signal.metadata.get("num_agree", 1),
+                "strategies_agree": signal.metadata.get("strategies_agree", [signal.strategy]),
+            },
             trade_profile=trade_prof,
             notes=position_notes,
         )
@@ -972,6 +1001,7 @@ class BacktestEngine:
             "circuit_breaker_stats": self._report_circuit_breaker(),
             "by_agreement": self._report_by_agreement(),
             "strategy_health": self._report_strategy_health(),
+            "exit_types": self._report_exit_types(),
             "recommendations": self._generate_recommendations(),
             "equity_curve": self.equity_curve,
         }
@@ -1169,6 +1199,25 @@ class BacktestEngine:
             }
             del c["_cur_streak"]
             del c["pnl_curve"]
+        return result
+
+    def _report_exit_types(self) -> Dict[str, Any]:
+        """Report performance by exit type (SL, TP1, TP2, TRAILING_STOP, etc.)."""
+        result = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action in self._CLOSE_ACTIONS:
+                action = event.action
+                if action not in result:
+                    result[action] = {"trades": 0, "wins": 0, "pnl": 0.0}
+                result[action]["trades"] += 1
+                if event.pnl > 0:
+                    result[action]["wins"] += 1
+                result[action]["pnl"] += event.pnl
+        for action, stats in result.items():
+            t = stats["trades"]
+            stats["win_rate"] = round(stats["wins"] / t, 3) if t > 0 else 0
+            stats["avg_pnl"] = round(stats["pnl"] / t, 2) if t > 0 else 0
+            stats["pnl"] = round(stats["pnl"], 2)
         return result
 
     def _generate_recommendations(self) -> List[str]:
@@ -1502,6 +1551,19 @@ def print_report(report: Dict):
                         print(f"\n  Losing Strategy Combos:")
                         has_losing_combo = True
                     print(f"    {key} {combo}: PF={cd['pf']} WR={cd['wr']:.0%} ({cd['trades']} trades) -- LOSING")
+
+    # Exit type breakdown
+    exit_types = report.get("exit_types", {})
+    if exit_types:
+        print(f"\n  Exit Type Breakdown:")
+        for action in sorted(exit_types.keys(), key=lambda k: -exit_types[k]["trades"]):
+            stats = exit_types[action]
+            print(
+                f"    {action:16s}  {stats['trades']:>4} trades  "
+                f"WR={stats['win_rate']:.0%}  "
+                f"avg=${stats['avg_pnl']:>8.2f}  "
+                f"total=${stats['pnl']:>10,.2f}"
+            )
 
     # Recommendations
     recs = report.get("recommendations", [])
