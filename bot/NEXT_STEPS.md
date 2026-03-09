@@ -10,40 +10,28 @@ After 3-agent deep audit of the full codebase (4,645-line main loop, 64 LLM modu
 
 ## PART 1: PROBLEMS TO TACKLE IMMEDIATELY
 
-### Problem 1: Regime Strategy Filter Is DEAD (Bug)
-**File:** `multi_strategy_main.py:1915`
-**Bug:** `self.regime_detector.get_current_regime(symbol)` — method doesn't exist. Should be `get_regime(symbol)`.
-**Impact:** Wave 2 regime-based strategy filtering is completely dormant. The bot can't filter strategies by regime, so it runs all strategies in all regimes (including losing ones).
-**Fix:** One-line method name fix + verify downstream logic.
+> **Status: ALL FIXED (verified 2026-03-09)**
 
-### Problem 2: LLM Veto Sets `candidate.llm_action = "flat"` But Actually Returns
-**File:** `multi_strategy_main.py:2660-2748`
-**Status:** Actually working correctly — veto check does `return` at line 2748. **No fix needed.** The veto is enforced.
+### Problem 1: ~~Regime Strategy Filter Is DEAD (Bug)~~ ✅ FIXED
+**Fix applied:** Uses `get_regime()` (correct method). Regime cache at line 832, filter at line 2153.
 
-### Problem 3: `apply_profile()` Never Called at Init
-**File:** `multi_strategy_main.py` init section
-**Impact:** Paper mode doesn't cap leverage at 10x. User can accidentally paper trade at 25x.
-**Fix:** Call `apply_profile(config)` in `MultiStrategyBot.__init__()`.
+### Problem 2: ~~LLM Veto~~ ✅ No Fix Needed
+**Status:** Working correctly — veto check returns at line 2748.
 
-### Problem 4: `get_symbol_param()` Not Used in Risk Manager
-**File:** `execution/risk.py:258-306`
-**Impact:** PEPE/FARTCOIN/DOGE have per-symbol overrides (8x leverage, 0.5% risk) defined in config but never read. Bot uses global max_leverage for all symbols.
-**Fix:** Wire `get_symbol_param()` into risk manager's `calculate_qty()` path.
+### Problem 3: ~~`apply_profile()` Never Called at Init~~ ✅ FIXED
+**Fix applied:** Called at `multi_strategy_main.py:346`.
 
-### Problem 5: Portfolio Notional Cap Built But Not Wired Into Main Loop
-**File:** `execution/position_manager.py` (has `check_portfolio_notional_cap()`)
-**Impact:** The cap method exists from Push 1 but isn't called in `_process_symbol()`. Bot can still over-leverage aggregate portfolio.
-**Fix:** Add check before `open_position()` in main loop.
+### Problem 4: ~~`get_symbol_param()` Not Used~~ ✅ FIXED
+**Fix applied:** Used at lines 2774 (leverage cap) and 2781 (risk_per_trade).
 
-### Problem 6: Min Profit Threshold Built But Not Wired
-**Config:** `min_profit_threshold_mult` exists (default 3.0)
-**Impact:** Bot opens trades where TP1 profit < costs. Low-edge trades bleed the account.
-**Fix:** Add pre-trade check in `_process_symbol()`.
+### Problem 5: ~~Portfolio Notional Cap Not Wired~~ ✅ FIXED
+**Fix applied:** `check_portfolio_notional_cap()` called at line 3309.
 
-### Problem 7: Funding Rate Entry Filter Missing
-**File:** `execution/funding_timer.py` — has `should_close_before_funding()` for exits
-**Impact:** Bot enters full-size positions 10 minutes before negative funding. Immediate drag on PnL.
-**Fix:** Add entry-side funding check using existing function.
+### Problem 6: ~~Min Profit Threshold Not Wired~~ ✅ FIXED
+**Fix applied:** Gate active at line 2761 (`min_profit_threshold_mult`).
+
+### Problem 7: ~~Funding Rate Entry Filter Missing~~ ✅ FIXED
+**Fix applied:** Funding entry filter at line 2735 (`enable_funding_check`).
 
 ---
 
@@ -95,17 +83,14 @@ After 3-agent deep audit of the full codebase (4,645-line main loop, 64 LLM modu
 | Adaptive Confidence Floor | YES | YES | **YES** | Trust-gated, slow |
 | Continuous Backtest | YES | Partial | **PARTIAL** | 3%/cycle cap too slow |
 | Parameter Tuner | YES | Partial | **PARTIAL** | Trust gate blocks fast adaptation |
-| Strategy Weights | YES | NO | **BROKEN** | Computed daily, ensemble ignores |
+| Strategy Weights | YES | YES | **YES** ✅ | `_refresh_dynamic_weights()` before each eval |
 | ML Learner | YES | YES (20%) | **YES** | Cold start too long, low weight |
-| Evolution Tracker | YES | NO | **BROKEN** | CLI-only, never auto-applied |
+| Evolution Tracker | YES | YES | **YES** ✅ | Lessons feed LLM memory every 24h (line 1126) |
 | Analytics Suite | Sparse | NO | **BROKEN** | Cascade detection logged, not acted on |
 | SQLite Database | YES | NO | **WRITE-ONLY** | Comprehensive capture, no readback |
 
-### Fix #1: Wire Strategy Weights Into Ensemble
-**Files:** `data/strategy_weights.py`, `strategies/ensemble.py`
-**Problem:** Weights updated daily from trade outcomes but ensemble uses equal weights.
-**Fix:** Pass `weight_mgr.get_rolling_weights()` to ensemble voting.
-**Impact:** Strategies with 40% WR auto-demoted; 70% WR strategies boosted.
+### ~~Fix #1: Wire Strategy Weights Into Ensemble~~ ✅ FIXED
+**Status:** `_refresh_dynamic_weights()` called at `ensemble.py:144` before each evaluation. `get_rolling_weights()` feeds dynamic weights.
 
 ### Fix #2: Remove 3% Cap on High-Confidence Backtest Suggestions
 **File:** `feedback/parameter_tuner.py`
@@ -188,20 +173,14 @@ After 3-agent deep audit of the full codebase (4,645-line main loop, 64 LLM modu
 
 ## IMPLEMENTATION ORDER (What To Build Next)
 
-### Sprint 1: Bug Fixes + Wire Existing Code (THIS SESSION)
-1. Fix regime method name bug (`get_current_regime` → `get_regime`)
-2. Wire `apply_profile()` into `MultiStrategyBot.__init__()`
-3. Wire `get_symbol_param()` into risk manager
-4. Wire portfolio notional cap check into `_process_symbol()`
-5. Wire min profit threshold gate into `_process_symbol()`
-6. Wire funding rate entry filter into `_process_symbol()`
-7. Tests for all 6 changes
+### ~~Sprint 1: Bug Fixes + Wire Existing Code~~ ✅ ALL DONE
+All 6 bugs fixed and verified. 999 tests passing.
 
-### Sprint 2: Close Feedback Loops
-1. Wire strategy weights into ensemble voting
-2. Wire evolution tracker lessons into LLM memory (12h cycle)
-3. Remove parameter tuner 3% cap for high-confidence suggestions
-4. Increase ML learner weight to 30% after 50 trades
+### ~~Sprint 2: Close Feedback Loops~~ ✅ MOSTLY DONE
+1. ✅ Strategy weights wired into ensemble (`_refresh_dynamic_weights()`)
+2. ✅ Evolution tracker lessons feed LLM memory (every 24h, line 1126)
+3. TODO: Remove parameter tuner 3% cap for high-confidence suggestions
+4. TODO: Increase ML learner weight to 30% after 50 trades
 
 ### Sprint 3: LLM Productivity
 1. Add snapshot response caching (3-min TTL)
