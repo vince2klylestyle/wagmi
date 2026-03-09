@@ -251,9 +251,9 @@ $10k at +5% monthly (conservative):
 
 | Feature | Test Status | Detail | PnL Risk | Priority |
 |---------|-------------|--------|----------|----------|
-| Intra-candle SL/TP (backtest) | **UNTESTED** | Zero coverage — no wick check tests | HIGH | P0 |
-| RiskFilterChain 6 gates | **MINIMAL** | Only checks class exists, no gate-by-gate validation | HIGH | P0 |
-| MTM equity curve | **MINIMAL** | Only data field check, no equity/CB impact tests | HIGH | P0 |
+| Intra-candle SL/TP (backtest) | **COVERED** (11 tests) | Wick ordering, SL priority, slippage, LONG+SHORT | — | Done |
+| RiskFilterChain 6 gates | **COVERED** (22 tests) | All gates individually + sequential ordering | — | Done |
+| MTM equity + CB | **COVERED** (11 tests) | Current equity, drawdown, sizing, sim_time, funding | — | Done |
 | Funding simulation accrual | **PARTIAL** | Funding alerts tested, per-candle accrual untested | HIGH | P1 |
 | Scout Agent | **UNTESTED** | Zero coverage — entire agent untested | MEDIUM | P1 |
 | Signal flip decision logic | **PARTIAL** | Flip handling tested, flip DECISION logic untested | MEDIUM | P1 |
@@ -277,6 +277,13 @@ $10k at +5% monthly (conservative):
 
 **Critical finding:** No `except: pass` in the core execution path (signal → risk filter → order). The swallowed errors are in logging, memory writes, and telemetry — annoying but not money-losing.
 
+## Wiring Bugs Found
+
+### RiskFilterChain Interface Mismatch
+`signal_pipeline.py` calls `self.risk_mgr.is_trading_allowed()` and `self.risk_mgr.get_override_constraints()` — but these are `CircuitBreaker` methods, not `RiskManager` methods. Both `backtest/engine.py` and `multi_strategy_main.py` pass a `RiskManager` instance. This would crash when the non-raw-mode backtest path hits Gate 2 (circuit breaker check). Either the code path is never exercised, or it's silently caught by a try/except.
+
+**Fix:** Add `is_trading_allowed()` and `get_override_constraints()` delegation to `RiskManager`, forwarding to `self.circuit_breaker`.
+
 ## Structural Risks
 
 ### 1. Backtest Realism (Unknown Impact)
@@ -289,17 +296,27 @@ The thesis claims +3-5% monthly. But **no backtest has been run with all E1-E5 f
 
 **Action:** Out-of-sample validation. Run backtests on periods not used for strategy development.
 
-### 3. Correlation Blowup
+### 3. Circuit Breaker Blind Spot: Unrealized PnL
+Circuit breakers (`execution/risk.py`) only trigger on **realized equity** — they evaluate after trades close. Open losing positions don't count toward daily loss limits or drawdown thresholds. This means:
+- A 15% unrealized drawdown across 3 positions won't trip the CB until positions close
+- Peak equity only updates on trade closes, not continuously during favorable moves
+- The daily backtest equity curve is also missing MTM, understating intra-day risk
+
+The **hourly** backtest equity curve and Sharpe/Sortino calculations correctly use MTM equity (`engine.py:521-541`). But the CB itself is blind to open-position risk.
+
+**Action:** Feed unrealized PnL into `CircuitBreaker._check_breakers()` on each price update, not just on trade closes. Separate concern: daily equity curve needs MTM parity with hourly.
+
+### 4. Correlation Blowup
 While the correlation guard exists (0.85 threshold), it uses **realized correlation** not **crisis correlation**. In a crypto crash, correlations spike to 0.95+ across all pairs — the 0.85 threshold would reject individual new trades but can't unwind existing positions that became correlated post-entry.
 
 **Action:** Add portfolio-level drawdown monitor that considers cross-position unrealized PnL.
 
-### 4. LLM Dependency
+### 5. LLM Dependency
 In VETO_ONLY+ modes, an LLM API outage means no veto → overconfident trades pass through. In DIRECTION/FULL modes, no LLM = no trading.
 
 **Action:** Already handled — fallback to monolithic pipeline, then to strategy-only mode. But this fallback path needs dedicated testing.
 
-### 5. Single Exchange Risk
+### 6. Single Exchange Risk
 Hyperliquid-only. If Hyperliquid has downtime, API changes, or liquidity issues, the bot can't trade.
 
 **Action:** Multi-exchange CCXT support exists but only Hyperliquid is tested live.
