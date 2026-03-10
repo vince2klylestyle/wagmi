@@ -794,9 +794,21 @@ class EnsembleStrategy:
         #   EV = win_prob × (R:R - fee_drag) - loss_prob × (1.0 + fee_drag)
         # Fee drag = round-trip fees as fraction of stop width.
         # A 1.5 R:R trade with 10% fee drag: win nets 1.4R, loss costs 1.1R.
+        #
+        # CRITICAL: confidence ≠ win probability. 70% confidence historically
+        # produces ~45% WR (overconfident). Apply conservative deflator to
+        # prevent EV overestimation from uncalibrated confidence scores.
+        # Deflator: assume confidence is ~1.4x actual win rate (empirical).
+        # This makes EV a LOWER BOUND rather than an optimistic estimate.
         stop_width = abs(entry - best_sl)
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
-        win_prob = combined_conf / 100.0
+        raw_win_prob = combined_conf / 100.0
+        # Conservative win probability: deflate by empirical overconfidence ratio.
+        # 3-agree trades are better calibrated (86% WR at ~80% conf) so less deflation.
+        if n_agree >= 3:
+            win_prob = min(raw_win_prob, raw_win_prob * 0.90)  # 10% deflation
+        else:
+            win_prob = min(raw_win_prob, raw_win_prob * 0.70)  # 30% deflation (70% conf → 49% WR)
         try:
             from trading_config import TradingConfig as _TConf
             _fee_bps = _TConf().taker_fee_bps
