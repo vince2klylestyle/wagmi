@@ -612,13 +612,13 @@ class EnsembleStrategy:
 
         # Block known-losing 2-agree combos (backtest PF < 0.2)
         # confidence_scorer + multi_tier_quality without regime_trend = PF 0.08
-        if len(buy_signals) == 2 or len(sell_signals) == 2:
-            chosen_2 = buy_signals if len(buy_signals) == 2 else sell_signals if len(sell_signals) == 2 else []
-            if len(chosen_2) == 2:
-                combo = frozenset(s.strategy for s in chosen_2)
-                _LOSING_COMBOS = {
-                    frozenset({"confidence_scorer", "multi_tier_quality"}),
-                }
+        # Check BOTH sides (not just one) when both have exactly 2 signals
+        _LOSING_COMBOS = {
+            frozenset({"confidence_scorer", "multi_tier_quality"}),
+        }
+        for side_signals in [buy_signals, sell_signals]:
+            if len(side_signals) == 2:
+                combo = frozenset(s.strategy for s in side_signals)
                 if combo in _LOSING_COMBOS:
                     logger.info(
                         f"[{symbol}] Blocked losing 2-agree combo: {sorted(combo)}"
@@ -760,7 +760,9 @@ class EnsembleStrategy:
             max_conf = TradingConfig().max_ensemble_confidence
         except Exception:
             max_conf = 85.0
-        max_conf = max(max_conf, 92.0)  # Safety: ensure cap is at least 92%
+        if max_conf < 85.0:
+            logger.warning(f"[ENSEMBLE] MAX_ENSEMBLE_CONFIDENCE={max_conf} is very low, may suppress valid signals")
+        # Respect user's configured cap (don't silently override to 92)
         combined_conf = min(max_conf, weighted_conf * consensus_mult)
 
         # Weighted-average SL (preserves R:R), average TP1 (balanced), widest TP2 (aggressive).
@@ -820,8 +822,10 @@ class EnsembleStrategy:
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
         raw_win_prob = combined_conf / 100.0
         # Conservative win probability: deflate by empirical overconfidence ratio.
-        # 3-agree trades are better calibrated (86% WR at ~80% conf) so less deflation.
-        if n_agree >= 3:
+        # Higher agreement = better calibration = less deflation needed.
+        if n_agree >= 4:
+            win_prob = raw_win_prob * 0.95  # 5% deflation (unanimous agreement, best calibrated)
+        elif n_agree >= 3:
             win_prob = raw_win_prob * 0.90  # 10% deflation (well-calibrated at 3-agree)
         else:
             win_prob = raw_win_prob * 0.70  # 30% deflation (70% conf → 49% WR empirical)
@@ -832,6 +836,16 @@ class EnsembleStrategy:
             _fee_bps = 4
         fee_drag = (entry * _fee_bps * 2 / 10000.0) / stop_width if stop_width > 0 else 0
         ev_per_dollar = round(win_prob * (rr_tp1 - fee_drag) - (1.0 - win_prob) * (1.0 + fee_drag), 4)
+
+        # Defense-in-depth: reject negative-EV signals at ensemble level.
+        # The signal pipeline also checks EV, but this prevents wasted computation
+        # on signals that are mathematically unprofitable.
+        if ev_per_dollar < 0:
+            logger.info(
+                f"[ENSEMBLE] {symbol} {side} rejected: negative EV ({ev_per_dollar:.4f}) "
+                f"R:R={rr_tp1:.2f} fee_drag={fee_drag:.3f} win_prob={win_prob:.2f}"
+            )
+            return None
 
         return Signal(
             strategy="ensemble",

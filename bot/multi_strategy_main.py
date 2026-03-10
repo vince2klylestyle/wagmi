@@ -2640,14 +2640,22 @@ class MultiStrategyBot:
         except Exception as e:
             logger.debug(f"RiskFilterChain error (falling back to inline): {e}")
 
-        # Determine leverage (inline path preserved for live-specific caps below)
-        lev_decision = self.leverage_mgr.decide(
-            signal_result.confidence,
-            num_agree,
-            total,
-            sym_cfg.risk_tier,
-            extreme_count,
-        )
+        # Use leverage from RiskFilterChain (already computed by leverage_mgr.decide()
+        # inside the chain). Avoids double-computation which could diverge if state
+        # changes between calls. Live-specific caps are applied below.
+        if '_chain_result' in dir() and _chain_result.approved:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
+            # Override with chain result's leverage to stay consistent
+            lev_decision.leverage = _chain_result.leverage
+            lev_decision.risk_multiplier = _chain_result.risk_multiplier
+        else:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
 
         if lev_decision.leverage <= 0:
             return  # Confidence too low
@@ -4546,6 +4554,11 @@ class MultiStrategyBot:
         btc_1h = 0.0
         btc_24h = 0.0
         eth_price = 0.0
+        # ETH isn't in DEFAULT_SYMBOLS but we need its price for ETH/BTC ratio context
+        try:
+            eth_price = self.fetcher.latest_price("ETH", "ethereum") or 0.0
+        except Exception:
+            pass
 
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             price = self._last_prices.get(symbol)
