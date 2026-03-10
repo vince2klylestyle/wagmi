@@ -311,15 +311,16 @@ class BacktestEngine:
             return {"status": "error", "error": str(e)}
 
     def _build_strategies(self, sym_configs, strategy_names) -> list:
-        """Build strategy instances."""
-        all_strats = {
-            "regime_trend": RegimeTrendStrategy(sym_configs, self.config.htf_hours),
-            "confidence_scorer": ConfidenceScorerStrategy(sym_configs, data_dir="backtest_ml_data"),
-            "multi_tier_quality": MultiTierQualityStrategy(sym_configs),
-        }
-        # monte_carlo_zones disabled — PF=0.0 (0% WR) in 10d backtest.
-        # Re-enable via STRATEGY_MONTE_CARLO_ENABLED=true if needed.
+        """Build strategy instances. Each toggleable via STRATEGY_*_ENABLED env var."""
         import os
+        all_strats = {}
+
+        if os.getenv("STRATEGY_REGIME_TREND_ENABLED", "true").lower() == "true":
+            all_strats["regime_trend"] = RegimeTrendStrategy(sym_configs, self.config.htf_hours)
+        if os.getenv("STRATEGY_CONFIDENCE_SCORER_ENABLED", "true").lower() == "true":
+            all_strats["confidence_scorer"] = ConfidenceScorerStrategy(sym_configs, data_dir="backtest_ml_data")
+        if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "true").lower() == "true":
+            all_strats["multi_tier_quality"] = MultiTierQualityStrategy(sym_configs)
         if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "false").lower() == "true":
             all_strats["monte_carlo_zones"] = MonteCarloZonesStrategy(sym_configs)
 
