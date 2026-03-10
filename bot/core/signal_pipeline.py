@@ -88,6 +88,21 @@ class RiskFilterChain:
         meta["rr_tp1"] = round(signal.risk_reward_tp1, 2)
         meta["rr_tp2"] = round(signal.risk_reward_tp2, 2)
 
+        # Gate 1c: Minimum Expected Value filter
+        # EV = (win_prob × R:R) - (loss_prob × 1.0) per dollar risked.
+        # Filters trades where probability × payoff doesn't justify the risk.
+        # A 72% conf trade with 1.5 R:R (EV=0.80) passes easily.
+        # A 65% conf trade with 1.0 R:R (EV=0.30) is borderline.
+        ev = signal.metadata.get("ev_per_dollar") if signal.metadata else None
+        min_ev = getattr(self.config, "min_signal_ev", 0.10)
+        if ev is not None and ev < min_ev:
+            return FilterResult(
+                approved=False, signal=signal,
+                rejection_reason=f"EV {ev:.3f} < min {min_ev:.2f} (low expected value)"
+            )
+        if ev is not None:
+            meta["ev_per_dollar"] = ev
+
         # Gate 2: Circuit breaker
         if not self.risk_mgr.is_trading_allowed(
             confidence=signal.confidence,
@@ -124,19 +139,20 @@ class RiskFilterChain:
                     meta["cluster_risk"] = round(cluster_risk, 3)
 
                     # High correlation cluster → reduce size or reject
-                    # Raised from 0.85 to 0.90 — correlated trades in trends are intentional
-                    if cluster_risk >= 0.90:
+                    # Lowered from 0.90 to 0.85 — 3 correlated longs at 0.85+ all
+                    # stop out in a dump, creating compounded drawdown.
+                    if cluster_risk >= 0.85:
                         return FilterResult(
                             approved=False, signal=signal,
-                            rejection_reason=f"Correlation cluster risk {cluster_risk:.2f} >= 0.90 "
+                            rejection_reason=f"Correlation cluster risk {cluster_risk:.2f} >= 0.85 "
                                              f"(too many correlated positions in same direction)",
                             metadata=meta,
                         )
-                    elif cluster_risk >= 0.75:
-                        # Don't reject, but reduce risk multiplier by 30% (was 40%)
+                    elif cluster_risk >= 0.70:
+                        # Don't reject, but reduce risk multiplier by 30%
                         meta["correlation_size_reduction"] = 0.7
                         logger.info(
-                            f"[CORR-GUARD] {signal.symbol} cluster_risk={cluster_risk:.2f} "
+                            f"[CORR-GUARD] {signal.symbol} cluster_risk={cluster_risk:.2f} >= 0.70 "
                             f"— reducing position size by 30%"
                         )
             except Exception as e:
@@ -171,7 +187,23 @@ class RiskFilterChain:
         meta["leverage_tier"] = lev_decision.tier
         meta["risk_multiplier"] = round(risk_mult, 2)
 
-        # Gate 5: Liquidation safety
+        # Gate 5b: Leverage-scaled EV floor
+        # Higher leverage amplifies both wins and losses — require higher EV.
+        ev = meta.get("ev_per_dollar")
+        if ev is not None and leverage > 2.0:
+            if leverage > 4.0:
+                lev_ev_floor = 0.20
+            else:
+                lev_ev_floor = 0.15
+            if ev < lev_ev_floor:
+                return FilterResult(
+                    approved=False, signal=signal,
+                    rejection_reason=f"EV {ev:.3f} < {lev_ev_floor:.2f} "
+                                     f"(required for {leverage:.1f}x leverage)",
+                    metadata=meta,
+                )
+
+        # Gate 6: Liquidation safety
         side_str = "BUY" if signal.side == "BUY" else "SELL"
         notional_est = equity * leverage * 0.5  # rough estimate
         liq_check = self.leverage_mgr.validate_stop_vs_liquidation(

@@ -274,11 +274,20 @@ class TradingConfig:
     ensemble_confidence_floor: float = field(
         default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 70.0)
     )
+    max_ensemble_confidence: float = field(
+        default_factory=lambda: _env_float("MAX_ENSEMBLE_CONFIDENCE", 85.0)
+    )
     min_signal_rr: float = field(
         default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.5)
     )
     min_stop_width_pct: float = field(
         default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.002)
+    )
+    # Minimum expected value per dollar risked. EV = (win_prob × R:R) - (1-win_prob).
+    # Filters trades where the probability × payoff doesn't justify the risk.
+    # Default 0.10 means trades must have positive expectancy of at least $0.10 per $1 risked.
+    min_signal_ev: float = field(
+        default_factory=lambda: _env_float("MIN_SIGNAL_EV", 0.10)
     )
     # Monte Carlo strategy
     mc_num_sims: int = field(
