@@ -55,6 +55,33 @@ class MultiTierQualityStrategy(BaseStrategy):
     def get_required_timeframes(self) -> List[str]:
         return ["1h", "6h"]
 
+    def _compute_adx(self, df: pd.DataFrame, period: int = 14) -> float:
+        """Compute ADX. Returns 0-100. ADX < 20 = ranging."""
+        if len(df) < period + 1:
+            return 25.0  # insufficient data, assume neutral
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        close = df["close"].astype(float)
+        prev_close = close.shift(1)
+
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+        tr = pd.concat([
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ], axis=1).max(axis=1)
+
+        atr_val = tr.rolling(period, min_periods=1).mean()
+        plus_di = (plus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+        minus_di = (minus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+
+        dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-9)) * 100
+        return float(dx.rolling(period, min_periods=1).mean().iloc[-1])
+
     def _ema_side_slope(self, df: pd.DataFrame) -> tuple:
         """Get EMA50 side (above/below) and slope (up/down)."""
         if df is None or "EMA50" not in df.columns or len(df) < 5:
@@ -173,6 +200,12 @@ class MultiTierQualityStrategy(BaseStrategy):
         df_1h = _add_emas(df_1h)
         df_6h = _add_emas(df_6h)
 
+        # ADX filter: skip signal generation in ranging markets
+        # multi_tier_quality is the biggest PnL loser — most vulnerable to chop
+        adx_val = self._compute_adx(df_1h)
+        if adx_val < 20.0:
+            return None
+
         # Determine side from 1h EMA crossover
         side_1h = self._one_hour_side(df_1h)
         if side_1h == "na":
@@ -285,6 +318,7 @@ class MultiTierQualityStrategy(BaseStrategy):
                 "ema_6h_align": ema_6h_align,
                 "stop_width": stop_width,
                 "swing_used": swing is not None,
+                "adx": round(adx_val, 1),
             },
         )
 

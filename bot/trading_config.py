@@ -179,6 +179,16 @@ class TradingConfig:
     chop_threshold: float = field(
         default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.65)
     )
+    # ADX below this = ranging market, strategies should not generate signals.
+    # ADX 20 is the classic threshold; below 20 means no directional trend.
+    adx_min_trending: float = field(
+        default_factory=lambda: _env_float("ADX_MIN_TRENDING", 20.0)
+    )
+    # Confidence floor when market is ranging (chop_score > chop_threshold * 0.8)
+    # Higher than normal floor to only allow very high conviction trades in chop
+    ranging_confidence_floor: float = field(
+        default_factory=lambda: _env_float("RANGING_CONFIDENCE_FLOOR", 88.0)
+    )
     max_hold_hours: int = field(
         default_factory=lambda: _env_int("MAX_HOLD_HOURS", 48)
     )

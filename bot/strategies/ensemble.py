@@ -46,6 +46,7 @@ class EnsembleStrategy:
         veto_ratio: float = 1.5,  # Match trading_config.py default
         chop_detector=None,
         confidence_floor: float = 65.0,
+        ranging_confidence_floor: float = 88.0,
     ):
         self.strategies = strategies
         self.mode = mode
@@ -55,6 +56,7 @@ class EnsembleStrategy:
         self.veto_ratio = veto_ratio
         self.chop_detector = chop_detector  # ChopDetector instance (Wave 1)
         self.confidence_floor = confidence_floor
+        self.ranging_confidence_floor = ranging_confidence_floor
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
         self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
@@ -213,10 +215,23 @@ class EnsembleStrategy:
 
         # ── Post-merge quality gates ──
 
-        # 1. Minimum confidence floor — reject weak consensus signals
-        if result.confidence < self.confidence_floor:
+        # 1. Minimum confidence floor — regime-aware
+        # In choppy markets, require much higher confidence to trade.
+        # 100d backtest: ranging regime = 24% WR, trending = 100% WR.
+        effective_floor = self.confidence_floor
+        chop_score = result.metadata.get("chop_score", 0)
+        if chop_score > 0.35:
+            # Market is somewhat choppy — interpolate between normal and ranging floor
+            chop_intensity = min(1.0, (chop_score - 0.35) / 0.30)  # 0→1 over 0.35→0.65
+            effective_floor = self.confidence_floor + chop_intensity * (
+                self.ranging_confidence_floor - self.confidence_floor
+            )
+            result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
+
+        if result.confidence < effective_floor:
             logger.info(
-                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% < {self.confidence_floor}% floor"
+                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
+                f"< {effective_floor:.0f}% floor (chop={chop_score:.2f})"
             )
             return None
 
@@ -232,10 +247,10 @@ class EnsembleStrategy:
             return None
 
         # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
-        if result.confidence < self.confidence_floor:
+        if result.confidence < effective_floor:
             logger.info(
                 f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
-                f"after trend adjustment"
+                f"< {effective_floor:.0f}% after trend adjustment"
             )
             return None
 

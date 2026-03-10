@@ -478,10 +478,12 @@ class BacktestEngine:
                     # Tag regime at signal time for regime-aware reporting
                     try:
                         statuses = ensemble.get_all_status(symbol, windowed)
+                        adx_val = 25.0  # default neutral
                         for s in statuses:
                             if s.get("strategy") == "regime_trend":
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
+                                adx_val = s.get("adx", 25.0)
                                 if al >= 3:
                                     signal.metadata["regime"] = "trending_bull"
                                 elif ash >= 3:
@@ -491,8 +493,15 @@ class BacktestEngine:
                                 else:
                                     signal.metadata["regime"] = "ranging"
                                 break
+                        signal.metadata["adx"] = round(adx_val, 1)
                     except Exception:
                         signal.metadata.setdefault("regime", "unknown")
+                        adx_val = 25.0
+
+                    # ADX-based override: if ADX < 20, force ranging regardless of alignment
+                    # This catches cases where alignment says "mixed" but market has no trend
+                    if adx_val < 20.0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
+                        signal.metadata["regime"] = "ranging"
 
                     # Also check trade_profile regime (uses trend_adjustment from ensemble)
                     # This catches signals where align >= 2 but no actual trend alignment
@@ -502,12 +511,12 @@ class BacktestEngine:
                         # Override "mixed" to "ranging" since trend_adjustment confirms no trend
                         signal.metadata["regime"] = "ranging"
 
-                    # Regime filter: skip trades in ranging markets (29% WR historically)
+                    # Regime filter: skip trades in ranging markets (24% WR historically)
                     regime = signal.metadata.get("regime", "unknown")
                     if regime in ("ranging", "unknown"):
                         logger.info(
-                            f"[{symbol}] Signal SKIPPED: ranging regime "
-                            f"(no directional alignment)"
+                            f"[{symbol}] Signal SKIPPED: {regime} regime "
+                            f"(ADX={adx_val:.1f}, no directional alignment)"
                         )
                         self.candle_stats.setdefault("regime_blocked", 0)
                         self.candle_stats["regime_blocked"] += 1
@@ -683,10 +692,12 @@ class BacktestEngine:
                     # Tag regime at signal time (same logic as _walk_hourly)
                     try:
                         statuses = ensemble.get_all_status(symbol, windowed)
+                        adx_val = 25.0
                         for s in statuses:
                             if s.get("strategy") == "regime_trend":
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
+                                adx_val = s.get("adx", 25.0)
                                 if al >= 3:
                                     signal.metadata["regime"] = "trending_bull"
                                 elif ash >= 3:
@@ -696,8 +707,14 @@ class BacktestEngine:
                                 else:
                                     signal.metadata["regime"] = "ranging"
                                 break
+                        signal.metadata["adx"] = round(adx_val, 1)
                     except Exception:
                         signal.metadata.setdefault("regime", "unknown")
+                        adx_val = 25.0
+
+                    # ADX-based override: if ADX < 20, force ranging
+                    if adx_val < 20.0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
+                        signal.metadata["regime"] = "ranging"
 
                     # Cross-check with trend_adjustment (same as _walk_hourly)
                     trend_adj = signal.metadata.get("trend_adjustment", 0)
