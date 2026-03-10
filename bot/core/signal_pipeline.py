@@ -210,8 +210,10 @@ class RiskFilterChain:
         # Higher leverage amplifies both wins and losses — require higher EV.
         ev = meta.get("ev_per_dollar")
         if ev is not None and leverage > 2.0:
+            n_agree = meta.get("num_agree", 0)
             if leverage > 4.0:
-                lev_ev_floor = 0.20
+                # 3-agree EV estimates are better calibrated (10% deflation vs 30%)
+                lev_ev_floor = 0.17 if n_agree >= 3 else 0.20
             else:
                 lev_ev_floor = 0.15
             if ev < lev_ev_floor:

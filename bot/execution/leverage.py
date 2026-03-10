@@ -129,8 +129,8 @@ class LeverageManager:
                 return LeverageDecision(lev, "leverage", "low",
                                         f"{lev:.1f}x: only {num_strategies_agree} strats", 0.6)
             if num_strategies_agree >= 3:
-                lev = min(2.0, cap)
-                rm = 1.0
+                lev = min(3.0, cap)  # Kelly-informed: ~1/9 Kelly at this tier
+                rm = 1.1
             else:
                 lev = min(1.0, cap)  # 2_agree: minimal leverage (40% WR is net losing)
                 rm = 0.6  # much smaller position for weaker consensus
@@ -145,27 +145,28 @@ class LeverageManager:
                                         f"{lev:.1f}x: only {num_strategies_agree} strats", 0.6)
             if num_strategies_agree >= 3:
                 t = (confidence - 75) / 5.0
-                lev = min(2.0 + t * 1.0, cap)  # 2-3x for 3_agree
-                rm = 1.0 + t * 0.2  # 1.0-1.2x
+                lev = min(3.0 + t * 1.0, cap)  # 3-4x for 3_agree (~1/6 Kelly)
+                rm = 1.1 + t * 0.2  # 1.1-1.3x
             else:
                 lev = min(1.0, cap)  # 2_agree: minimal leverage
                 rm = 0.7  # small position — just enough to participate
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
-        # ── Tier 5: 80-89% — scale by confidence for 3-agree ──
+        # ── Tier 5: 80-89% — Kelly-informed scaling for 3-agree ──
         # With fee-aware EV, fee-drag gate, and losing combo blocking,
         # high-confidence 3-agree signals that reach here have genuine edge.
+        # Quarter-Kelly at top end (~1/5 Kelly). Liquidation gap remains 17%+.
         if confidence < 90:
             if num_strategies_agree < 2:
                 lev = min(1.0, cap)
                 return LeverageDecision(lev, "leverage", "low",
                                         f"{lev:.1f}x: need 2+ strats for high lev", 0.6)
             if num_strategies_agree >= 3:
-                # Scale 2.0-3.0x across 80-89% confidence (increased from 2.5x cap)
+                # Scale 3.5-5.0x across 80-89% confidence (~1/5 Kelly at top)
                 t = (confidence - 80) / 10.0
-                lev = min(2.0 + t * 1.0, cap)
-                rm = 1.0 + t * 0.2  # 1.0-1.2x risk multiplier
+                lev = min(3.5 + t * 1.5, cap)
+                rm = 1.2 + t * 0.2  # 1.2-1.4x risk multiplier
             else:
                 lev = min(1.0, cap)  # 2_agree: minimal leverage
                 rm = 0.7
