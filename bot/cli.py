@@ -41,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--mode", "-m",
-        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare"],
+        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare", "walkforward"],
         default="paper",
         help="Trading mode (default: paper)",
     )
@@ -92,6 +92,8 @@ def main():
         _run_live(args.yes)
     elif args.mode == "compare":
         _run_compare(args.symbols, args.days, args.modes)
+    elif args.mode == "walkforward":
+        _run_walkforward(args.symbols, args.days)
     elif args.mode == "evolve":
         _run_evolve()
     elif args.mode == "tiers":
@@ -201,6 +203,22 @@ def _run_tiers():
     """Show LLM usage tier comparison and current configuration."""
     from llm.usage_tiers import format_tier_comparison
     print(format_tier_comparison())
+
+
+def _run_walkforward(symbols_str: str, days: int):
+    """Run walk-forward validation to detect overfitting."""
+    from backtest.walk_forward import WalkForwardRunner
+
+    symbols = [s.strip() for s in symbols_str.split(",")]
+
+    print("=" * 70)
+    print(f"WALK-FORWARD VALIDATION: {', '.join(symbols)} | {days} days")
+    print("=" * 70)
+    print()
+
+    runner = WalkForwardRunner(symbols=symbols, total_days=days)
+    report = runner.run()
+    print(runner.format_report(report))
 
 
 def _run_compare(symbols_str: str, days: int, modes_str: str):
