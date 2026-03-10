@@ -96,6 +96,7 @@ class RegimeTransitionDetector:
             # Dominance ratio check: new regime must have > 60% of recent labels
             dominance = new_count / max(len(recent), 1)
             if dominance <= _DOMINANCE_RATIO:
+                result["transitioning"] = False  # Reset: dominance check failed
                 logger.info(
                     f"[REGIME] {symbol}: DOMINANCE CHECK BLOCKED transition "
                     f"{confirmed} -> {current_regime} "

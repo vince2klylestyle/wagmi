@@ -104,10 +104,14 @@ class ChopDetector:
         factors["whipsaw"] = whipsaw_score
         details.append(f"whip={whipsaw_score:.2f}")
 
-        # Weighted combination
+        # Weighted combination (NaN guard: treat NaN factors as choppy)
+        import math
         chop_score = sum(
             _WEIGHTS[k] * factors[k] for k in _WEIGHTS if k in factors
         )
+        if math.isnan(chop_score):
+            logger.warning(f"[{symbol}] Chop score is NaN (data quality issue), defaulting to choppy")
+            chop_score = 1.0  # Conservative: treat NaN as definitely choppy
 
         effective_threshold = self._get_threshold(symbol)
         is_chop = chop_score >= effective_threshold

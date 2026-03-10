@@ -29,9 +29,12 @@ def _add_emas(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.copy()
     n = len(df)
-    df["EMA20"] = df["close"].ewm(span=min(20, max(2, n)), adjust=False).mean()
-    df["EMA50"] = df["close"].ewm(span=min(50, max(2, n)), adjust=False).mean()
-    df["EMA200"] = df["close"].ewm(span=min(200, max(2, n)), adjust=False).mean()
+    # Use proper spans — don't clamp to n, which makes EMA20==EMA50 at low bar counts
+    # and creates systematic SELL bias. If insufficient data, indicators are unreliable
+    # and the strategy's len() guards should prevent signal generation.
+    df["EMA20"] = df["close"].ewm(span=20, min_periods=min(20, n), adjust=False).mean()
+    df["EMA50"] = df["close"].ewm(span=50, min_periods=min(50, n), adjust=False).mean()
+    df["EMA200"] = df["close"].ewm(span=200, min_periods=min(200, n), adjust=False).mean()
     prev = df["close"].shift(1)
     tr = pd.concat([
         df["high"] - df["low"],

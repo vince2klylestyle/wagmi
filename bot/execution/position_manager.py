@@ -52,7 +52,7 @@ class Position:
     confidence: float = 0.0
 
     atr: float = 0.0            # ATR at entry (for progressive trailing)
-    tp1_close_pct: float = 0.7  # fraction to close at TP1 (dynamic per-trade)
+    tp1_close_pct: float = 0.5  # fraction to close at TP1 (matches MEDIUM profile default)
 
     # State machine
     state: str = IDLE
@@ -199,7 +199,7 @@ class PositionManager:
         mode: str = "spot",
         strategy: str = "",
         confidence: float = 0.0,
-        tp1_close_pct: float = 0.7,
+        tp1_close_pct: float = 0.5,  # Match MEDIUM profile default
         entry_reasons: Optional[Dict[str, Any]] = None,
         trade_profile: Optional[TradeProfile] = None,
         notes: str = "",
@@ -444,6 +444,14 @@ class PositionManager:
                 )
 
         close_qty = round_qty(pos.symbol, pos.qty * dynamic_close_pct)
+        # Guard: if close_qty rounds to full qty, keep minimum remainder for trailing
+        remaining_after = round_qty(pos.symbol, pos.qty - close_qty)
+        if remaining_after <= 0 and pos.qty > close_qty:
+            # Rounding ate everything — reduce close_qty to preserve minimum remainder
+            close_qty = round_qty(pos.symbol, pos.qty * 0.90)  # Close 90% max
+        if close_qty <= 0 or close_qty >= pos.qty:
+            # Degenerate case: close everything as a full TP1 close
+            return self._close_position(pos, price, "TP1_FULL")
         fee = self._fee(price, close_qty)
         pos.fees_paid += fee
 

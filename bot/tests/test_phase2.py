@@ -292,10 +292,10 @@ class TestTp1NeverNetNegative:
             leverage=2.0, tp1_close_pct=tp1_pct,
         )
         events = pm.update_price("BTC", 107.5)
-        # Should have TP1 event (partial close at 100%)
-        tp1_events = [e for e in events if e.action == "TP1"]
+        # 100% close at TP1 triggers TP1_FULL (full close instead of partial)
+        tp1_events = [e for e in events if "TP1" in e.action]
         assert len(tp1_events) == 1
-        # After 100% close at TP1, remaining qty should be ~0
+        # After 100% close at TP1, remaining qty should be 0
         pos = pm.positions["BTC"]
         assert pos.qty == pytest.approx(0.0, abs=0.01)
 

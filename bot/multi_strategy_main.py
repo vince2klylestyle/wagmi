@@ -2638,7 +2638,8 @@ class MultiStrategyBot:
                 )
                 return
         except Exception as e:
-            logger.debug(f"RiskFilterChain error (falling back to inline): {e}")
+            logger.warning(f"[{trace_id}][{symbol}] RiskFilterChain error: {e} — rejecting signal for safety")
+            return  # Do NOT fall through to weaker inline checks
 
         # Use leverage from RiskFilterChain (already computed by leverage_mgr.decide()
         # inside the chain). Avoids double-computation which could diverge if state
