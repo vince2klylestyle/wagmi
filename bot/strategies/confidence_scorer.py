@@ -381,8 +381,8 @@ class ConfidenceScorerStrategy(BaseStrategy):
         K = 1.2
         sl = entry - K * atr_val if side == "BUY" else entry + K * atr_val
         stop_width = abs(entry - sl)
-        tp1 = entry + 1.5 * stop_width if side == "BUY" else entry - 1.5 * stop_width
-        tp2 = entry + 3.0 * stop_width if side == "BUY" else entry - 3.0 * stop_width
+        tp1 = entry + 2.0 * stop_width if side == "BUY" else entry - 2.0 * stop_width
+        tp2 = entry + 4.0 * stop_width if side == "BUY" else entry - 4.0 * stop_width
 
         rr = abs(entry - tp1) / stop_width if stop_width > 0 else 0
         hist_str = f"hist_WR={hist_conf:.0%}" if hist_conf is not None else "hist_WR=n/a"

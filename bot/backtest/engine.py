@@ -492,6 +492,18 @@ class BacktestEngine:
                                 break
                     except Exception:
                         signal.metadata.setdefault("regime", "unknown")
+
+                    # Regime filter: skip trades in ranging markets (29% WR historically)
+                    regime = signal.metadata.get("regime", "unknown")
+                    if regime == "ranging":
+                        logger.info(
+                            f"[{symbol}] Signal SKIPPED: ranging regime "
+                            f"(no directional alignment)"
+                        )
+                        self.candle_stats.setdefault("regime_blocked", 0)
+                        self.candle_stats["regime_blocked"] += 1
+                        continue
+
                     # Create candidate for dual-world tracking
                     candidate = self._create_candidate(signal, sim_dt)
 
@@ -1468,10 +1480,13 @@ class BacktestEngine:
         if llm_vetoed < 0:
             llm_vetoed = 0
 
+        regime_blocked = self.candle_stats.get("regime_blocked", 0)
+
         return {
             "candles_processed": total,
             "no_signal": no_signal,
             "cb_blocked": cb_blocked,
+            "regime_blocked": regime_blocked,
             "signals_generated": signal_gen,
             "gate_rejections": gate_counts,
             "llm_vetoed": llm_vetoed,
@@ -2051,6 +2066,9 @@ def print_report(report: Dict):
         print(f"  Candles processed: {total:,}")
         print(f"    No signal:       {funnel.get('no_signal', 0):>6,} ({funnel.get('no_signal', 0)/total*100:.1f}%)")
         print(f"    CB blocked:      {funnel.get('cb_blocked', 0):>6,} ({funnel.get('cb_blocked', 0)/total*100:.1f}%)")
+        regime_blk = funnel.get("regime_blocked", 0)
+        if regime_blk > 0:
+            print(f"    Regime blocked:  {regime_blk:>6,} ({regime_blk/total*100:.1f}%)")
         print(f"    Signal gen:      {funnel.get('signals_generated', 0):>6,} ({funnel.get('signals_generated', 0)/total*100:.1f}%)")
         gates = funnel.get("gate_rejections", {})
         for gate, count in sorted(gates.items(), key=lambda x: -x[1]):

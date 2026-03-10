@@ -477,18 +477,18 @@ class EnsembleStrategy:
             else:
                 atr = entry * 0.02  # fallback: 2% of price
 
-        # Asymmetric levels: SL tight (1.2 ATR), TP1 wide (2.0 ATR) = 1.67:1 R:R
+        # Asymmetric levels: SL tight (1.2 ATR), TP1 wide (2.4 ATR) = 2:1 R:R
         # This ensures flipped signals are worth taking after fees.
         if signal.side == "BUY":
             new_side = "SELL"
             sl = entry + 1.2 * atr
-            tp1 = entry - 2.0 * atr
-            tp2 = entry - 3.5 * atr
+            tp1 = entry - 2.4 * atr
+            tp2 = entry - 4.8 * atr
         else:
             new_side = "BUY"
             sl = entry - 1.2 * atr
-            tp1 = entry + 2.0 * atr
-            tp2 = entry + 3.5 * atr
+            tp1 = entry + 2.4 * atr
+            tp2 = entry + 4.8 * atr
 
         # Return a NEW Signal — never mutate the original (downstream may reference it)
         return replace(
