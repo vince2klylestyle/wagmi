@@ -119,16 +119,18 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         "floor_progress": 0.2, "floor_start": 0.40, "floor_max": 0.75,
     }),
     MEDIUM: _build_profile("MEDIUM", {
-        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.55, "tp1_pct": 0.65,
+        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.55, "tp1_pct": 0.50,
         # Widened SL from 0.50 to 0.55 ATR — 42% WR suggests noise whipsaws.
-        # Lowered TP1% from 0.70 to 0.60 — let more capital ride winning trades.
+        # TP1% 0.65→0.50: let more capital ride winners. With 1.15:1 payoff ratio,
+        # early exit kills the edge — keeping 50% in play improves payoff ratio.
         "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
         "floor_progress": 0.35, "floor_start": 0.25, "floor_max": 0.60,
     }),
     TREND: _build_profile("TREND", {
-        "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.60, "tp1_pct": 0.60,
+        "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.60, "tp1_pct": 0.40,
         # Tightened SL from 0.85 to 0.60 ATR — with 20% WR, losers must die fast.
-        # Raised TP1% from 0.55 to 0.60 — take more profit when you have it.
+        # TP1% 0.60→0.40: trending setups should let winners run. Only close 40%
+        # at TP1, keep 60% riding the trend toward TP2 with trailing stop.
         "trailing": "medium", "trail_start": 0.55, "trail_end": 0.30,
         "floor_progress": 0.30, "floor_start": 0.30, "floor_max": 0.60,
     }),

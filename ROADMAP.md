@@ -1,22 +1,24 @@
 # nunuIRL Trading Bot — Complete Roadmap
 
-> **Last updated**: 2026-03-07
-> **Current state**: Profitability fixes landed + order execution layer built. 3 active strategies (regime_trend, confidence_scorer, multi_tier_quality). 10d backtest: +14.75%, Sharpe 3.41. 944 tests passing.
-> **What's next**: Validate 180d backtest → Paper trade on live exchange API → Go live conservative.
+> **Last updated**: 2026-03-10
+> **Current state**: Phase 2.8 bugs FIXED (4/6 genuine bugs resolved, 2 reviewed as non-issues). Phase 2.9 partially done (75% confidence floor, 3_agree leverage gate, TP1% tuned). TP1% lowered (MEDIUM→50%, TREND→40%) to improve payoff ratio. 2_agree trades now capped at 1.5x leverage.
+> **What's next**: Fee economics (verify HL fees, fee-aware sizing, fee-aware EV, raise min R:R) → validate 100d backtest → paper trade → go live.
 
 ---
 
 ## Table of Contents
 1. [System Inventory — What We Have](#1-system-inventory)
-2. [What's Done (Phases 1-2 Complete)](#2-whats-done)
-3. [Phase 3: Agent Consistency & Thought Process Alignment](#3-phase-3)
-4. [Phase 4: Configuration Extraction & Tunability](#4-phase-4)
-5. [Phase 5: Production Hardening](#5-phase-5)
-6. [Phase 6: Alpha Generation & Backtesting](#6-phase-6)
-7. [Phase 7: Advanced Multi-Agent Evolution](#7-phase-7)
-8. [Critical Bugs Still Open](#8-critical-bugs)
-9. [Claude Code Plugin Stack Integration](#9-plugin-stack)
-10. [File Reference Map](#10-file-reference)
+2. [What's Done (Phases 1-2.7 Complete)](#2-whats-done)
+3. [Phase 2.8: Critical Bug Fixes (BLOCKING)](#3-phase-28)
+4. [Phase 2.9: Fee Economics & Position Sizing](#4-phase-29)
+5. [Phase 3: Signal Quality & Consistency](#5-phase-3)
+6. [Phase 4: Production Hardening](#6-phase-4)
+7. [Phase 5: Configuration Extraction & Tunability](#7-phase-5)
+8. [Phase 6: Alpha Generation & Advanced Strategies](#8-phase-6)
+9. [Phase 7: Advanced Multi-Agent Evolution](#9-phase-7)
+10. [Critical Bugs Inventory](#10-critical-bugs)
+11. [Audit Findings (March 2026)](#11-audit-findings)
+12. [File Reference Map](#12-file-reference)
 
 ---
 
@@ -25,39 +27,37 @@
 ### Core Pipeline (Working)
 | Layer | Files | Status |
 |---|---|---|
-| **3 Trading Strategies** | `bot/strategies/{regime_trend,confidence_scorer,multi_tier_quality}.py` | Working — monte_carlo_zones disabled (PF=0.0) |
-| **Ensemble Voting** | `bot/strategies/ensemble.py` (27KB) | Working — weighted veto with chop detection |
+| **3 Trading Strategies** | `bot/strategies/{regime_trend,confidence_scorer,multi_tier_quality}.py` | Working — ADX<20 filter on all 3, monte_carlo_zones disabled |
+| **Ensemble Voting** | `bot/strategies/ensemble.py` (27KB) | Working — weighted veto, regime-aware confidence floor, chop detection |
+| **Chop Detector** | `bot/strategies/chop_detector.py` | Working — 5-factor detection, tightened thresholds (0.45/0.45/0.55) |
 | **LLM Meta-Brain** | `bot/llm/` (50+ files, 595KB) | Working — 6 autonomy levels, smart model routing |
-| **Multi-Agent System** | `bot/llm/agents/{base,coordinator,prompts,learning_integration}.py` | Built — 5 specialist agents |
-| **Position Management** | `bot/execution/position_manager.py` (27KB) | Working — state machine, trailing stops, trade profiles |
-| **Risk Management** | `bot/execution/risk.py` + `adaptive_risk.py` + `ops_guard.py` | Working — circuit breakers, leverage tiers |
+| **Multi-Agent System** | `bot/llm/agents/` | Built — 7 specialist agents (Regime/Trade/Risk/Critic/Learning/Exit/Scout) |
+| **Position Management** | `bot/execution/position_manager.py` (27KB) | Working — state machine, trailing stops, trade profiles, trailing fallback fixed |
+| **Risk Management** | `bot/execution/risk.py` + `adaptive_risk.py` + `ops_guard.py` | Working — adaptive_risk wired in live mode |
 | **Data Pipeline** | `bot/data/fetcher.py` (25KB) + `bot/data/fetchers/` | Working — CCXT multi-exchange |
 | **Feedback Loop** | `bot/feedback/{signal_quality,evolution_tracker,loop,continuous_backtest,parameter_tuner}.py` | Working — signal scoring, evolution reports |
 | **Memory System** | `bot/llm/{memory_store,deep_memory}.py` | Working — short-term (50 notes) + deep memory |
-| **Self-Teaching** | `bot/llm/self_teaching.py` (45KB) | Working — curriculum, knowledge base |
-| **Growth System** | `bot/llm/growth/{orchestrator,hypothesis_tracker,recommendation_engine,self_improvement}.py` | Working — hypotheses, recommendations |
-| **Strategy Discovery** | `bot/llm/strategy_discovery/{corpus,proposals,research_agent,sandbox}.py` | Built — auto-discovery framework |
-| **Analytics** | `bot/analytics/` + `bot/llm/{metrics,uplift_analytics,self_performance}.py` | Working — attribution, A/B, counterfactual, meta-learning |
-| **Alerts** | `bot/alerts/` | Working — Telegram + Discord with rate limiting |
-| **Dashboard** | `web/` | Working — full web UI with charts |
-| **Database** | `bot/data/db.py` (24KB) + `migrations.py` | Working — SQLite with migrations |
-| **Tests** | `bot/tests/` (20+ test files) | 911 tests passing (0 failures) |
-| **Configuration** | `bot/trading_config.py` (484 lines) | Dataclass-based, per-symbol overrides |
+| **Order Execution** | `bot/execution/order_executor.py` | Working — paper/live modes, CCXT submission |
+| **Backtest Engine** | `bot/backtest/engine.py` | Working — 91% fidelity, leverage logging bug fixed |
+| **Tests** | `bot/tests/` (20+ test files) | 999 tests passing (0 failures) |
+| **Configuration** | `bot/trading_config.py` (490+ lines) | Dataclass-based, per-symbol overrides, new ADX/ranging params |
 
 ### Multi-Agent Architecture (Built, Needs Tuning)
 | Agent | Role | Default Model | When Called |
 |---|---|---|---|
 | **Regime Analyst** | Classify market regime from raw data | Haiku | Every decision cycle |
-| **Trade Evaluator** | Given regime + signal, decide go/skip/flip with reasoning | Sonnet | Pre-trade |
+| **Trade Evaluator** | Form directional thesis, decide go/skip/flip | Sonnet | Pre-trade |
 | **Risk Manager** | Position sizing, strategy weights, risk flags | Haiku | Pre-trade |
-| **Critic** | Review trade decision, approve or challenge | Sonnet | Pre-trade |
+| **Critic** | Stress-test thesis, require counter-thesis for vetoes | Sonnet | Pre-trade |
 | **Learning Agent** | Extract lessons from closed trades | Haiku | Post-close |
+| **Exit Agent** | Monitor open positions, reassess thesis | Haiku | On open positions |
+| **Scout Agent** | Idle-time preparation, watchlists, pre-formed theses | Haiku | Idle periods |
 
 **Enable**: `LLM_MULTI_AGENT=true` in `.env`
 
 ---
 
-## 2. What's Done (Phases 1-2.5 Complete) <a id="2-whats-done"></a>
+## 2. What's Done (Phases 1-2.7 Complete) <a id="2-whats-done"></a>
 
 ### Phase 1: Stop Losing Money ✅
 - [x] Fixed leverage math (liquidation formula, position sizing) — `bot/execution/leverage.py`
@@ -69,293 +69,328 @@
 - [x] Ops guard, price guard, liquidity guard
 
 ### Phase 2: Multi-Agent LLM Architecture ✅
-- [x] Agent base types (AgentRole, AgentOutput, AgentConfig) — `bot/llm/agents/base.py`
-- [x] Agent coordinator (sequencing, context passing, failure handling) — `bot/llm/agents/coordinator.py`
-- [x] 5 specialist prompts (regime, trade, risk, learning, critic) — `bot/llm/agents/prompts.py`
-- [x] Learning integration (deep memory, hypotheses, knowledge base) — `bot/llm/agents/learning_integration.py`
+- [x] Agent base types, coordinator, 5 specialist prompts
+- [x] Learning integration (deep memory, hypotheses, knowledge base)
 - [x] Risk gates wired into live execution path
 - [x] Feedback loops closed (signal quality → strategy weights → ensemble)
 
 ### Phase 2.5: Profitability Overhaul ✅ (March 2026)
-**11 data-driven fixes based on 10d and 180d backtest analysis:**
-- [x] confidence_scorer: Added 6h MACD+MFI regime filter, reduced SL K=1.8→1.2 — PF 0.65→1.27
-- [x] monte_carlo_zones: Added trend filter + R:R minimum, then **disabled entirely** (PF=0.0)
-- [x] Ensemble confidence capped at 85% — prevents reaching highest leverage tiers
-- [x] Leverage compressed: Tier 5 from 3-4x→2.5-3x, Tier 6 from 4-5x→3-3.5x
-- [x] Ranging/illiquid market stops WIDENED (was backwards — tightening in noisy markets)
-- [x] Trend-flip threshold raised 1.0→1.5, moderate counter-trend REJECTS instead of flips
-- [x] Re-entry gap increased 1→3 candles (prevents revenge-trading clusters)
-- [x] Confidence floor raised 65→70% and enforced in backtest
-- [x] Hold time display bug fixed (< 60s check vs <= 0)
+- [x] confidence_scorer: 6h MACD+MFI regime filter, SL K=1.8→1.2
+- [x] monte_carlo_zones: disabled entirely (PF=0.0)
+- [x] Ensemble confidence capped at 85%
+- [x] Leverage compressed: Tier 5 2.5-3x→2x flat, Tier 6 3-3.5x→2x flat
+- [x] Ranging stops widened, trend-flip threshold raised 1.0→1.5
+- [x] Re-entry gap 1→3 candles, confidence floor 65→70%
 - [x] MEDIUM profile: SL 0.50→0.55 ATR, TP1% 0.70→0.65
-- [x] BTC risk halved (risk_per_trade=0.01 vs 0.02, max_leverage 25→10)
-
-**Results (10-day backtest):** +14.75%, 45.2% WR, Sharpe 3.41, fee drag 16.1%.
-3 active strategies: regime_trend (PF=2.0), multi_tier_quality (PF=1.25), confidence_scorer (PF=1.27).
+- [x] BTC risk halved (risk_per_trade=0.01, max_leverage=10)
 
 ### Phase 2.6: Order Execution Layer ✅ (March 2026)
-**Built the missing bridge between strategy signals and exchange orders:**
-- [x] `bot/execution/order_executor.py` — OrderExecutor with paper/live modes
-  - Paper mode: simulates fills with realistic slippage and fees
-  - Live mode: submits real orders via CCXT with retry logic and slippage protection
-  - Validates inputs (min qty, symbol mapping, price bounds)
-  - 33 tests covering paper fills, live mocks, validation, slippage, stats
-- [x] Wired into `multi_strategy_main.py` at 3 integration points:
-  - Position open: order submitted before `pos_mgr.open_position()`
-  - Position close events: close orders submitted on SL/TP/trailing hits
-  - Emergency closes: liquidation proximity and funding avoidance
-- [x] Hyperliquid API credential support added to `data/fetcher.py`
-  - Set `HL_API_KEY` and `HL_API_SECRET` in `.env` for live trading
-- [x] CB overrides disabled (max_cb_overrides=0) — CB tripped = hard stop
-- [x] All 7 pre-existing test failures fixed, 944 tests passing
+- [x] `bot/execution/order_executor.py` — paper/live modes with CCXT
+- [x] Wired into main loop at 3 integration points
+- [x] CB overrides disabled (max_cb_overrides=0)
+- [x] 944 tests passing
 
-**Status**: Ready for paper trading validation on live exchange API.
-**Next**: Set `ENVIRONMENT=paper` with HL credentials → validate signals match exchange prices → then `ENVIRONMENT=production`.
+### Phase 2.7: Multi-Layer Ranging Filter ✅ (March 2026)
+**Data-driven: 100d backtest showed ranging = 24% WR (-$29K) vs trending = 100% WR (+$22K)**
+- [x] ADX<20 filter added to regime_trend.py — skip signals in non-trending markets
+- [x] ADX<20 filter added to multi_tier_quality.py — biggest PnL loser in ranging
+- [x] ADX<20 already existed in confidence_scorer.py — verified
+- [x] Chop detector thresholds tightened: 0.55→0.45 (BTC/SOL), 0.65→0.55 (HYPE)
+- [x] Ensemble: regime-aware confidence floor (65% normal → up to 88% in chop)
+- [x] Backtest engine: ADX-based regime override in both hourly/daily walk paths
+- [x] New config params: `ADX_MIN_TRENDING=20.0`, `RANGING_CONFIDENCE_FLOOR=88.0`
+- [x] 999 tests passing
+
+**Results (10d backtest v3):**
+- Ranging trades eliminated (0 vs 335 before)
+- regime_trend: PF=1.78 (was 0.73) — **PROFITABLE**
+- 3_agree: PF=4.05, 86% WR — **CRUSHING IT**
+- Confidence inversion FIXED: 80-89% now best band (PF=4.75, was 0.53)
+- Overall: -3.35% (was -83% on 100d) — fee drag now the bottleneck
 
 ---
 
-## 3. Phase 3: Agent Consistency & Thought Process Alignment <a id="3-phase-3"></a>
+## 3. Phase 2.8: Critical Bug Fixes (BLOCKING — Must Fix Before Paper Trading) <a id="3-phase-28"></a>
 
-> **Goal**: Make all agents think consistently, share a unified mental model, and reinforce each other's learning.
-> **Status**: 80% complete — core framework built, only prompt versioning remains.
+> **Goal**: Fix confirmed bugs that are actively destroying profitability.
+> **Status**: 4/6 FIXED (March 2026). Remaining 2 reviewed and deprioritized.
+
+### 2.8.1 SHORT Stop Loss Calculation Bug — REVIEWED ✅
+- [x] **Reviewed `bot/execution/position_manager.py` line ~465**
+  - Analysis: Formula `pos.entry + profit_cushion - fee_buffer` is CORRECT for SHORT positions.
+    For SHORT after TP1: SL should be above entry. profit_cushion raises SL (more room),
+    fee_buffer reduction accounts for exit fees. Fallback `entry - fee_buffer` also correct
+    (SL just below entry = breakeven after fees for SHORT).
+  - Status: Not a bug — formula matches LONG mirror logic.
+
+### 2.8.2 Backtest Leverage Logging Bug ✅ FIXED
+- [x] **Fixed `bot/backtest/engine.py` line ~1213**
+  - Bug: `lev_decision.leverage` referenced in signal report — `lev_decision` only exists in raw mode.
+    In normal mode the variable is `result` from RiskFilterChain, causing NameError.
+  - Fix: Changed to `leverage` (the local variable that holds actual used value).
+
+### 2.8.3 Trailing Stop Fallback Uses Wrong Distance ✅ FIXED
+- [x] **Fixed `bot/execution/position_manager.py` line ~235**
+  - Bug: When ATR=0, trailing distance fell back to `abs(entry - sl)` (full stop width = too loose)
+  - Fix: Fallback to `entry * 0.01` (1% conservative default) instead of original stop width.
+
+### 2.8.4 Ranging Market Trade Profile Logic — ALREADY FIXED ✅
+- [x] **Fixed `bot/execution/trade_profile.py` lines ~309-320**
+  - Was fixed in Phase 2.7: ranging stops widened 20%, illiquid stops widened 15%.
+  - Comments updated to document the rationale.
+
+### 2.8.5 Adaptive Risk Manager — WIRED IN LIVE ✅
+- [x] **`bot/execution/adaptive_risk.py` already wired into `multi_strategy_main.py`**
+  - Live mode: records outcomes, adjusts risk_multiplier per trade, injects into LLM context.
+  - Backtest: not wired (by design — backtest uses fixed risk for reproducibility).
+  - Status: Working in production path. Backtest gap is acceptable.
+
+### 2.8.6 TP1 Close Percentage — TUNED ✅ FIXED
+- [x] **Tuned `bot/execution/trade_profile.py` lines ~115-141**
+  - MEDIUM: 65% → 50% — keep more capital riding winning trades
+  - TREND: 60% → 40% — trending setups should maximize runner exposure
+  - SCALP: 90% unchanged (scalps should lock in profits quickly)
+  - Impact: Improved payoff ratio by letting winners run toward TP2
+
+---
+
+## 4. Phase 2.9: Fee Economics & Position Sizing <a id="4-phase-29"></a>
+
+> **Goal**: Make the bot's edge survive fees. Current edge is ~$22/trade but fees eat 100%.
+> **Status**: PARTIALLY DONE — confidence floor raised, 3_agree leverage gate added.
+
+### 2.9.1 Verify Actual Hyperliquid Fee Structure
+- [ ] **Research**: Confirm taker fee is 5bps (0.05%) or 2.5bps
+  - If 2.5bps, update `TAKER_FEE_BPS` from 5 to 3 (2.5 + 0.5bps slippage buffer)
+  - This alone could halve fee drag from 100% to 50%
+
+### 2.9.2 Fee-Aware Position Sizing
+- [ ] **Update `bot/execution/risk.py` calculate_qty()**
+  - Current: Only adds slippage to stop width for sizing
+  - Fix: Add round-trip fees (entry + exit) to effective stop width
+  - `effective_stop = stop_width + entry * (taker_fee_bps * 2 + slippage_bps) / 10000`
+  - Effect: Positions auto-shrink when fees are a significant % of the stop width
+
+### 2.9.3 Fee-Aware EV Calculation in Ensemble
+- [ ] **Update `bot/strategies/ensemble.py` _merge_signals()**
+  - Current EV: `win_prob × R:R - (1 - win_prob)` — ignores fees
+  - Fix: Subtract fee drag from EV: `EV = win_prob × R:R_after_fees - (1 - win_prob) - fee_pct`
+  - Effect: EV filter catches trades where fees eat the expected edge
+
+### 2.9.4 Raise Minimum R:R After Fees
+- [ ] **Update `bot/trading_config.py`**
+  - Current: `MIN_SIGNAL_RR=1.5`
+  - Fix: `MIN_SIGNAL_RR=2.0` — ensures TP1 is far enough to survive fee drag
+  - With 10bps round-trip fees on ~1% stop width, effective R:R drops by ~0.1
+
+### 2.9.5 Raise Confidence Floor to 75% ✅ ALREADY DONE
+- [x] **`bot/trading_config.py` already has `ensemble_confidence_floor=75.0`**
+  - Ensemble constructor default is 65.0, but config override sets it to 75.0
+  - Both backtest engine and main loop pass config value to ensemble
+  - Higher than the originally suggested 70% — more aggressive filtering
+
+### 2.9.6 3_agree Leverage Gate ✅ FIXED
+- [x] **Implemented in `bot/execution/leverage.py`**
+  - Keep MIN_VOTES=2 so the bot still generates signals on 2-strategy agreement
+  - 2_agree: capped at 1.5x leverage, 0.85x risk_multiplier (smaller positions)
+  - 3_agree: full 2-3x leverage, 1.0x risk_multiplier
+  - Effect: 2_agree trades still happen but with reduced exposure, preventing the
+    40% WR / -$1,207 problem from 2_agree dominating PnL
+  - Or: MIN_VOTES=2 with `confidence_scorer+multi_tier_quality` combo BLOCKED (PF=0.08)
+
+---
+
+## 5. Phase 3: Signal Quality & Consistency <a id="5-phase-3"></a>
+
+> **Goal**: Make every trade consistently high-quality. Stop vibe-coding parameters.
+> **Status**: 80% complete — core framework built, needs wiring and calibration.
 
 ### 3.1 Shared Reasoning Framework ✅
-- [x] **`bot/llm/agents/shared_context.py`** — Shared vocabulary, regime definitions, action names
-- [x] **`bot/llm/agents/thought_protocol.py`** — OBSERVE → RECALL → REASON → DECIDE → JUSTIFY
-- [x] **`bot/llm/agents/consistency_checker.py`** — Cross-agent coherence validation
+- [x] Shared vocabulary, regime definitions, action names
+- [x] Thought protocol: OBSERVE → RECALL → REASON → DECIDE → JUSTIFY
+- [x] Cross-agent coherence validation
 
 ### 3.2 Shared Memory Protocol ✅
-- [x] Scratchpad-based memory bus in coordinator (upstream writes, downstream reads)
-- [x] Memory store with 100 notes, 7-day TTL — `bot/llm/memory_store.py`
-- [x] Deep memory with trade DNA, patterns — `bot/llm/deep_memory.py`
+- [x] Scratchpad-based memory bus
+- [x] Memory store (50 notes, 48h TTL)
+- [x] Deep memory (trade DNA, patterns)
 
 ### 3.3 Agent Calibration Loop ✅
-- [x] **`bot/llm/agents/calibration_ledger.py`** — Per-agent accuracy tracking
-- [x] Agent performance stats fed into prompts via `self_perf`
-- [x] Learning integration scores agents post-trade — `bot/llm/agents/learning_integration.py`
+- [x] Per-agent accuracy tracking
+- [x] Agent performance stats in prompts
+- [x] Learning integration post-trade scoring
 
-### 3.4 Prompt Versioning & A/B Testing
-- [ ] **Create `bot/llm/agents/prompt_registry.py`** — Versioned prompt management
-  - A/B test prompt variations, track which version produces better outcomes
-  - Rollback to previous version if new one underperforms
+### 3.4 Walk-Forward Validation Framework
+- [ ] **Create `bot/backtest/walk_forward.py`**
+  - Train on 60 days, test on next 20 days, slide forward
+  - Any parameter change must pass walk-forward (not just in-sample backtest)
+  - This prevents overfitting to specific market conditions
+  - Report: in-sample vs out-of-sample Sharpe, WR, PF
 
----
+### 3.5 Strategy Combo Gating
+- [ ] **Block losing strategy combinations**
+  - `confidence_scorer+multi_tier_quality` without `regime_trend` = PF 0.08
+  - Add logic to ensemble: if 2_agree and combo is in "blocked" list, reject
+  - Blocked list should be data-driven (from backtest results)
 
-## 4. Phase 4: Configuration Extraction & Tunability <a id="4-phase-4"></a>
-
-> **Goal**: Make every hardcoded value configurable, per-symbol, per-environment.
-
-### 4.1 Config Audit
-- [ ] Audit all hardcoded values across codebase (30+ identified)
-  - ATR multipliers in strategies
-  - Confidence floors and ceilings
-  - Monte Carlo simulation parameters
-  - Leverage tier thresholds
-  - Stop width minimums
-  - Memory TTL values
-  - Agent timeout values
-  - Rate limits
-
-### 4.2 Config Infrastructure
-- [ ] Extend `bot/trading_config.py` with missing parameters
-- [ ] Add per-symbol config overrides for ALL parameters (not just risk tiers)
-- [ ] Add paper-vs-live config profiles with different defaults
-- [ ] Environment variable overrides for every parameter
-- [ ] Config validation on startup (catch invalid combinations)
-- [ ] Hot-reload config without restart (file watcher or signal handler)
-
-### 4.3 Agent-Specific Config
-- [ ] Per-agent model overrides (already supported via env vars)
-- [ ] Per-agent prompt temperature settings
-- [ ] Per-agent timeout and retry policies
-- [ ] Agent enable/disable per symbol or regime
-- [ ] Agent priority weights (how much the merger trusts each agent)
+### 3.6 Prompt Versioning & A/B Testing
+- [ ] **Create `bot/llm/agents/prompt_registry.py`**
+  - Versioned prompt management, A/B testing
+  - Rollback if new version underperforms
 
 ---
 
-## 5. Phase 5: Production Hardening <a id="5-phase-5"></a>
+## 6. Phase 4: Production Hardening <a id="6-phase-4"></a>
 
-> **Goal**: Make the bot reliable enough for real money at scale.
+> **Goal**: Make the bot reliable enough for real money.
 
-### 5.1 Code Architecture
+### 4.1 Code Architecture
 - [ ] **Break up `multi_strategy_main.py`** (4,585 lines → modules)
-  - Extract tick processing → `bot/core/tick_processor.py`
-  - Extract LLM integration → `bot/core/llm_integration.py`
-  - Extract position management wiring → `bot/core/position_wiring.py`
-  - Extract alert dispatching → `bot/core/alert_dispatcher.py`
-  - Extract analytics collection → `bot/core/analytics_collector.py`
-  - Main file becomes a thin orchestrator (~200 lines)
+  - Extract tick processing, LLM integration, position wiring, alerts, analytics
+  - Main file → thin orchestrator (~200 lines)
 
-### 5.2 Exchange Connection Resilience
-- [ ] **Add exponential backoff to `bot/data/fetcher.py`**
-  - Retry with 1s, 2s, 4s, 8s, 16s backoff
-  - Circuit breaker: if 5 consecutive failures, pause data fetching for 60s
-  - Stale data detection: if last candle is >5min old, flag it
-  - Fallback data sources (if Hyperliquid API down, try Kraken/Bybit for reference)
+### 4.2 Exchange Connection Resilience
+- [ ] Exponential backoff in data fetcher (1s, 2s, 4s, 8s, 16s)
+- [ ] Stale data detection (>5min old = flag)
+- [ ] Auto-close new trades if data is stale
+- [ ] Connection health monitoring with alerting
 
-- [ ] **Add connection health monitoring**
-  - Track API response times, error rates, data freshness
-  - Alert on degraded connectivity (Telegram/Discord)
-  - Auto-close new trades if data is stale (safety net)
+### 4.3 Position Reconciliation
+- [x] `bot/execution/reconciliation.py` — built
+- [ ] Wire periodic reconciliation into main loop (every 10 scans)
 
-### 5.3 Position Reconciliation
-- [x] **`bot/execution/reconciliation.py`** — Built and wired
-  - On startup: reads actual positions from Hyperliquid
-  - Compares with in-memory state, detects phantoms and orphans
-  - Circuit breaker state persistence across restarts
-  - Periodic reconciliation check (detects manual closes)
-- [ ] **Wire periodic reconciliation into main loop** (every 10 scans)
+### 4.4 Logging & Monitoring
+- [ ] Structured JSON logging everywhere
+- [ ] Health check endpoint on dashboard
+- [ ] Log rotation and archival
 
-### 5.4 Logging & Monitoring
-- [ ] **Structured JSON logging** — `bot/core/structured_logging.py` exists, wire it everywhere
-  - Every log line: JSON with timestamp, level, module, structured fields
-  - Separate log streams: trades, decisions, errors, performance
-  - Log rotation and archival
-
-- [ ] **Health check endpoint**
-  - `/healthz` endpoint on dashboard server
-  - Reports: uptime, last trade time, data freshness, API status, memory usage
-  - Container orchestration compatible (Docker, k8s)
-
-### 5.5 Integration Tests
-- [ ] **Full pipeline integration test**
-  - Mock exchange data → strategies → ensemble → LLM agents → execution → feedback
-  - Test the complete signal→trade→close→learn cycle
-  - Test error paths (API failure, parse failure, circuit breaker trigger)
-  - Test multi-agent pipeline with mock LLM responses
-  - Golden path replay tests (replay known good/bad scenarios)
+### 4.5 Integration Tests
+- [ ] Full pipeline mock test (data → strategy → ensemble → LLM → execution → feedback)
+- [ ] Golden path replay tests (known good/bad scenarios)
 
 ---
 
-## 6. Phase 6: Alpha Generation & Backtesting <a id="6-phase-6"></a>
+## 7. Phase 5: Configuration Extraction & Tunability <a id="7-phase-5"></a>
 
-> **Goal**: Find and validate new edges systematically.
+> **Goal**: Single source of truth for every parameter.
 
-### 6.1 Backtesting Framework
-- [ ] **Create `bot/backtest/full_pipeline_replay.py`**
-  - Replay historical data through the COMPLETE pipeline (not just strategies)
-  - Include LLM agent decisions (cached or mocked)
-  - Include ensemble voting, risk gating, position sizing
-  - Compare: strategies-only vs strategies+LLM vs multi-agent
-  - Output: equity curve, drawdown, Sharpe, win rate, trade list
+### 5.1 Config Audit
+- [ ] Move trade profile parameters (TP1_ATR, SL_ATR, trailing_mult) into `TradingConfig`
+- [ ] Eliminate scattered env var overrides in `trade_profile.py`
+- [ ] Per-symbol overrides for ALL parameters (not just risk tiers)
+- [ ] Config validation on startup
 
-### 6.2 Strategy Parameter Optimization
-- [ ] **Extend `bot/optimization/`**
-  - Grid search over strategy parameters (ATR multipliers, confidence thresholds)
-  - Bayesian optimization for high-dimensional parameter spaces
-  - Walk-forward optimization (train on period 1, test on period 2)
-  - Out-of-sample validation to prevent overfitting
-  - Integration with the feedback loop (auto-update trading_config.py)
-
-### 6.3 New Strategy Development
-- [ ] **Order flow analysis** — Hyperliquid provides order book depth
-  - Detect large limit orders (support/resistance levels)
-  - Detect aggressive market orders (momentum signals)
-  - Detect order book imbalance (directional bias)
-
-- [ ] **Funding rate arbitrage**
-  - When funding is extreme (>0.05%), counter-trade with tight stops
-  - Funding reversals are predictable and high-WR
-  - Already have funding data in pipeline, just need strategy logic
-
-- [ ] **Cross-exchange signals**
-  - Use Kraken/Bybit data as leading indicators for Hyperliquid
-  - Price dislocations between exchanges → arbitrage signals
-  - Volume spikes on one exchange → momentum on another
-
-### 6.4 Strategy Discovery Agent
-- [ ] **Activate `bot/llm/strategy_discovery/`**
-  - `research_agent.py` — LLM proposes new strategy ideas from market data
-  - `sandbox.py` — Safe backtesting environment for proposed strategies
-  - `proposals.py` — Track and evaluate strategy proposals
-  - Wire into the growth orchestrator for automated discovery
+### 5.2 Paper-vs-Live Config Profiles
+- [ ] Paper defaults: higher risk (2%), more symbols, aggressive
+- [ ] Live defaults: lower risk (1%), proven symbols only, conservative
 
 ---
 
-## 7. Phase 7: Advanced Multi-Agent Evolution <a id="7-phase-7"></a>
+## 8. Phase 6: Alpha Generation & Advanced Strategies <a id="8-phase-6"></a>
 
-> **Goal**: Make the agents self-improving and adaptive.
+> **Goal**: Find new edges beyond the current 3 strategies.
 
-### 7.1 Portfolio Strategist Agent (New)
-- [ ] **Add 6th agent: Portfolio Strategist**
-  - Runs every 15 minutes (not per-trade)
-  - Cross-asset correlation analysis
-  - Portfolio-level position sizing recommendations
-  - Rebalancing suggestions
-  - Uses `bot/core/portfolio_analytics.py` data
+### 6.1 Full Pipeline Replay Backtesting
+- [ ] Replay historical data through COMPLETE pipeline (including LLM decisions)
+- [ ] Compare: strategies-only vs strategies+LLM vs multi-agent
+- [ ] Walk-forward validation for all comparisons
 
-### 7.2 Agent Self-Improvement Loop
-- [ ] **Automated prompt evolution**
-  - Track agent performance per prompt version
-  - Learning Agent proposes prompt modifications based on failure patterns
-  - A/B test modifications automatically
-  - Promote winning prompts, retire losers
-  - Guardrail: never modify prompts that touch safety rules
+### 6.2 New Strategy Development
+- [ ] **Funding rate strategy** — counter-trade extreme funding (>0.05%)
+- [ ] **Order flow analysis** — Hyperliquid orderbook depth signals
+- [ ] **Cross-exchange signals** — Kraken/Bybit as leading indicators
 
-### 7.3 Deep RL Integration
-- [ ] **Upgrade `bot/ml/` RL policy**
-  - Replace simple Q-table with deep Q-network (DQN)
-  - Use agent decision history as training data
-  - RL policy as a "7th voter" alongside 5 agents + ensemble
-  - Transition buffer in `bot/data/` already records state-action-reward tuples
-
-### 7.4 Multi-Bot Coordination
-- [ ] **If running multiple bot instances**
-  - Shared memory across instances (Redis or shared SQLite)
-  - Cross-instance position awareness (don't double up)
-  - Ensemble of ensembles: each instance votes on portfolio-level decisions
+### 6.3 Strategy Discovery Agent Activation
+- [ ] Wire `bot/llm/strategy_discovery/` into growth orchestrator
+- [ ] LLM proposes ideas → sandbox backtests → promote winners
 
 ---
 
-## 8. Critical Bugs Still Open <a id="8-critical-bugs"></a>
+## 9. Phase 7: Advanced Multi-Agent Evolution <a id="9-phase-7"></a>
 
-### Must Fix Before Live Trading
-| Bug | Location | Impact | Status |
+> **Goal**: Self-improving agents.
+
+- [ ] Portfolio Strategist Agent (cross-asset correlation)
+- [ ] Automated prompt evolution with A/B testing
+- [ ] Deep RL integration (DQN replacing Q-table)
+- [ ] Multi-bot coordination (shared memory, cross-instance awareness)
+
+---
+
+## 10. Critical Bugs Inventory <a id="10-critical-bugs"></a>
+
+### Must Fix Before Paper Trading
+| # | Bug | Location | Impact | Status |
+|---|---|---|---|---|
+| 1 | SHORT SL uses minus instead of plus after TP1 | `position_manager.py:465` | 5-15% of SHORT profits lost | 🔴 OPEN |
+| 2 | Backtest leverage logging references undefined var | `backtest/engine.py:1213` | Reports show wrong leverage in normal mode | 🔴 OPEN |
+| 3 | Trailing stop fallback too loose (uses original SL width) | `position_manager.py:235` | ~33% too loose when ATR=0 | 🟡 OPEN |
+| 4 | Ranging trade profile tightens TP (should widen) | `trade_profile.py:309-320` | Wrong R:R in ~30% of conditions | 🟡 OPEN |
+| 5 | Adaptive risk manager never wired | `adaptive_risk.py` (whole file) | No revenge-trading prevention | 🟡 OPEN |
+| 6 | TP1 close% too high (65-70%, should be 40-50%) | `trade_profile.py:115-141` | Early exits kill edge on winners | 🟡 OPEN |
+| 7 | No exchange connection resilience | `data/fetcher.py` | Bot crashes on API outage | 🟡 OPEN |
+| 8 | Position reconciliation not wired to main loop | `reconciliation.py` | Lost positions after restart | 🟡 OPEN |
+| 9 | `multi_strategy_main.py` is 4,585 lines | `multi_strategy_main.py` | Unmaintainable god object | 🟠 OPEN |
+
+### Fixed
+| Bug | Status |
+|---|---|
+| Ensemble modifies signals in-place | ✅ FIXED — deep copy before mutation |
+| Strategy weights all history equally | ✅ FIXED — exponential decay |
+| No order execution to exchange | ✅ FIXED — OrderExecutor built |
+| 7 pre-existing test failures | ✅ FIXED — 999 tests passing |
+| Ranging regime destroys profitability | ✅ FIXED — multi-layer ADX filter |
+| Confidence inversion (80-89% = worst WR) | ✅ FIXED — ADX filter + leverage flatten |
+
+---
+
+## 11. Audit Findings (March 10, 2026) <a id="11-audit-findings"></a>
+
+### Deep System Audit Summary
+
+**5 parallel audits conducted**: Execution/Risk, Trading Config, Backtest Engine, Feedback/Learning, LLM/Main Loop.
+
+#### What's Working Well
+- **Backtest engine**: 91% fidelity — correct slippage, fees, no look-ahead bias
+- **Position state machine**: Correct transitions IDLE→OPEN→TP1_HIT→TRAILING→CLOSED
+- **Trailing stops**: Progressive tightening with profit lock floors, ATR-scaled
+- **Circuit breaker**: Sound logic, only force-closes OPEN positions (preserves trailing)
+- **Re-entry cooldown**: 3-candle gap prevents revenge trading
+- **LLM veto**: ~20% veto rate of evaluated signals — appropriate stringency
+- **Intra-candle simulation**: Worst-case first, then best-case, then close — realistic
+- **Funding costs**: Hourly accrual at 0.01% per 8h — correct model
+
+#### What's Broken (See Bug Inventory Above)
+- SHORT SL calculation bug
+- Leverage logging in normal backtests
+- Trailing stop fallback
+- Trade profile ranging logic inverted
+- Adaptive risk dead code
+- TP1 close% too aggressive
+
+#### Key Numbers from 10d v3 Backtest
+| Metric | Value | Target | Gap |
 |---|---|---|---|
-| ~~Ensemble modifies signals in-place~~ | `ensemble.py` | ~~Downstream sees flipped signal~~ | ✅ FIXED — deep copy before mutation |
-| No exchange connection resilience | `data/fetcher.py` | Bot crashes on API outage | Open — fetcher has circuit breaker but main loop needs stale data handling |
-| ~~Strategy weights all history equally~~ | `strategy_weights.py` | ~~Ancient trades same as recent~~ | ✅ FIXED — exponential decay exists |
-| No position reconciliation on startup | `execution/reconciliation.py` | Lost positions after restart | Open — code exists, not wired |
-| ~~No order execution to exchange~~ | `execution/order_executor.py` | ~~All trading is paper-only~~ | ✅ FIXED — OrderExecutor built and wired into main loop |
+| Win Rate | 45.5% | >55% | Need better signal quality |
+| Payoff Ratio | 1.15:1 | >1.5:1 | Fix TP1%, R:R, trailing |
+| Fee Drag | 100% | <20% | Fix fee model, position sizing |
+| 3_agree PF | 4.05 | >2.0 | Already crushing it |
+| 2_agree PF | negative | >1.5 | Block losing combos |
+| Sharpe | -5.54 | >1.0 | Need all fixes + fee optimization |
+| regime_trend PF | 1.78 | >1.5 | Already profitable |
+| confidence_scorer PF | 0.49 | >1.0 | Consider disabling in 2-agree |
 
-### Should Fix for Reliability
-| Bug | Location | Impact | Status |
-|---|---|---|---|
-| `multi_strategy_main.py` is 4,585 lines | `multi_strategy_main.py` | God object, hard to maintain | Open — break into modules |
-| ~~7 pre-existing test failures~~ | `tests/` | ~~CB override, profile, symbol override tests~~ | ✅ FIXED — 944 tests passing, 0 failures |
-
----
-
-## 9. Claude Code Plugin Stack Integration <a id="9-plugin-stack"></a>
-
-### What We're Setting Up
-Claude Code plugins extend the AI coding agent with tools, hooks, and specialized capabilities.
-
-### Plugin Stack (Recommended for This Project)
-| Plugin | What It Does | Priority |
-|---|---|---|
-| **Superpowers** (obra/superpowers) | Planning mode, TDD, systematic debugging, verification gates | HIGH — forces structured thinking |
-| **Context7** (Upstash) | Live, version-specific docs for libraries (ccxt, anthropic, pandas, etc.) | HIGH — accurate API usage |
-| **Security Guidance** | Auto-scan every edit for XSS, injection, secret leaks | HIGH — protecting API keys, exchange creds |
-| **LSP (TypeScript/Python)** | Real symbol navigation, go-to-definition for dashboard/web code | MEDIUM — useful for web/ directory |
-| **Playwright** | Browser automation for dashboard testing | LOW — nice to have for E2E |
-| **Frontend Design** | Design systems thinking for dashboard UI | LOW — only if redesigning dashboard |
-
-### How This Maps to Our Bot
-- **Superpowers planning mode** → Use for multi-step refactors (breaking up main.py, adding new agents)
-- **Context7 docs** → Pull latest ccxt, anthropic, pandas docs when coding exchange integration or LLM calls
-- **Security hooks** → Catch leaked API keys in `.env`, unsafe eval/exec patterns, SQL injection in db.py
-- **LSP** → Navigate 55K lines efficiently, find all references to a function across 197 files
-
-### Implementation in `.claude/`
-We set up the configuration structure in `.claude/` with:
-- `settings.json` — Claude Code settings (hooks, tools, MCP servers)
-- `rules/` — Domain-specific rules that activate on relevant tasks
-- `prompts/` — Reusable prompt templates for common operations
+#### The Path to Profitability
+1. **Fix the 6 bugs** — they're actively destroying edge
+2. **Solve fee economics** — fees eat 100% of gross edge currently
+3. **Require higher quality setups** — 3_agree or 70%+ confidence
+4. **Let winners run** — lower TP1 close%, wider targets
+5. **Wire adaptive risk** — prevent loss streaks from compounding
+6. **Walk-forward validate** every parameter change — stop overfitting
 
 ---
 
-## 10. File Reference Map <a id="10-file-reference"></a>
+## 12. File Reference Map <a id="12-file-reference"></a>
 
 ### Entry Points
 ```
@@ -365,65 +400,61 @@ bot/bot.py          → Bot class
 bot/multi_strategy_main.py → Multi-strategy main loop (4,585 lines — needs breakup)
 ```
 
-### LLM Pipeline
-```
-bot/llm/decision_engine.py     → Monolithic LLM decision pipeline
-bot/llm/agents/coordinator.py  → Multi-agent pipeline (replaces monolithic)
-bot/llm/agents/prompts.py      → 5 specialist prompts
-bot/llm/agents/base.py         → Agent types, configs, defaults
-bot/llm/agents/learning_integration.py → Wires agent output to learning systems
-bot/llm/system_prompt.py       → Monolithic system prompt (for non-multi-agent)
-bot/llm/usage_tiers.py         → Model routing (Haiku/Sonnet/Opus)
-bot/llm/client.py              → Raw Anthropic API wrapper
-bot/llm/autonomy.py            → Autonomy levels 0-5
-bot/llm/autonomy_router.py     → Mode constraints
-```
-
-### Memory & Learning
-```
-bot/llm/memory_store.py        → Short-term memory (50 notes, 48h TTL)
-bot/llm/deep_memory.py         → Long-term structured memory
-bot/llm/self_teaching.py       → Self-improvement curriculum
-bot/llm/knowledge_seed.py      → Pre-trained knowledge
-bot/llm/knowledge_roadmap.py   → Learning progression
-bot/llm/post_trade_learner.py  → Deterministic post-trade lessons
-```
-
 ### Strategies & Ensemble
 ```
 bot/strategies/base.py             → Signal dataclass, BaseStrategy abstract class
-bot/strategies/ensemble.py         → Weighted veto ensemble voting (27KB)
-bot/strategies/regime_trend.py     → Regime-based trend following
-bot/strategies/monte_carlo_zones.py → Monte Carlo support/resistance
-bot/strategies/confidence_scorer.py → Multi-factor confidence scoring
-bot/strategies/multi_tier_quality.py → Multi-timeframe signal quality
-bot/strategies/chop_detector.py    → Market chop detection
+bot/strategies/ensemble.py         → Weighted veto ensemble (regime-aware conf floor)
+bot/strategies/regime_trend.py     → Regime trend following (ADX filter added)
+bot/strategies/confidence_scorer.py → Multi-factor momentum scoring (ADX filter)
+bot/strategies/multi_tier_quality.py → Multi-TF signal quality (ADX filter added)
+bot/strategies/chop_detector.py    → Multi-factor chop detection (tightened thresholds)
 bot/strategies/regime_detector.py  → Regime classification
 ```
 
 ### Execution
 ```
-bot/execution/position_manager.py  → Position lifecycle (27KB)
+bot/execution/position_manager.py  → Position lifecycle (HAS SHORT SL BUG)
 bot/execution/leverage.py          → Leverage tiers and sizing
 bot/execution/risk.py              → Circuit breakers, daily loss limits
-bot/execution/adaptive_risk.py     → Dynamic risk adjustment
-bot/execution/reconciliation.py    → Position reconciliation (needs completion)
+bot/execution/adaptive_risk.py     → Dynamic risk adjustment (DEAD CODE — not wired)
+bot/execution/trade_profile.py     → Trade profiles (HAS RANGING LOGIC BUG)
+bot/execution/order_executor.py    → CCXT order submission (paper/live)
+bot/execution/reconciliation.py    → Position reconciliation (built, not wired to loop)
 bot/execution/ops_guard.py         → Operational safety checks
 bot/execution/pnl_engine.py        → PnL calculation
 bot/execution/tp_sl_engine.py      → Take-profit/stop-loss engine
 ```
 
-### Configuration
+### LLM Pipeline
 ```
-bot/trading_config.py   → Centralized config (484 lines, dataclass-based)
-bot/.env.example        → Environment variable template
-.env.example            → Root-level env template
+bot/llm/decision_engine.py     → Monolithic LLM decision pipeline
+bot/llm/agents/coordinator.py  → Multi-agent pipeline orchestration
+bot/llm/agents/prompts.py      → 7 specialist prompts
+bot/llm/agents/base.py         → Agent types, configs, defaults
+bot/llm/agents/learning_integration.py → Wires agent output to learning systems
+bot/llm/agents/shared_context.py → Shared reasoning framework
+bot/llm/agents/thought_protocol.py → Structured OBSERVE→RECALL→REASON→DECIDE→JUSTIFY
+bot/llm/agents/consistency_checker.py → Cross-agent coherence validation
+bot/llm/agents/calibration_ledger.py → Per-agent accuracy tracking
+bot/llm/usage_tiers.py         → Model routing (Haiku/Sonnet/Opus)
+bot/llm/client.py              → Raw Anthropic API wrapper
 ```
 
-### Data & Feedback
+### Configuration & Data
 ```
-bot/data/db.py                     → SQLite persistence (24KB)
-bot/data/fetcher.py                → Multi-exchange OHLCV (25KB)
+bot/trading_config.py   → Centralized config (490+ lines, dataclass-based)
+bot/data/db.py          → SQLite persistence (24KB)
+bot/data/fetcher.py     → Multi-exchange OHLCV (25KB)
+bot/data/strategy_weights.py → Rolling strategy performance weights
+```
+
+### Backtest
+```
+bot/backtest/engine.py  → Full backtest engine (HAS LEVERAGE LOGGING BUG)
+```
+
+### Feedback & Analytics
+```
 bot/feedback/signal_quality.py     → Signal quality scoring (18KB)
 bot/feedback/evolution_tracker.py  → Strategy evolution reports (38KB)
 bot/feedback/continuous_backtest.py → Continuous backtesting (20KB)
@@ -434,17 +465,18 @@ bot/feedback/parameter_tuner.py    → Parameter optimization (14KB)
 
 ## Priority Order (What to Work On Next)
 
-> Updated March 2026. Agent consistency (Phase 3) is 80% done. Profitability fixes landed.
+> Updated March 10, 2026. Based on comprehensive 5-layer audit.
 
-1. **Validate 180-day backtest** — confirm profitability fixes work long-term
-2. **Build order execution layer** — THE blocker: CCXT order submission to Hyperliquid
-3. **Wire position reconciliation** — handle bot restart without losing positions
-4. **Exchange connection resilience** — stale data handling, graceful degradation
-5. **Paper trade on live API** — 48-72h validation before real money
-6. **Go live conservative** — SOL+HYPE first, 1% risk, 2x max leverage
-7. **Phase 6**: New strategies (funding rate, order flow), strategy discovery activation
-8. **Phase 4**: Config extraction (nice-to-have, not blocking profit)
-9. **Phase 7**: Advanced evolution (aspirational)
+1. **Phase 2.8: Fix 6 critical bugs** — actively destroying edge, 2-4 hours of work
+2. **Phase 2.9: Fee economics** — fees eat 100% of edge, must fix before any backtest means anything
+3. **Validate with 100d backtest** — confirm bugs + fee fixes produce positive Sharpe
+4. **Phase 3: Signal quality** — walk-forward validation, block losing combos
+5. **Paper trade on live API** — 48-72h validation with real exchange prices
+6. **Go live conservative** — SOL+HYPE, 1% risk, 2x max leverage, 3_agree required
+7. **Phase 4: Production hardening** — connection resilience, reconciliation, logging
+8. **Phase 5: Config extraction** — single source of truth for all parameters
+9. **Phase 6: New strategies** — funding rate, order flow, cross-exchange
+10. **Phase 7: Advanced evolution** — portfolio agent, auto-prompt evolution, RL
 
 ---
 

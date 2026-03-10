@@ -1210,7 +1210,7 @@ class BacktestEngine:
             "strategy": signal.strategy,
             "side": signal.side,
             "confidence": signal.confidence,
-            "leverage": lev_decision.leverage,
+            "leverage": leverage,
             "entry": signal.entry,
             "sl": signal.sl,
             "tp1": signal.tp1,

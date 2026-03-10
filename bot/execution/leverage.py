@@ -121,26 +121,35 @@ class LeverageManager:
                                     f"{lev:.1f}x: confidence {confidence:.0f}%", rm)
 
         # ── Tier 3: 70-74% — moderate conviction ──
+        # 3_agree gate: 10d data shows 2_agree=40% WR (-$1,207) vs 3_agree=86% WR (+$1,040).
+        # Only give full leverage to 3+ strategies agreeing. 2_agree capped at 1.5x.
         if confidence < 75:
-            t = (confidence - 70) / 5.0
             if num_strategies_agree < 2:
                 lev = min(1.5, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.9)
-            lev = min(2.0, cap)  # flat 2x (was 3-5x)
-            rm = 1.0  # flat 1.0x (was 1.2-1.5x)
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.8)
+            if num_strategies_agree >= 3:
+                lev = min(2.0, cap)
+                rm = 1.0
+            else:
+                lev = min(1.5, cap)  # 2_agree capped at 1.5x
+                rm = 0.85  # smaller position for weaker consensus
             return LeverageDecision(lev, "leverage", "low",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
         # ── Tier 4: 75-79% — strong conviction ──
         if confidence < 80:
-            t = (confidence - 75) / 5.0
             if num_strategies_agree < 2:
-                lev = min(2.0, cap)
+                lev = min(1.5, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 1.0)
-            lev = min(2.0 + t * 1.0, cap)  # 2-3x (was 3-5x)
-            rm = 1.0 + t * 0.2  # 1.0-1.2x (was 1.3-1.7x)
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.8)
+            if num_strategies_agree >= 3:
+                t = (confidence - 75) / 5.0
+                lev = min(2.0 + t * 1.0, cap)  # 2-3x for 3_agree
+                rm = 1.0 + t * 0.1  # 1.0-1.1x
+            else:
+                lev = min(1.5, cap)  # 2_agree capped at 1.5x
+                rm = 0.85
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
@@ -150,22 +159,29 @@ class LeverageManager:
         # Don't reward unproven confidence with bigger positions.
         if confidence < 90:
             if num_strategies_agree < 2:
-                lev = min(2.0, cap)
+                lev = min(1.5, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: need 2+ strats for high lev", 1.0)
-            lev = min(2.0, cap)  # flat 2x (was 2.5-3x)
-            rm = 1.0  # flat 1.0x (was 1.1-1.2x)
+                                        f"{lev:.1f}x: need 2+ strats for high lev", 0.8)
+            if num_strategies_agree >= 3:
+                lev = min(2.0, cap)
+                rm = 1.0
+            else:
+                lev = min(1.5, cap)  # 2_agree capped
+                rm = 0.85
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
         # ── Tier 6: 90%+ — largely unreachable with 85% ensemble cap ──
-        # Same flat treatment — no leverage premium for extreme confidence
-        if num_strategies_agree >= 2:
-            lev = min(2.0, cap)  # flat 2x (was 3-3.5x)
-            rm = 1.0  # flat (was 1.2-1.3x)
-        else:
+        # Same consensus-gated treatment
+        if num_strategies_agree >= 3:
             lev = min(2.0, cap)
             rm = 1.0
+        elif num_strategies_agree >= 2:
+            lev = min(1.5, cap)
+            rm = 0.85
+        else:
+            lev = min(1.5, cap)
+            rm = 0.8
 
         if lev > 5.0 and current_extreme_count >= self.max_extreme_positions:
             lev = 5.0

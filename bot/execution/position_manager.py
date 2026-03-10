@@ -223,16 +223,19 @@ class PositionManager:
             return None
 
         # Profile-driven trailing distance: SCALP=tight, TREND=loose
+        # Fallback: when ATR=0 (shouldn't happen in practice), use 1% of entry
+        # as conservative trailing distance instead of full stop width (too loose).
+        _trail_fallback = entry * 0.01 if entry > 0 else abs(entry - sl)
         if trade_profile:
             # Use profile's trailing style to scale the ATR multiplier
             style_mult = {
                 "tight": 0.8, "medium": 1.0, "loose": 1.5, "none": 1.0,
             }.get(trade_profile.exit_params.trailing_style, 1.0)
-            trailing_distance = atr * self.trailing_atr_mult * style_mult if atr > 0 else abs(entry - sl)
+            trailing_distance = atr * self.trailing_atr_mult * style_mult if atr > 0 else _trail_fallback
             # Profile overrides tp1_close_pct
             tp1_close_pct = trade_profile.exit_params.tp1_close_pct
         else:
-            trailing_distance = atr * self.trailing_atr_mult if atr > 0 else abs(entry - sl)
+            trailing_distance = atr * self.trailing_atr_mult if atr > 0 else _trail_fallback
 
         pos = Position(
             symbol=symbol,
