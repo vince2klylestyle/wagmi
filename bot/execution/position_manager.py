@@ -834,7 +834,8 @@ class PositionManager:
         wins = [e for e in closed if e.pnl > 0]
         losses = [e for e in closed if e.pnl <= 0]
         total_pnl = sum(e.pnl for e in closed)
-        total_fees = sum(e.fee for e in closed)
+        # Include entry fees (OPEN events) + exit fees for accurate total
+        total_fees = sum(e.fee for e in closed) + sum(e.fee for e in opens)
 
         return {
             "positions_opened": len(opens),

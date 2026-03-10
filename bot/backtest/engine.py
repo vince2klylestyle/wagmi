@@ -1719,7 +1719,9 @@ class BacktestEngine:
         close_count = 0
 
         for event in self.pos_mgr.trade_log:
-            if event.action in self._CLOSE_ACTIONS:
+            if event.action == "OPEN":
+                total_fees += event.fee  # Entry fees count toward total cost
+            elif event.action in self._CLOSE_ACTIONS:
                 gross_pnl += event.pnl
                 total_fees += event.fee
                 close_count += 1
