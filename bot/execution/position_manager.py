@@ -432,7 +432,7 @@ class PositionManager:
                     dynamic_close_pct *= 0.85
                 elif time_to_tp1_s > 14400:  # > 4 hours -- slow grind
                     # Only increase TP1% if not in a clean trend (let trends run)
-                    regime = pos.metadata.get("regime", "unknown")
+                    regime = pos.entry_reasons.get("regime", pos.metadata.get("regime", "unknown"))
                     if regime not in ("trending_bull", "trending_bear", "trend", "trending"):
                         dynamic_close_pct = min(dynamic_close_pct * 1.10, 0.85)
 
