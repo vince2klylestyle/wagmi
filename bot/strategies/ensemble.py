@@ -609,6 +609,21 @@ class EnsembleStrategy:
                 logger.info(f"[{symbol}] Only {len(sell_signals)} SELL signal(s), need {min_v}+ same-side")
             return None
 
+        # Block known-losing 2-agree combos (backtest PF < 0.2)
+        # confidence_scorer + multi_tier_quality without regime_trend = PF 0.08
+        if len(buy_signals) == 2 or len(sell_signals) == 2:
+            chosen_2 = buy_signals if len(buy_signals) == 2 else sell_signals if len(sell_signals) == 2 else []
+            if len(chosen_2) == 2:
+                combo = frozenset(s.strategy for s in chosen_2)
+                _LOSING_COMBOS = {
+                    frozenset({"confidence_scorer", "multi_tier_quality"}),
+                }
+                if combo in _LOSING_COMBOS:
+                    logger.info(
+                        f"[{symbol}] Blocked losing 2-agree combo: {sorted(combo)}"
+                    )
+                    return None
+
         buy_strength = self._weighted_confidence_sum(buy_signals) if buy_signals else 0
         sell_strength = self._weighted_confidence_sum(sell_signals) if sell_signals else 0
 
@@ -767,15 +782,20 @@ class EnsembleStrategy:
         per_signal_sl = {s.strategy: s.sl for s in signals}
         per_signal_tp1 = {s.strategy: s.tp1 for s in signals}
 
-        # Expected Value per $1 risked:
-        #   EV = (win_prob × avg_R:R) - (loss_prob × 1.0)
-        # Positive EV means the trade has a statistical edge.
-        # This enables EV-based filtering: a 72% conf trade with 1.5 R:R
-        # (EV=0.80) beats a 78% conf trade with 0.9 R:R (EV=0.48).
+        # Fee-aware Expected Value per $1 risked:
+        #   EV = win_prob × (R:R - fee_drag) - loss_prob × (1.0 + fee_drag)
+        # Fee drag = round-trip fees as fraction of stop width.
+        # A 1.5 R:R trade with 10% fee drag: win nets 1.4R, loss costs 1.1R.
         stop_width = abs(entry - best_sl)
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
         win_prob = combined_conf / 100.0
-        ev_per_dollar = round(win_prob * rr_tp1 - (1.0 - win_prob), 4)
+        try:
+            from trading_config import TradingConfig as _TConf
+            _fee_bps = _TConf().taker_fee_bps
+        except Exception:
+            _fee_bps = 4
+        fee_drag = (entry * _fee_bps * 2 / 10000.0) / stop_width if stop_width > 0 else 0
+        ev_per_dollar = round(win_prob * (rr_tp1 - fee_drag) - (1.0 - win_prob) * (1.0 + fee_drag), 4)
 
         return Signal(
             strategy="ensemble",
