@@ -116,8 +116,8 @@ class TradingConfig:
         default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 2)
     )
     veto_ratio: float = field(
-        default_factory=lambda: _env_float("VETO_RATIO", 1.5)
-    )
+        default_factory=lambda: _env_float("VETO_RATIO", 1.3)
+    )  # Lowered from 1.5: allows stronger 2-agree confluence to pass veto
 
     # ML
     enable_ml: bool = field(default_factory=lambda: _env_bool("ENABLE_ML", True))

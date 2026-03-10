@@ -153,18 +153,19 @@ class LeverageManager:
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
-        # ── Tier 5: 80-89% — flat leverage (confidence inversion fix) ──
-        # Data shows 80-89% conf has PF=0.75 — high confidence clusters in
-        # ranging markets where correlated strategies agree on noise.
-        # Don't reward unproven confidence with bigger positions.
+        # ── Tier 5: 80-89% — scale by confidence for 3-agree ──
+        # With fee-aware EV, fee-drag gate, and losing combo blocking,
+        # high-confidence 3-agree signals that reach here have genuine edge.
         if confidence < 90:
             if num_strategies_agree < 2:
                 lev = min(1.5, cap)
                 return LeverageDecision(lev, "leverage", "low",
                                         f"{lev:.1f}x: need 2+ strats for high lev", 0.8)
             if num_strategies_agree >= 3:
-                lev = min(2.0, cap)
-                rm = 1.0
+                # Scale 2.0-2.5x across 80-89% confidence
+                t = (confidence - 80) / 10.0
+                lev = min(2.0 + t * 0.5, cap)
+                rm = 1.0 + t * 0.1  # 1.0-1.1x risk multiplier
             else:
                 lev = min(1.5, cap)  # 2_agree capped
                 rm = 0.85

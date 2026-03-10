@@ -106,10 +106,14 @@ class RiskFilterChain:
                     metadata=meta,
                 )
 
-        # Gate 1d: Minimum Expected Value filter
-        # EV = (win_prob x R:R) - (loss_prob x 1.0) per dollar risked.
+        # Gate 1d: Minimum Expected Value filter (stop-width aware)
+        # Tight stops have higher fee drag, requiring higher EV to be viable.
         ev = signal.metadata.get("ev_per_dollar") if signal.metadata else None
         min_ev = getattr(self.config, "min_signal_ev", 0.10)
+        if stop_pct > 0 and stop_pct < 0.004:
+            min_ev = max(min_ev, 0.20)  # Tight stops: fees eat more of the risk
+        elif stop_pct > 0 and stop_pct < 0.006:
+            min_ev = max(min_ev, 0.18)
         if ev is not None and ev < min_ev:
             return FilterResult(
                 approved=False, signal=signal,
