@@ -191,6 +191,81 @@ class DataFetcher:
         self._ccxt_failures = 0
         self._ccxt_first_success: Dict[str, bool] = {}  # log first success per symbol
 
+        # Data freshness tracking: {(symbol, timeframe): timestamp}
+        self._last_fetch_ts: Dict[Tuple[str, str], float] = {}
+
+    # ─── OHLCV integrity validation ───────────────────────────────
+
+    def _validate_ohlcv(self, df: pd.DataFrame, symbol: str, timeframe: str) -> pd.DataFrame:
+        """Validate OHLCV candle integrity. Drop invalid rows, warn if >10% bad.
+
+        Checks per candle:
+        - No NaN/inf in OHLCV columns
+        - high >= open, high >= close, high >= low
+        - low <= open, low <= close
+        - volume >= 0
+        - close > 0, open > 0
+        """
+        if df is None or df.empty:
+            return df
+
+        ohlcv_cols = ["open", "high", "low", "close", "volume"]
+        present = [c for c in ohlcv_cols if c in df.columns]
+        if len(present) < 4:  # need at least OHLC
+            return df
+
+        original_len = len(df)
+        mask = pd.Series(True, index=df.index)
+
+        # Check for NaN/inf
+        for col in present:
+            mask &= df[col].notna() & ~df[col].isin([float("inf"), float("-inf")])
+
+        # OHLC relationship checks
+        if all(c in df.columns for c in ["open", "high", "low", "close"]):
+            mask &= (df["high"] >= df["open"]) & (df["high"] >= df["close"])
+            mask &= (df["low"] <= df["open"]) & (df["low"] <= df["close"])
+            mask &= (df["high"] >= df["low"])
+            mask &= (df["close"] > 0) & (df["open"] > 0)
+
+        # Volume check
+        if "volume" in df.columns:
+            mask &= df["volume"] >= 0
+
+        invalid_count = original_len - mask.sum()
+        if invalid_count > 0:
+            pct_bad = invalid_count / original_len * 100
+            df = df[mask].reset_index(drop=True)
+            if pct_bad > 10:
+                logger.warning(
+                    f"[DATA] {symbol}/{timeframe}: {invalid_count}/{original_len} "
+                    f"candles INVALID ({pct_bad:.1f}%) — dataset suspect"
+                )
+            else:
+                logger.info(
+                    f"[DATA] {symbol}/{timeframe}: dropped {invalid_count} invalid "
+                    f"candle(s) ({pct_bad:.1f}%)"
+                )
+
+        return df
+
+    def get_data_freshness(self, symbol: str, timeframe: str) -> Optional[float]:
+        """Return seconds since last successful fetch for symbol/timeframe.
+
+        Returns None if never fetched.
+        """
+        ts = self._last_fetch_ts.get((symbol, timeframe))
+        if ts is None:
+            return None
+        return time.time() - ts
+
+    def is_data_stale(self, symbol: str, timeframe: str, max_age_s: float = 300.0) -> bool:
+        """Check if data is stale (>max_age_s since last fetch). Default 5 min."""
+        age = self.get_data_freshness(symbol, timeframe)
+        if age is None:
+            return True  # never fetched = stale
+        return age > max_age_s
+
     # ─── CCXT initialization ─────────────────────────────────────
 
     def _init_ccxt(self):
@@ -462,7 +537,13 @@ class DataFetcher:
                                 f"(max {max_age}m) from {ex_name}"
                             )
 
+                # Validate OHLCV integrity
+                df = self._validate_ohlcv(df, symbol_name, timeframe)
+                if df.empty or len(df) < 5:
+                    continue
+
                 self._circuit_breaker.record_success(ex_name)
+                self._last_fetch_ts[(symbol_name, timeframe)] = time.time()
 
                 logger.info(
                     f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} "
@@ -660,10 +741,12 @@ class DataFetcher:
         logger.info(f"[{symbol_name}] CCXT unavailable for {timeframe}, falling back to CoinGecko")
         df = self._fetch_cg_ohlcv(coin_id, timeframe)
         if not df.empty:
+            df = self._validate_ohlcv(df, symbol_name, timeframe)
             logger.info(f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} via CoinGecko")
             self._check_data_continuity(df, symbol_name, timeframe)
             self._save_disk_cache(symbol_name, timeframe, df)
             self._set_cache(cache_key, df)
+            self._last_fetch_ts[(symbol_name, timeframe)] = time.time()
         return df
 
     def fetch_multi_timeframe(

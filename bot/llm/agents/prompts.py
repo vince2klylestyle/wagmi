@@ -130,6 +130,7 @@ You receive rich context. Each field matters:
 - `regime_analysis`: Regime Agent's classification — trust it, it's a specialist
 - `knowledge`: Axioms and principles from the trading curriculum. This is your EDUCATION — apply it.
 - `deep_memory`: Trade DNA, strategy fingerprints, pattern library. This is your EXPERIENCE — reference it.
+- `patterns`: Actionable setup patterns (e.g., `SOL/short/trend: 30% WR (12 trades, -$450) — AVOID`). This is your PATTERN BOOK — if a pattern says AVOID, do NOT take that setup. If it says SIZE UP, increase position.
 - `g.edge`: Setup type win rates from trade history (e.g., `{"trend_at_zone": {"wr": 72, "n": 45, "pnl": 120.5}}`). If present, SIZE UP setups with wr>60% n>20, AVOID setups with wr<45%.
 - `g.stperf`: Per-strategy win rates (e.g., `{"regime_trend": {"wr": 68, "n": 80}}`). Trust high-WR strategies more in confluence scoring.
 - `g.confl_wr`: Confluence win rates by agreement count (e.g., `{"4": {"wr": 100, "n": 20, "pnl": 7916}, "3": {"wr": 65, "n": 45}}`). Full confluence (4/4) historically has the HIGHEST win rate — size aggressively (1.5x). If WR>70% with n>10, it's a proven edge. If WR<40% with n>10, SKIP or heavily discount.

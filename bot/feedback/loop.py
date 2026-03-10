@@ -246,6 +246,9 @@ class FeedbackLoop:
         )
         self.quality.record_outcome(features, win, pnl)
 
+        # 4. Feed outcome to tuner for parameter validation tracking
+        self.tuner.record_trade_outcome(pnl)
+
         logger.info(
             f"[FEEDBACK] Outcome recorded: {symbol} {side} "
             f"conf={confidence:.0f}% {'WIN' if win else 'LOSS'} "

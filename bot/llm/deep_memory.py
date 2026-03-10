@@ -323,6 +323,28 @@ class StrategyFingerprints:
             fp["by_symbol"][symbol]["wins"] += 1
         fp["by_symbol"][symbol]["pnl"] += pnl
 
+        # Track by symbol×side (cross-tab: "SOL_SHORT", "BTC_LONG")
+        sym_side_key = f"{symbol}_{side}"
+        if "by_symbol_side" not in fp:
+            fp["by_symbol_side"] = {}
+        if sym_side_key not in fp["by_symbol_side"]:
+            fp["by_symbol_side"][sym_side_key] = {"wins": 0, "total": 0, "pnl": 0.0}
+        fp["by_symbol_side"][sym_side_key]["total"] += 1
+        if win:
+            fp["by_symbol_side"][sym_side_key]["wins"] += 1
+        fp["by_symbol_side"][sym_side_key]["pnl"] += pnl
+
+        # Track by symbol×regime (cross-tab: "SOL_trend", "BTC_range")
+        sym_regime_key = f"{symbol}_{regime}"
+        if "by_symbol_regime" not in fp:
+            fp["by_symbol_regime"] = {}
+        if sym_regime_key not in fp["by_symbol_regime"]:
+            fp["by_symbol_regime"][sym_regime_key] = {"wins": 0, "total": 0, "pnl": 0.0}
+        fp["by_symbol_regime"][sym_regime_key]["total"] += 1
+        if win:
+            fp["by_symbol_regime"][sym_regime_key]["wins"] += 1
+        fp["by_symbol_regime"][sym_regime_key]["pnl"] += pnl
+
         # Track by side
         if side not in fp["by_side"]:
             fp["by_side"][side] = {"wins": 0, "total": 0, "pnl": 0.0}
@@ -771,6 +793,17 @@ class DeepMemoryManager:
                 side=side, win=win, pnl=pnl, confidence=confidence,
             )
 
+        # Update pattern cache with this trade outcome
+        try:
+            from llm.pattern_cache import get_pattern_cache
+            pc = get_pattern_cache()
+            pc.update_pattern(
+                symbol=symbol, side=side, regime=regime,
+                win=win, pnl=pnl, source="live",
+            )
+        except Exception as e:
+            logger.debug(f"[DEEP_MEM] Pattern cache update failed: {e}")
+
     def build_llm_knowledge_summary(
         self,
         symbol: str = "",
@@ -801,6 +834,30 @@ class DeepMemoryManager:
                     f"{symbol}: {sym_stats['win_rate']:.0%} WR "
                     f"({sym_stats['total']} trades, ${sym_stats['pnl']:+.0f})"
                 )
+
+        # 2b. Side-specific knowledge for current symbol (surface asymmetries)
+        if symbol:
+            all_fps = self.strategy_fps.get_all()
+            long_w, long_n, short_w, short_n = 0, 0, 0, 0
+            for strat, fp in all_fps.items():
+                bss = fp.get("by_symbol_side", {})
+                lk = f"{symbol}_BUY"
+                sk = f"{symbol}_SELL"
+                if lk in bss:
+                    long_w += bss[lk].get("wins", 0)
+                    long_n += bss[lk].get("total", 0)
+                if sk in bss:
+                    short_w += bss[sk].get("wins", 0)
+                    short_n += bss[sk].get("total", 0)
+            if long_n >= 5 and short_n >= 5:
+                long_wr = long_w / long_n if long_n > 0 else 0
+                short_wr = short_w / short_n if short_n > 0 else 0
+                # Surface if asymmetry is significant (>15% WR difference)
+                if abs(long_wr - short_wr) > 0.15:
+                    parts.append(
+                        f"{symbol} SIDE EDGE: LONG {long_wr:.0%} WR ({long_n}), "
+                        f"SHORT {short_wr:.0%} WR ({short_n})"
+                    )
 
         # 3. Regime knowledge
         if regime:

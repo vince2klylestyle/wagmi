@@ -41,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--mode", "-m",
-        choices=["paper", "replay", "live", "evolve", "tiers", "optimize"],
+        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare"],
         default="paper",
         help="Trading mode (default: paper)",
     )
@@ -78,6 +78,11 @@ def main():
         choices=["sharpe", "total_pnl", "win_rate", "total_return_pct"],
         help="Optimization metric (default: sharpe)",
     )
+    parser.add_argument(
+        "--modes",
+        default="0,2,3,5",
+        help="Comma-separated LLM modes for compare mode (default: 0,2,3,5)",
+    )
 
     args = parser.parse_args()
 
@@ -85,6 +90,8 @@ def main():
         _run_replay(args.replay_file)
     elif args.mode == "live":
         _run_live(args.yes)
+    elif args.mode == "compare":
+        _run_compare(args.symbols, args.days, args.modes)
     elif args.mode == "evolve":
         _run_evolve()
     elif args.mode == "tiers":
@@ -194,6 +201,24 @@ def _run_tiers():
     """Show LLM usage tier comparison and current configuration."""
     from llm.usage_tiers import format_tier_comparison
     print(format_tier_comparison())
+
+
+def _run_compare(symbols_str: str, days: int, modes_str: str):
+    """Run mode comparison: A/B test LLM autonomy levels."""
+    from backtest.mode_comparison import ModeComparisonRunner
+
+    symbols = [s.strip() for s in symbols_str.split(",")]
+    modes = [int(m.strip()) for m in modes_str.split(",")]
+
+    print("=" * 70)
+    print(f"MODE COMPARISON: {', '.join(symbols)} | {days} days")
+    print(f"Modes: {modes}")
+    print("=" * 70)
+    print()
+
+    runner = ModeComparisonRunner(symbols=symbols, days=days, modes=modes)
+    report = runner.run()
+    print(runner.format_report(report))
 
 
 def _run_optimize(symbols_str: str, days: int, max_trials: int, metric: str):

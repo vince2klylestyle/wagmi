@@ -60,6 +60,9 @@ class EnsembleStrategy:
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
         self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
+        # Hysteresis: EMA-smoothed chop scores prevent floor oscillation on noise
+        self._smoothed_chop: Dict[str, float] = {}  # symbol -> smoothed chop_score
+        self._chop_ema_alpha: float = 0.3  # Smoothing factor (higher = more reactive)
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
@@ -186,14 +189,19 @@ class EnsembleStrategy:
                     f"min_votes {self.min_votes} → {effective_min_votes}"
                 )
 
-        # Chop detector: multi-factor choppy market filter (replaces simple volume check)
+        # Chop detector: graduated choppy market filter
+        # Instead of binary kill, attach chop_score and let the confidence floor
+        # handle rejection. This allows high-conviction setups through even in chop.
         if self.chop_detector:
             is_chop, chop_score, chop_detail = self.chop_detector.is_choppy(symbol, data)
-            if is_chop:
-                return None
-            # Attach chop score to metadata for downstream use
+            # Attach chop score to metadata — graduated floor below will handle filtering
             for sig in signals:
                 sig.metadata["chop_score"] = round(chop_score, 3)
+            if is_chop:
+                logger.info(
+                    f"[{symbol}] Chop detected (score={chop_score:.2f}), "
+                    f"applying graduated confidence floor"
+                )
         elif self._is_low_volume(symbol, data):
             # Fallback to simple volume filter if no chop detector
             logger.info(f"[{symbol}] Signal skipped: low volume (chop filter)")
@@ -219,13 +227,25 @@ class EnsembleStrategy:
         # In choppy markets, require much higher confidence to trade.
         # 100d backtest: ranging regime = 24% WR, trending = 100% WR.
         effective_floor = self.confidence_floor
-        chop_score = result.metadata.get("chop_score", 0)
+        raw_chop = result.metadata.get("chop_score", 0)
+        # Apply EMA smoothing to prevent floor oscillation on noise
+        prev = self._smoothed_chop.get(symbol, raw_chop)
+        chop_score = self._chop_ema_alpha * raw_chop + (1 - self._chop_ema_alpha) * prev
+        self._smoothed_chop[symbol] = chop_score
+        result.metadata["chop_score_smoothed"] = round(chop_score, 3)
         if chop_score > 0.35:
-            # Market is somewhat choppy — interpolate between normal and ranging floor
-            chop_intensity = min(1.0, (chop_score - 0.35) / 0.30)  # 0→1 over 0.35→0.65
-            effective_floor = self.confidence_floor + chop_intensity * (
-                self.ranging_confidence_floor - self.confidence_floor
-            )
+            if chop_score >= 0.65:
+                # Extreme chop: floor rises to 95% (only exceptional setups pass)
+                chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)  # 0→1 over 0.65→0.85
+                effective_floor = self.ranging_confidence_floor + chop_intensity * (
+                    95.0 - self.ranging_confidence_floor
+                )
+            else:
+                # Moderate chop: interpolate between normal and ranging floor
+                chop_intensity = (chop_score - 0.35) / 0.30  # 0→1 over 0.35→0.65
+                effective_floor = self.confidence_floor + chop_intensity * (
+                    self.ranging_confidence_floor - self.confidence_floor
+                )
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
 
         if result.confidence < effective_floor:

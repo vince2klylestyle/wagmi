@@ -339,6 +339,8 @@ class RiskManager:
         self.max_risk_multiplier = max_risk_multiplier
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
         self.circuit_breaker.peak_equity = starting_equity
+        # Last sizing breakdown for attribution/debugging
+        self.last_sizing_breakdown: Dict[str, Any] = {}
 
     def can_open_position(self, current_open: int, confidence: float = 0.0,
                           cb_conf_override_pct: float = 0.92,
@@ -389,7 +391,9 @@ class RiskManager:
         effective_stop = stop_width + slippage_spread
 
         # Enforce minimum stop width to prevent near-zero stops
-        min_width = entry * 0.003  # 0.3% of entry
+        # Single source of truth: trading_config.py MIN_STOP_WIDTH_PCT
+        from trading_config import TradingConfig as _TC
+        min_width = entry * _TC().min_stop_width_pct
         if effective_stop < min_width:
             logger.warning(
                 f"[SIZE] {symbol or '?'} effective stop {effective_stop:.6f} < min "
@@ -405,19 +409,40 @@ class RiskManager:
         qty = risk_usd / (effective_stop * effective_leverage)
 
         # Notional cap: prevent position from exceeding reasonable bounds
+        notional_cap_applied = False
         if not skip_notional_cap:
             notional = qty * entry
             max_notional = self.equity * effective_leverage * 2
             if notional > max_notional:
                 qty = max_notional / entry
+                notional_cap_applied = True
                 logger.warning(
                     f"[SIZE] {symbol or '?'} notional capped: "
                     f"${notional:.0f} > max ${max_notional:.0f}"
                 )
+
+        # Store sizing breakdown for attribution/debugging
+        self.last_sizing_breakdown = {
+            "symbol": symbol or "?",
+            "equity": self.equity,
+            "base_risk_pct": effective_risk_pct,
+            "risk_multiplier_raw": risk_multiplier,
+            "risk_multiplier_capped": capped_rm,
+            "risk_usd": risk_usd,
+            "stop_width": stop_width,
+            "slippage_spread": slippage_spread,
+            "effective_stop": effective_stop,
+            "leverage": effective_leverage,
+            "qty_before_cap": risk_usd / (effective_stop * effective_leverage),
+            "notional_cap_applied": notional_cap_applied,
+            "final_qty": qty,
+        }
+
         logger.info(
             f"[SIZE] {symbol or '?'} risk=${risk_usd:.2f} "
             f"stop={stop_width:.6f}+slip={slippage_spread:.6f} lev={effective_leverage:.1f}x "
             f"rm={capped_rm:.2f} qty={qty:.6f}"
+            + (" [NOTIONAL-CAPPED]" if notional_cap_applied else "")
         )
         return qty
 

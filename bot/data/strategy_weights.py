@@ -112,31 +112,41 @@ class StrategyWeightManager:
             # during a regime change. Decay can erode historical counts, so we
             # check the Laplace-smoothed long-term weight as a second confirmation.
             long_term_weight = self.get_weight(name)
+            # Recovery acceleration: if last 5 trades are all wins, boost weight faster
+            last_5 = recent[-5:] if len(recent) >= 5 else []
+            recovering = len(last_5) == 5 and sum(last_5) == 5
+
             if len(recent) >= 15 and rolling_wr < 0.30 and long_term_weight < 0.35:
-                dynamic[name] = 0.05
+                # Hard mute floor raised from 0.05 to 0.20 — strategy always gets a voice
+                mute_weight = 0.30 if recovering else 0.20
+                dynamic[name] = mute_weight
                 logger.warning(
-                    f"[WEIGHTS] {name} AUTO-MUTED: recent_WR={rolling_wr:.1%}, "
-                    f"long_term={long_term_weight:.2f} — both confirm underperformance"
+                    f"[WEIGHTS] {name} MUTED: recent_WR={rolling_wr:.1%}, "
+                    f"long_term={long_term_weight:.2f}"
+                    + (" (recovering: 5 consecutive wins)" if recovering else "")
                 )
                 continue
             if len(recent) >= 15 and rolling_wr < 0.30:
                 # Recent is bad but long-term is decent — demote, don't mute
-                dynamic[name] = 0.15
+                dynamic[name] = 0.25 if recovering else 0.15
                 logger.info(
                     f"[WEIGHTS] {name} SOFT-DEMOTED: recent_WR={rolling_wr:.1%} but "
                     f"long_term={long_term_weight:.2f} — possible regime change"
                 )
                 continue
             if len(recent) >= 20 and rolling_wr < 0.35 and long_term_weight < 0.40:
-                dynamic[name] = 0.1
+                dynamic[name] = 0.20 if recovering else 0.15
                 logger.info(
                     f"[WEIGHTS] {name} DEMOTED: recent_WR={rolling_wr:.1%}, "
                     f"long_term={long_term_weight:.2f}"
                 )
                 continue
 
-            # Scale: 50% WR = 1.0x, 80% = 1.6x, 20% = 0.4x (floored at 0.1)
-            scale = max(0.1, rolling_wr / 0.5)
+            # Scale: 50% WR = 1.0x, 80% = 1.6x, 20% = 0.4x (floored at 0.2)
+            # Recovery boost: 2x scale when last 5 are all wins
+            scale = max(0.2, rolling_wr / 0.5)
+            if recovering:
+                scale = min(scale * 1.5, 2.0)
             dynamic[name] = round(base * scale, 4)
         return dynamic
 

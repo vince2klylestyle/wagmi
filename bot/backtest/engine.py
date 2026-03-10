@@ -1313,6 +1313,44 @@ class BacktestEngine:
         # Per-trade timeline (always available, enriched with LLM data when present)
         report["trade_timeline"] = self._report_trade_timeline()
 
+        # Feed findings into pattern cache for LLM knowledge pipeline
+        try:
+            from llm.pattern_cache import get_pattern_cache
+            pc = get_pattern_cache()
+            # Build symbol×side×regime cross-tab from trade log
+            cross_tab: Dict[str, Dict] = {}
+            for event in self.pos_mgr.trade_log:
+                if event.action in self._CLOSE_ACTIONS:
+                    sym = event.symbol or "?"
+                    side = (event.metadata or {}).get("side", "BUY")
+                    regime = (event.metadata or {}).get("regime", "unknown")
+                    key = f"{sym}_{side}_{regime}"
+                    if key not in cross_tab:
+                        cross_tab[key] = {"wr": 0, "trades": 0, "pnl": 0.0,
+                                          "avg_winner": 0.0, "avg_loser": 0.0,
+                                          "_wins": 0, "_win_sum": 0.0, "_loss_sum": 0.0,
+                                          "_losses": 0}
+                    ct = cross_tab[key]
+                    ct["trades"] += 1
+                    ct["pnl"] += event.pnl
+                    if event.pnl > 0:
+                        ct["_wins"] += 1
+                        ct["_win_sum"] += event.pnl
+                    else:
+                        ct["_losses"] += 1
+                        ct["_loss_sum"] += event.pnl
+            for key, ct in cross_tab.items():
+                ct["wr"] = ct["_wins"] / ct["trades"] if ct["trades"] > 0 else 0
+                ct["avg_winner"] = ct["_win_sum"] / ct["_wins"] if ct["_wins"] > 0 else 0
+                ct["avg_loser"] = ct["_loss_sum"] / ct["_losses"] if ct["_losses"] > 0 else 0
+                # Clean up internal fields
+                for k in ("_wins", "_win_sum", "_losses", "_loss_sum"):
+                    del ct[k]
+            pc.ingest_backtest_report({"by_symbol_regime_side": cross_tab})
+        except Exception as e:
+            import logging
+            logging.getLogger("bot.backtest").debug(f"Pattern cache ingestion failed: {e}")
+
         return report
 
     # Actions that represent trade closes (not OPEN events)
