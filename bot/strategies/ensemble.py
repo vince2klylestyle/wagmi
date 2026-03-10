@@ -762,15 +762,23 @@ class EnsembleStrategy:
         max_conf = max(max_conf, 92.0)  # Ensure cap is at least 92%
         combined_conf = min(max_conf, weighted_conf * consensus_mult)
 
-        # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
-        # Using average TP1 prevents zone-based strategies from pulling targets too close
+        # Weighted-average SL (preserves R:R), average TP1 (balanced), widest TP2 (aggressive).
+        # Old policy: "widest SL" destroyed R:R when strategies disagreed on stops.
+        # New: weight SL by strategy accuracy, so trusted strategies get more say.
+        # Average TP1 prevents zone-based strategies from pulling targets too close.
+        if total_weight > 0:
+            weighted_sl = sum(
+                self._get_strategy_weight(s.strategy) * s.sl for s in signals
+            ) / total_weight
+        else:
+            weighted_sl = sum(s.sl for s in signals) / len(signals)
         if side == "BUY":
-            best_sl = min(s.sl for s in signals)
+            best_sl = weighted_sl
             best_tp1 = sum(s.tp1 for s in signals) / len(signals)
             best_tp2 = max(s.tp2 for s in signals)
             entry = sum(s.entry for s in signals) / len(signals)
         else:
-            best_sl = max(s.sl for s in signals)
+            best_sl = weighted_sl
             best_tp1 = sum(s.tp1 for s in signals) / len(signals)
             best_tp2 = min(s.tp2 for s in signals)
             entry = sum(s.entry for s in signals) / len(signals)

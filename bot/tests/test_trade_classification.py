@@ -210,8 +210,8 @@ class TestApplyProfile:
         # TREND TP1 = entry + 1.5*ATR = 107.5 (wider than signal's 105)
         assert adjusted["tp1"] > 105.0
 
-    def test_profile_adjusts_sl_for_medium(self):
-        """MEDIUM profile should use its own SL distance."""
+    def test_profile_blends_sl_for_medium(self):
+        """Profile should take WIDER SL (more room) to preserve edge."""
         metadata = {
             "strategies_agree": ["monte_carlo_zones"],
             "individual_confidences": {"monte_carlo_zones": 72},
@@ -221,8 +221,9 @@ class TestApplyProfile:
         adjusted = apply_profile_to_signal(
             profile, entry=100.0, sl=90.0, tp1=105.0, tp2=115.0, atr=5.0, side="BUY",
         )
-        # MEDIUM SL = entry - 0.75*ATR = 96.25 (tighter than signal's 90.0)
-        assert adjusted["sl"] > 90.0
+        # Blend logic: takes WIDER SL = min(profile_sl, strategy_sl) for LONG.
+        # Strategy SL=90.0 is wider than profile SL (~96.25), so strategy wins.
+        assert adjusted["sl"] == 90.0
 
     def test_no_atr_falls_back_to_original(self):
         """When ATR is 0, use signal's original levels."""

@@ -521,27 +521,25 @@ def apply_profile_to_signal(
 
     is_buy = side == "BUY"
 
-    # Use profile-recommended levels
-    new_sl = profile.recommended_sl
-    new_tp1 = profile.recommended_tp1
-    new_tp2 = profile.recommended_tp2
+    # Blend profile and strategy levels: use the WIDER TP targets (more edge)
+    # but also WIDER SL (more safety). The goal is to never REDUCE the
+    # strategy's computed R:R — only improve risk management.
+    prof_sl = profile.recommended_sl
+    prof_tp1 = profile.recommended_tp1
+    prof_tp2 = profile.recommended_tp2
 
-    # Safety: ensure SL is on the correct side of entry
     if is_buy:
-        if new_sl >= entry:
-            new_sl = sl  # fallback to original
-        # TP must be above entry
-        if new_tp1 <= entry:
-            new_tp1 = tp1
-        if new_tp2 <= entry:
-            new_tp2 = tp2
+        # Wider SL = lower SL for LONG (more room for noise)
+        new_sl = min(prof_sl, sl) if prof_sl < entry else sl
+        # Wider TP = higher TP for LONG (more profit potential)
+        new_tp1 = max(prof_tp1, tp1) if prof_tp1 > entry else tp1
+        new_tp2 = max(prof_tp2, tp2) if prof_tp2 > entry else tp2
     else:
-        if new_sl <= entry:
-            new_sl = sl
-        if new_tp1 >= entry:
-            new_tp1 = tp1
-        if new_tp2 >= entry:
-            new_tp2 = tp2
+        # Wider SL = higher SL for SHORT
+        new_sl = max(prof_sl, sl) if prof_sl > entry else sl
+        # Wider TP = lower TP for SHORT
+        new_tp1 = min(prof_tp1, tp1) if prof_tp1 < entry else tp1
+        new_tp2 = min(prof_tp2, tp2) if prof_tp2 < entry else tp2
 
     return {
         "sl": new_sl,

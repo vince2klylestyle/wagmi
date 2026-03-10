@@ -122,34 +122,34 @@ class LeverageManager:
 
         # ── Tier 3: 70-74% — moderate conviction ──
         # 3_agree gate: 10d data shows 2_agree=40% WR (-$1,207) vs 3_agree=86% WR (+$1,040).
-        # Only give full leverage to 3+ strategies agreeing. 2_agree capped at 1.5x.
+        # 2-agree gets MINIMAL exposure (PF=0.25), 3-agree gets full sizing (PF=4.0).
         if confidence < 75:
             if num_strategies_agree < 2:
-                lev = min(1.5, cap)
+                lev = min(1.0, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.8)
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.6)
             if num_strategies_agree >= 3:
                 lev = min(2.0, cap)
                 rm = 1.0
             else:
-                lev = min(1.5, cap)  # 2_agree capped at 1.5x
-                rm = 0.85  # smaller position for weaker consensus
+                lev = min(1.0, cap)  # 2_agree: minimal leverage (40% WR is net losing)
+                rm = 0.6  # much smaller position for weaker consensus
             return LeverageDecision(lev, "leverage", "low",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
         # ── Tier 4: 75-79% — strong conviction ──
         if confidence < 80:
             if num_strategies_agree < 2:
-                lev = min(1.5, cap)
+                lev = min(1.0, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.8)
+                                        f"{lev:.1f}x: only {num_strategies_agree} strats", 0.6)
             if num_strategies_agree >= 3:
                 t = (confidence - 75) / 5.0
                 lev = min(2.0 + t * 1.0, cap)  # 2-3x for 3_agree
-                rm = 1.0 + t * 0.1  # 1.0-1.1x
+                rm = 1.0 + t * 0.2  # 1.0-1.2x
             else:
-                lev = min(1.5, cap)  # 2_agree capped at 1.5x
-                rm = 0.85
+                lev = min(1.0, cap)  # 2_agree: minimal leverage
+                rm = 0.7  # small position — just enough to participate
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
@@ -158,17 +158,17 @@ class LeverageManager:
         # high-confidence 3-agree signals that reach here have genuine edge.
         if confidence < 90:
             if num_strategies_agree < 2:
-                lev = min(1.5, cap)
+                lev = min(1.0, cap)
                 return LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: need 2+ strats for high lev", 0.8)
+                                        f"{lev:.1f}x: need 2+ strats for high lev", 0.6)
             if num_strategies_agree >= 3:
-                # Scale 2.0-2.5x across 80-89% confidence
+                # Scale 2.0-3.0x across 80-89% confidence (increased from 2.5x cap)
                 t = (confidence - 80) / 10.0
-                lev = min(2.0 + t * 0.5, cap)
-                rm = 1.0 + t * 0.1  # 1.0-1.1x risk multiplier
+                lev = min(2.0 + t * 1.0, cap)
+                rm = 1.0 + t * 0.2  # 1.0-1.2x risk multiplier
             else:
-                lev = min(1.5, cap)  # 2_agree capped
-                rm = 0.85
+                lev = min(1.0, cap)  # 2_agree: minimal leverage
+                rm = 0.7
             return LeverageDecision(lev, "leverage", "medium",
                                     f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm)
 
