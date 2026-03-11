@@ -98,7 +98,7 @@ class RegimeTrendStrategy(BaseStrategy):
     """
 
     def __init__(self, symbols: Dict[str, Any], htf_hours: int = 16,
-                 adx_min_trending: float = 20.0):
+                 adx_min_trending: float = 22.0):
         super().__init__("regime_trend", symbols)
         self.htf_hours = htf_hours
         self.adx_min_trending = adx_min_trending

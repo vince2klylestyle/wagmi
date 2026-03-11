@@ -1154,6 +1154,17 @@ class MultiStrategyBot:
                     except Exception as e:
                         logger.debug(f"Evolution→LLM memory feed error: {e}")
 
+                # ── Feed evolution lessons into Parameter Tuner ──
+                # Closes the evolution→tuner feedback loop: lessons about what's
+                # working/failing flow into dynamic parameter adjustments.
+                try:
+                    if hasattr(self, 'feedback') and hasattr(self.feedback, 'tuner'):
+                        _tuner_result = tracker.apply_lessons_to_tuner(report, self.feedback.tuner)
+                        if _tuner_result:
+                            logger.info(f"[EVOLUTION→TUNER] Applied lessons: {_tuner_result}")
+                except Exception as e:
+                    logger.debug(f"Evolution→Tuner feed error: {e}")
+
                 logger.info(f"[EVOLUTION] Daily report generated: {report.total_trades} trades")
             except Exception as e:
                 logger.debug(f"Evolution tracker error: {e}")
@@ -1424,6 +1435,30 @@ class MultiStrategyBot:
             self.degradation.record_exchange_error()
             logger.warning(f"[{symbol}] Exchange fetch failed: {e}")
             return
+
+        # Stale data guard: reject signals if candle data is too old.
+        # After restarts or API hiccups, strategies may fire on stale candles.
+        # Check the most granular timeframe (5m or 1h) — if its last candle
+        # is older than 5 minutes past its expected close, skip signal generation.
+        _stale_max_s = 300  # 5 minutes tolerance
+        _stale_check_tf = "5m" if "5m" in data else ("1h" if "1h" in data else None)
+        if _stale_check_tf and data.get(_stale_check_tf) is not None:
+            _stale_df = data[_stale_check_tf]
+            if not _stale_df.empty and _stale_df.index.dtype.kind == 'M':
+                _last_candle_time = _stale_df.index[-1]
+                _candle_age_s = (pd.Timestamp.now(tz="UTC") - _last_candle_time).total_seconds()
+                _tf_period_s = {"5m": 300, "1h": 3600}.get(_stale_check_tf, 3600)
+                # Data is stale if the last candle closed more than (period + tolerance) ago
+                if _candle_age_s > _tf_period_s + _stale_max_s:
+                    # Still process existing positions (SL/TP), but skip new signal generation
+                    if symbol not in self.pos_mgr.get_open_positions():
+                        logger.warning(
+                            f"[{trace_id}][{symbol}] STALE DATA: {_stale_check_tf} candle "
+                            f"is {_candle_age_s:.0f}s old (max {_tf_period_s + _stale_max_s}s), "
+                            f"skipping signal generation"
+                        )
+                        Telemetry.inc("stale_data_skips")
+                        return
 
         # Get current price
         current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)

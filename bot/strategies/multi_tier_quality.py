@@ -203,11 +203,21 @@ class MultiTierQualityStrategy(BaseStrategy):
         df_1h = _add_emas(df_1h)
         df_6h = _add_emas(df_6h)
 
-        # ADX filter: skip signal generation in ranging markets
-        # multi_tier_quality is the biggest PnL loser — most vulnerable to chop
+        # ADX filter: skip signal generation in ranging/weak-trend markets
+        # multi_tier_quality is the biggest PnL loser — most vulnerable to chop.
+        # ADX 20-22 is the "maybe trending" zone with terrible WR. Raised to 22.
         adx_val = self._compute_adx(df_1h)
-        if adx_val < 20.0:
+        if adx_val < 22.0:
             return None
+
+        # Squeeze detection: skip signals during volatility compression.
+        # ATR compression (current ATR < 60% of 20-bar ATR average) = squeeze.
+        # During squeeze, price direction is 50/50 — signals are coin flips.
+        if "ATR14" in df_1h.columns and not df_1h["ATR14"].isna().all():
+            _cur_atr = float(df_1h["ATR14"].iloc[-1])
+            _avg_atr = float(df_1h["ATR14"].tail(20).mean())
+            if _avg_atr > 0 and _cur_atr < _avg_atr * 0.60:
+                return None  # Volatility squeeze — skip
 
         # Determine side from 1h EMA crossover
         side_1h = self._one_hour_side(df_1h)
@@ -283,12 +293,11 @@ class MultiTierQualityStrategy(BaseStrategy):
         if tier == "PRIORITY" and not ema_6h_align and conf < 80:
             tier = "REGULAR"
 
-        # Soft regime gate: in non-trending regimes, cap confidence instead of hard reject
+        # Hard regime gate: neutral regime (no directional conviction) → reject.
+        # Backtest data shows neutral-regime trades are net losers. The previous
+        # soft-cap to 68% still allowed losing trades through.
         if abs(regime) == 0:
-            if not ema_6h_align or not vwap_align:
-                conf = min(conf, 45)  # Soft cap — still allows signal through
-            else:
-                conf = min(conf, 68)  # Both align but no trend — moderate cap
+            return None  # No trend on any timeframe = no trade
 
         if conf < 55:
             return None
