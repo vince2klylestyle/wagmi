@@ -8,9 +8,29 @@
 
 ## Phase A: Validate Anti-Spam (Tonight/Tomorrow)
 
-### Step A1: Run 100-day backtest with new settings
+### Step A0: Pre-flight check (verify config is clean)
 ```bash
-cd bot && python run.py backtest --symbols BTC,SOL,HYPE --days 100
+cd bot
+# Verify config defaults are what we set:
+python -c "from trading_config import TradingConfig; c=TradingConfig(); print(f'min_votes={c.min_votes_required} conf_floor={c.ensemble_confidence_floor} min_rr={c.min_signal_rr} min_ev={c.min_signal_ev} veto={c.veto_ratio} scan={c.scan_interval_s}s loss_cd={c.loss_cooldown_s}s')"
+# Expected: min_votes=3 conf_floor=80.0 min_rr=1.8 min_ev=0.2 veto=1.5 scan=60s loss_cd=300s
+
+# Check no env vars override:
+env | grep -i "MIN_VOTES\|CONFIDENCE\|SIGNAL_RR\|SIGNAL_EV\|VETO_RATIO"
+# Should be empty (no overrides)
+```
+
+### Step A1: Run 30-day smoke test first, then 100-day
+```bash
+cd bot
+# Quick 30-day smoke test (validates data pipeline + outputs):
+python run.py backtest --symbols BTC,SOL,HYPE --days 30
+
+# Full 100-day validation:
+python run.py backtest --symbols BTC,SOL,HYPE --days 100
+
+# With learning bridge (feeds results to self-teaching):
+python run.py backtest --symbols BTC,SOL,HYPE --days 100 --learn
 ```
 **What to look for:**
 - Total trade count (should be 60-80% fewer than before)
@@ -20,7 +40,7 @@ cd bot && python run.py backtest --symbols BTC,SOL,HYPE --days 100
 - 3-agree vs 2-agree breakdown
 - Fee drag as % of gross PnL (target: <20%)
 
-**Config verified:** Both `backtest/engine.py` and `multi_strategy_main.py` pass `min_votes`, `confidence_floor`, `veto_ratio` from TradingConfig to EnsembleStrategy. Our changes WILL take effect.
+**Config verified (7-agent audit):** Both `backtest/engine.py` (line 174) and `multi_strategy_main.py` (line 397) pass `min_votes`, `confidence_floor`, `veto_ratio` from TradingConfig to EnsembleStrategy. All 10 anti-spam parameters flow correctly. No hardcoded bypasses found.
 
 ### Step A2: Analyze results, tune if needed
 - **Too few signals?** → Soften `ENSEMBLE_CONFIDENCE_FLOOR` (80→78) or `MIN_SIGNAL_RR` (1.8→1.6)
