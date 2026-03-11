@@ -152,12 +152,27 @@ LLM_MODE=2  # VETO_ONLY (safest for initial testing)
 - Are vetoed trades actually losers? (veto accuracy)
 - Is the Critic Agent providing useful counter-theses?
 
-### Step E3: Tune agent prompts if needed
-- Regime Agent: calibrate regime detection accuracy
-- Trade Agent: calibrate directional thesis quality
-- Critic Agent: calibrate veto threshold (too many vetoes = missed profit)
+### Step E3: Critic Agent calibration (audit finding: conditional value)
+**Key insight from audit:** Critic Agent costs ~$100/mo (Sonnet) and has CONDITIONAL value.
+If vacc > 0.65 it saves money. If vacc < 0.45, it costs money (blocks winners).
+- System already blocks vetoes when vacc < 0.45 (coordinator.py)
+- **TODO:** Track vacc per-regime (not just globally) — Critic may be strong in trends but weak in ranges
+- **TODO:** Require counter-thesis to cite 2+ pieces of evidence (not vague "might go sideways")
+- **TEST:** Compare backtest with Critic enabled vs Critic disabled vs Critic confidence-adjust-only
 
-### Step E4: Enable Exit Agent for open positions
+### Step E4: Wire Exit Agent feedback to Trade Agent
+**Audit finding:** Exit Agent runs on open positions but closures don't feed back.
+When Exit Agent closes a position due to thesis invalidation, the system should:
+- Add "recent_exits" to the scratchpad that Trade Agent reads
+- Consider opposite-direction entry after thesis-invalidation closures
+- Currently loses ~5-15% follow-on profitability per regime transition
+
+### Step E5: Make Scout Agent synchronous for active signals
+**Audit finding:** Scout runs during idle time (async), so its findings influence FUTURE decisions, not current ones.
+- Lead-lag alerts ("BTC moved 2.5%, SOL hasn't followed") are valuable but delayed
+- TODO: Add last_scout_findings to pre-trade input when a signal fires
+
+### Step E6: Enable Exit Agent for open positions
 ```
 AGENT_EXIT_ENABLED=true
 ```
