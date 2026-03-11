@@ -1,7 +1,7 @@
 # nunuIRL Trading Bot — Complete Roadmap
 
 > **Last updated**: 2026-03-11
-> **Current state**: Phase 6 DONE. 10 trading strategies (3 original + 7 new quant), 3 LLM brain upgrades (thesis tracking, confidence calibration, counterfactual learning). 1065 tests passing.
+> **Current state**: Phase 7.1 DONE. 10 trading strategies + 5 brain modules wired into pipeline. Graduated drawdown risk, regime-aware feedback, confidence calibration, thesis tracking, counterfactual learning — all live in coordinator. 1131 tests passing.
 > **What's next**: Proactive risk management → regime-aware feedback → wire brain into live pipeline → paper trade → go live.
 
 ---
@@ -522,7 +522,7 @@ bot/feedback/parameter_tuner.py    → Parameter optimization (14KB)
 
 ## Priority Order (What to Work On Next)
 
-> Updated March 11, 2026. Phase 6 complete (7 new strategies + 3 LLM brain upgrades). Focus: proactive risk → regime intelligence → paper → live.
+> Updated March 11, 2026. Phase 7.1 complete (proactive risk + regime intelligence + brain wiring + Overseer). Focus: paper trade → live.
 
 ### Completed
 1. ~~**Phase 2.8: Fix 6 critical bugs**~~ ✅ DONE
@@ -532,16 +532,18 @@ bot/feedback/parameter_tuner.py    → Parameter optimization (14KB)
 5. ~~**Phase 3.6: Anti-spam overhaul**~~ ✅ DONE — 3-agree consensus, 10 tightened gates
 6. ~~**Phase 6.2: 7 new quant strategies**~~ ✅ DONE — funding rate, OI delta, BB squeeze, VMC cipher, lead-lag, liquidation cascade, probability engine
 7. ~~**Phase 6.3: LLM brain intelligence**~~ ✅ DONE — thesis tracker, confidence calibrator, counterfactual learner
+8. ~~**Graduated drawdown risk reduction**~~ ✅ DONE — 6 progressive bands (normal→circuit breaker), streak/time/regime penalties, 66 tests
+9. ~~**Regime-aware feedback splitting**~~ ✅ DONE — per-regime confidence floors, risk multipliers, strategy weights, adaptive tuning
+10. ~~**Wire brain upgrades into live pipeline**~~ ✅ DONE — thesis→coordinator, calibrator→merge, counterfactual→ensemble reject, regime feedback→risk, graduated risk→sizing
+11. ~~**Overseer Agent enhanced**~~ ✅ DONE — brain upgrade data injected (thesis accuracy, calibration, missed opportunities, regime feedback, drawdown status)
 
 ### Now (Priority Order)
-8. **Graduated drawdown risk reduction** — proactive leverage reduction as drawdown approaches CB threshold (3%→-30% lev, 5%→-50%, 7%→-70%)
-9. **Regime-aware feedback splitting** — separate tuning per regime (trending WR=100% vs ranging WR=24% need different params)
-10. **Wire brain upgrades into live pipeline** — thesis tracker → coordinator, calibrator → ensemble, counterfactual → reject path
-11. **Overseer Agent** — periodic system health audits, auto-detect degradation, alert on anomalies
 12. **Paper trade on live API** — 48-72h with 10-strategy ensemble + brain upgrades. Watch for:
     - Signal frequency with 10 strategies (expect more 3-agree opportunities)
     - Which new strategies contribute to consensus most
     - Thesis accuracy tracking from first live predictions
+    - Graduated risk reduction behavior during drawdowns
+    - Regime feedback adaptation speed
 
 ### Next
 13. **Go live conservative** — SOL+HYPE only, 1% risk, max 3x leverage, 3_agree required
