@@ -36,6 +36,13 @@ from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
 from strategies.confidence_scorer import ConfidenceScorerStrategy
 from strategies.multi_tier_quality import MultiTierQualityStrategy
+from strategies.funding_rate import FundingRateStrategy
+from strategies.oi_delta import OIDeltaStrategy
+from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+from strategies.vmc_cipher import VMCCipherStrategy
+from strategies.lead_lag import LeadLagStrategy
+from strategies.liquidation_cascade import LiquidationCascadeStrategy
+from strategies.probability_engine import ProbabilityEngineStrategy
 from strategies.ensemble import EnsembleStrategy
 from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
@@ -375,6 +382,26 @@ class MultiStrategyBot:
                 sym_configs,
                 mc_sims=config.mc_num_sims,
                 mc_hours=config.mc_forward_hours,
+            ))
+
+        # New quant strategies (Phase 6 alpha generation)
+        if os.getenv("STRATEGY_FUNDING_RATE_ENABLED", "true").lower() == "true":
+            self.strategies.append(FundingRateStrategy(sym_configs))
+        if os.getenv("STRATEGY_OI_DELTA_ENABLED", "true").lower() == "true":
+            self.strategies.append(OIDeltaStrategy(sym_configs))
+        if os.getenv("STRATEGY_BOLLINGER_SQUEEZE_ENABLED", "true").lower() == "true":
+            self.strategies.append(BollingerSqueezeStrategy(sym_configs))
+        if os.getenv("STRATEGY_VMC_CIPHER_ENABLED", "true").lower() == "true":
+            self.strategies.append(VMCCipherStrategy(sym_configs))
+        if os.getenv("STRATEGY_LEAD_LAG_ENABLED", "true").lower() == "true":
+            self.strategies.append(LeadLagStrategy(sym_configs))
+        if os.getenv("STRATEGY_LIQUIDATION_CASCADE_ENABLED", "true").lower() == "true":
+            self.strategies.append(LiquidationCascadeStrategy(sym_configs))
+        if os.getenv("STRATEGY_PROBABILITY_ENGINE_ENABLED", "true").lower() == "true":
+            self.strategies.append(ProbabilityEngineStrategy(
+                sym_configs,
+                num_sims=config.mc_num_sims,
+                forward_bars=config.mc_forward_hours,
             ))
 
         enabled_names = [s.name for s in self.strategies]
