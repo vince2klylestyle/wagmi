@@ -163,9 +163,10 @@ class LeverageManager:
                 return LeverageDecision(lev, "leverage", "low",
                                         f"{lev:.1f}x: need 2+ strats for high lev", 0.6)
             if num_strategies_agree >= 3:
-                # Scale 3.5-5.0x across 80-89% confidence (~1/5 Kelly at top)
+                # Scale 4.0-5.0x across 80-89% confidence (~1/5 Kelly at top)
+                # Starts at 4.0 to match Tier 4 end (was 3.5 = leverage cliff)
                 t = (confidence - 80) / 10.0
-                lev = min(3.5 + t * 1.5, cap)
+                lev = min(4.0 + t * 1.0, cap)
                 rm = 1.2 + t * 0.2  # 1.2-1.4x risk multiplier
             else:
                 lev = min(1.0, cap)  # 2_agree: minimal leverage

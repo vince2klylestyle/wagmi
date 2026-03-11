@@ -427,6 +427,37 @@ class BacktestEngine:
                 cost = abs(avg_funding_rate) * notional * (1.0 / 8.0)
                 _pos.funding_costs += cost
 
+            # Hold limit enforcement (parity with live trading)
+            # Uses sim_time instead of datetime.now() for backtest accuracy
+            _hold_pos = self.pos_mgr.positions.get(symbol)
+            if _hold_pos and _hold_pos.state != "CLOSED" and _hold_pos.open_time:
+                _hold_max = {
+                    "SCALP": 4, "MEDIUM": 12, "TREND": 36, "REGIME": 48,
+                }.get(
+                    _hold_pos.trade_profile.entry_type if _hold_pos.trade_profile else "MEDIUM",
+                    48,
+                )
+                _open_dt = _hold_pos.open_time
+                if isinstance(_open_dt, datetime):
+                    _hold_hours = (sim_dt - _open_dt).total_seconds() / 3600
+                else:
+                    _hold_hours = (sim_dt.timestamp() - _open_dt) / 3600
+                if _hold_hours >= _hold_max * 1.5:
+                    # Hard limit: force close
+                    logger.info(
+                        f"[{symbol}] Hold limit: {_hold_hours:.1f}h >= "
+                        f"{_hold_max * 1.5:.0f}h — force closing"
+                    )
+                    _hold_event = self.pos_mgr.force_close(
+                        symbol, current_price, reason="HOLD_LIMIT"
+                    )
+                    if _hold_event:
+                        self.risk_mgr.update_equity(
+                            _hold_event.pnl - _hold_event.fee, sim_time=sim_dt
+                        )
+                        self._record_trade_outcome(_hold_event, current_price)
+                        self._last_close_candle[symbol] = i
+
             # Circuit breaker force-close: only close OPEN positions (still
             # exposed to initial risk). TRAILING/TP1_HIT positions already hit
             # profit targets and are protected by trailing stops — cutting
@@ -667,6 +698,35 @@ class BacktestEngine:
                 # 24h / 8h = 3 funding intervals per daily candle
                 cost = abs(avg_funding_rate) * notional * 3.0
                 _pos.funding_costs += cost
+
+            # Hold limit enforcement (parity with live trading)
+            _hold_pos = self.pos_mgr.positions.get(symbol)
+            if _hold_pos and _hold_pos.state != "CLOSED" and _hold_pos.open_time:
+                _hold_max = {
+                    "SCALP": 4, "MEDIUM": 12, "TREND": 36, "REGIME": 48,
+                }.get(
+                    _hold_pos.trade_profile.entry_type if _hold_pos.trade_profile else "MEDIUM",
+                    48,
+                )
+                _open_dt = _hold_pos.open_time
+                if isinstance(_open_dt, datetime):
+                    _hold_hours = (sim_dt - _open_dt).total_seconds() / 3600
+                else:
+                    _hold_hours = (sim_dt.timestamp() - _open_dt) / 3600
+                if _hold_hours >= _hold_max * 1.5:
+                    logger.info(
+                        f"[{symbol}] Hold limit (daily): {_hold_hours:.1f}h >= "
+                        f"{_hold_max * 1.5:.0f}h — force closing"
+                    )
+                    _hold_event = self.pos_mgr.force_close(
+                        symbol, current_price, reason="HOLD_LIMIT"
+                    )
+                    if _hold_event:
+                        self.risk_mgr.update_equity(
+                            _hold_event.pnl - _hold_event.fee, sim_time=sim_dt
+                        )
+                        self._record_trade_outcome(_hold_event, current_price)
+                        self._last_close_candle[symbol] = i
 
             # Circuit breaker force-close (same as _walk_hourly — OPEN only)
             if self.risk_mgr.circuit_breaker.tripped:

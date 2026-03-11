@@ -115,7 +115,9 @@ def _build_profile(prefix: str, defaults: dict) -> ExitParams:
 _BASE_PROFILES: Dict[str, ExitParams] = {
     SCALP: _build_profile("SCALP", {
         "tp1_atr": 0.5, "tp2_atr": 1.0, "sl_atr": 0.4, "tp1_pct": 0.90,
-        "trailing": "tight", "trail_start": 0.80, "trail_end": 0.50,
+        "trailing": "tight", "trail_start": 0.80, "trail_end": 0.60,
+        # trail_end raised 0.50→0.60: at TP2 progress, trailing was only 0.45 ATR
+        # (style_mult * tighten_end compounding). 0.60 gives 0.54 ATR = room for noise.
         "floor_progress": 0.2, "floor_start": 0.40, "floor_max": 0.75,
     }),
     MEDIUM: _build_profile("MEDIUM", {
@@ -123,7 +125,9 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         # Widened SL from 0.50 to 0.55 ATR — 42% WR suggests noise whipsaws.
         # TP1% 0.65→0.50: let more capital ride winners. With 1.15:1 payoff ratio,
         # early exit kills the edge — keeping 50% in play improves payoff ratio.
-        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
+        # trail_end raised 0.30→0.45: was over-tightening to 0.45 ATR at TP2 progress,
+        # causing premature trailing stops on normal pullbacks.
+        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.45,
         "floor_progress": 0.35, "floor_start": 0.25, "floor_max": 0.60,
     }),
     TREND: _build_profile("TREND", {
@@ -131,13 +135,15 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         # Tightened SL from 0.85 to 0.60 ATR — with 20% WR, losers must die fast.
         # TP1% 0.60→0.40: trending setups should let winners run. Only close 40%
         # at TP1, keep 60% riding the trend toward TP2 with trailing stop.
-        "trailing": "medium", "trail_start": 0.55, "trail_end": 0.30,
+        # trail_end raised 0.30→0.45: trends need room for pullbacks.
+        "trailing": "medium", "trail_start": 0.55, "trail_end": 0.45,
         "floor_progress": 0.30, "floor_start": 0.30, "floor_max": 0.60,
     }),
     REGIME: _build_profile("REGIME", {
         "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.55, "tp1_pct": 0.55,
         # Tightened SL from 0.80 to 0.55 ATR
-        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
+        # trail_end raised 0.30→0.45: same over-tightening fix
+        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.45,
         "floor_progress": 0.3, "floor_start": 0.30, "floor_max": 0.60,
     }),
 }

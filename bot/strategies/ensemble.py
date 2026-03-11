@@ -43,7 +43,7 @@ class EnsembleStrategy:
         min_votes: int = 2,
         weights: Optional[Dict[str, float]] = None,
         weight_manager=None,
-        veto_ratio: float = 1.5,  # Match trading_config.py default
+        veto_ratio: float = 1.3,  # Match trading_config.py default (lowered from 1.5)
         chop_detector=None,
         confidence_floor: float = 65.0,
         ranging_confidence_floor: float = 88.0,
