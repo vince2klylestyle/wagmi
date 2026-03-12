@@ -119,6 +119,33 @@ class CircuitBreaker:
 
         self._check_breakers(equity, sim_time=sim_time)
 
+    def check_mtm_breakers(self, mtm_equity: float, sim_time: Optional[datetime] = None):
+        """Check circuit breakers using mark-to-market equity (realized + unrealized).
+
+        Unlike _check_breakers (which runs on trade close), this runs on price
+        updates to catch drawdowns from open losing positions. Only checks the
+        drawdown-from-peak breaker — daily PnL and consecutive losses are
+        trade-close concepts.
+
+        Also updates peak_equity continuously (not just on trade closes).
+        """
+        if self.tripped:
+            return
+
+        # Update peak equity continuously — captures unrealized highs
+        if mtm_equity > self.peak_equity:
+            self.peak_equity = mtm_equity
+
+        # Drawdown from peak (includes open position losses)
+        if self.peak_equity > 0:
+            drawdown = (self.peak_equity - mtm_equity) / self.peak_equity
+            if drawdown >= self.max_drawdown_pct:
+                self._trip(
+                    f"MTM drawdown {drawdown:.1%} >= {self.max_drawdown_pct:.1%} limit "
+                    f"(includes unrealized PnL)",
+                    sim_time=sim_time,
+                )
+
     def _check_breakers(self, equity: float, sim_time: Optional[datetime] = None):
         """Check if any circuit breaker should trigger."""
         if self.tripped:
@@ -165,7 +192,8 @@ class CircuitBreaker:
     def is_trading_allowed(self, confidence: float = 0.0,
                             cb_conf_override_pct: float = 0.92,
                             max_overrides: Optional[int] = None,
-                            sim_time: Optional[datetime] = None) -> bool:
+                            sim_time: Optional[datetime] = None,
+                            equity: float = 0.0) -> bool:
         """Check if trading is currently allowed.
 
         When tripped, allows up to max_overrides trades with
@@ -209,7 +237,18 @@ class CircuitBreaker:
                 self._trip_sim_time = None
                 self.trip_reason = ""
                 self.post_cooldown_caution = 2  # Next 2 trades at half size
-                logger.info("Circuit breaker cooldown complete, trading resumed (caution mode: 2 trades at reduced size)")
+                # Reset peak_equity to current equity to prevent immediate re-trip.
+                # Without this, the drawdown from the old peak is still >10% and
+                # check_mtm_breakers() re-trips on the very next candle.
+                if equity > 0:
+                    old_peak = self.peak_equity
+                    self.peak_equity = equity
+                    logger.info(
+                        f"Circuit breaker cooldown complete, peak_equity reset "
+                        f"${old_peak:.2f} → ${equity:.2f} (caution mode: 2 trades at reduced size)"
+                    )
+                else:
+                    logger.info("Circuit breaker cooldown complete, trading resumed (caution mode: 2 trades at reduced size)")
                 return True
 
         # High-confidence override: allow exceptional setups through
@@ -312,6 +351,8 @@ class RiskManager:
         self.max_risk_multiplier = max_risk_multiplier
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
         self.circuit_breaker.peak_equity = starting_equity
+        # Last sizing breakdown for attribution/debugging
+        self.last_sizing_breakdown: Dict[str, Any] = {}
 
     def can_open_position(self, current_open: int, confidence: float = 0.0,
                           cb_conf_override_pct: float = 0.92,
@@ -323,7 +364,7 @@ class RiskManager:
         """
         if not self.circuit_breaker.is_trading_allowed(
             confidence=confidence, cb_conf_override_pct=cb_conf_override_pct,
-            sim_time=sim_time,
+            sim_time=sim_time, equity=self.equity,
         ):
             if confidence > 0:
                 logger.info(
@@ -357,12 +398,19 @@ class RiskManager:
         if entry <= 0:
             return 0.0
 
-        # Add estimated slippage to stop distance for spread-aware sizing
+        # Add estimated slippage AND round-trip fees to stop distance
+        # This prevents sizing as if 100% of stop distance is available for risk,
+        # when in reality fees consume a portion of every stop-out
         slippage_spread = entry * (slippage_bps / 10000.0)
-        effective_stop = stop_width + slippage_spread
+        from trading_config import TradingConfig as _TC2
+        _fee_bps = _TC2().taker_fee_bps
+        round_trip_fee_width = entry * (_fee_bps * 2 / 10000.0)  # Entry + exit fee
+        effective_stop = stop_width + slippage_spread + round_trip_fee_width
 
         # Enforce minimum stop width to prevent near-zero stops
-        min_width = entry * 0.003  # 0.3% of entry
+        # Single source of truth: trading_config.py MIN_STOP_WIDTH_PCT
+        from trading_config import TradingConfig as _TC
+        min_width = entry * _TC().min_stop_width_pct
         if effective_stop < min_width:
             logger.warning(
                 f"[SIZE] {symbol or '?'} effective stop {effective_stop:.6f} < min "
@@ -378,19 +426,43 @@ class RiskManager:
         qty = risk_usd / (effective_stop * effective_leverage)
 
         # Notional cap: prevent position from exceeding reasonable bounds
+        notional_cap_applied = False
         if not skip_notional_cap:
             notional = qty * entry
             max_notional = self.equity * effective_leverage * 2
             if notional > max_notional:
                 qty = max_notional / entry
+                notional_cap_applied = True
                 logger.warning(
                     f"[SIZE] {symbol or '?'} notional capped: "
                     f"${notional:.0f} > max ${max_notional:.0f}"
                 )
+
+        # Store sizing breakdown for attribution/debugging
+        fee_pct_of_stop = round_trip_fee_width / effective_stop * 100 if effective_stop > 0 else 0
+        self.last_sizing_breakdown = {
+            "symbol": symbol or "?",
+            "equity": self.equity,
+            "base_risk_pct": effective_risk_pct,
+            "risk_multiplier_raw": risk_multiplier,
+            "risk_multiplier_capped": capped_rm,
+            "risk_usd": risk_usd,
+            "stop_width": stop_width,
+            "slippage_spread": slippage_spread,
+            "round_trip_fee_width": round_trip_fee_width,
+            "fee_pct_of_stop": round(fee_pct_of_stop, 1),
+            "effective_stop": effective_stop,
+            "leverage": effective_leverage,
+            "qty_before_cap": risk_usd / (effective_stop * effective_leverage),
+            "notional_cap_applied": notional_cap_applied,
+            "final_qty": qty,
+        }
+
         logger.info(
             f"[SIZE] {symbol or '?'} risk=${risk_usd:.2f} "
             f"stop={stop_width:.6f}+slip={slippage_spread:.6f} lev={effective_leverage:.1f}x "
             f"rm={capped_rm:.2f} qty={qty:.6f}"
+            + (" [NOTIONAL-CAPPED]" if notional_cap_applied else "")
         )
         return qty
 
@@ -403,6 +475,31 @@ class RiskManager:
         """
         self.equity += pnl
         self.circuit_breaker.record_trade(pnl, self.equity, sim_time=sim_time)
+
+    def is_trading_allowed(self, confidence: float = 0.0,
+                            cb_conf_override_pct: float = 0.92,
+                            sim_time: Optional[datetime] = None) -> bool:
+        """Delegate to circuit breaker's is_trading_allowed."""
+        return self.circuit_breaker.is_trading_allowed(
+            confidence=confidence,
+            cb_conf_override_pct=cb_conf_override_pct,
+            sim_time=sim_time,
+            equity=self.equity,
+        )
+
+    def get_override_constraints(self, confidence: float = 0.0) -> Dict[str, Any]:
+        """Delegate to circuit breaker's get_override_constraints."""
+        return self.circuit_breaker.get_override_constraints(confidence=confidence)
+
+    def check_unrealized_risk(self, unrealized_pnl: float,
+                               sim_time: Optional[datetime] = None):
+        """Check circuit breakers using mark-to-market equity (realized + unrealized).
+
+        Call this on each price update to catch drawdowns from open positions,
+        not just after trades close.
+        """
+        mtm_equity = self.equity + unrealized_pnl
+        self.circuit_breaker.check_mtm_breakers(mtm_equity, sim_time=sim_time)
 
     def get_status(self) -> Dict[str, Any]:
         return {

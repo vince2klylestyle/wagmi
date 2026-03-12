@@ -52,7 +52,7 @@ class Position:
     confidence: float = 0.0
 
     atr: float = 0.0            # ATR at entry (for progressive trailing)
-    tp1_close_pct: float = 0.7  # fraction to close at TP1 (dynamic per-trade)
+    tp1_close_pct: float = 0.5  # fraction to close at TP1 (matches MEDIUM profile default)
 
     # State machine
     state: str = IDLE
@@ -146,7 +146,7 @@ class PositionManager:
 
     def __init__(
         self,
-        taker_fee_bps: int = 5,
+        taker_fee_bps: int = 4,
         enable_trailing: bool = True,
         trailing_atr_mult: float = 1.5,
     ):
@@ -199,7 +199,7 @@ class PositionManager:
         mode: str = "spot",
         strategy: str = "",
         confidence: float = 0.0,
-        tp1_close_pct: float = 0.7,
+        tp1_close_pct: float = 0.5,  # Match MEDIUM profile default
         entry_reasons: Optional[Dict[str, Any]] = None,
         trade_profile: Optional[TradeProfile] = None,
         notes: str = "",
@@ -223,16 +223,20 @@ class PositionManager:
             return None
 
         # Profile-driven trailing distance: SCALP=tight, TREND=loose
+        # Fallback: when ATR=0, use profile-aware % of entry instead of flat 1%.
+        _style_fallback_pct = {"tight": 0.006, "medium": 0.01, "loose": 0.015}
+        _fb_style = trade_profile.exit_params.trailing_style if trade_profile else "medium"
+        _trail_fallback = entry * _style_fallback_pct.get(_fb_style, 0.01) if entry > 0 else abs(entry - sl)
         if trade_profile:
             # Use profile's trailing style to scale the ATR multiplier
             style_mult = {
                 "tight": 0.8, "medium": 1.0, "loose": 1.5, "none": 1.0,
             }.get(trade_profile.exit_params.trailing_style, 1.0)
-            trailing_distance = atr * self.trailing_atr_mult * style_mult if atr > 0 else abs(entry - sl)
+            trailing_distance = atr * self.trailing_atr_mult * style_mult if atr > 0 else _trail_fallback
             # Profile overrides tp1_close_pct
             tp1_close_pct = trade_profile.exit_params.tp1_close_pct
         else:
-            trailing_distance = atr * self.trailing_atr_mult if atr > 0 else abs(entry - sl)
+            trailing_distance = atr * self.trailing_atr_mult if atr > 0 else _trail_fallback
 
         pos = Position(
             symbol=symbol,
@@ -428,7 +432,10 @@ class PositionManager:
                 if time_to_tp1_s < 1800:  # < 30 min -- fast runner
                     dynamic_close_pct *= 0.85
                 elif time_to_tp1_s > 14400:  # > 4 hours -- slow grind
-                    dynamic_close_pct = min(dynamic_close_pct * 1.10, 0.90)
+                    # Only increase TP1% if not in a clean trend (let trends run)
+                    regime = pos.entry_reasons.get("regime", "unknown")
+                    if regime not in ("trending_bull", "trending_bear", "trend", "trending"):
+                        dynamic_close_pct = min(dynamic_close_pct * 1.10, 0.85)
 
             if dynamic_close_pct != pos.tp1_close_pct:
                 logger.info(
@@ -437,6 +444,14 @@ class PositionManager:
                 )
 
         close_qty = round_qty(pos.symbol, pos.qty * dynamic_close_pct)
+        # Guard: if close_qty rounds to full qty, keep minimum remainder for trailing
+        remaining_after = round_qty(pos.symbol, pos.qty - close_qty)
+        if remaining_after <= 0 and pos.qty > close_qty:
+            # Rounding ate everything — reduce close_qty to preserve minimum remainder
+            close_qty = round_qty(pos.symbol, pos.qty * 0.90)  # Close 90% max
+        if close_qty <= 0 or close_qty >= pos.qty:
+            # Degenerate case: close everything as a full TP1 close
+            return self._close_position(pos, price, "TP1_FULL")
         fee = self._fee(price, close_qty)
         pos.fees_paid += fee
 
@@ -445,7 +460,11 @@ class PositionManager:
         else:
             pnl = (pos.entry - price) * close_qty * pos.leverage
 
-        pos.realized_pnl += (pnl - fee)
+        # Proportionally allocate funding costs to TP1 partial close
+        # (prevents dumping all funding onto final close, distorting per-leg PnL)
+        funding_share = pos.funding_costs * (close_qty / pos.qty) if pos.qty > 0 else 0.0
+        pos.realized_pnl += (pnl - fee - funding_share)
+        pos.funding_costs -= funding_share  # Reduce remaining balance for final close
         pos.qty = round_qty(pos.symbol, pos.qty - close_qty)
 
         # Move SL to breakeven accounting for locked-in TP1 profit.
@@ -562,6 +581,14 @@ class PositionManager:
                 floor_sl = pos.entry + peak_move * lock_pct
             else:
                 floor_sl = pos.entry - peak_move * lock_pct
+        elif peak_move > 0:
+            # Minimum post-TP1 floor: guarantee at least breakeven + fees.
+            # Without this, a sharp reversal after TP1 can erase the entire gain.
+            fee_buffer = pos.entry * self.taker_fee_bps * 2 / 10000.0
+            if is_long:
+                floor_sl = pos.entry + fee_buffer
+            else:
+                floor_sl = pos.entry - fee_buffer
 
         new_sl = trailing_sl
         if floor_sl is not None:
@@ -596,7 +623,7 @@ class PositionManager:
         if action == "TP2":
             return "CLEAN_WIN"
         elif action == "EARLY_EXIT":
-            return "EARLY_EXIT_SAVE" if pos.realized_pnl > -(abs(pos.entry - pos.original_sl) * pos.original_qty * pos.leverage * 0.5) else "EARLY_EXIT_FAIL"
+            return "EARLY_EXIT_SAVE" if pos.realized_pnl > -(abs(pos.entry - pos.original_sl) * pos.original_qty * pos.leverage * 0.25) else "EARLY_EXIT_FAIL"
         elif action == "TRAILING_STOP":
             return "TRAILING_WIN" if win else "TRAILING_FAIL"
         elif action in ("ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE"):
@@ -664,7 +691,7 @@ class PositionManager:
                 "strategies_agree": (pos.entry_reasons or {}).get("strategies_agree", []),
                 "entry_type": profile_data.get("entry_type", "UNKNOWN"),
                 "primary_driver": profile_data.get("primary_driver", ""),
-                "regime": profile_data.get("regime", ""),
+                "regime": (pos.entry_reasons or {}).get("regime", "") or profile_data.get("regime", ""),
                 "volatility_band": profile_data.get("volatility_band", ""),
                 "trade_profile": profile_data,
                 # Position context for CSV analysis
@@ -685,6 +712,14 @@ class PositionManager:
             return None
         return self._close_position(pos, price, reason)
 
+    # Profile-specific max hold hours: prevents stale positions from lingering
+    _PROFILE_MAX_HOLD_HOURS = {
+        "SCALP": 4,
+        "MEDIUM": 12,
+        "TREND": 36,
+        "REGIME": 48,
+    }
+
     def check_hold_limits(
         self, symbol: str, price: float, max_hold_hours: float = 48, action: str = "tighten_sl"
     ) -> Optional[TradeEvent]:
@@ -693,6 +728,7 @@ class PositionManager:
         At max_hold_hours: tighten SL to breakeven (or force close if action='force_close').
         At 1.5x max_hold_hours: force close regardless.
 
+        Uses profile-specific hold limits if a trade profile is attached.
         Returns TradeEvent if position was force-closed, None otherwise.
         """
         pos = self.positions.get(symbol)
@@ -701,6 +737,13 @@ class PositionManager:
 
         if pos.open_time is None:
             return None
+
+        # Use profile-specific hold limit (always apply, use min of config and profile)
+        if pos.trade_profile:
+            entry_type = pos.trade_profile.entry_type
+            profile_max = self._PROFILE_MAX_HOLD_HOURS.get(entry_type)
+            if profile_max is not None:
+                max_hold_hours = min(max_hold_hours, profile_max)
 
         now = datetime.now(timezone.utc)
         if isinstance(pos.open_time, datetime):
@@ -801,7 +844,8 @@ class PositionManager:
         wins = [e for e in closed if e.pnl > 0]
         losses = [e for e in closed if e.pnl <= 0]
         total_pnl = sum(e.pnl for e in closed)
-        total_fees = sum(e.fee for e in closed)
+        # Include entry fees (OPEN events) + exit fees for accurate total
+        total_fees = sum(e.fee for e in closed) + sum(e.fee for e in opens)
 
         return {
             "positions_opened": len(opens),

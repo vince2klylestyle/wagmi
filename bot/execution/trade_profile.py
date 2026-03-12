@@ -14,7 +14,7 @@ Every Position carries a TradeProfile that drives:
 
 Strategy -> entry_type mapping:
 - regime_trend       -> TREND
-- multi_tier_quality -> TREND
+- multi_tier_quality -> MEDIUM
 - monte_carlo_zones  -> MEDIUM
 - confidence_scorer  -> MEDIUM
 - (future) microstructure / fast_ml -> SCALP
@@ -115,27 +115,35 @@ def _build_profile(prefix: str, defaults: dict) -> ExitParams:
 _BASE_PROFILES: Dict[str, ExitParams] = {
     SCALP: _build_profile("SCALP", {
         "tp1_atr": 0.5, "tp2_atr": 1.0, "sl_atr": 0.4, "tp1_pct": 0.90,
-        "trailing": "tight", "trail_start": 0.80, "trail_end": 0.50,
+        "trailing": "tight", "trail_start": 0.80, "trail_end": 0.60,
+        # trail_end raised 0.50→0.60: at TP2 progress, trailing was only 0.45 ATR
+        # (style_mult * tighten_end compounding). 0.60 gives 0.54 ATR = room for noise.
         "floor_progress": 0.2, "floor_start": 0.40, "floor_max": 0.75,
     }),
     MEDIUM: _build_profile("MEDIUM", {
-        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.55, "tp1_pct": 0.65,
+        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 0.55, "tp1_pct": 0.50,
         # Widened SL from 0.50 to 0.55 ATR — 42% WR suggests noise whipsaws.
-        # Lowered TP1% from 0.70 to 0.60 — let more capital ride winning trades.
-        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
+        # TP1% 0.65→0.50: let more capital ride winners. With 1.15:1 payoff ratio,
+        # early exit kills the edge — keeping 50% in play improves payoff ratio.
+        # trail_end raised 0.30→0.45: was over-tightening to 0.45 ATR at TP2 progress,
+        # causing premature trailing stops on normal pullbacks.
+        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.45,
         "floor_progress": 0.35, "floor_start": 0.25, "floor_max": 0.60,
     }),
     TREND: _build_profile("TREND", {
-        "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.60, "tp1_pct": 0.60,
+        "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.60, "tp1_pct": 0.40,
         # Tightened SL from 0.85 to 0.60 ATR — with 20% WR, losers must die fast.
-        # Raised TP1% from 0.55 to 0.60 — take more profit when you have it.
-        "trailing": "medium", "trail_start": 0.55, "trail_end": 0.30,
+        # TP1% 0.60→0.40: trending setups should let winners run. Only close 40%
+        # at TP1, keep 60% riding the trend toward TP2 with trailing stop.
+        # trail_end raised 0.30→0.45: trends need room for pullbacks.
+        "trailing": "medium", "trail_start": 0.55, "trail_end": 0.45,
         "floor_progress": 0.30, "floor_start": 0.30, "floor_max": 0.60,
     }),
     REGIME: _build_profile("REGIME", {
         "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.55, "tp1_pct": 0.55,
         # Tightened SL from 0.80 to 0.55 ATR
-        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.30,
+        # trail_end raised 0.30→0.45: same over-tightening fix
+        "trailing": "medium", "trail_start": 0.60, "trail_end": 0.45,
         "floor_progress": 0.3, "floor_start": 0.30, "floor_max": 0.60,
     }),
 }
@@ -233,23 +241,25 @@ def _determine_entry_type(primary_driver: str, strategies_agree: List[str]) -> s
 
 
 def _determine_regime(signal_metadata: Dict[str, Any]) -> str:
-    """Detect market regime from signal metadata."""
+    """Detect market regime from signal metadata.
+
+    Uses trend_adjustment (positive = aligned with trend since multiplicative
+    bonuses were introduced) and chop_score to classify regime.
+    """
     trend_adj = signal_metadata.get("trend_adjustment", 0)
+    chop_score = signal_metadata.get("chop_score", signal_metadata.get("chop_score_smoothed", 0))
     vol_ratio = signal_metadata.get("volume_ratio", 1.0)
 
-    # Strong trend alignment bonus (negative trend_adj = aligned) -> trending
-    if trend_adj <= -5:
-        return "trending"
-    # Strong counter-trend penalty -> ranging/choppy
-    if trend_adj >= 10:
-        return "ranging"
     # Low volume -> illiquid
     if vol_ratio < 0.5:
         return "illiquid"
-    # Moderate trend -> trending
-    if trend_adj < 0:
+    # High chop -> ranging
+    if chop_score >= 0.5:
+        return "ranging"
+    # Trend alignment detected (positive adj = multiplicative bonus applied)
+    if trend_adj > 0:
         return "trending"
-
+    # No chop, no trend signal -> neutral (treat as mild ranging)
     return "ranging"
 
 
@@ -371,6 +381,13 @@ def classify_trade(
 
     # 4. Adjust for regime and volatility
     params = _adjust_params_for_regime(base_params, regime, vol_band)
+
+    # 4b. Validate R:R preserved after adjustments (TP1 must exceed SL distance)
+    if params.tp1_atr_mult < params.sl_atr_mult * 0.8:
+        # Adjustments made R:R too unfavorable — clamp TP1 to min 0.8 R:R
+        params.tp1_atr_mult = params.sl_atr_mult * 0.8
+    if params.tp2_atr_mult < params.tp1_atr_mult:
+        params.tp2_atr_mult = params.tp1_atr_mult * 1.5
 
     # 5. Compute absolute prices
     if atr > 0:
@@ -512,27 +529,25 @@ def apply_profile_to_signal(
 
     is_buy = side == "BUY"
 
-    # Use profile-recommended levels
-    new_sl = profile.recommended_sl
-    new_tp1 = profile.recommended_tp1
-    new_tp2 = profile.recommended_tp2
+    # Blend profile and strategy levels: use the WIDER TP targets (more edge)
+    # but also WIDER SL (more safety). The goal is to never REDUCE the
+    # strategy's computed R:R — only improve risk management.
+    prof_sl = profile.recommended_sl
+    prof_tp1 = profile.recommended_tp1
+    prof_tp2 = profile.recommended_tp2
 
-    # Safety: ensure SL is on the correct side of entry
     if is_buy:
-        if new_sl >= entry:
-            new_sl = sl  # fallback to original
-        # TP must be above entry
-        if new_tp1 <= entry:
-            new_tp1 = tp1
-        if new_tp2 <= entry:
-            new_tp2 = tp2
+        # Wider SL = lower SL for LONG (more room for noise)
+        new_sl = min(prof_sl, sl) if prof_sl < entry else sl
+        # Wider TP = higher TP for LONG (more profit potential)
+        new_tp1 = max(prof_tp1, tp1) if prof_tp1 > entry else tp1
+        new_tp2 = max(prof_tp2, tp2) if prof_tp2 > entry else tp2
     else:
-        if new_sl <= entry:
-            new_sl = sl
-        if new_tp1 >= entry:
-            new_tp1 = tp1
-        if new_tp2 >= entry:
-            new_tp2 = tp2
+        # Wider SL = higher SL for SHORT
+        new_sl = max(prof_sl, sl) if prof_sl > entry else sl
+        # Wider TP = lower TP for SHORT
+        new_tp1 = min(prof_tp1, tp1) if prof_tp1 < entry else tp1
+        new_tp2 = min(prof_tp2, tp2) if prof_tp2 < entry else tp2
 
     return {
         "sl": new_sl,

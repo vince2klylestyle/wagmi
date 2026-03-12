@@ -3,14 +3,14 @@ Specialist prompts for each agent role.
 
 Each prompt is optimised for its domain:
   - Regime Agent:   ~300 tokens, Haiku-compatible (fast, cheap)
-  - Trade Agent:    ~600 tokens, Sonnet (main decision maker)
+  - Trade Agent:    ~1,400 tokens, Sonnet (main decision maker)
   - Risk Agent:     ~300 tokens, Haiku (numeric sizing only)
   - Learning Agent: ~300 tokens, Haiku (extract lesson from closed trade)
   - Critic Agent:   ~400 tokens, Sonnet (reviews Trade agent output)
   - Exit Agent:     ~400 tokens, Haiku (thesis continuity on open positions)
   - Scout Agent:    ~300 tokens, Haiku (idle-time preparation and forecasting)
 
-Total multi-agent prompt cost: ~1900 tokens (vs ~1200 for monolithic).
+Total multi-agent prompt cost: ~2700 tokens (vs ~1200 for monolithic).
 But each agent sees LESS context → cheaper per-call and more focused output.
 """
 
@@ -130,6 +130,7 @@ You receive rich context. Each field matters:
 - `regime_analysis`: Regime Agent's classification — trust it, it's a specialist
 - `knowledge`: Axioms and principles from the trading curriculum. This is your EDUCATION — apply it.
 - `deep_memory`: Trade DNA, strategy fingerprints, pattern library. This is your EXPERIENCE — reference it.
+- `patterns`: Actionable setup patterns (e.g., `SOL/short/trend: 30% WR (12 trades, -$450) — AVOID`). This is your PATTERN BOOK — if a pattern says AVOID, do NOT take that setup. If it says SIZE UP, increase position.
 - `g.edge`: Setup type win rates from trade history (e.g., `{"trend_at_zone": {"wr": 72, "n": 45, "pnl": 120.5}}`). If present, SIZE UP setups with wr>60% n>20, AVOID setups with wr<45%.
 - `g.stperf`: Per-strategy win rates (e.g., `{"regime_trend": {"wr": 68, "n": 80}}`). Trust high-WR strategies more in confluence scoring.
 - `g.confl_wr`: Confluence win rates by agreement count (e.g., `{"4": {"wr": 100, "n": 20, "pnl": 7916}, "3": {"wr": 65, "n": 45}}`). Full confluence (4/4) historically has the HIGHEST win rate — size aggressively (1.5x). If WR>70% with n>10, it's a proven edge. If WR<40% with n>10, SKIP or heavily discount.
@@ -150,29 +151,26 @@ You receive rich context. Each field matters:
   5. If Scout's thesis CONTRADICTS yours: pause and re-examine. Scout had more preparation time.
   Scout's regime_forecast predicts near-future regime transitions — use to set your thesis timeframe. Don't form a 12h thesis if Scout says regime weakening in 4h.
 
-## MACRO DECISION MAKING — TOP-DOWN ANALYSIS
-Before looking at the trade candidate, assess the big picture:
-1. **Market Structure**: Is the overall market bullish, bearish, or choppy? (Check BTC direction, ETH/BTC ratio, global bias)
-2. **Regime Context**: Does the Regime Agent's classification match what you see? Trust data over gut.
-3. **Cross-Market Confirmation**: BTC trending → alts follow. BTC dumping → NEVER long alts. ETH/BTC rising → alt season risk-on.
-4. **Funding Environment**: Factor cost into every decision. High funding + wrong side = double penalty.
-5. **Liquidity Assessment**: Volume ratio, time of day, weekend flag
-6. **Portfolio State**: Current leverage, correlation risk, existing positions.
-7. **Performance Context**: Winning or losing streak? Adjust selectivity accordingly.
+## SIGNAL EVALUATION
+Check signal `rf` flags — skip any signal with rf=REJECT. Focus on confluence and thesis quality, not validation mechanics.
 
-## SIGNAL EVALUATION — BOTTOM-UP ANALYSIS
-Now evaluate the specific trade candidate:
-1. **Strategy Agreement**: How many strategies agree? Assess confluence QUALITY (convergent > timeframe > redundant).
-2. **Strategy Intelligence**: Each signal has "ctx" in meta. Read it:
-   - regime_trend ctx: align score, MFI value, regime confirmation. 4/4 in trend = maximum trust.
-   - monte_carlo ctx: zone, MC probability, RSI. DEEP_BUY + MC>65% + RSI<30 = statistical edge confirmed.
-   - confidence_scorer ctx: zone, historical WR. hist_WR>60% = validated, <40% = historically losing.
-   - multi_tier ctx: EMA cross, VWAP, tier. PRIORITY + all aligned = clean scalp entry.
-   - Check `rf` field on each signal: "strong" = trust, "weak" = discount 20%, "avoid" = this strategy FAILS in this regime, discount 50%+. If rf="avoid", that signal is noise — do NOT count it as confluence.
-3. **R:R from ctx**: Check entry vs SL vs TP levels. R:R < 1.5 = not worth the risk.
-4. **Entry Quality**: Is entry at a logical level? Chasing a move = bad entry quality.
-5. **Historical Pattern**: Does deep_memory show similar setups? What happened?
-6. **Thesis Alignment**: Does this trade fit your directional prediction from Step 0?
+## FILTER ASSESSMENT — SEE WHAT THE FILTERS MEASURED
+When `filter_assessment` is present, you see what every quantitative filter measured:
+- `ok` flags: filters the signal passes (e.g., `rr:2.1 ev:0.24 fd:18%`)
+- `warn` flags: borderline values (e.g., `ev:0.18?` — close to threshold)
+- `reject` flags: filters that WOULD reject (e.g., `fd:34%! ev:0.14!`)
+- `meta`: leverage, fee_drag_pct, ev_per_dollar, cluster_risk, chop_score
+
+**YOU decide whether a rejection flag matters in THIS context.** A fee_drag of 34% is bad for a scalp but irrelevant for a 12h trend trade that moves 5%. An EV of 0.14 might be fine if your thesis has strong directional evidence the quant model can't see.
+
+When `near_miss_signals` is present, you see signals that were soft-rejected by filters. These represent opportunities the quantitative system nearly took. If your thesis aligns with a near-miss signal, consider it as confirming evidence.
+
+**FILTER OVERRIDE RULES:**
+- You CAN override `fd!` (fee drag) if expected move >> stop width
+- You CAN override `ev!` (expected value) if qualitative thesis is strong + regime supports
+- You CAN override `conf!` (confidence floor) if you have independent thesis evidence
+- You CANNOT override `cr!` (correlation) without reducing position size
+- NEVER override safety gates (circuit breaker, liquidation, max positions)
 
 ## FUNDING IS A REAL COST — THE SILENT KILLER
 - At 0.05% funding on 5x leverage: 0.75%/day cost just to HOLD.
@@ -222,9 +220,7 @@ Don't contradict recent_dec within 10min unless market genuinely changed (>1% mo
 ## DO NOT (negative constraints)
 - DO NOT assign confidence > 0.85 unless 3+ strategies agree AND regime supports direction AND g.edge shows wr>60%.
 - DO NOT output "go" on solo strategy signals (1/4 agree) unless you have extraordinary evidence (RSI<20 + DEEP_BUY + trend regime).
-- DO NOT ignore funding cost. If funding > 0.03% against you, your thesis must account for 0.5-1.5%/day drag.
 - DO NOT chase. If price already moved >2% in the signal direction before your evaluation, the edge is gone. Skip.
-- DO NOT average down mentally. Each trade is independent. Prior losses or gains are irrelevant to this decision.
 
 ## FEW-SHOT EXAMPLES
 
@@ -278,6 +274,13 @@ STRATEGY WEIGHTS BY REGIME:
 - low_liquidity: all near 0
 
 Adjust weights from these baselines using memory of what worked recently.
+
+FILTER-INFORMED SIZING:
+When `filter_assessment` is present, use it for smarter sizing:
+- `fd` (fee drag): High fee drag (>25%) means tight stops — reduce size or use wider stops
+- `ev` (expected value): Low EV means risk/reward is marginal — reduce sz by 20-30%
+- `cr` (correlation): High correlation cluster — MUST reduce sz by 30%+ to limit portfolio risk
+- `lev_ev` (leverage-scaled EV): EV too low for chosen leverage — reduce leverage or skip
 
 PROFIT-AWARE SIZING:
 - If g.edge shows this setup_type has wr>65% over 20+ trades: SIZE UP (1.3-1.5x baseline)
@@ -406,6 +409,13 @@ A veto is NOT just "I'm scared." A veto is a COUNTER-PREDICTION:
 - Trade Agent says "SOL to $25 because 4/4 regime align" → Your job: find evidence AGAINST this thesis
 - If you challenge, you MUST state where YOU think price is going: counter_thesis="SOL likely sideways $23-24, BTC stalling at resistance, regime shifting"
 - If you can't form a counter-thesis with evidence, you should APPROVE. "I'm not sure" is not grounds for a veto.
+
+## FILTER ASSESSMENT — QUANTITATIVE EVIDENCE FOR YOUR REVIEW
+When `filter_assessment` is present, it shows what quantitative filters measured:
+- Reject flags (`fd:34%!`, `ev:0.14!`) are evidence supporting a challenge
+- Warning flags (`ev:0.18?`) are concerns to weigh in your objections
+- If the Trade Agent overrode a filter rejection, scrutinize the thesis MORE carefully
+- `near_miss_signals`: signals that nearly passed — if they contradict the trade, cite them
 
 ## REVIEW CHECKLIST
 1. **Thesis quality**: Did Trade Agent form a clear directional thesis? Is it evidence-based or hand-wavy?

@@ -36,6 +36,13 @@ from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
 from strategies.confidence_scorer import ConfidenceScorerStrategy
 from strategies.multi_tier_quality import MultiTierQualityStrategy
+from strategies.funding_rate import FundingRateStrategy
+from strategies.oi_delta import OIDeltaStrategy
+from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+from strategies.vmc_cipher import VMCCipherStrategy
+from strategies.lead_lag import LeadLagStrategy
+from strategies.liquidation_cascade import LiquidationCascadeStrategy
+from strategies.probability_engine import ProbabilityEngineStrategy
 from strategies.ensemble import EnsembleStrategy
 from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
@@ -360,21 +367,45 @@ class MultiStrategyBot:
             decay_alpha=0.9,
         )
 
-        # Strategies (pass config params to constructors)
+        # Strategies — each toggleable via STRATEGY_*_ENABLED env var
         sym_configs = DEFAULT_SYMBOLS
-        self.strategies = [
-            RegimeTrendStrategy(sym_configs, config.htf_hours),
-            ConfidenceScorerStrategy(sym_configs, data_dir="ml_data"),
-            MultiTierQualityStrategy(sym_configs),
-        ]
-        # monte_carlo_zones disabled — PF=0.0 in backtests, consistent loser.
-        # Re-enable via STRATEGY_MONTE_CARLO_ENABLED=true if needed.
+        self.strategies = []
+
+        if os.getenv("STRATEGY_REGIME_TREND_ENABLED", "true").lower() == "true":
+            self.strategies.append(RegimeTrendStrategy(sym_configs, config.htf_hours))
+        if os.getenv("STRATEGY_CONFIDENCE_SCORER_ENABLED", "true").lower() == "true":
+            self.strategies.append(ConfidenceScorerStrategy(sym_configs, data_dir="ml_data"))
+        if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "true").lower() == "true":
+            self.strategies.append(MultiTierQualityStrategy(sym_configs))
         if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "false").lower() == "true":
-            self.strategies.insert(1, MonteCarloZonesStrategy(
+            self.strategies.append(MonteCarloZonesStrategy(
                 sym_configs,
                 mc_sims=config.mc_num_sims,
                 mc_hours=config.mc_forward_hours,
             ))
+
+        # New quant strategies (Phase 6 alpha generation)
+        if os.getenv("STRATEGY_FUNDING_RATE_ENABLED", "true").lower() == "true":
+            self.strategies.append(FundingRateStrategy(sym_configs))
+        if os.getenv("STRATEGY_OI_DELTA_ENABLED", "true").lower() == "true":
+            self.strategies.append(OIDeltaStrategy(sym_configs))
+        if os.getenv("STRATEGY_BOLLINGER_SQUEEZE_ENABLED", "true").lower() == "true":
+            self.strategies.append(BollingerSqueezeStrategy(sym_configs))
+        if os.getenv("STRATEGY_VMC_CIPHER_ENABLED", "true").lower() == "true":
+            self.strategies.append(VMCCipherStrategy(sym_configs))
+        if os.getenv("STRATEGY_LEAD_LAG_ENABLED", "true").lower() == "true":
+            self.strategies.append(LeadLagStrategy(sym_configs))
+        if os.getenv("STRATEGY_LIQUIDATION_CASCADE_ENABLED", "true").lower() == "true":
+            self.strategies.append(LiquidationCascadeStrategy(sym_configs))
+        if os.getenv("STRATEGY_PROBABILITY_ENGINE_ENABLED", "true").lower() == "true":
+            self.strategies.append(ProbabilityEngineStrategy(
+                sym_configs,
+                num_sims=config.mc_num_sims,
+                forward_bars=config.mc_forward_hours,
+            ))
+
+        enabled_names = [s.name for s in self.strategies]
+        logger.info(f"[INIT] Active strategies: {enabled_names}")
         # Chop detector: multi-factor choppy market filter
         chop = None
         if config.enable_chop_detector:
@@ -836,9 +867,20 @@ class MultiStrategyBot:
         # ── PARALLEL PREFETCH: fetch all symbols' data concurrently ──
         # This front-loads all exchange I/O so _process_symbol hits cache.
         _prefetch_start = time.time()
-        self.fetcher.prefetch_all_symbols(DEFAULT_SYMBOLS, self._needed_tfs)
+        prefetch_results = self.fetcher.prefetch_all_symbols(DEFAULT_SYMBOLS, self._needed_tfs)
         _prefetch_ms = (time.time() - _prefetch_start) * 1000
-        logger.info(f"[{trace_id}] Prefetch done: {len(DEFAULT_SYMBOLS)} symbols in {_prefetch_ms:.0f}ms")
+        # Track prefetch failures for degradation awareness
+        prefetch_failures = sum(1 for v in prefetch_results.values() if not v)
+        prefetch_total = len(prefetch_results)
+        if prefetch_failures > 0:
+            logger.warning(
+                f"[{trace_id}] Prefetch: {prefetch_failures}/{prefetch_total} symbols failed"
+            )
+            if prefetch_failures == prefetch_total:
+                logger.error(f"[{trace_id}] ALL prefetches failed — exchange may be down")
+                self.degradation.record_exchange_error()
+        else:
+            logger.info(f"[{trace_id}] Prefetch done: {prefetch_total} symbols in {_prefetch_ms:.0f}ms")
 
         # Collect candidate signals for rotation evaluation
         self._tick_candidates: list = []
@@ -1139,6 +1181,17 @@ class MultiStrategyBot:
                     except Exception as e:
                         logger.debug(f"Evolution→LLM memory feed error: {e}")
 
+                # ── Feed evolution lessons into Parameter Tuner ──
+                # Closes the evolution→tuner feedback loop: lessons about what's
+                # working/failing flow into dynamic parameter adjustments.
+                try:
+                    if hasattr(self, 'feedback') and hasattr(self.feedback, 'tuner'):
+                        _tuner_result = tracker.apply_lessons_to_tuner(report, self.feedback.tuner)
+                        if _tuner_result:
+                            logger.info(f"[EVOLUTION→TUNER] Applied lessons: {_tuner_result}")
+                except Exception as e:
+                    logger.debug(f"Evolution→Tuner feed error: {e}")
+
                 logger.info(f"[EVOLUTION] Daily report generated: {report.total_trades} trades")
             except Exception as e:
                 logger.debug(f"Evolution tracker error: {e}")
@@ -1357,24 +1410,37 @@ class MultiStrategyBot:
                 pass
 
         # ── Periodic position reconciliation ──
-        # Every 60 ticks (~1h): detect phantom (bot-only) and orphan (exchange-only) positions
+        # Every 60 ticks (~1h): detect and auto-correct position mismatches
         if self._tick % 60 == 45 and self._tick > 0:
             try:
                 result = periodic_reconciliation_check(
                     pos_mgr=self.pos_mgr,
                     exchanges=self.fetcher._exchanges,
+                    last_prices=self._last_prices,
                 )
-                if result.get("phantoms") or result.get("orphans"):
+                phantoms = result.get("phantom", [])
+                orphans = result.get("orphan", [])
+                if phantoms or orphans:
                     logger.warning(
                         f"[RECONCILE] Drift detected: "
-                        f"{len(result.get('phantoms', []))} phantom, "
-                        f"{len(result.get('orphans', []))} orphan"
+                        f"{len(phantoms)} phantom, {len(orphans)} orphan"
                     )
-                    if self.alerts:
+                    # Auto-correct phantom positions (bot tracking, exchange closed)
+                    for sym in phantoms:
+                        pos = self.pos_mgr.positions.get(sym)
+                        if pos and pos.state != "CLOSED":
+                            logger.warning(
+                                f"[RECONCILE] Closing phantom position {sym} "
+                                f"(exchange says closed)"
+                            )
+                            pos.state = "CLOSED"
+                            pos.close_time = datetime.now(timezone.utc)
+                            pos.close_reason = "reconciliation_phantom"
+                    # Alert for orphans (need manual review)
+                    if self.alerts and orphans:
                         self.alerts.send_market_update(
-                            f"Position drift detected: "
-                            f"{len(result.get('phantoms', []))} phantom, "
-                            f"{len(result.get('orphans', []))} orphan positions"
+                            f"⚠️ {len(orphans)} orphan positions on exchange "
+                            f"not tracked by bot: {orphans}"
                         )
             except Exception as e:
                 logger.debug(f"[{trace_id}] Periodic reconciliation error: {e}")
@@ -1396,6 +1462,30 @@ class MultiStrategyBot:
             self.degradation.record_exchange_error()
             logger.warning(f"[{symbol}] Exchange fetch failed: {e}")
             return
+
+        # Stale data guard: reject signals if candle data is too old.
+        # After restarts or API hiccups, strategies may fire on stale candles.
+        # Check the most granular timeframe (5m or 1h) — if its last candle
+        # is older than 5 minutes past its expected close, skip signal generation.
+        _stale_max_s = 300  # 5 minutes tolerance
+        _stale_check_tf = "5m" if "5m" in data else ("1h" if "1h" in data else None)
+        if _stale_check_tf and data.get(_stale_check_tf) is not None:
+            _stale_df = data[_stale_check_tf]
+            if not _stale_df.empty and _stale_df.index.dtype.kind == 'M':
+                _last_candle_time = _stale_df.index[-1]
+                _candle_age_s = (pd.Timestamp.now(tz="UTC") - _last_candle_time).total_seconds()
+                _tf_period_s = {"5m": 300, "1h": 3600}.get(_stale_check_tf, 3600)
+                # Data is stale if the last candle closed more than (period + tolerance) ago
+                if _candle_age_s > _tf_period_s + _stale_max_s:
+                    # Still process existing positions (SL/TP), but skip new signal generation
+                    if symbol not in self.pos_mgr.get_open_positions():
+                        logger.warning(
+                            f"[{trace_id}][{symbol}] STALE DATA: {_stale_check_tf} candle "
+                            f"is {_candle_age_s:.0f}s old (max {_tf_period_s + _stale_max_s}s), "
+                            f"skipping signal generation"
+                        )
+                        Telemetry.inc("stale_data_skips")
+                        return
 
         # Get current price
         current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
@@ -2082,7 +2172,19 @@ class MultiStrategyBot:
                 )
                 if liq_check["at_risk"]:
                     logger.warning(f"[{symbol}] LIQUIDATION RISK: {liq_check}")
-                    self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
+                    event = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
+                    # Submit exchange close order (force_close only updates internal state)
+                    if event and event.qty > 0:
+                        close_side = "SELL" if event.side == "LONG" else "BUY"
+                        self.order_executor.close_position(
+                            symbol, close_side, event.qty, current_price,
+                            reason="LIQUIDATION_AVOID"
+                        )
+                        if self.alerts:
+                            self.alerts.send_trade_alert(
+                                f"🚨 LIQUIDATION AVOID: {symbol} {event.side} "
+                                f"force-closed @ {current_price}"
+                            )
 
         # Clean up stale closed positions (prevent memory growth overnight)
         from execution.position_state import CLOSED as _CLOSED
@@ -2186,6 +2288,40 @@ class MultiStrategyBot:
                 self.ensemble.set_disabled_strategies(set())
 
         signal_result = self.ensemble.evaluate(symbol, data)
+
+        # ── Soft-filter annotation: run annotated ensemble in parallel ──
+        # When enabled, this captures filter assessments for LLM visibility
+        # even when the signal passes hard filters normally.
+        if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+            try:
+                annotated_ensemble = self.ensemble.evaluate_with_annotations(symbol, data)
+                if annotated_ensemble is not None:
+                    # Store for LLM snapshot injection and signal tracking
+                    if not hasattr(self, '_pending_annotations'):
+                        self._pending_annotations = {}
+                    self._pending_annotations[symbol] = annotated_ensemble
+
+                    # Track signal in signal tracker (all signals, not just approved)
+                    from core.signal_tracker import get_signal_tracker
+                    tracker = get_signal_tracker()
+                    tracker.record_signal(
+                        symbol=symbol,
+                        side=annotated_ensemble.signal.side if hasattr(annotated_ensemble.signal, 'side') else "",
+                        confidence=annotated_ensemble.signal.confidence if hasattr(annotated_ensemble.signal, 'confidence') else 0,
+                        strategy=annotated_ensemble.signal.strategy if hasattr(annotated_ensemble.signal, 'strategy') else "",
+                        passed=annotated_ensemble.passed_all,
+                        hard_rejected=annotated_ensemble.hard_rejected,
+                        hard_rejection_reason=annotated_ensemble.hard_rejection_reason,
+                        annotations=[
+                            {"gate": a.gate, "severity": a.severity, "value": a.value, "threshold": a.threshold}
+                            for a in annotated_ensemble.annotations
+                        ],
+                        filter_metadata=annotated_ensemble.filter_metadata,
+                        num_strategies_agree=annotated_ensemble.filter_metadata.get("num_strategies_signaled", 0),
+                        regime=annotated_ensemble.filter_metadata.get("regime", ""),
+                    )
+            except Exception as e:
+                logger.debug(f"[{symbol}] Soft-filter annotation error: {e}")
 
         # Update last snapshot with ensemble context for ML learning
         if self.ml and self.ml.snapshots:
@@ -2608,18 +2744,72 @@ class MultiStrategyBot:
                     f"[{trace_id}][{symbol}] RiskFilterChain rejected: "
                     f"{_chain_result.rejection_reason}"
                 )
+
+                # ── Annotated chain: record what filters measured even on rejection ──
+                if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+                    try:
+                        _annotated = _chain.evaluate_annotated(
+                            signal=signal_result,
+                            equity=self.risk_mgr.equity,
+                            num_strategies_agree=num_agree,
+                            total_strategies=total,
+                            current_open_count=len(open_pos),
+                            current_extreme_count=extreme_count,
+                            risk_tier=sym_cfg.risk_tier,
+                            open_positions=open_pos,
+                            portfolio_risk_engine=self.portfolio_risk if hasattr(self, 'portfolio_risk') else None,
+                        )
+                        # Merge pipeline annotations with ensemble annotations
+                        if hasattr(self, '_pending_annotations') and symbol in self._pending_annotations:
+                            existing = self._pending_annotations[symbol]
+                            existing.annotations.extend(_annotated.annotations)
+                            existing.filter_metadata.update(_annotated.filter_metadata)
+                            if _annotated.hard_rejected:
+                                existing.hard_rejected = True
+                                existing.hard_rejection_reason = _annotated.hard_rejection_reason
+
+                            # Track the chain-rejected signal
+                            from core.signal_tracker import get_signal_tracker
+                            tracker = get_signal_tracker()
+                            tracker.record_signal(
+                                symbol=symbol,
+                                side=signal_result.side,
+                                confidence=signal_result.confidence,
+                                strategy=signal_result.strategy or "ensemble",
+                                passed=False,
+                                hard_rejected=_annotated.hard_rejected,
+                                hard_rejection_reason=_annotated.hard_rejection_reason,
+                                annotations=[
+                                    {"gate": a.gate, "severity": a.severity, "value": a.value, "threshold": a.threshold}
+                                    for a in _annotated.annotations
+                                ],
+                                filter_metadata=_annotated.filter_metadata,
+                                num_strategies_agree=num_agree,
+                            )
+                    except Exception as ann_e:
+                        logger.debug(f"[{symbol}] Annotated chain error: {ann_e}")
+
                 return
         except Exception as e:
-            logger.debug(f"RiskFilterChain error (falling back to inline): {e}")
+            logger.warning(f"[{trace_id}][{symbol}] RiskFilterChain error: {e} — rejecting signal for safety")
+            return  # Do NOT fall through to weaker inline checks
 
-        # Determine leverage (inline path preserved for live-specific caps below)
-        lev_decision = self.leverage_mgr.decide(
-            signal_result.confidence,
-            num_agree,
-            total,
-            sym_cfg.risk_tier,
-            extreme_count,
-        )
+        # Use leverage from RiskFilterChain (already computed by leverage_mgr.decide()
+        # inside the chain). Avoids double-computation which could diverge if state
+        # changes between calls. Live-specific caps are applied below.
+        if '_chain_result' in dir() and _chain_result.approved:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
+            # Override with chain result's leverage to stay consistent
+            lev_decision.leverage = _chain_result.leverage
+            lev_decision.risk_multiplier = _chain_result.risk_multiplier
+        else:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
 
         if lev_decision.leverage <= 0:
             return  # Confidence too low
@@ -3730,12 +3920,20 @@ class MultiStrategyBot:
             f"new_conf={action.confidence_new:.0f}%"
         )
 
-        # 1. Close the old position
+        # 1. Close the old position (exchange order + internal state)
         close_price = self._last_prices.get(close_symbol)
         if close_price is None:
             logger.warning(f"[{trace_id}] Rotation aborted: no price for {close_symbol}")
             return
 
+        # Submit exchange close order BEFORE updating internal state
+        _rot_pos = self.pos_mgr.positions.get(close_symbol)
+        if _rot_pos and _rot_pos.qty > 0:
+            _rot_close_side = "SELL" if _rot_pos.side == "LONG" else "BUY"
+            self.order_executor.close_position(
+                close_symbol, _rot_close_side, _rot_pos.qty, close_price,
+                reason=action.close_reason
+            )
         close_event = self.pos_mgr.force_close(
             close_symbol, close_price, action.close_reason
         )
@@ -4191,6 +4389,13 @@ class MultiStrategyBot:
                                             f"{result['details']} (urgency={urgency})"
                                         )
                                         if action_name == "close":
+                                            _exit_pos = self.pos_mgr.positions.get(symbol)
+                                            if _exit_pos and _exit_pos.qty > 0:
+                                                _ex_side = "SELL" if _exit_pos.side == "LONG" else "BUY"
+                                                self.order_executor.close_position(
+                                                    symbol, _ex_side, _exit_pos.qty, current_price,
+                                                    reason="LLM_EXIT_AGENT"
+                                                )
                                             self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_AGENT")
                                         elif action_name == "partial":
                                             partial_pct = result.get("partial_pct", 0.5)
@@ -4353,6 +4558,13 @@ class MultiStrategyBot:
 
                         # Handle close/partial actions that need exchange execution
                         if action == "close":
+                            _exit_pos2 = self.pos_mgr.positions.get(symbol)
+                            if _exit_pos2 and _exit_pos2.qty > 0:
+                                _ex_side2 = "SELL" if _exit_pos2.side == "LONG" else "BUY"
+                                self.order_executor.close_position(
+                                    symbol, _ex_side2, _exit_pos2.qty, current_price,
+                                    reason="LLM_EXIT_ENGINE"
+                                )
                             self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_ENGINE")
                         elif action == "partial":
                             # Partial close: reduce qty, log the partial
@@ -4518,6 +4730,11 @@ class MultiStrategyBot:
         btc_1h = 0.0
         btc_24h = 0.0
         eth_price = 0.0
+        # ETH isn't in DEFAULT_SYMBOLS but we need its price for ETH/BTC ratio context
+        try:
+            eth_price = self.fetcher.latest_price("ETH", "ethereum") or 0.0
+        except Exception:
+            pass
 
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             price = self._last_prices.get(symbol)
@@ -4933,6 +5150,31 @@ class MultiStrategyBot:
                 }
             except Exception as e:
                 logger.debug(f"Adaptive risk context injection error: {e}")
+
+        # ── Soft-filter annotations: inject into LLM context ──
+        if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+            if hasattr(self, '_pending_annotations') and self._pending_annotations:
+                try:
+                    # Build compact filter assessment for each annotated signal
+                    filter_assessments = []
+                    near_misses = []
+                    for sym, ann_sig in self._pending_annotations.items():
+                        compact = ann_sig.to_compact_dict()
+                        compact["sym"] = sym
+                        if ann_sig.passed_all:
+                            filter_assessments.append(compact)
+                        elif not ann_sig.hard_rejected:
+                            near_misses.append(compact)
+
+                    if filter_assessments:
+                        global_ctx.extra["filter_annotations"] = filter_assessments
+                    if near_misses and getattr(self.config, 'soft_filter_near_miss', True):
+                        global_ctx.extra["near_miss_signals"] = near_misses[:5]  # Cap at 5
+
+                    # Clear pending annotations for next tick
+                    self._pending_annotations = {}
+                except Exception as e:
+                    logger.debug(f"Filter annotation injection error: {e}")
 
         return markets, global_ctx, risk_ctx, active_positions
 

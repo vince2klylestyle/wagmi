@@ -76,6 +76,12 @@ class ParameterTuner:
         # Track suggestion accuracy to update trust
         self._suggestion_outcomes: List[Dict] = []
 
+        # Pending validations: track parameter changes awaiting outcome measurement
+        # Each entry: {param, old_value, new_value, apply_ts, trades_at_apply}
+        self._pending_validations: List[Dict] = []
+        self._trades_since_last_validation: int = 0
+        self._recent_trade_pnls: List[float] = []  # last N trade PnLs for validation
+
         self._load_state()
 
     def update(
@@ -120,21 +126,30 @@ class ParameterTuner:
 
         if confidence_floor_suggestion is not None:
             target = max(50, min(80, confidence_floor_suggestion))
+            old_val = self.params.confidence_floor
             self.params.confidence_floor = self._gradual_move(
-                self.params.confidence_floor, target, max_step * 30  # scale for 50-80 range
+                old_val, target, max_step * 30
             )
+            if abs(self.params.confidence_floor - old_val) > 0.1:
+                self._schedule_validation("confidence_floor", old_val, self.params.confidence_floor)
 
         if leverage_suggestion is not None:
             target = max(5, min(25, leverage_suggestion))
+            old_val = self.params.max_leverage
             self.params.max_leverage = self._gradual_move(
-                self.params.max_leverage, target, max_step * 25
+                old_val, target, max_step * 25
             )
+            if abs(self.params.max_leverage - old_val) > 0.1:
+                self._schedule_validation("max_leverage", old_val, self.params.max_leverage)
 
         if risk_per_trade_suggestion is not None:
             target = max(0.005, min(0.02, risk_per_trade_suggestion))
+            old_val = self.params.risk_per_trade
             self.params.risk_per_trade = self._gradual_move(
-                self.params.risk_per_trade, target, max_step * 0.02
+                old_val, target, max_step * 0.02
             )
+            if abs(self.params.risk_per_trade - old_val) > 0.0001:
+                self._schedule_validation("risk_per_trade", old_val, self.params.risk_per_trade)
 
         if strategy_weight_suggestions:
             for strategy, weight in strategy_weight_suggestions.items():
@@ -247,6 +262,76 @@ class ParameterTuner:
                 MIN_TRUST_SCORE,
                 min(MAX_TRUST_SCORE, self.params.trust_score * 0.8 + accuracy * 0.2)
             )
+
+    def record_trade_outcome(self, pnl: float):
+        """Record a trade outcome for pending validation checks.
+
+        Call this after every trade closes. After enough trades, pending
+        parameter validations are automatically checked.
+        """
+        self._trades_since_last_validation += 1
+        self._recent_trade_pnls.append(pnl)
+        if len(self._recent_trade_pnls) > 100:
+            self._recent_trade_pnls = self._recent_trade_pnls[-100:]
+
+        # Check pending validations (every 20 trades)
+        self._check_pending_validations()
+
+    def _schedule_validation(self, param: str, old_value: float, new_value: float):
+        """Schedule a validation check for a parameter change."""
+        self._pending_validations.append({
+            "param": param,
+            "old_value": old_value,
+            "new_value": new_value,
+            "apply_ts": time.time(),
+            "trades_at_apply": len(self._recent_trade_pnls),
+            "validated": False,
+        })
+        logger.info(
+            f"[TUNER] Scheduled validation for {param}: "
+            f"{old_value:.4f} → {new_value:.4f} (check in ~20 trades)"
+        )
+
+    def _check_pending_validations(self):
+        """Check if any pending validations have enough data to evaluate."""
+        VALIDATION_WINDOW = 20  # trades needed after parameter change
+        still_pending = []
+
+        for v in self._pending_validations:
+            if v["validated"]:
+                continue
+
+            trades_since = len(self._recent_trade_pnls) - v["trades_at_apply"]
+            if trades_since < VALIDATION_WINDOW:
+                still_pending.append(v)
+                continue
+
+            # Evaluate: compare win rate in window after change
+            window_pnls = self._recent_trade_pnls[v["trades_at_apply"]:][:VALIDATION_WINDOW]
+            win_rate = sum(1 for p in window_pnls if p > 0) / max(len(window_pnls), 1)
+            avg_pnl = sum(window_pnls) / max(len(window_pnls), 1)
+
+            # Consider the change beneficial if WR > 45% or avg PnL > 0
+            was_correct = win_rate > 0.45 or avg_pnl > 0
+
+            self.validate_suggestion(v["param"], was_correct)
+            v["validated"] = True
+
+            logger.info(
+                f"[TUNER] Validated {v['param']}: "
+                f"{v['old_value']:.4f} → {v['new_value']:.4f} | "
+                f"WR={win_rate:.0%}, avg_pnl=${avg_pnl:.2f} → "
+                f"{'CONFIRMED' if was_correct else 'REVERTED'}"
+            )
+
+            # If suggestion was wrong, consider reverting
+            if not was_correct:
+                logger.warning(
+                    f"[TUNER] Parameter change {v['param']} hurt performance, "
+                    f"trust score reduced to {self.params.trust_score:.2f}"
+                )
+
+        self._pending_validations = still_pending
 
     def _gradual_move(self, current: float, target: float, max_step: float) -> float:
         """Move current toward target, capped by max_step."""

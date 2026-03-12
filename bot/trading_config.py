@@ -72,14 +72,14 @@ class TradingConfig:
 
     # General
     environment: str = field(default_factory=lambda: _env("ENVIRONMENT", "paper"))
-    scan_interval_s: int = field(default_factory=lambda: _env_int("SCAN_INTERVAL_S", 30))
+    scan_interval_s: int = field(default_factory=lambda: _env_int("SCAN_INTERVAL_S", 60))  # 60s: reduces signal churn (was 30s)
     verbose: bool = field(default_factory=lambda: _env_bool("VERBOSE", True))
 
     # Equity & risk
     starting_equity: float = field(default_factory=lambda: _env_float("STARTING_EQUITY", 10000.0))
     risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.02))
     max_open_positions: int = field(default_factory=lambda: _env_int("MAX_OPEN_POSITIONS", 3))
-    taker_fee_bps: int = field(default_factory=lambda: _env_int("TAKER_FEE_BPS", 5))
+    taker_fee_bps: int = field(default_factory=lambda: _env_int("TAKER_FEE_BPS", 4))  # Hyperliquid: 3.5 bps taker, rounded up for safety
 
     # Circuit breakers
     circuit_breaker_daily_loss_pct: float = field(
@@ -94,6 +94,9 @@ class TradingConfig:
     cb_conf_override_pct: float = field(
         default_factory=lambda: _env_float("CB_CONF_OVERRIDE_PCT", 0.92)
     )
+    max_drawdown_pct: float = field(
+        default_factory=lambda: _env_float("MAX_DRAWDOWN_PCT", 0.15)
+    )  # 15%: 10% was too tight for crypto, caused permanent CB lockout
 
     # Leverage tiers: (min_confidence, max_confidence) -> leverage
     enable_leverage: bool = field(default_factory=lambda: _env_bool("ENABLE_LEVERAGE", True))
@@ -113,11 +116,11 @@ class TradingConfig:
         default_factory=lambda: _env("ENSEMBLE_MODE", "weighted_veto")
     )  # "voting", "weighted_veto", "weighted", "best"
     min_votes_required: int = field(
-        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 2)
-    )
+        default_factory=lambda: _env_int("MIN_VOTES_REQUIRED", 3)
+    )  # 3-agree PF=4.05/86% WR vs 2-agree negative PF. Only strong consensus trades.
     veto_ratio: float = field(
         default_factory=lambda: _env_float("VETO_RATIO", 1.5)
-    )
+    )  # Raised back to 1.5: stricter veto prevents weak signals leaking through
 
     # ML
     enable_ml: bool = field(default_factory=lambda: _env_bool("ENABLE_ML", True))
@@ -148,11 +151,11 @@ class TradingConfig:
         default_factory=lambda: _env_int("ROTATION_GLOBAL_COOLDOWN_S", 600)
     )
     rotation_max_per_hour: int = field(
-        default_factory=lambda: _env_int("ROTATION_MAX_PER_HOUR", 2)
-    )
+        default_factory=lambda: _env_int("ROTATION_MAX_PER_HOUR", 1)
+    )  # Reduced from 2: fewer rotations = less fee bleed
     rotation_max_per_day: int = field(
-        default_factory=lambda: _env_int("ROTATION_MAX_PER_DAY", 6)
-    )
+        default_factory=lambda: _env_int("ROTATION_MAX_PER_DAY", 4)
+    )  # Reduced from 6: max 4 trades/day prevents over-trading
 
     # ── Profitability shield ──
     max_portfolio_leverage: float = field(
@@ -178,6 +181,16 @@ class TradingConfig:
     )
     chop_threshold: float = field(
         default_factory=lambda: _env_float("CHOP_THRESHOLD", 0.65)
+    )
+    # ADX below this = ranging market, strategies should not generate signals.
+    # ADX 20 is the classic threshold; below 20 means no directional trend.
+    adx_min_trending: float = field(
+        default_factory=lambda: _env_float("ADX_MIN_TRENDING", 20.0)
+    )
+    # Confidence floor when market is ranging (chop_score > chop_threshold * 0.8)
+    # Higher than normal floor to only allow very high conviction trades in chop
+    ranging_confidence_floor: float = field(
+        default_factory=lambda: _env_float("RANGING_CONFIDENCE_FLOOR", 88.0)
     )
     max_hold_hours: int = field(
         default_factory=lambda: _env_int("MAX_HOLD_HOURS", 48)
@@ -271,24 +284,31 @@ class TradingConfig:
 
     # ── Strategy Parameters (ATR multiples, confidence floors) ──
     # Previously hardcoded across strategy files. Now centralized.
+    sl_atr_multiplier: float = field(
+        default_factory=lambda: _env_float("SL_ATR_MULTIPLIER", 1.5)
+    )  # Unified SL distance: all strategies use same ATR mult for consistent ensemble merge
     ensemble_confidence_floor: float = field(
-        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 70.0)
-    )
+        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 60.0)
+    )  # Lowered from 80: <60% is the ONLY profitable confidence bucket across all backtests. EV gate handles quality.
     max_ensemble_confidence: float = field(
-        default_factory=lambda: _env_float("MAX_ENSEMBLE_CONFIDENCE", 85.0)
-    )
+        default_factory=lambda: _env_float("MAX_ENSEMBLE_CONFIDENCE", 95.0)
+    )  # Raised from 92: reduces clustering at cap, lets unanimous signals get proper bonus
+    # Lowered from 2.0 to 1.5: fee-aware EV gate (0.15-0.20) now handles
+    # profitability filtering directly. R:R 1.5 + positive EV = viable trade.
+    # The old 2.0 floor was blocking valid trades that pass EV/fee-drag gates.
     min_signal_rr: float = field(
-        default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.5)
-    )
+        default_factory=lambda: _env_float("MIN_SIGNAL_RR", 1.8)
+    )  # Raised from 1.5: need better risk/reward to survive fees + slippage
     min_stop_width_pct: float = field(
-        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.002)
-    )
+        default_factory=lambda: _env_float("MIN_STOP_WIDTH_PCT", 0.003)
+    )  # Raised from 0.2% to 0.3%: at 0.2%, fees consume 40% of stop distance
     # Minimum expected value per dollar risked. EV = (win_prob × R:R) - (1-win_prob).
     # Filters trades where the probability × payoff doesn't justify the risk.
-    # Default 0.10 means trades must have positive expectancy of at least $0.10 per $1 risked.
+    # Raised from 0.10 to 0.15: at 45% WR, trades need 15%+ edge per $1
+    # risked to survive fees (4bps each way = ~8bps round-trip).
     min_signal_ev: float = field(
-        default_factory=lambda: _env_float("MIN_SIGNAL_EV", 0.10)
-    )
+        default_factory=lambda: _env_float("MIN_SIGNAL_EV", 0.20)
+    )  # Raised from 0.15: higher EV floor kills negative-expectancy trades
     # Monte Carlo strategy
     mc_num_sims: int = field(
         default_factory=lambda: _env_int("MC_NUM_SIMS", 1000)
@@ -324,10 +344,10 @@ class TradingConfig:
     )
     # TP/SL engine defaults
     tp_sl_rr1: float = field(
-        default_factory=lambda: _env_float("TP_SL_RR1", 1.5)
+        default_factory=lambda: _env_float("TP_SL_RR1", 2.0)
     )
     tp_sl_rr2: float = field(
-        default_factory=lambda: _env_float("TP_SL_RR2", 2.5)
+        default_factory=lambda: _env_float("TP_SL_RR2", 4.0)
     )
     tp_sl_atr_mult: float = field(
         default_factory=lambda: _env_float("TP_SL_ATR_MULT", 1.5)
@@ -353,14 +373,14 @@ class TradingConfig:
 
     # ── Cooldowns & Time Intervals ──
     loss_cooldown_s: int = field(
-        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 120)
-    )  # 2 min safety floor (LLM handles structure-based re-entry in live)
+        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 300)
+    )  # 5 min: prevents revenge trading after loss (was 2 min)
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 60)
-    )  # 1 min safety floor (LLM handles structure-based re-entry in live)
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 180)
+    )  # 3 min: prevents overconfident re-entry after win (was 1 min)
     signal_dedup_window_s: int = field(
-        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 300)
-    )  # 5 min dedup
+        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 600)
+    )  # 10 min dedup: prevents rapid-fire same-symbol entries (was 5 min)
 
     # ── Timeframe Trend Weights ──
     tf_weight_5m: float = field(
@@ -397,6 +417,47 @@ class TradingConfig:
     fetcher_circuit_breaker_reset_s: int = field(
         default_factory=lambda: _env_int("FETCHER_CB_RESET_S", 300)
     )
+
+    # ── AutoOptimizer ──
+    auto_optimizer_enabled: bool = field(
+        default_factory=lambda: _env_bool("AUTO_OPTIMIZER_ENABLED", True)
+    )
+    auto_opt_min_interval_h: float = field(
+        default_factory=lambda: _env_float("AUTO_OPT_MIN_INTERVAL_H", 12.0)
+    )
+    auto_opt_trades_per_review: int = field(
+        default_factory=lambda: _env_int("AUTO_OPT_TRADES_PER_REVIEW", 15)
+    )
+    auto_opt_llm_review: bool = field(
+        default_factory=lambda: _env_bool("AUTO_OPT_LLM_REVIEW", True)
+    )
+    auto_opt_degradation_threshold: float = field(
+        default_factory=lambda: _env_float("AUTO_OPT_DEGRADATION_THRESHOLD", 15.0)
+    )
+    auto_opt_consec_loss_alert: int = field(
+        default_factory=lambda: _env_int("AUTO_OPT_CONSEC_LOSS_ALERT", 4)
+    )
+
+    # ── Squeeze Detection ──
+    squeeze_atr_ratio: float = field(
+        default_factory=lambda: _env_float("SQUEEZE_ATR_RATIO", 0.65)
+    )  # ATR compression threshold: current ATR < this * 20-bar avg ATR = squeeze
+
+    # ── Soft Filters (Filter-to-Annotation Architecture) ──
+    # When enabled, non-safety filters become annotations instead of hard rejects.
+    # LLM agents see ALL signals with filter assessments and decide what to trade.
+    enable_soft_filters: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SOFT_FILTERS", False)
+    )  # Master switch — default OFF for safety. Enable after backtest validation.
+    soft_filter_log_only: bool = field(
+        default_factory=lambda: _env_bool("SOFT_FILTER_LOG_ONLY", True)
+    )  # Log annotations but still hard-reject (Phase 1 validation mode)
+    soft_filter_near_miss: bool = field(
+        default_factory=lambda: _env_bool("SOFT_FILTER_NEAR_MISS", True)
+    )  # Include near-miss signals (soft-rejected) in LLM context
+    soft_filter_learning: bool = field(
+        default_factory=lambda: _env_bool("SOFT_FILTER_LEARNING", True)
+    )  # Enable filter accuracy feedback loop
 
     # ── Health Monitoring ──
     health_port: int = field(

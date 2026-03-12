@@ -35,7 +35,8 @@ class TestStrategyWeightHardFloor:
             for i in range(20):
                 mgr.record_outcome("bad_strat", win=(i < 6))
             weights = mgr.get_rolling_weights()
-            assert weights["bad_strat"] == 0.05, f"Expected 0.05 (auto-muted), got {weights['bad_strat']}"
+            # Hard mute floor raised from 0.05 to 0.20 to preserve ensemble diversity
+            assert weights["bad_strat"] == 0.20, f"Expected 0.20 (auto-muted), got {weights['bad_strat']}"
         finally:
             os.unlink(path)
 
@@ -124,8 +125,9 @@ class TestStrategyWeightHardFloor:
             for i in range(20):
                 mgr.record_outcome("winner", win=(i < 14))
             weights = mgr.get_rolling_weights()
-            assert weights["loser"] <= 0.1  # muted (0.05 if severely losing)
-            assert weights["winner"] > weights["loser"] * 3  # much higher
+            # Hard mute floor raised from 0.05 to 0.20 to preserve ensemble diversity
+            assert weights["loser"] <= 0.25  # muted (0.20 floor)
+            assert weights["winner"] > weights["loser"] * 2  # significantly higher
         finally:
             os.unlink(path)
 
@@ -349,6 +351,7 @@ class TestWeightsFlowThroughEnsemble:
 
             # momentum should be boosted, mean_rev should be muted
             assert ensemble.weights.get("momentum", 0) > ensemble.weights.get("mean_rev", 1)
-            assert ensemble.weights.get("mean_rev", 1) <= 0.1  # muted (0.05 if severely losing)
+            # Hard mute floor raised from 0.05 to 0.20 to preserve ensemble diversity
+            assert ensemble.weights.get("mean_rev", 1) <= 0.25  # muted (0.20 floor)
         finally:
             os.unlink(path)

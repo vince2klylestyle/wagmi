@@ -26,6 +26,7 @@ from typing import Optional, Dict, Any, List
 import pandas as pd
 
 from .base import BaseStrategy, Signal
+from core.filter_annotations import FilterAnnotation, AnnotatedSignal
 
 logger = logging.getLogger("bot.strategy.ensemble")
 
@@ -43,9 +44,10 @@ class EnsembleStrategy:
         min_votes: int = 2,
         weights: Optional[Dict[str, float]] = None,
         weight_manager=None,
-        veto_ratio: float = 1.5,  # Match trading_config.py default
+        veto_ratio: float = 1.5,  # Match trading_config.py default (raised back to 1.5)
         chop_detector=None,
-        confidence_floor: float = 65.0,
+        confidence_floor: float = 75.0,  # Raised from 65: minimum viable signal quality
+        ranging_confidence_floor: float = 88.0,
     ):
         self.strategies = strategies
         self.mode = mode
@@ -55,9 +57,18 @@ class EnsembleStrategy:
         self.veto_ratio = veto_ratio
         self.chop_detector = chop_detector  # ChopDetector instance (Wave 1)
         self.confidence_floor = confidence_floor
+        self.ranging_confidence_floor = ranging_confidence_floor
         self._disabled_strategies: set = set()  # Strategy names to skip
         self._regime_profitability: Dict[str, Dict] = {}  # Push 3: regime WR data
         self._last_signals: Dict[str, Dict[str, Signal]] = {}  # symbol -> {strategy -> Signal}
+        # Hysteresis: EMA-smoothed chop scores prevent floor oscillation on noise
+        self._smoothed_chop: Dict[str, float] = {}  # symbol -> smoothed chop_score
+        self._chop_ema_alpha: float = 0.3  # Smoothing factor (higher = more reactive)
+        self._quality_scorer = None  # Optional: SignalQualityScorer for pre-floor adjustment
+
+    def set_quality_scorer(self, scorer):
+        """Inject SignalQualityScorer so quality feedback affects ensemble confidence."""
+        self._quality_scorer = scorer
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
@@ -184,14 +195,19 @@ class EnsembleStrategy:
                     f"min_votes {self.min_votes} → {effective_min_votes}"
                 )
 
-        # Chop detector: multi-factor choppy market filter (replaces simple volume check)
+        # Chop detector: graduated choppy market filter
+        # Instead of binary kill, attach chop_score and let the confidence floor
+        # handle rejection. This allows high-conviction setups through even in chop.
         if self.chop_detector:
             is_chop, chop_score, chop_detail = self.chop_detector.is_choppy(symbol, data)
-            if is_chop:
-                return None
-            # Attach chop score to metadata for downstream use
+            # Attach chop score to metadata — graduated floor below will handle filtering
             for sig in signals:
                 sig.metadata["chop_score"] = round(chop_score, 3)
+            if is_chop:
+                logger.info(
+                    f"[{symbol}] Chop detected (score={chop_score:.2f}), "
+                    f"applying graduated confidence floor"
+                )
         elif self._is_low_volume(symbol, data):
             # Fallback to simple volume filter if no chop detector
             logger.info(f"[{symbol}] Signal skipped: low volume (chop filter)")
@@ -211,13 +227,68 @@ class EnsembleStrategy:
         if result is None:
             return None
 
+        # ── Pre-floor quality adjustment ──
+        # Apply signal quality feedback to ensemble confidence BEFORE the floor check.
+        # This lets historically bad setups get rejected even with high raw confidence.
+        if self._quality_scorer is not None:
+            try:
+                from feedback.signal_quality import QualityFeatures
+                features = QualityFeatures(
+                    confidence=result.confidence,
+                    num_strategies_agree=result.metadata.get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    symbol=symbol,
+                    side=result.side,
+                )
+                _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
+                    result.confidence, features
+                )
+                # Bound multiplier to 0.5-1.3 (same as SignalQualityScorer range)
+                _mult = max(0.5, min(1.3, _mult))
+                if abs(_mult - 1.0) > 0.01:
+                    result.confidence = max(0, min(100, result.confidence * _mult))
+                    result.metadata["quality_multiplier"] = round(_mult, 3)
+                    logger.info(
+                        f"[{symbol}] Quality adjustment: *{_mult:.2f} -> "
+                        f"conf={result.confidence:.1f}%"
+                    )
+            except Exception as e:
+                logger.debug(f"Quality scorer error: {e}")
+
         # ── Post-merge quality gates ──
 
-        # 1. Minimum confidence floor — reject weak consensus signals
-        if result.confidence < self.confidence_floor:
+        # 1. Minimum confidence floor — regime-aware
+        # In choppy markets, require much higher confidence to trade.
+        # 100d backtest: ranging regime = 24% WR, trending = 100% WR.
+        effective_floor = self.confidence_floor
+        raw_chop = result.metadata.get("chop_score", 0)
+        # Apply EMA smoothing to prevent floor oscillation on noise
+        prev = self._smoothed_chop.get(symbol, raw_chop)
+        chop_score = self._chop_ema_alpha * raw_chop + (1 - self._chop_ema_alpha) * prev
+        self._smoothed_chop[symbol] = chop_score
+        result.metadata["chop_score_smoothed"] = round(chop_score, 3)
+        if chop_score > 0.35:
+            if chop_score >= 0.65:
+                # Extreme chop: floor rises from ranging (88%) toward 93%.
+                # This creates a real gradient above the ranging floor.
+                chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)  # 0→1 over 0.65→0.85
+                effective_floor = self.ranging_confidence_floor + chop_intensity * (
+                    93.0 - self.ranging_confidence_floor
+                )
+            else:
+                # Moderate chop: interpolate between normal and ranging floor
+                chop_intensity = (chop_score - 0.35) / 0.30  # 0→1 over 0.35→0.65
+                effective_floor = self.confidence_floor + chop_intensity * (
+                    self.ranging_confidence_floor - self.confidence_floor
+                )
+            result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
+
+        if result.confidence < effective_floor:
             logger.info(
-                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% < {self.confidence_floor}% floor"
+                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
+                f"< {effective_floor:.0f}% floor (chop={chop_score:.2f})"
             )
+            self._record_counterfactual(result, f"confidence_floor_{effective_floor:.0f}")
             return None
 
         # 2. Trend alignment: FLIP counter-trend signals to ride the trend
@@ -227,15 +298,225 @@ class EnsembleStrategy:
         _duration_hint = self._infer_duration(_driver)
         result = self._trend_alignment_adjust(symbol, data, result, _duration_hint)
 
+        if result is None:
+            logger.info(f"[{symbol}] Signal rejected by trend alignment (counter-trend)")
+            return None
+
         # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
-        if result.confidence < self.confidence_floor:
+        if result.confidence < effective_floor:
             logger.info(
                 f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
-                f"after trend adjustment"
+                f"< {effective_floor:.0f}% after trend adjustment"
             )
+            self._record_counterfactual(result, f"trend_adj_floor_{effective_floor:.0f}")
             return None
 
         return result
+
+    def evaluate_with_annotations(
+        self, symbol: str, data: Dict[str, pd.DataFrame]
+    ) -> Optional[AnnotatedSignal]:
+        """Run ensemble evaluation with soft-filter annotations instead of hard rejections.
+
+        Returns an AnnotatedSignal with filter assessments attached, or None if
+        no strategies produced any signal at all (nothing to annotate).
+
+        Filters converted to annotations:
+        - Confidence floor (normal, chop, ranging)
+        - Trend alignment rejection
+        - Volume/chop gating
+
+        Hard rejects (min_votes not met) still return None since there's no
+        meaningful signal to annotate.
+        """
+        # Dynamic weight refresh
+        self._refresh_dynamic_weights()
+
+        signals: List[Signal] = []
+        active_count = 0
+        error_count = 0
+
+        for strategy in self.strategies:
+            if strategy.name in self._disabled_strategies:
+                continue
+            active_count += 1
+            try:
+                sig = strategy.evaluate(symbol, data)
+                if sig is not None:
+                    signals.append(sig)
+            except Exception as e:
+                error_count += 1
+                logger.warning(f"[{symbol}] {strategy.name} error: {e}")
+
+        signals = [deepcopy(s) for s in signals]
+        self._last_signals[symbol] = {s.strategy: deepcopy(s) for s in signals}
+
+        if not signals:
+            return None
+
+        # Strategy degradation
+        effective_min_votes = self.min_votes
+        if error_count > 0 and active_count > 0:
+            effective_min_votes = max(2, min(self.min_votes, active_count - error_count))
+
+        # Chop detection — attach scores but don't reject
+        annotations: List[FilterAnnotation] = []
+        chop_score = 0.0
+
+        if self.chop_detector:
+            is_chop, chop_score, chop_detail = self.chop_detector.is_choppy(symbol, data)
+            for sig in signals:
+                sig.metadata["chop_score"] = round(chop_score, 3)
+            if is_chop:
+                annotations.append(FilterAnnotation(
+                    gate="chop_floor",
+                    passed=False,
+                    severity="warning" if chop_score < 0.65 else "reject",
+                    value=round(chop_score, 3),
+                    threshold=0.65,
+                    detail=f"chop={chop_score:.2f}",
+                ))
+        elif self._is_low_volume(symbol, data):
+            annotations.append(FilterAnnotation(
+                gate="volume_chop",
+                passed=False,
+                severity="reject",
+                value=0.0,
+                threshold=0.5,
+                detail="low volume",
+            ))
+
+        # Run voting/merge — if min_votes not met, no signal to annotate
+        if self.mode == "voting":
+            result = self._voting(symbol, signals, effective_min_votes)
+        elif self.mode == "weighted_veto":
+            result = self._weighted_veto(symbol, signals, effective_min_votes)
+        elif self.mode == "weighted":
+            result = self._weighted(symbol, signals)
+        elif self.mode == "best":
+            result = self._best(symbol, signals)
+        else:
+            result = self._voting(symbol, signals, effective_min_votes)
+
+        if result is None:
+            # Not enough votes — nothing meaningful to annotate
+            return None
+
+        # Quality adjustment (same as evaluate())
+        if self._quality_scorer is not None:
+            try:
+                from feedback.signal_quality import QualityFeatures
+                features = QualityFeatures(
+                    confidence=result.confidence,
+                    num_strategies_agree=result.metadata.get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    symbol=symbol,
+                    side=result.side,
+                )
+                _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
+                    result.confidence, features
+                )
+                _mult = max(0.5, min(1.3, _mult))
+                if abs(_mult - 1.0) > 0.01:
+                    result.confidence = max(0, min(100, result.confidence * _mult))
+                    result.metadata["quality_multiplier"] = round(_mult, 3)
+            except Exception as e:
+                logger.debug(f"Quality scorer error: {e}")
+
+        # ── Soft-annotated confidence floor ──
+        effective_floor = self.confidence_floor
+        raw_chop = result.metadata.get("chop_score", 0)
+        prev = self._smoothed_chop.get(symbol, raw_chop)
+        smoothed_chop = self._chop_ema_alpha * raw_chop + (1 - self._chop_ema_alpha) * prev
+        self._smoothed_chop[symbol] = smoothed_chop
+        result.metadata["chop_score_smoothed"] = round(smoothed_chop, 3)
+
+        if smoothed_chop > 0.35:
+            if smoothed_chop >= 0.65:
+                chop_intensity = min(1.0, (smoothed_chop - 0.65) / 0.20)
+                effective_floor = self.ranging_confidence_floor + chop_intensity * (
+                    93.0 - self.ranging_confidence_floor
+                )
+            else:
+                chop_intensity = (smoothed_chop - 0.35) / 0.30
+                effective_floor = self.confidence_floor + chop_intensity * (
+                    self.ranging_confidence_floor - self.confidence_floor
+                )
+            result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
+
+        conf_passed = result.confidence >= effective_floor
+        annotations.append(FilterAnnotation(
+            gate="confidence_floor",
+            passed=conf_passed,
+            severity="reject" if not conf_passed else "ok",
+            value=round(result.confidence, 1),
+            threshold=round(effective_floor, 1),
+            detail=f"conf={result.confidence:.0f} vs floor={effective_floor:.0f} (chop={smoothed_chop:.2f})",
+        ))
+
+        # ── Soft-annotated trend alignment ──
+        _driver = result.strategy or ""
+        _duration_hint = self._infer_duration(_driver)
+        trend_result = self._trend_alignment_adjust(symbol, data, deepcopy(result), _duration_hint)
+
+        if trend_result is None:
+            annotations.append(FilterAnnotation(
+                gate="trend_alignment",
+                passed=False,
+                severity="reject",
+                value=0.0,
+                threshold=0.0,
+                detail="counter-trend rejected",
+            ))
+            # Use original result (not None) so LLM can see the signal
+            result.metadata["trend_rejected"] = True
+        else:
+            # Trend may have adjusted confidence
+            trend_score = trend_result.metadata.get("trend_score", 0)
+            result = trend_result
+            annotations.append(FilterAnnotation(
+                gate="trend_alignment",
+                passed=True,
+                severity="ok" if trend_score >= 0 else "warning",
+                value=round(trend_score, 1) if trend_score else 0.0,
+                threshold=0.0,
+                detail=f"trend={trend_score:+.1f}" if trend_score else "trend=ok",
+            ))
+            # Re-check confidence after trend adjustment
+            if result.confidence < effective_floor:
+                # Don't kill — already annotated above
+                result.metadata["post_trend_below_floor"] = True
+
+        # Build filter metadata from result
+        filter_meta = dict(result.metadata) if result.metadata else {}
+        filter_meta["num_strategies_signaled"] = len(signals)
+        filter_meta["num_strategies_active"] = active_count
+
+        return AnnotatedSignal(
+            signal=result,
+            annotations=annotations,
+            hard_rejected=False,
+            filter_metadata=filter_meta,
+        )
+
+    def _record_counterfactual(self, signal, skip_reason: str):
+        """Record a rejected signal for counterfactual analysis (missed opportunity tracking)."""
+        try:
+            from llm.brain_wiring import record_skipped_trade
+            record_skipped_trade(
+                symbol=signal.symbol,
+                side=signal.side,
+                entry_price=signal.entry,
+                sl=signal.sl,
+                tp1=signal.tp1,
+                tp2=signal.tp2,
+                confidence=signal.confidence,
+                skip_reason=skip_reason,
+                strategy=signal.strategy or "",
+                regime=signal.metadata.get("regime", ""),
+            )
+        except Exception:
+            pass  # Non-critical — don't let tracking break trading
 
     def _is_low_volume(self, symbol: str, data: Dict[str, pd.DataFrame]) -> bool:
         """Check if current volume is too low for reliable signals.
@@ -473,18 +754,18 @@ class EnsembleStrategy:
             else:
                 atr = entry * 0.02  # fallback: 2% of price
 
-        # Asymmetric levels: SL tight (1.2 ATR), TP1 wide (2.0 ATR) = 1.67:1 R:R
+        # Asymmetric levels: SL tight (1.2 ATR), TP1 wide (2.4 ATR) = 2:1 R:R
         # This ensures flipped signals are worth taking after fees.
         if signal.side == "BUY":
             new_side = "SELL"
             sl = entry + 1.2 * atr
-            tp1 = entry - 2.0 * atr
-            tp2 = entry - 3.5 * atr
+            tp1 = entry - 2.4 * atr
+            tp2 = entry - 4.8 * atr
         else:
             new_side = "BUY"
             sl = entry - 1.2 * atr
-            tp1 = entry + 2.0 * atr
-            tp2 = entry + 3.5 * atr
+            tp1 = entry + 2.4 * atr
+            tp2 = entry + 4.8 * atr
 
         # Return a NEW Signal — never mutate the original (downstream may reference it)
         return replace(
@@ -570,6 +851,23 @@ class EnsembleStrategy:
                 logger.info(f"[{symbol}] Only {len(sell_signals)} SELL signal(s), need {min_v}+ same-side")
             return None
 
+        # Block known-losing 2-agree combos (backtest PF < 0.2)
+        # confidence_scorer + multi_tier_quality without regime_trend = PF 0.08
+        # Check BOTH sides (not just one) when both have exactly 2 signals
+        _LOSING_COMBOS = {
+            frozenset({"confidence_scorer", "multi_tier_quality"}),
+            frozenset({"multi_tier_quality", "regime_trend"}),  # PF 0.42-1.02 across all backtests
+            frozenset({"confidence_scorer", "regime_trend"}),   # Block all 2-agree: weak consensus with 3 strategies
+        }
+        for side_signals in [buy_signals, sell_signals]:
+            if len(side_signals) == 2:
+                combo = frozenset(s.strategy for s in side_signals)
+                if combo in _LOSING_COMBOS:
+                    logger.info(
+                        f"[{symbol}] Blocked losing 2-agree combo: {sorted(combo)}"
+                    )
+                    return None
+
         buy_strength = self._weighted_confidence_sum(buy_signals) if buy_signals else 0
         sell_strength = self._weighted_confidence_sum(sell_signals) if sell_signals else 0
 
@@ -623,7 +921,11 @@ class EnsembleStrategy:
                     tf_discount = 0.4  # Cross-timeframe = much weaker opposition
                 else:
                     tf_discount = 1.0  # Same timeframe = full penalty
-                penalty += capped_weight * 5 * (s.confidence / 100) * tf_discount * penalty_intensity
+                # Scale by opposition strength: weak opposition (<55% confidence) = minimal penalty
+                opp_strength_scale = s.confidence / 100.0
+                if opp_strength_scale < 0.55:
+                    opp_strength_scale *= 0.3  # Weak opposition: 70% penalty reduction
+                penalty += capped_weight * 5 * (s.confidence / 100) * tf_discount * penalty_intensity * min(1.0, opp_strength_scale / 0.55)
             merged.confidence = max(0, merged.confidence - penalty)
             merged.metadata["opposition_penalty"] = round(penalty, 1)
             opp_names = [s.strategy for s in opposition]
@@ -688,56 +990,110 @@ class EnsembleStrategy:
         else:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
-        # Consensus bonus: MULTIPLICATIVE scaling (not additive).
-        # Previously additive (+5 to +18 pts) which catapulted 70% base signals
-        # into 90%+ territory → highest leverage tier → catastrophic losses when wrong.
-        # Multiplicative preserves relative ordering: a 70% signal stays in its tier.
-        #   2 agree: 1.05x (70→73.5)    3 agree: 1.08x (70→75.6)
-        #   4 agree: 1.10x (70→77.0)    unanimous: 1.13x (70→79.1)
+        # Consensus bonus: reward genuine multi-strategy agreement.
+        # 10d backtest: 3_agree PF=4.05, 86% WR — genuine confluence has edge.
+        #   2 agree: 1.03x    3 agree: 1.06x    4 agree: 1.10x
         n_agree = len(signals)
         consensus_mult = 1.0
         if n_agree >= 2:
-            consensus_mult = 1.0 + 0.03 * (n_agree - 1)  # 1.03, 1.06, 1.09
-        active_count = len(self.strategies) - len(self._disabled_strategies)
-        if n_agree == active_count and n_agree >= 3:
-            consensus_mult += 0.04  # Unanimous bonus
-        # Cap ensemble confidence — 180-day data shows 90-100% has 36% WR.
+            consensus_mult = 1.0 + 0.03 * (n_agree - 1)
+        # Cap ensemble confidence — raised to 92% so genuine unanimous signals pass
         try:
             from trading_config import TradingConfig
             max_conf = TradingConfig().max_ensemble_confidence
         except Exception:
             max_conf = 85.0
+        if max_conf < 85.0:
+            logger.warning(f"[ENSEMBLE] MAX_ENSEMBLE_CONFIDENCE={max_conf} is very low, may suppress valid signals")
+        # Respect user's configured cap (don't silently override to 92)
         combined_conf = min(max_conf, weighted_conf * consensus_mult)
 
-        # Widest SL (most conservative), average TP1 (balanced), widest TP2 (aggressive)
-        # Using average TP1 prevents zone-based strategies from pulling targets too close
-        if side == "BUY":
-            best_sl = min(s.sl for s in signals)
-            best_tp1 = sum(s.tp1 for s in signals) / len(signals)
-            best_tp2 = max(s.tp2 for s in signals)
-            entry = sum(s.entry for s in signals) / len(signals)
+        # Weighted-average SL (preserves R:R), average TP1 (balanced), widest TP2 (aggressive).
+        # Old policy: "widest SL" destroyed R:R when strategies disagreed on stops.
+        # New: weight SL by strategy accuracy, so trusted strategies get more say.
+        # Average TP1 prevents zone-based strategies from pulling targets too close.
+        # Consistent accuracy-weighted averaging for SL, entry, TP1, ATR.
+        # Using the same weighting for all levels preserves R:R geometry.
+        # TP2 stays aggressive (widest) since it's the trailing target.
+        if total_weight > 0:
+            weighted_sl = sum(
+                self._get_strategy_weight(s.strategy) * s.sl for s in signals
+            ) / total_weight
+            weighted_entry = sum(
+                self._get_strategy_weight(s.strategy) * s.entry for s in signals
+            ) / total_weight
+            weighted_tp1 = sum(
+                self._get_strategy_weight(s.strategy) * s.tp1 for s in signals
+            ) / total_weight
+            weighted_atr = sum(
+                self._get_strategy_weight(s.strategy) * s.atr for s in signals
+            ) / total_weight
         else:
-            best_sl = max(s.sl for s in signals)
-            best_tp1 = sum(s.tp1 for s in signals) / len(signals)
+            weighted_sl = sum(s.sl for s in signals) / len(signals)
+            weighted_entry = sum(s.entry for s in signals) / len(signals)
+            weighted_tp1 = sum(s.tp1 for s in signals) / len(signals)
+            weighted_atr = sum(s.atr for s in signals) / len(signals)
+        if side == "BUY":
+            best_sl = weighted_sl
+            best_tp1 = weighted_tp1
+            best_tp2 = max(s.tp2 for s in signals)
+            entry = weighted_entry
+        else:
+            best_sl = weighted_sl
+            best_tp1 = weighted_tp1
             best_tp2 = min(s.tp2 for s in signals)
-            entry = sum(s.entry for s in signals) / len(signals)
+            entry = weighted_entry
 
-        atr = max((s.atr for s in signals), default=0)
+        atr = weighted_atr
 
         # Preserve per-signal ATR and SL for profile classification
         per_signal_atr = {s.strategy: s.atr for s in signals}
         per_signal_sl = {s.strategy: s.sl for s in signals}
         per_signal_tp1 = {s.strategy: s.tp1 for s in signals}
 
-        # Expected Value per $1 risked:
-        #   EV = (win_prob × avg_R:R) - (loss_prob × 1.0)
-        # Positive EV means the trade has a statistical edge.
-        # This enables EV-based filtering: a 72% conf trade with 1.5 R:R
-        # (EV=0.80) beats a 78% conf trade with 0.9 R:R (EV=0.48).
+        # Fee-aware Expected Value per $1 risked:
+        #   EV = win_prob × (R:R - fee_drag) - loss_prob × (1.0 + fee_drag)
+        # Fee drag = round-trip fees as fraction of stop width.
+        # A 1.5 R:R trade with 10% fee drag: win nets 1.4R, loss costs 1.1R.
+        #
+        # CRITICAL: confidence ≠ win probability. 70% confidence historically
+        # produces ~45% WR (overconfident). Apply conservative deflator to
+        # prevent EV overestimation from uncalibrated confidence scores.
+        # Deflator: assume confidence is ~1.4x actual win rate (empirical).
+        # This makes EV a LOWER BOUND rather than an optimistic estimate.
         stop_width = abs(entry - best_sl)
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
-        win_prob = combined_conf / 100.0
-        ev_per_dollar = round(win_prob * rr_tp1 - (1.0 - win_prob), 4)
+        raw_win_prob = combined_conf / 100.0
+        # Conservative win probability: deflate by empirical overconfidence ratio.
+        # Higher agreement = better calibration = less deflation needed.
+        if n_agree >= 4:
+            win_prob = raw_win_prob * 0.90  # 10% deflation (unanimous, well calibrated)
+        elif n_agree >= 3:
+            win_prob = raw_win_prob * 0.80  # 20% deflation (good but not perfect)
+        else:
+            win_prob = raw_win_prob * 0.55  # 45% deflation (2-agree = ~25% actual WR)
+        try:
+            from trading_config import TradingConfig as _TConf
+            _fee_bps = _TConf().taker_fee_bps
+        except Exception:
+            _fee_bps = 4
+        fee_drag = (entry * _fee_bps * 2 / 10000.0) / stop_width if stop_width > 0 else 0
+        ev_per_dollar = round(win_prob * (rr_tp1 - fee_drag) - (1.0 - win_prob) * (1.0 + fee_drag), 4)
+
+        # Defense-in-depth: reject negative-EV signals at ensemble level.
+        # The signal pipeline also checks EV, but this prevents wasted computation
+        # on signals that are mathematically unprofitable.
+        if ev_per_dollar < 0:
+            logger.info(
+                f"[ENSEMBLE] {symbol} {side} rejected: negative EV ({ev_per_dollar:.4f}) "
+                f"R:R={rr_tp1:.2f} fee_drag={fee_drag:.3f} win_prob={win_prob:.2f}"
+            )
+            return None
+
+        # Propagate chop_score from input signals (attached by chop detector pre-merge)
+        _chop_score = max(
+            (s.metadata.get("chop_score", 0) for s in signals), default=0
+        )
 
         return Signal(
             strategy="ensemble",
@@ -764,6 +1120,9 @@ class EnsembleStrategy:
                 "mode": self.mode,
                 "ev_per_dollar": ev_per_dollar,
                 "rr_tp1": round(rr_tp1, 3),
+                "fee_drag_pct": round(fee_drag * 100, 1) if stop_width > 0 else 0.0,
+                "stop_width_pct": round(stop_width / entry * 100, 3) if entry > 0 else 0.0,
+                "chop_score": _chop_score,
             },
         )
 

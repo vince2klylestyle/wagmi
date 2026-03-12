@@ -48,8 +48,8 @@ def make_signal(strategy: str, side: str, confidence: float) -> Signal:
         confidence=confidence,
         entry=100.0,
         sl=95.0,
-        tp1=105.0,
-        tp2=110.0,
+        tp1=110.0,   # R:R = 2.0 (sufficient for positive EV after fee drag)
+        tp2=120.0,
         atr=2.0,
     )
 
