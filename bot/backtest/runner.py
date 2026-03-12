@@ -320,6 +320,59 @@ def _print_backtest_summary(results: dict):
             if count > 0:
                 print(f"    {etype}: {count}")
 
+    # Quant risk metrics (Sharpe, Sortino, Calmar, etc.)
+    risk = results.get("risk_metrics", {})
+    if risk:
+        print("\n  RISK METRICS:")
+        print(f"    Sharpe Ratio:    {risk.get('sharpe', 0):+.2f}")
+        print(f"    Sortino Ratio:   {risk.get('sortino', 0):+.2f}")
+        print(f"    Calmar Ratio:    {risk.get('calmar', 0):+.2f}")
+        print(f"    Recovery Factor: {risk.get('recovery_factor', 0):+.2f}")
+        print(f"    Time in Market:  {risk.get('time_in_market_pct', 0):.1f}%%")
+        ann_ret = risk.get("annualized_return_pct", 0)
+        print(f"    Ann. Return:     {ann_ret:+.1f}%%")
+
+    # Signal funnel (shows where signals get filtered)
+    funnel = results.get("signal_funnel", {})
+    if funnel:
+        print("\n  SIGNAL FUNNEL:")
+        for key in ("total", "signal", "no_signal", "cb_blocked", "regime_blocked",
+                     "llm_approved", "llm_vetoed"):
+            val = funnel.get(key, 0)
+            if val > 0:
+                print(f"    {key:>16}: {val}")
+
+    # By-regime performance
+    by_regime = results.get("by_regime", {})
+    if by_regime:
+        print("\n  BY REGIME:")
+        for regime, data in sorted(by_regime.items()):
+            r_trades = data.get("trades", 0)
+            r_wr = data.get("win_rate", 0)
+            r_pnl = data.get("net_pnl", data.get("pnl", 0))
+            if r_trades > 0:
+                print(f"    {regime:>16}: {r_trades} trades | WR {r_wr:.0f}%% | PnL ${r_pnl:+,.2f}")
+
+    # Costs breakdown
+    costs = results.get("costs", {})
+    if costs:
+        total_fees = costs.get("total_fees", 0)
+        total_funding = costs.get("total_funding", 0)
+        total_slippage = costs.get("total_slippage", 0)
+        if total_fees or total_funding or total_slippage:
+            print(f"\n  COSTS:")
+            print(f"    Fees:     ${total_fees:,.2f}")
+            print(f"    Funding:  ${total_funding:,.2f}")
+            print(f"    Slippage: ${total_slippage:,.2f}")
+
+    # Leverage stats
+    lev = results.get("leverage_stats", {})
+    if lev:
+        avg_lev = lev.get("avg_leverage", 0)
+        max_lev = lev.get("max_leverage", 0)
+        if avg_lev:
+            print(f"\n  LEVERAGE: avg {avg_lev:.1f}x | max {max_lev:.1f}x")
+
     print("\n" + "=" * 60 + "\n")
 
 
