@@ -256,22 +256,69 @@ def _print_backtest_summary(results: dict):
         print("❌ Backtest failed - no results")
         return
 
-    summary = results.get("summary", {})
-    pnl = results.get("pnl", {})
+    # Trade data lives in results["results"] (engine spreads trade_summary there)
+    res = results.get("results", {})
+    config = results.get("config", {})
+
+    total_trades = res.get("total_trades", 0)
+    wins = res.get("wins", 0)
+    losses = res.get("losses", 0)
+    win_rate = res.get("win_rate_pct", 0)
+    net_pnl = res.get("net_pnl", 0)
+    gross_pnl = res.get("gross_pnl", 0)
+    pf = res.get("profit_factor", 0)
+    final_eq = res.get("final_equity", config.get("starting_equity", 50000))
+    start_eq = config.get("starting_equity", 50000)
+    max_dd = res.get("max_drawdown_pct", 0)
+    total_return = res.get("total_return_pct", 0)
 
     print("\n" + "=" * 60)
     print("BACKTEST RESULTS")
     print("=" * 60)
 
-    print("\n📊 SUMMARY:")
-    print(f"  Total Trades: {summary.get('total_trades', 0)}")
-    print(f"  Wins: {summary.get('wins', 0)} | Losses: {summary.get('losses', 0)}")
-    print(f"  Win Rate: {summary.get('win_rate_pct', 0):.1f}%")
+    print(f"\n  Period: {config.get('days', '?')} days | Symbols: {config.get('symbols', [])}")
+    print(f"  Starting Equity: ${start_eq:,.2f}")
 
-    print("\n💵 PNL:")
-    print(f"  Net P&L: ${pnl.get('net_pnl', 0):+.2f}")
-    print(f"  Gross P&L: ${pnl.get('gross_pnl', 0):+.2f}")
-    print(f"  Profit Factor: {pnl.get('profit_factor', 0):.2f}x")
+    print("\n  TRADES:")
+    print(f"  Total: {total_trades} | Wins: {wins} | Losses: {losses}")
+    print(f"  Win Rate: {win_rate:.1f}%")
+
+    print("\n  PNL:")
+    print(f"  Net P&L: ${net_pnl:+,.2f}")
+    print(f"  Gross P&L: ${gross_pnl:+,.2f}")
+    print(f"  Profit Factor: {pf:.2f}x")
+    print(f"  Final Equity: ${final_eq:,.2f} ({total_return:+.1f}%)")
+    print(f"  Max Drawdown: {max_dd:.1f}%")
+
+    # Per-symbol breakdown
+    by_sym = results.get("by_symbol", {})
+    if by_sym:
+        print("\n  BY SYMBOL:")
+        for sym, data in by_sym.items():
+            sym_trades = data.get("total_trades", data.get("trades", 0))
+            sym_pnl = data.get("net_pnl", data.get("pnl", 0))
+            sym_wr = data.get("win_rate_pct", data.get("win_rate", 0))
+            if sym_trades > 0:
+                print(f"    {sym:>10}: {sym_trades} trades | WR {sym_wr:.0f}% | PnL ${sym_pnl:+,.2f}")
+
+    # Per-agreement breakdown
+    by_agree = results.get("by_agreement", {})
+    if by_agree:
+        print("\n  BY AGREEMENT:")
+        for level, data in sorted(by_agree.items()):
+            a_trades = data.get("trades", 0)
+            a_pf = data.get("profit_factor", 0)
+            a_wr = data.get("win_rate", 0)
+            if a_trades > 0:
+                print(f"    {level}_agree: {a_trades} trades | WR {a_wr:.0f}% | PF {a_pf:.2f}x")
+
+    # Exit types
+    exit_types = results.get("exit_types", {})
+    if exit_types:
+        print("\n  EXIT TYPES:")
+        for etype, count in sorted(exit_types.items(), key=lambda x: -x[1]):
+            if count > 0:
+                print(f"    {etype}: {count}")
 
     print("\n" + "=" * 60 + "\n")
 
