@@ -151,11 +151,14 @@ Cost: ~$0.007/decision cycle
 ## Critical Path to Profitability
 
 ```
-Phase A: Fix instrumentation (backtest bugs, test imports)
+Phase A: Fix instrumentation (backtest bugs, test imports) ✅ DONE
     ↓
-Phase B: Tune ensemble for more trades (data-driven, not blind)
+Phase B: Tune ensemble for more trades (data-driven, not blind) ✅ DONE
     ↓
-Phase C: Run 100-day definitive baseline backtest
+Phase B2: Quant-grade math foundation ✅ DONE (March 13)
+    ↓  Kelly sizing, EV slippage parity, graduated ADX, configurable deflators,
+       age-weighted strategy weights, isotonic calibration
+Phase C: Run 30-day baseline backtest ← WE ARE HERE
     ↓  Exit: Sharpe>1.0, PF>1.3, DD<20%, 30+ trades/symbol
 Phase D: Enable LLM, prove it adds value vs baseline
     ↓  Exit: LLM Sharpe > baseline Sharpe
@@ -187,7 +190,24 @@ The system's 3.4% signal pass rate was driven by over-restrictive gates.
 - Circuit breakers, liquidation safety, correlation guard unchanged
 - Known-losing combo block (confidence_scorer + multi_tier_quality) preserved
 
-**Next:** Run 100-day backtest with tuned params to validate more trades
+### Phase B2: Quant-Grade Math Foundation (COMPLETED March 13)
+
+Systematic removal of hardcoded magic numbers and wiring of orphaned quant systems.
+
+**Changes applied:**
+| Component | Before | After | Rationale |
+|-----------|--------|-------|-----------|
+| Position sizing | Fixed 2% risk | Half-Kelly [0.5%-4%] | Data-driven sizing from trade history |
+| Portfolio risk | Uncapped | 6% heat cap | Prevents correlated blowup |
+| EV calculation | Fee drag only | Fee + slippage drag | Parity with risk.py sizing |
+| ADX filter | Binary cutoff at 22 | Graduated penalty 10-22 | Continuous, not binary |
+| Signal success | 0.5% price move | 1R (stop distance) | Tied to actual trade structure |
+| Win prob deflators | Hardcoded in ensemble | trading_config.py + env vars | Configurable, traceable |
+| Strategy weights | Age-blind Laplace | 14-day half-life decay | Recent performance matters more |
+| Calibration bins | 5 (10-point width) | 10 (5-point width) | Finer resolution |
+| Calibration curve | Raw bin mapping | Isotonic regression | Guaranteed monotonicity |
+
+**Next:** Run 30-day backtest to validate quant changes
 
 ### Execution Safety Gaps for Live Trading
 

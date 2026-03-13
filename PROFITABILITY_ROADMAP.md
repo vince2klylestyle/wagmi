@@ -1,34 +1,36 @@
 # Profitability Roadmap — From Code to Cash
 
-> Updated 2026-03-10. Every phase must prove profitability before advancing.
+> Updated 2026-03-13. Every phase must prove profitability before advancing.
 > **Philosophy: Test at the same parameters you'll trade at. No watered-down validation.**
 
 ---
 
-## Current State (March 10, 2026)
+## Current State (March 13, 2026)
 
 **What's built:**
-- 3 active strategies (regime_trend, confidence_scorer, multi_tier_quality; monte_carlo disabled)
+- 11 strategies wired into ensemble (regime_trend, confidence_scorer, multi_tier_quality, bollinger_squeeze, vmc_cipher, probability_engine, monte_carlo_zones, oi_delta, funding_rate, lead_lag, liquidation_cascade)
 - Each strategy toggleable via `STRATEGY_*_ENABLED` env vars
 - 6-gate RiskFilterChain with MTM-aware circuit breakers
 - Regime filter: blocks trades in ranging markets (29% WR → skipped)
-- Multi-agent LLM system (7 agents: Regime, Trade, Risk, Critic, Learning, Exit, Scout)
+- Multi-agent LLM system (9 agents: Regime, Quant, Trade, Risk, Critic, Learning, Exit, Scout, Overseer)
 - Order execution layer (paper + live modes via CCXT/Hyperliquid)
 - Position manager with state machine, trailing stops, trade profiles
 - Deep memory + self-teaching + growth orchestrator
-- 999 tests passing, 0 failures
+- 1177 tests passing, 0 failures
 
-**Recent fixes (March 10):**
-- [x] Regime filter: skip ranging markets (was 75% of trades, 29% WR)
-- [x] Confidence floor raised 70→75 (everything <80% was losing)
-- [x] TP asymmetry: TP1 1.5R→2.0R, TP2 3.0R→4.0R (payoff was 1.03:1)
-- [x] confidence_scorer: require ADX >= 20 (was allowing 0-trend trades)
-- [x] confidence_scorer: 6h filter AND→OR (was letting counter-trend trades through)
-- [x] Strategy enable/disable env vars for all strategies
+**Quant-grade math foundation (March 13):**
+- [x] Kelly criterion wired into position sizing (half-Kelly, bounded [0.5%-4%])
+- [x] Portfolio heat cap: max 6% combined open risk
+- [x] EV calculation includes slippage_drag (parity with risk.py sizing)
+- [x] ADX: binary cutoff → graduated penalty (hard reject only below 10)
+- [x] Signal success: 0.5% arbitrary → 1R-based (tied to stop loss)
+- [x] Win probability deflators moved to trading_config.py (configurable)
+- [x] Strategy weights: 14-day half-life exponential decay
+- [x] Calibration: 10 bins (was 5) + isotonic regression for monotonicity
+- [x] 14 stale documentation files removed
 
 **What needs proving:**
-- Do these fixes actually improve the 10d backtest?
-- 30d+ backtest to get statistical significance
+- 30d+ backtest with quant changes to validate improvements
 - OOS validation to confirm we're not overfitting
 - LLM value quantification
 
@@ -277,6 +279,8 @@ Quarterly:
 ## PHASE DEPENDENCIES
 
 ```
+Phase 0 (Quant Math Foundation) ✅ DONE
+  ↓ math is now rigorous
 Phase 1 (Baseline Backtest) ← WE ARE HERE
   ↓ must prove profitability
 Phase 2 (LLM Value Quantification)
