@@ -1843,6 +1843,14 @@ class BacktestEngine:
         for key, stats in result.items():
             stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
             stats["avg_pnl"] = stats["pnl"] / stats["trades"] if stats["trades"] else 0
+            # Compute profit factor at agreement level
+            gross_w = sum(e.pnl for e in self.pos_mgr.trade_log
+                         if e.action in self._CLOSE_ACTIONS and e.pnl > 0
+                         and (e.metadata or {}).get("num_agree", 0) == int(key.split("_")[0]))
+            gross_l = abs(sum(e.pnl for e in self.pos_mgr.trade_log
+                              if e.action in self._CLOSE_ACTIONS and e.pnl <= 0
+                              and (e.metadata or {}).get("num_agree", 0) == int(key.split("_")[0])))
+            stats["profit_factor"] = round(gross_w / gross_l, 2) if gross_l > 0 else 99.0
             # Add profit factor per combo
             combo_details = {}
             for combo_key, combo_count in stats.get("strategy_combos", {}).items():
@@ -2194,9 +2202,15 @@ class BacktestEngine:
             return {}
 
         mean_daily = np.mean(daily_returns)
-        std_daily = np.std(daily_returns)
-        downside = [r for r in daily_returns if r < 0]
-        std_downside = np.std(downside) if downside else 0.001
+        std_daily = np.std(daily_returns, ddof=1) if len(daily_returns) > 1 else 0.0
+        # Downside deviation: sqrt(mean(min(r,0)^2)) over ALL returns.
+        # Positive returns contribute 0 to the sum; only negative returns
+        # increase the denominator.  This correctly penalises downside vol.
+        downside_arr = np.minimum(np.array(daily_returns, dtype=float), 0.0)
+        std_downside = float(np.sqrt(np.mean(downside_arr ** 2)))
+        # When no negative returns exist, use a small floor so Sortino isn't 0
+        if std_downside < 1e-12 and mean_daily > 0:
+            std_downside = 1e-6  # yields a large (capped) Sortino
 
         # Annualize
         trading_days = len(daily_returns)
@@ -2204,7 +2218,8 @@ class BacktestEngine:
         annualized_return = ((final / starting) ** (annual_factor / max(trading_days, 1))) - 1
 
         sharpe = round(float(mean_daily / std_daily * np.sqrt(annual_factor)), 2) if std_daily > 0 else 0
-        sortino = round(float(mean_daily / std_downside * np.sqrt(annual_factor)), 2) if std_downside > 0 else 0
+        raw_sortino = float(mean_daily / std_downside * np.sqrt(annual_factor)) if std_downside > 0 else 0
+        sortino = round(min(raw_sortino, 99.0), 2)  # cap at 99 to avoid misleading values
         calmar = round(float(annualized_return / max_drawdown), 2) if max_drawdown > 0 else 0
 
         # Profit factor

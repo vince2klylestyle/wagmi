@@ -80,25 +80,30 @@ def sample_adequacy(n: int) -> Dict[str, Any]:
 # ── Tail Risk ───────────────────────────────────────────────────────────────
 
 
-def compute_var(returns: List[float], confidence: float = 0.95) -> float:
+def compute_var(returns: List[float], confidence: float = 0.95) -> Optional[float]:
     """Historical Value-at-Risk: the loss at the (1-confidence) quantile.
 
     Returns a negative number representing worst expected loss.
     Example: VaR(95%) = -0.03 means 95% of days lose less than 3%.
+    Returns None if insufficient data (need at least 1/(1-confidence) points
+    to have a meaningful tail quantile).
     """
-    if len(returns) < 5:
-        return 0.0
+    min_points = max(5, int(1 / (1 - confidence)))  # 20 for 95% VaR
+    if len(returns) < min_points:
+        return None
     arr = np.array(returns, dtype=float)
     return float(np.percentile(arr, (1 - confidence) * 100))
 
 
-def compute_cvar(returns: List[float], confidence: float = 0.95) -> float:
+def compute_cvar(returns: List[float], confidence: float = 0.95) -> Optional[float]:
     """Conditional VaR (Expected Shortfall): average of losses below VaR.
 
     Always more extreme than VaR — captures tail severity.
+    Returns None if insufficient data.
     """
-    if len(returns) < 5:
-        return 0.0
+    min_points = max(5, int(1 / (1 - confidence)))  # 20 for 95% CVaR
+    if len(returns) < min_points:
+        return None
     arr = np.array(returns, dtype=float)
     var = np.percentile(arr, (1 - confidence) * 100)
     tail = arr[arr <= var]
@@ -301,14 +306,20 @@ def _group_metrics(trades: List[Dict], group_key: str) -> Dict[str, Dict[str, An
         }
 
         if len(daily_pnls) >= 5:
-            daily_rets = [p / 10000 for p in daily_pnls]  # Approximate % returns
-            std = float(np.std(daily_rets, ddof=1)) if len(daily_rets) > 1 else 0
-            mean = float(np.mean(daily_rets))
-            metrics["sharpe"] = round(mean / std * math.sqrt(365) if std > 0 else 0, 3)
-            downside = [r for r in daily_rets if r < 0]
-            ds_std = float(np.std(downside, ddof=1)) if len(downside) > 1 else 0
-            metrics["sortino"] = round(mean / ds_std * math.sqrt(365) if ds_std > 0 else 0, 3)
-            metrics["var_95"] = round(compute_var(daily_rets), 6)
+            # Approximate daily returns: PnL / mean absolute daily PnL gives a
+            # normalised series whose Sharpe/Sortino are scale-invariant.
+            # We use mean(|daily_pnl|) as denominator — it's the only unbiased
+            # scale reference available without a per-group equity curve.
+            daily_arr = np.array(daily_pnls, dtype=float)
+            mean_abs = float(np.mean(np.abs(daily_arr)))
+            if mean_abs < 1e-12:
+                mean_abs = 1.0
+            daily_rets = daily_arr / mean_abs
+
+            metrics["sharpe"] = _annualized_sharpe(daily_rets.tolist())
+            metrics["sortino"] = _annualized_sortino(daily_rets.tolist())
+            var_val = compute_var(daily_rets.tolist())
+            metrics["var_95"] = round(var_val, 6) if var_val is not None else None
 
         result[name] = metrics
 
@@ -330,27 +341,38 @@ def _aggregate_daily_returns(trades: List[Dict]) -> List[float]:
 
 def monte_carlo_shuffle(trades: List[Dict], n_simulations: int = 1000,
                         starting_equity: float = 10000.0) -> Dict[str, Any]:
-    """Randomly reorder trade PnL sequence and measure robustness.
+    """Bootstrap resample trade PnL to measure edge robustness.
 
-    If >95% of shuffles are profitable, the edge is robust regardless
-    of trade order. If <50%, it depends on lucky sequencing = fragile.
+    Resamples trades WITH REPLACEMENT (bootstrap), so each simulation
+    draws len(trades) trades from the pool, allowing repeats and omissions.
+    This produces genuine variance in final equity across simulations.
+
+    Permutation (shuffle without replacement) is degenerate: since
+    sum is order-invariant, every permutation yields the same final equity.
+
+    If >95% of bootstrap paths are profitable, the edge is robust.
+    If <50%, the edge is fragile and depends on specific trade selection.
     """
     pnls = [float(t.get("pnl", 0)) for t in trades]
     if len(pnls) < 5:
         return {"n_simulations": 0, "insufficient_data": True}
 
     pnl_arr = np.array(pnls, dtype=float)
+    n_trades = len(pnl_arr)
     rng = np.random.default_rng(42)  # Reproducible
 
     final_equities = []
     max_drawdowns = []
 
     for _ in range(n_simulations):
-        shuffled = rng.permutation(pnl_arr)
+        # Bootstrap: sample WITH REPLACEMENT — each simulation is a plausible
+        # alternate history that could have occurred given the same edge
+        indices = rng.integers(0, n_trades, size=n_trades)
+        resampled = pnl_arr[indices]
         equity = starting_equity
         peak = equity
         max_dd = 0.0
-        for p in shuffled:
+        for p in resampled:
             equity += p
             peak = max(peak, equity)
             dd = (peak - equity) / peak if peak > 0 else 0
@@ -360,23 +382,107 @@ def monte_carlo_shuffle(trades: List[Dict], n_simulations: int = 1000,
 
     final_arr = np.array(final_equities)
     dd_arr = np.array(max_drawdowns)
+    p_profitable = float(np.mean(final_arr > starting_equity))
 
     return {
         "n_simulations": n_simulations,
-        "p_profitable": round(float(np.mean(final_arr > starting_equity)), 4),
+        "p_profitable": round(p_profitable, 4),
+        "mean_final_equity": round(float(np.mean(final_arr)), 2),
         "median_final_equity": round(float(np.median(final_arr)), 2),
         "p5_final_equity": round(float(np.percentile(final_arr, 5)), 2),
+        "p25_final_equity": round(float(np.percentile(final_arr, 25)), 2),
+        "p75_final_equity": round(float(np.percentile(final_arr, 75)), 2),
         "p95_final_equity": round(float(np.percentile(final_arr, 95)), 2),
+        "equity_std": round(float(np.std(final_arr)), 2),
         "median_max_drawdown": round(float(np.median(dd_arr)), 4),
         "dd_95th_percentile": round(float(np.percentile(dd_arr, 95)), 4),
         "verdict": (
-            "robust" if float(np.mean(final_arr > starting_equity)) > 0.95
-            else "strong" if float(np.mean(final_arr > starting_equity)) > 0.80
-            else "moderate" if float(np.mean(final_arr > starting_equity)) > 0.60
-            else "weak" if float(np.mean(final_arr > starting_equity)) > 0.40
+            "robust" if p_profitable > 0.95
+            else "strong" if p_profitable > 0.80
+            else "moderate" if p_profitable > 0.60
+            else "weak" if p_profitable > 0.40
             else "fragile"
         ),
     }
+
+
+# ── Equity Curve Helpers ───────────────────────────────────────────────────
+
+
+def _safe_round(val: Optional[float], ndigits: int) -> Optional[float]:
+    """Round a value, returning None if the input is None."""
+    return round(val, ndigits) if val is not None else None
+
+
+def _daily_returns_from_curve(
+    equity_curve: List[Dict[str, Any]],
+    starting_equity: float = 10000.0,
+) -> List[float]:
+    """Aggregate a per-candle equity curve into true daily percentage returns.
+
+    Groups entries by calendar date (YYYY-MM-DD), takes the *last* equity
+    value per day, then computes day-over-day returns.
+
+    Returns an empty list if fewer than 2 calendar days are present.
+    """
+    if len(equity_curve) < 2:
+        return []
+
+    # Collect last equity per calendar day
+    daily_equity: Dict[str, float] = {}
+    for pt in equity_curve:
+        ts = str(pt.get("time", ""))[:10]  # YYYY-MM-DD
+        if not ts or len(ts) < 10:
+            continue
+        eq = float(pt.get("mtm_equity", pt.get("equity", starting_equity)))
+        daily_equity[ts] = eq  # last write wins → end-of-day value
+
+    sorted_dates = sorted(daily_equity.keys())
+    if len(sorted_dates) < 2:
+        return []
+
+    returns = []
+    for i in range(1, len(sorted_dates)):
+        prev = daily_equity[sorted_dates[i - 1]]
+        curr = daily_equity[sorted_dates[i]]
+        if prev > 0:
+            returns.append((curr - prev) / prev)
+    return returns
+
+
+def _annualized_sharpe(daily_returns: List[float], annual_factor: int = 365) -> float:
+    """Annualised Sharpe ratio from daily percentage returns.
+
+    Sharpe = mean(daily) / std(daily) * sqrt(annual_factor).
+    Returns 0.0 if insufficient data or zero volatility.
+    """
+    if len(daily_returns) < 5:
+        return 0.0
+    arr = np.array(daily_returns, dtype=float)
+    std = float(np.std(arr, ddof=1))
+    if std < 1e-12:
+        return 0.0
+    return round(float(np.mean(arr)) / std * math.sqrt(annual_factor), 3)
+
+
+def _annualized_sortino(daily_returns: List[float], annual_factor: int = 365) -> float:
+    """Annualised Sortino ratio from daily percentage returns.
+
+    Sortino = mean(daily) / downside_deviation * sqrt(annual_factor).
+    Downside deviation = sqrt(mean(min(r, 0)^2)) over ALL returns.
+    Only negative returns contribute to the denominator, but the mean
+    is taken over the full sample (not just negative days).
+    Returns 0.0 if insufficient data or no negative returns.
+    """
+    if len(daily_returns) < 5:
+        return 0.0
+    arr = np.array(daily_returns, dtype=float)
+    mean_r = float(np.mean(arr))
+    downside = np.minimum(arr, 0.0)
+    ds_dev = float(np.sqrt(np.mean(downside ** 2)))
+    if ds_dev < 1e-12:
+        return 0.0
+    return round(mean_r / ds_dev * math.sqrt(annual_factor), 3)
 
 
 # ── Main Entry Point ────────────────────────────────────────────────────────
@@ -414,15 +520,11 @@ def compute_quant_metrics(
 
     outcomes = [p > 0 for p in pnls]
 
-    # Daily returns from equity curve
-    daily_returns = []
-    if len(equity_curve) >= 2:
-        prev_eq = None
-        for pt in equity_curve:
-            eq = float(pt.get("equity", pt.get("mtm_equity", starting_equity)))
-            if prev_eq is not None and prev_eq > 0:
-                daily_returns.append((eq - prev_eq) / prev_eq)
-            prev_eq = eq
+    # Daily returns from equity curve — aggregate to true calendar days first.
+    # The equity curve has one entry per candle (e.g. 1h), so adjacent entries
+    # often show zero change.  Using per-candle "returns" produces a
+    # distribution dominated by zeros → VaR ≈ 0, kurtosis → ∞, Sortino → 0.
+    daily_returns = _daily_returns_from_curve(equity_curve, starting_equity)
 
     result = {
         "total_trades": total,
@@ -442,9 +544,13 @@ def compute_quant_metrics(
         "kelly_fraction": round(compute_kelly(wr, payoff), 4),
         "half_kelly": round(compute_kelly(wr, payoff) / 2, 4),
 
+        # ── Risk-Adjusted Returns ──
+        "sharpe": _annualized_sharpe(daily_returns),
+        "sortino": _annualized_sortino(daily_returns),
+
         # ── Tail Risk ──
-        "var_95_daily": round(compute_var(daily_returns), 6) if daily_returns else None,
-        "cvar_95_daily": round(compute_cvar(daily_returns), 6) if daily_returns else None,
+        "var_95_daily": _safe_round(compute_var(daily_returns), 6),
+        "cvar_95_daily": _safe_round(compute_cvar(daily_returns), 6),
         "distribution": distribution_moments(daily_returns) if daily_returns else None,
         "streaks": streak_stats(outcomes),
 
