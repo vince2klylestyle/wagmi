@@ -112,9 +112,9 @@ class RiskFilterChain:
         ev = signal.metadata.get("ev_per_dollar") if signal.metadata else None
         min_ev = getattr(self.config, "min_signal_ev", 0.10)
         if stop_pct > 0 and stop_pct < 0.004:
-            min_ev = max(min_ev, 0.25)  # Tight stops: fees eat most of the risk
+            min_ev = max(min_ev, 0.22)  # Tight stops: fees eat most of the risk
         elif stop_pct > 0 and stop_pct < 0.006:
-            min_ev = max(min_ev, 0.22)  # Medium-tight stops: still need higher EV
+            min_ev = max(min_ev, 0.18)  # Medium-tight stops: moderate EV bump
         if ev is not None and ev < min_ev:
             return FilterResult(
                 approved=False, signal=signal,
@@ -198,6 +198,22 @@ class RiskFilterChain:
         leverage = min(lev_decision.leverage, override_constraints["max_leverage"])
         risk_mult = lev_decision.risk_multiplier * override_constraints["size_multiplier"]
 
+        # Stop-width-dependent leverage cap: tight stops + high leverage = fragile
+        # Data: 87.3% conf / 4.73x lev / tight stop = largest loss (-$1,967)
+        # SHORT trades get tighter caps: bounces spike faster, liquidation is closer.
+        stop_width_pct = abs(signal.entry - signal.sl) / signal.entry if signal.entry > 0 else 1.0
+        is_short = signal.side == "SELL"
+        if stop_width_pct < 0.005:  # < 0.5% stop
+            stop_lev_cap = 2.0 if is_short else 2.5
+        elif stop_width_pct < 0.010:  # < 1.0% stop
+            stop_lev_cap = 3.0 if is_short else 4.0
+        else:
+            stop_lev_cap = 4.0 if is_short else 5.0
+        if leverage > stop_lev_cap:
+            logger.info(f"[{signal.symbol}] Leverage capped {leverage:.1f}x → {stop_lev_cap:.1f}x "
+                        f"(stop width {stop_width_pct:.2%} too tight for {leverage:.1f}x, side={signal.side})")
+            leverage = stop_lev_cap
+
         # Apply correlation-based size reduction if flagged
         corr_reduction = meta.get("correlation_size_reduction", 1.0)
         if corr_reduction < 1.0:
@@ -215,9 +231,9 @@ class RiskFilterChain:
             n_agree = meta.get("num_agree", 0)
             if leverage > 4.0:
                 # 3-agree EV estimates are better calibrated (20% deflation vs 45%)
-                lev_ev_floor = 0.22 if n_agree >= 3 else 0.28
+                lev_ev_floor = 0.20 if n_agree >= 3 else 0.25
             else:
-                lev_ev_floor = 0.20
+                lev_ev_floor = 0.18
             if ev < lev_ev_floor:
                 return FilterResult(
                     approved=False, signal=signal,
@@ -425,6 +441,19 @@ class RiskFilterChain:
         override_constraints = self.risk_mgr.get_override_constraints(signal.confidence)
         leverage = min(lev_decision.leverage, override_constraints["max_leverage"])
         risk_mult = lev_decision.risk_multiplier * override_constraints["size_multiplier"]
+
+        # Stop-width-dependent leverage cap (annotated path)
+        stop_width_pct = abs(signal.entry - signal.sl) / signal.entry if signal.entry > 0 else 1.0
+        if stop_width_pct < 0.005:
+            stop_lev_cap = 2.5
+        elif stop_width_pct < 0.010:
+            stop_lev_cap = 4.0
+        else:
+            stop_lev_cap = 5.0
+        if leverage > stop_lev_cap:
+            logger.info(f"[{signal.symbol}] Leverage capped {leverage:.1f}x → {stop_lev_cap:.1f}x "
+                        f"(stop width {stop_width_pct:.2%} too tight)")
+            leverage = stop_lev_cap
 
         corr_reduction = meta.get("correlation_size_reduction", 1.0)
         if corr_reduction < 1.0:

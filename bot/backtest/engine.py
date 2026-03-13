@@ -327,6 +327,14 @@ class BacktestEngine:
 
             bridge = BacktestLearningBridge()
             result = bridge.ingest(self)
+
+            # Finalize: merge backtest-learned strategy weights into live weights
+            # so the ensemble benefits from backtest calibration data immediately.
+            finalize_result = bridge.finalize(merge_to_live=True)
+            if finalize_result.get("status") == "merged":
+                n = finalize_result.get("strategy_weights_merged", 0)
+                logger.info(f"[LEARN-BRIDGE] Finalized: merged {n} strategy weights to live")
+
             print("\n" + bridge.get_summary())
             return result
         except Exception as e:
@@ -341,6 +349,11 @@ class BacktestEngine:
         if os.getenv("STRATEGY_REGIME_TREND_ENABLED", "true").lower() == "true":
             all_strats["regime_trend"] = RegimeTrendStrategy(sym_configs, self.config.htf_hours)
         if os.getenv("STRATEGY_CONFIDENCE_SCORER_ENABLED", "true").lower() == "true":
+            # Fresh signal log each backtest — prevents stale WR data from prior
+            # runs poisoning the historical confidence adjustment.
+            _bt_sig_log = Path("backtest_ml_data") / "confidence_signal_log.json"
+            if _bt_sig_log.exists():
+                _bt_sig_log.unlink()
             all_strats["confidence_scorer"] = ConfidenceScorerStrategy(sym_configs, data_dir="backtest_ml_data")
         if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "true").lower() == "true":
             all_strats["multi_tier_quality"] = MultiTierQualityStrategy(sym_configs)
@@ -591,7 +604,7 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 3 or _ash >= 3:
+                            if _al >= 2 or _ash >= 2:
                                 _bt_regime = "trend"
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
@@ -603,8 +616,11 @@ class BacktestEngine:
                     _fit = STRATEGY_REGIME_FIT.get(_bt_regime, {})
                     _disabled = {s for s, f in _fit.items() if f == "avoid"}
                     ensemble.set_disabled_strategies(_disabled)
+                    # Set regime for regime-aware min_votes
+                    ensemble.set_regime(symbol, _bt_regime)
                 except Exception:
                     ensemble.set_disabled_strategies(set())
+                    ensemble.set_regime(symbol, "unknown")
 
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal and not signal.is_valid:
@@ -627,48 +643,37 @@ class BacktestEngine:
 
                 if signal:
                     self.candle_stats["signal"] += 1
-                    # Tag regime at signal time for regime-aware reporting
-                    try:
-                        statuses = ensemble.get_all_status(symbol, windowed)
-                        adx_val = 25.0  # default neutral
-                        for s in statuses:
-                            if s.get("strategy") == "regime_trend":
-                                al = s.get("align_long", 0)
-                                ash = s.get("align_short", 0)
-                                adx_val = s.get("adx", 25.0)
-                                if al >= 3:
-                                    signal.metadata["regime"] = "trending_bull"
-                                elif ash >= 3:
-                                    signal.metadata["regime"] = "trending_bear"
-                                elif al >= 2 or ash >= 2:
-                                    signal.metadata["regime"] = "mixed"
-                                else:
-                                    signal.metadata["regime"] = "ranging"
-                                break
-                        signal.metadata["adx"] = round(adx_val, 1)
-                    except Exception:
-                        signal.metadata.setdefault("regime", "unknown")
-                        adx_val = 25.0
+                    # Use the SAME regime from pre-ensemble classification
+                    # to avoid inconsistency where pre-ensemble says "trend"
+                    # (allowing min_votes=2) but post-ensemble says "ranging"
+                    # (blocking the signal). The _bt_regime is computed at
+                    # lines 588-607 using the same alignment data.
+                    regime_map = {
+                        "trend": "trending_bull" if signal.side == "BUY" else "trending_bear",
+                        "range": "ranging",
+                        "high_volatility": "high_volatility",
+                        "consolidation": "consolidation",
+                        "unknown": "unknown",
+                    }
+                    signal.metadata["regime"] = regime_map.get(_bt_regime, "unknown")
+                    signal.metadata["adx"] = round(_bt_adx, 1)
+                    signal.metadata["bt_regime_raw"] = _bt_regime
 
-                    # ADX-based override: if ADX < 20, force ranging regardless of alignment
-                    # This catches cases where alignment says "mixed" but market has no trend
-                    if adx_val < 20.0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
-                        signal.metadata["regime"] = "ranging"
-
-                    # Also check trade_profile regime (uses trend_adjustment from ensemble)
-                    # This catches signals where align >= 2 but no actual trend alignment
-                    trend_adj = signal.metadata.get("trend_adjustment", 0)
-                    if trend_adj == 0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
-                        # No trend alignment bonus → trade_profile would classify as ranging
-                        # Override "mixed" to "ranging" since trend_adjustment confirms no trend
-                        signal.metadata["regime"] = "ranging"
-
-                    # Regime filter: skip trades in ranging markets (24% WR historically)
+                    # Only block truly directionless markets:
+                    # ADX < 20 AND no alignment (regime=range)
                     regime = signal.metadata.get("regime", "unknown")
-                    if regime in ("ranging", "unknown"):
+                    if regime == "ranging" and _bt_adx < 20.0:
                         logger.info(
-                            f"[{symbol}] Signal SKIPPED: {regime} regime "
-                            f"(ADX={adx_val:.1f}, no directional alignment)"
+                            f"[{symbol}] Signal SKIPPED: ranging regime "
+                            f"(ADX={_bt_adx:.1f}, no directional alignment)"
+                        )
+                        self.candle_stats.setdefault("regime_blocked", 0)
+                        self.candle_stats["regime_blocked"] += 1
+                        continue
+                    elif regime in ("consolidation",) and _bt_adx < 15.0:
+                        logger.info(
+                            f"[{symbol}] Signal SKIPPED: {regime} "
+                            f"(ADX={_bt_adx:.1f}, very low directional movement)"
                         )
                         self.candle_stats.setdefault("regime_blocked", 0)
                         self.candle_stats["regime_blocked"] += 1
@@ -889,7 +894,7 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 3 or _ash >= 3:
+                            if _al >= 2 or _ash >= 2:
                                 _bt_regime = "trend"
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
@@ -901,8 +906,11 @@ class BacktestEngine:
                     _fit = STRATEGY_REGIME_FIT.get(_bt_regime, {})
                     _disabled = {s for s, f in _fit.items() if f == "avoid"}
                     ensemble.set_disabled_strategies(_disabled)
+                    # Set regime for regime-aware min_votes
+                    ensemble.set_regime(symbol, _bt_regime)
                 except Exception:
                     ensemble.set_disabled_strategies(set())
+                    ensemble.set_regime(symbol, "unknown")
 
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal and not signal.is_valid:
@@ -919,12 +927,10 @@ class BacktestEngine:
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
                                 adx_val = s.get("adx", 25.0)
-                                if al >= 3:
+                                if al >= 2:
                                     signal.metadata["regime"] = "trending_bull"
-                                elif ash >= 3:
+                                elif ash >= 2:
                                     signal.metadata["regime"] = "trending_bear"
-                                elif al >= 2 or ash >= 2:
-                                    signal.metadata["regime"] = "mixed"
                                 else:
                                     signal.metadata["regime"] = "ranging"
                                 break
@@ -1843,6 +1849,14 @@ class BacktestEngine:
         for key, stats in result.items():
             stats["win_rate"] = stats["wins"] / stats["trades"] if stats["trades"] else 0
             stats["avg_pnl"] = stats["pnl"] / stats["trades"] if stats["trades"] else 0
+            # Compute profit factor at agreement level
+            gross_w = sum(e.pnl for e in self.pos_mgr.trade_log
+                         if e.action in self._CLOSE_ACTIONS and e.pnl > 0
+                         and (e.metadata or {}).get("num_agree", 0) == int(key.split("_")[0]))
+            gross_l = abs(sum(e.pnl for e in self.pos_mgr.trade_log
+                              if e.action in self._CLOSE_ACTIONS and e.pnl <= 0
+                              and (e.metadata or {}).get("num_agree", 0) == int(key.split("_")[0])))
+            stats["profit_factor"] = round(gross_w / gross_l, 2) if gross_l > 0 else 99.0
             # Add profit factor per combo
             combo_details = {}
             for combo_key, combo_count in stats.get("strategy_combos", {}).items():
@@ -2194,9 +2208,15 @@ class BacktestEngine:
             return {}
 
         mean_daily = np.mean(daily_returns)
-        std_daily = np.std(daily_returns)
-        downside = [r for r in daily_returns if r < 0]
-        std_downside = np.std(downside) if downside else 0.001
+        std_daily = np.std(daily_returns, ddof=1) if len(daily_returns) > 1 else 0.0
+        # Downside deviation: sqrt(mean(min(r,0)^2)) over ALL returns.
+        # Positive returns contribute 0 to the sum; only negative returns
+        # increase the denominator.  This correctly penalises downside vol.
+        downside_arr = np.minimum(np.array(daily_returns, dtype=float), 0.0)
+        std_downside = float(np.sqrt(np.mean(downside_arr ** 2)))
+        # When no negative returns exist, use a small floor so Sortino isn't 0
+        if std_downside < 1e-12 and mean_daily > 0:
+            std_downside = 1e-6  # yields a large (capped) Sortino
 
         # Annualize
         trading_days = len(daily_returns)
@@ -2204,7 +2224,8 @@ class BacktestEngine:
         annualized_return = ((final / starting) ** (annual_factor / max(trading_days, 1))) - 1
 
         sharpe = round(float(mean_daily / std_daily * np.sqrt(annual_factor)), 2) if std_daily > 0 else 0
-        sortino = round(float(mean_daily / std_downside * np.sqrt(annual_factor)), 2) if std_downside > 0 else 0
+        raw_sortino = float(mean_daily / std_downside * np.sqrt(annual_factor)) if std_downside > 0 else 0
+        sortino = round(min(raw_sortino, 99.0), 2)  # cap at 99 to avoid misleading values
         calmar = round(float(annualized_return / max_drawdown), 2) if max_drawdown > 0 else 0
 
         # Profit factor

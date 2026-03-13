@@ -436,8 +436,8 @@ def _print_backtest_summary(results: dict):
         print("\n  BY AGREEMENT:")
         for level, data in sorted(by_agree.items()):
             a_trades = data.get("trades", 0)
+            a_wr = data.get("win_rate", 0) * 100  # decimal to pct
             a_pf = data.get("profit_factor", 0)
-            a_wr = data.get("win_rate", 0)
             if a_trades > 0:
                 print(f"    {level}_agree: {a_trades} trades | WR {a_wr:.0f}% | PF {a_pf:.2f}x")
 

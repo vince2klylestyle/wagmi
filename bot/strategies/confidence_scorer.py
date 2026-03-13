@@ -363,8 +363,11 @@ class ConfidenceScorerStrategy(BaseStrategy):
                 logger.info(f"[{symbol}] confidence_scorer BUY rejected: 6h bearish (MACD_h={macd_h_6h:.2f}, MFI={mfi_6h_val:.0f})")
                 return None
             if not di_bullish and (macd_h_6h > 0 and mfi_6h_val > 55):
-                logger.info(f"[{symbol}] confidence_scorer SELL rejected: 6h bullish (MACD_h={macd_h_6h:.2f}, MFI={mfi_6h_val:.0f})")
-                return None
+                htf_penalty = 15  # Penalize but don't kill — 6h lags during bear bounces
+                confidence -= htf_penalty
+                logger.info(f"[{symbol}] confidence_scorer SELL penalized -{htf_penalty}: 6h bullish (MACD_h={macd_h_6h:.2f}, MFI={mfi_6h_val:.0f}), conf now {confidence:.0f}")
+                if confidence < 55:
+                    return None
 
             # 6h confirmation bonus
             htf_aligned = (di_bullish and macd_h_6h > 0) or (not di_bullish and macd_h_6h < 0)

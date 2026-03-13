@@ -44,10 +44,10 @@ class EnsembleStrategy:
         min_votes: int = 2,
         weights: Optional[Dict[str, float]] = None,
         weight_manager=None,
-        veto_ratio: float = 1.5,  # Match trading_config.py default (raised back to 1.5)
+        veto_ratio: float = 1.2,  # Lowered from 1.5: fee-drag + EV gates handle quality
         chop_detector=None,
         confidence_floor: float = 75.0,  # Raised from 65: minimum viable signal quality
-        ranging_confidence_floor: float = 88.0,
+        ranging_confidence_floor: float = 80.0,  # Lowered from 88: 88% was nearly impossible
     ):
         self.strategies = strategies
         self.mode = mode
@@ -67,10 +67,36 @@ class EnsembleStrategy:
         self._quality_scorer = None  # Optional: SignalQualityScorer for pre-floor adjustment
         # Rejection tracking: why signals were rejected (for LLM brain learning)
         self._last_rejections: Dict[str, Dict] = {}  # symbol -> {reason, confidence, side, ...}
+        # Regime-aware min_votes: current regime per symbol (set externally by engine)
+        self._current_regime: Dict[str, str] = {}  # symbol -> regime string
 
     def set_quality_scorer(self, scorer):
         """Inject SignalQualityScorer so quality feedback affects ensemble confidence."""
         self._quality_scorer = scorer
+
+    def set_regime(self, symbol: str, regime: str):
+        """Set the current market regime for a symbol.
+
+        Used for regime-aware min_votes: trending markets allow min_votes-1
+        since trend direction provides strong confirmation.
+        Regime values: 'trend', 'range', 'high_volatility', 'consolidation', 'unknown'
+        """
+        self._current_regime[symbol] = regime
+
+    def _get_effective_min_votes(self, symbol: str) -> int:
+        """Get regime-aware min_votes for a symbol.
+
+        In trending regimes, reduce min_votes by 1 (floor 2) because:
+        - Backtest data: trending regime = 100% WR
+        - Trend direction itself provides high-quality confirmation
+        - With only 4-5 active strategies, min_votes=3 is too restrictive
+
+        In ranging/unknown regimes, keep standard min_votes for safety.
+        """
+        regime = self._current_regime.get(symbol, "unknown")
+        if regime == "trend" and self.min_votes > 2:
+            return self.min_votes - 1  # e.g., 3 → 2 in trending
+        return self.min_votes
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
@@ -197,19 +223,23 @@ class EnsembleStrategy:
         if not signals:
             return None
 
-        # ── Graceful strategy degradation ──
+        # ── Regime-aware min_votes + graceful degradation ──
+        # In trending regimes, reduce min_votes by 1 since trend confirmation is strong.
+        effective_min_votes = self._get_effective_min_votes(symbol)
+        if effective_min_votes != self.min_votes:
+            logger.info(
+                f"[{symbol}] Regime-aware min_votes: {self.min_votes} → {effective_min_votes} "
+                f"(regime={self._current_regime.get(symbol, 'unknown')})"
+            )
         # If strategies errored, lower min_votes so the system doesn't deadlock.
-        # With 4 strategies and MIN_VOTES=3, a single error means max 3 signals.
-        # If one of those 3 abstains, we'd have 2 signals and can never trade.
-        effective_min_votes = self.min_votes
         if error_count > 0 and active_count > 0:
-            # Lower min_votes proportionally, but never below 2
-            effective_min_votes = max(2, min(self.min_votes, active_count - error_count))
-            if effective_min_votes != self.min_votes:
+            degraded = max(2, min(effective_min_votes, active_count - error_count))
+            if degraded != effective_min_votes:
                 logger.info(
                     f"[{symbol}] Strategy degradation: {error_count} errors, "
-                    f"min_votes {self.min_votes} → {effective_min_votes}"
+                    f"min_votes {effective_min_votes} → {degraded}"
                 )
+                effective_min_votes = degraded
 
         # Chop detector: graduated choppy market filter
         # Instead of binary kill, attach chop_score and let the confidence floor
@@ -393,10 +423,10 @@ class EnsembleStrategy:
         if not signals:
             return None
 
-        # Strategy degradation
-        effective_min_votes = self.min_votes
+        # Regime-aware min_votes + degradation
+        effective_min_votes = self._get_effective_min_votes(symbol)
         if error_count > 0 and active_count > 0:
-            effective_min_votes = max(2, min(self.min_votes, active_count - error_count))
+            effective_min_votes = max(2, min(effective_min_votes, active_count - error_count))
 
         # Chop detection — attach scores but don't reject
         annotations: List[FilterAnnotation] = []
@@ -762,16 +792,17 @@ class EnsembleStrategy:
                     f"score={total:.1f}/{n} [{detail_str}] *1.03 (+{adj:.1f})"
                 )
             else:
-                # Moderate counter-trend — REJECT instead of flip.
-                # Flipped signals have zero original conviction in the new direction.
-                # Better to skip entirely than enter with no thesis.
-                result.metadata["trend_adjustment"] = 0
-                result.metadata["trend_rejected"] = True
+                # Moderate counter-trend — penalize but don't reject.
+                # Rejection kills valid shorts during bear market bounces.
+                old_conf = result.confidence
+                result.confidence = max(0, result.confidence * 0.90)  # 10% penalty
+                adj = round(result.confidence - old_conf, 1)
+                result.metadata["trend_adjustment"] = adj
+                result.metadata["trend_counter"] = True
                 logger.info(
-                    f"[{symbol}] Counter-trend {side} REJECTED: moderate trend "
-                    f"score={total:.1f}/{n} [{detail_str}] -- no flip, skip trade"
+                    f"[{symbol}] Counter-trend {side} penalized: moderate trend "
+                    f"score={total:.1f}/{n} [{detail_str}] *0.90 ({adj:.1f})"
                 )
-                return None
         else:
             result.metadata["trend_adjustment"] = 0
             logger.info(f"[{symbol}] Neutral trend: score={total:.1f}/{n} [{detail_str}]")
@@ -866,6 +897,8 @@ class EnsembleStrategy:
                 return None
 
         merged = self._merge_signals(symbol, chosen)
+        if merged is None:
+            return None
 
         # Confidence penalty for opposition, weighted by opposer's confidence.
         # Previously flat 10pts per opposer regardless of their conviction.
@@ -935,6 +968,8 @@ class EnsembleStrategy:
             return None
 
         merged = self._merge_signals(symbol, chosen)
+        if merged is None:
+            return None
 
         # Duration-aware opposition penalty: daily strategies penalize
         # intraday signals less (different timeframe = weaker opposition).
@@ -1078,6 +1113,23 @@ class EnsembleStrategy:
             weighted_entry = sum(s.entry for s in signals) / len(signals)
             weighted_tp1 = sum(s.tp1 for s in signals) / len(signals)
             weighted_atr = sum(s.atr for s in signals) / len(signals)
+        # Bear-market shorts: widen SL to survive bounce wicks.
+        # 1.5x ATR is too tight for SELL in volatile bear markets — bounces
+        # trigger stops before the move continues. Widen by 30% in trending regimes.
+        regime = self._current_regime.get(symbol, "unknown")
+        if side == "SELL" and regime == "trend":
+            sl_widen = 1.3  # 30% wider stop for bear-market shorts
+            old_sl = weighted_sl
+            # For SELL, SL is above entry — widen means push it higher
+            sl_dist = abs(weighted_sl - weighted_entry)
+            weighted_sl = weighted_entry + sl_dist * sl_widen
+            # Proportionally widen TP to maintain R:R geometry
+            weighted_tp1 = weighted_entry - abs(weighted_entry - weighted_tp1) * sl_widen
+            logger.info(
+                f"[ENSEMBLE] {symbol} SELL SL widened {sl_widen}x for bear regime: "
+                f"SL {old_sl:.2f} → {weighted_sl:.2f}"
+            )
+
         if side == "BUY":
             best_sl = weighted_sl
             best_tp1 = weighted_tp1
@@ -1116,7 +1168,14 @@ class EnsembleStrategy:
         elif n_agree >= 3:
             win_prob = raw_win_prob * 0.80  # 20% deflation (good but not perfect)
         else:
-            win_prob = raw_win_prob * 0.55  # 45% deflation (2-agree = ~25% actual WR)
+            # 2-agree: use regime info to adjust deflation.
+            # In confirmed trending regime with min_votes reduction, the trend
+            # itself acts as a third confirmation → less deflation needed.
+            regime = self._current_regime.get(symbol, "unknown")
+            if regime == "trend":
+                win_prob = raw_win_prob * 0.68  # 32% deflation (trend confirms)
+            else:
+                win_prob = raw_win_prob * 0.55  # 45% deflation (no trend support)
         try:
             from trading_config import TradingConfig as _TConf
             _fee_bps = _TConf().taker_fee_bps
