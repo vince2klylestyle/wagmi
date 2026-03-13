@@ -158,7 +158,7 @@ class ModeComparisonRunner:
             if mode > 0:
                 try:
                     from backtest.llm_integration import BacktestLLMIntegration
-                    llm_integration = BacktestLLMIntegration(config=config)
+                    llm_integration = BacktestLLMIntegration(budget_usd=5.0)
                 except Exception as e:
                     logger.warning(f"[COMPARE] LLM integration unavailable for mode {mode}: {e}")
 
