@@ -472,7 +472,7 @@ def _annualized_sortino(daily_returns: List[float], annual_factor: int = 365) ->
     Downside deviation = sqrt(mean(min(r, 0)^2)) over ALL returns.
     Only negative returns contribute to the denominator, but the mean
     is taken over the full sample (not just negative days).
-    Returns 0.0 if insufficient data or no negative returns.
+    Returns 0.0 if insufficient data. Capped at 99.0 when no negative returns.
     """
     if len(daily_returns) < 5:
         return 0.0
@@ -481,8 +481,13 @@ def _annualized_sortino(daily_returns: List[float], annual_factor: int = 365) ->
     downside = np.minimum(arr, 0.0)
     ds_dev = float(np.sqrt(np.mean(downside ** 2)))
     if ds_dev < 1e-12:
-        return 0.0
-    return round(mean_r / ds_dev * math.sqrt(annual_factor), 3)
+        # No negative returns: use a small floor so Sortino reflects positive performance
+        if mean_r > 0:
+            ds_dev = 1e-6
+        else:
+            return 0.0
+    raw = mean_r / ds_dev * math.sqrt(annual_factor)
+    return round(min(raw, 99.0), 3)  # cap at 99 to avoid misleading values
 
 
 # ── Main Entry Point ────────────────────────────────────────────────────────
