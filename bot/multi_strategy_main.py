@@ -432,6 +432,9 @@ class MultiStrategyBot:
             ranging_confidence_floor=config.ranging_confidence_floor,
         )
 
+        # Apply quant system config disables (kill toxic strategies)
+        self.ensemble.apply_config_disables(config)
+
         # Execution
         self.risk_mgr = RiskManager(
             starting_equity=config.starting_equity,
@@ -2319,6 +2322,29 @@ class MultiStrategyBot:
                 # Feed regime detector on every tick (not just when signals pass)
                 self.regime_detector.update(symbol, _computed_regime)
                 self._tick_regime_cache[symbol] = _computed_regime
+        except Exception:
+            pass
+
+        # ── 4h regime confirmation (B2) ──
+        try:
+            df_4h = data.get("4h")
+            if df_4h is not None and not df_4h.empty and len(df_4h) > 20:
+                _returns_4h = df_4h["close"].pct_change().tail(20)
+                _vol_4h = float(_returns_4h.std() * 100) if len(_returns_4h) > 5 else 0
+                _trend_4h = abs(float(_returns_4h.tail(10).mean() * 1000)) if len(_returns_4h) > 10 else 0
+
+                if _vol_4h > 5:
+                    _regime_4h = "high_volatility"
+                elif _trend_4h > 2 and _vol_4h > 1.5:
+                    _regime_4h = "trend"
+                elif _vol_4h < 1.0:
+                    _regime_4h = "range"
+                elif _trend_4h > 1:
+                    _regime_4h = "trend"
+                else:
+                    _regime_4h = "consolidation"
+
+                self.ensemble.set_regime_4h(symbol, _regime_4h)
         except Exception:
             pass
 
