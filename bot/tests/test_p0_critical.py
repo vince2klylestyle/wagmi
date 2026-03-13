@@ -669,7 +669,7 @@ class TestMTMEquityCircuitBreaker:
         assert pos.funding_costs > initial_funding  # Costs accumulate
 
     def test_post_cooldown_caution_mode(self):
-        """After CB cooldown, next 2 trades get reduced size (caution mode)."""
+        """After CB cooldown, next 4 trades get reduced size (caution mode)."""
         from execution.risk import CircuitBreaker
 
         cb = CircuitBreaker(daily_loss_limit_pct=0.05, cooldown_minutes=1)
@@ -685,12 +685,12 @@ class TestMTMEquityCircuitBreaker:
         allowed = cb.is_trading_allowed(confidence=75, sim_time=after_cooldown)
         assert allowed
         assert not cb.tripped  # CB reset
-        assert cb.post_cooldown_caution == 2  # Next 2 trades at reduced size
+        assert cb.post_cooldown_caution == 4  # Next 4 trades at reduced size
 
         # Constraints should be "cautious"
         constraints = cb.get_override_constraints(75)
         assert constraints["constrained"]
-        assert constraints["max_leverage"] <= 3.0
+        assert constraints["max_leverage"] <= 2.0
         assert constraints["size_multiplier"] == 0.5
 
 

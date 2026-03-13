@@ -200,16 +200,18 @@ class RiskFilterChain:
 
         # Stop-width-dependent leverage cap: tight stops + high leverage = fragile
         # Data: 87.3% conf / 4.73x lev / tight stop = largest loss (-$1,967)
+        # SHORT trades get tighter caps: bounces spike faster, liquidation is closer.
         stop_width_pct = abs(signal.entry - signal.sl) / signal.entry if signal.entry > 0 else 1.0
+        is_short = signal.side == "SELL"
         if stop_width_pct < 0.005:  # < 0.5% stop
-            stop_lev_cap = 2.5
+            stop_lev_cap = 2.0 if is_short else 2.5
         elif stop_width_pct < 0.010:  # < 1.0% stop
-            stop_lev_cap = 4.0
+            stop_lev_cap = 3.0 if is_short else 4.0
         else:
-            stop_lev_cap = 5.0  # wide stops can handle more leverage
+            stop_lev_cap = 4.0 if is_short else 5.0
         if leverage > stop_lev_cap:
             logger.info(f"[{signal.symbol}] Leverage capped {leverage:.1f}x → {stop_lev_cap:.1f}x "
-                        f"(stop width {stop_width_pct:.2%} too tight for {leverage:.1f}x)")
+                        f"(stop width {stop_width_pct:.2%} too tight for {leverage:.1f}x, side={signal.side})")
             leverage = stop_lev_cap
 
         # Apply correlation-based size reduction if flagged
