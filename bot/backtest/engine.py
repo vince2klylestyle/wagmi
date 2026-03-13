@@ -591,7 +591,7 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 3 or _ash >= 3:
+                            if _al >= 2 or _ash >= 2:
                                 _bt_regime = "trend"
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
@@ -639,12 +639,10 @@ class BacktestEngine:
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
                                 adx_val = s.get("adx", 25.0)
-                                if al >= 3:
+                                if al >= 2:
                                     signal.metadata["regime"] = "trending_bull"
-                                elif ash >= 3:
+                                elif ash >= 2:
                                     signal.metadata["regime"] = "trending_bear"
-                                elif al >= 2 or ash >= 2:
-                                    signal.metadata["regime"] = "mixed"
                                 else:
                                     signal.metadata["regime"] = "ranging"
                                 break
@@ -658,13 +656,8 @@ class BacktestEngine:
                     if adx_val < 20.0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
                         signal.metadata["regime"] = "ranging"
 
-                    # Also check trade_profile regime (uses trend_adjustment from ensemble)
-                    # This catches signals where align >= 2 but no actual trend alignment
-                    trend_adj = signal.metadata.get("trend_adjustment", 0)
-                    if trend_adj == 0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
-                        # No trend alignment bonus → trade_profile would classify as ranging
-                        # Override "mixed" to "ranging" since trend_adjustment confirms no trend
-                        signal.metadata["regime"] = "ranging"
+                    # trend_adjustment == 0 no longer forces "ranging" — align >= 2
+                    # already provides directional regime classification above
 
                     # Regime filter: skip trades in ranging markets (24% WR historically)
                     regime = signal.metadata.get("regime", "unknown")
@@ -892,7 +885,7 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 3 or _ash >= 3:
+                            if _al >= 2 or _ash >= 2:
                                 _bt_regime = "trend"
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
@@ -925,12 +918,10 @@ class BacktestEngine:
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
                                 adx_val = s.get("adx", 25.0)
-                                if al >= 3:
+                                if al >= 2:
                                     signal.metadata["regime"] = "trending_bull"
-                                elif ash >= 3:
+                                elif ash >= 2:
                                     signal.metadata["regime"] = "trending_bear"
-                                elif al >= 2 or ash >= 2:
-                                    signal.metadata["regime"] = "mixed"
                                 else:
                                     signal.metadata["regime"] = "ranging"
                                 break

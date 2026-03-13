@@ -792,16 +792,17 @@ class EnsembleStrategy:
                     f"score={total:.1f}/{n} [{detail_str}] *1.03 (+{adj:.1f})"
                 )
             else:
-                # Moderate counter-trend — REJECT instead of flip.
-                # Flipped signals have zero original conviction in the new direction.
-                # Better to skip entirely than enter with no thesis.
-                result.metadata["trend_adjustment"] = 0
-                result.metadata["trend_rejected"] = True
+                # Moderate counter-trend — penalize but don't reject.
+                # Rejection kills valid shorts during bear market bounces.
+                old_conf = result.confidence
+                result.confidence = max(0, result.confidence * 0.90)  # 10% penalty
+                adj = round(result.confidence - old_conf, 1)
+                result.metadata["trend_adjustment"] = adj
+                result.metadata["trend_counter"] = True
                 logger.info(
-                    f"[{symbol}] Counter-trend {side} REJECTED: moderate trend "
-                    f"score={total:.1f}/{n} [{detail_str}] -- no flip, skip trade"
+                    f"[{symbol}] Counter-trend {side} penalized: moderate trend "
+                    f"score={total:.1f}/{n} [{detail_str}] *0.90 ({adj:.1f})"
                 )
-                return None
         else:
             result.metadata["trend_adjustment"] = 0
             logger.info(f"[{symbol}] Neutral trend: score={total:.1f}/{n} [{detail_str}]")
