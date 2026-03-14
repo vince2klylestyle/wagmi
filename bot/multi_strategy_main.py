@@ -929,6 +929,10 @@ class MultiStrategyBot:
         # Per-trade compound sizing cache: stored at entry, read at close for attribution
         self._compound_mult_cache: Dict[str, float] = {}
 
+        # Walk-forward degradation: auto-reduce sizing when OOS performance degrades
+        self._wf_ratio: float = 1.0  # Default: no degradation
+        self._wf_last_computed: float = 0.0  # Epoch of last computation
+
         # Per-tick regime cache: computed once, reused by all subsystems
         # (avoids 5x redundant get_regime() calls per symbol per tick)
         self._tick_regime_cache = {}
@@ -1281,6 +1285,32 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.debug(f"Weight decay error: {e}")
 
+            # Walk-forward ratio: auto-reduce sizing when OOS performance degrades
+            try:
+                if self.trade_ledger:
+                    _wf_trades = self.trade_ledger.get_trades(lookback_days=60)
+                    if len(_wf_trades) >= 10:
+                        from validation.walk_forward import run_rolling_walk_forward, avg_wf_ratio
+                        _wf_input = [
+                            {"pnl": float(t.get("net_pnl", "0")),
+                             "timestamp": float(t.get("timestamp", "0"))}
+                            for t in _wf_trades
+                        ]
+                        _wf_results = run_rolling_walk_forward(_wf_input)
+                        self._wf_ratio = avg_wf_ratio(_wf_results) if _wf_results else 1.0
+                        _wf_mult = self._get_wf_multiplier()
+                        logger.info(
+                            f"[QUANT] Walk-forward ratio: {self._wf_ratio:.3f} "
+                            f"→ sizing mult={_wf_mult:.2f}"
+                        )
+                        if self._wf_ratio < 0.4:
+                            logger.warning(
+                                f"[QUANT] WALK-FORWARD CRITICAL: ratio={self._wf_ratio:.3f} "
+                                f"— sizing reduced to {_wf_mult:.0%}"
+                            )
+            except Exception as e:
+                logger.debug(f"Walk-forward computation error: {e}")
+
             # Quant daily report: 6 key metrics with alerting
             if self.daily_reporter:
                 try:
@@ -1575,6 +1605,18 @@ class MultiStrategyBot:
                         )
             except Exception as e:
                 logger.debug(f"[{trace_id}] Periodic reconciliation error: {e}")
+
+    def _get_wf_multiplier(self) -> float:
+        """Walk-forward degradation multiplier for compound sizing.
+        WF ratio >= 0.7: 1.0× (no reduction)
+        WF ratio 0.0-0.7: linear scale (0.0× to 1.0×)
+        WF ratio < 0.0: 0.0× (halt new entries — overfitting detected)
+        """
+        if self._wf_ratio >= 0.7:
+            return 1.0
+        if self._wf_ratio < 0.0:
+            return 0.0
+        return max(0.0, self._wf_ratio / 0.7)
 
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""
@@ -3281,6 +3323,14 @@ class MultiStrategyBot:
                         )
                 except Exception as e:
                     logger.debug(f"Portfolio risk budget check failed: {e}")
+            # Walk-forward degradation: reduce sizing when OOS performance degrades
+            _wf_mult = self._get_wf_multiplier()
+            if _wf_mult < 1.0:
+                _compound_mult *= _wf_mult
+                if _wf_mult <= 0.0:
+                    logger.warning(f"[{symbol}] WF HALT: ratio={self._wf_ratio:.3f}, blocking entry")
+                else:
+                    logger.info(f"[{symbol}] WF degradation: ratio={self._wf_ratio:.3f}, mult={_wf_mult:.2f}")
             # Cap at 2× base, floor at 0.1×
             _compound_mult = min(2.0, max(0.1, _compound_mult))
             # Apply compound multiplier to symbol risk

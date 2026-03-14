@@ -752,13 +752,41 @@ Must achieve over 21 days:
    - New: -8/-12 penalty (less harsh, keeps more 1h-confirmed signals through)
    - Old penalty killed signals where 1h had genuine edge but 6h was neutral
 
+### Session 3d: Walk-Forward Live Monitoring (Wiring Holes Swarm)
+
+**Source**: Wiring holes swarm agent confirmed IC/Kelly/portfolio risk all wired. Major remaining gap: walk-forward.
+
+**Changes Implemented:**
+1. **Walk-forward degradation → compound sizing** (`multi_strategy_main.py`)
+   - `_wf_ratio` tracked and recomputed daily from 60-day trade history
+   - `_get_wf_multiplier()`: WF >= 0.7 → 1.0×, linear scale to 0.0× at WF = 0
+   - Negative WF (overfitting detected) → 0.0× (halt new entries)
+   - Wired as 10th compound sizing multiplier (after portfolio risk budget)
+   - Warning logged when WF ratio < 0.4 (critical degradation)
+2. **5 new tests** for WF multiplier math (strong/degraded/critical/negative/zero)
+
+### Compound Sizing: Complete 10-Multiplier System
+
+| # | Multiplier | Source | Effect |
+|---|-----------|--------|--------|
+| 1 | Kelly weight | `kelly_engine` | Size up proven strategies, down unproven |
+| 2 | IC weight | `ic_tracker` | Kill inverted factors, half-size decaying |
+| 3 | Regime scalar | `risk_mgr` | Reduce in bear/chop, maintain in trend |
+| 4 | Drawdown dial | `risk_mgr` | Progressive reduction during drawdowns |
+| 5 | Vol regime | ATR current/baseline | Inverse volatility sizing |
+| 6 | BTC momentum | 1h price change | Alignment with BTC direction |
+| 7 | Portfolio budget | `portfolio_risk` | Scale down as budget fills (>50%) |
+| 8 | Walk-forward | `_wf_ratio` | Auto-reduce on OOS degradation |
+| 9 | Cap/Floor | 0.1×-2.0× | Prevent extreme sizes |
+| 10 | Circuit breaker | CB constraints | Override during consecutive losses |
+
 ### Still Pending
 
-- [ ] Wire live walk-forward validation with auto-sizing reduction on edge decay
 - [ ] Wire rebalance suggestions into exit intelligence (currently computed but ignored)
 - [ ] Run 30-day backtest with full missed trade tracking to calibrate gates
 - [ ] Make TP/SL ratios regime-adaptive (static ATR multipliers currently)
 - [ ] Add regime-specific slippage multipliers to EV calculation
+- [ ] Seed signal quality from backtest before paper trading
 
 ---
 

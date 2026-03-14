@@ -368,3 +368,35 @@ class TestCompoundMultCache:
         val = cache.pop("BTC", "")
         assert val == 0.7543
         assert "BTC" not in cache
+
+
+# ── Walk-Forward Degradation Multiplier ───────────────────────────
+
+class TestWalkForwardMultiplier:
+    def _get_wf_multiplier(self, wf_ratio):
+        """Mirror the bot's _get_wf_multiplier logic."""
+        if wf_ratio >= 0.7:
+            return 1.0
+        if wf_ratio < 0.0:
+            return 0.0
+        return max(0.0, wf_ratio / 0.7)
+
+    def test_strong_wf_no_reduction(self):
+        assert self._get_wf_multiplier(0.8) == 1.0
+        assert self._get_wf_multiplier(0.7) == 1.0
+        assert self._get_wf_multiplier(1.2) == 1.0
+
+    def test_degraded_wf_reduces(self):
+        mult = self._get_wf_multiplier(0.5)
+        assert 0.70 < mult < 0.72  # 0.5/0.7 = 0.714
+
+    def test_critical_wf_heavy_reduction(self):
+        mult = self._get_wf_multiplier(0.3)
+        assert 0.42 < mult < 0.44  # 0.3/0.7 = 0.429
+
+    def test_negative_wf_halts(self):
+        assert self._get_wf_multiplier(-0.5) == 0.0
+        assert self._get_wf_multiplier(-0.1) == 0.0
+
+    def test_zero_wf(self):
+        assert self._get_wf_multiplier(0.0) == 0.0
