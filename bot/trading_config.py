@@ -543,6 +543,9 @@ class SymbolOverrides:
     # Volatility profile: "low" (BTC-like), "medium" (SOL-like), "high" (HYPE/meme)
     # Affects chop detection sensitivity and ensemble confidence floor
     volatility_profile: str = "medium"
+    # Regimes where this symbol should never trade (e.g. historically negative-EV regimes)
+    # e.g. ["trending_bear"] blocks all signals when regime_trend classifies bear trend
+    regime_blocklist: List[str] = field(default_factory=list)
 
 
 # Default per-symbol overrides
@@ -555,7 +558,11 @@ DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
     # needs less risk per trade to compensate.
     "BTC": SymbolOverrides(max_leverage=10.0, risk_per_trade=_env_float("BTC_RISK_OVERRIDE", 0.004), volatility_profile="low"),
     # BTC risk slightly below global 0.5% since BTC ATR stops are proportionally tighter
-    "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium"),
+    # SOL: "high" volatility profile unlocks the same lenient chop floor as HYPE (85% max
+    # vs 90% with "medium") — SOL has strong intraday swings worth trading aggressively.
+    # regime_blocklist blocks trending_bear: 70d backtest showed 0% WR in that regime.
+    "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="high",
+                           regime_blocklist=["trending_bear"]),
     "HYPE": SymbolOverrides(max_leverage=20.0, volatility_profile="high"),
     "DOGE": SymbolOverrides(max_leverage=12.0, volatility_profile="high"),
     "FARTCOIN": SymbolOverrides(max_leverage=10.0, volatility_profile="high"),

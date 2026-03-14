@@ -432,6 +432,25 @@ class EnsembleStrategy:
         if result is None:
             return None
 
+        # ── Per-symbol regime blocklist ──
+        # Some symbols have historically negative EV in specific regimes.
+        # Block them before spending time on downstream quality gates.
+        _current_reg = self._current_regime.get(symbol, "unknown")
+        try:
+            from trading_config import DEFAULT_SYMBOL_OVERRIDES
+            _sym_ov = DEFAULT_SYMBOL_OVERRIDES.get(symbol)
+            if _sym_ov:
+                _blocklist = getattr(_sym_ov, 'regime_blocklist', [])
+                if _blocklist and _current_reg in _blocklist:
+                    logger.info(
+                        f"[{symbol}] Signal rejected: regime '{_current_reg}' is blocklisted "
+                        f"for {symbol} (historical 0% WR)"
+                    )
+                    self._record_counterfactual(result, f"regime_blocklist_{_current_reg}")
+                    return None
+        except Exception:
+            pass
+
         # ── 4h regime confirmation filter (B2) ──
         # For 2-agree signals, require 1h and 4h regime alignment.
         # Prevents counter-trend entries where 1h calls 'bull' but 4h is still 'bear'.
