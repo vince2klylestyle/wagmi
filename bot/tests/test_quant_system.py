@@ -158,10 +158,10 @@ class TestRegimeMinVotes:
         from strategies.ensemble import EnsembleStrategy
         assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bear") == 2
 
-    def test_bull_regime_allows_1(self):
-        """Trending bull allows single-strategy high-conviction trades."""
+    def test_bull_regime_requires_2(self):
+        """Trending bull requires 2-agree: solo regime_trend had 40% WR in 30d backtest."""
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bull") == 1
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bull") == 2
 
     def test_consolidation_allows_2(self):
         from strategies.ensemble import EnsembleStrategy

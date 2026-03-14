@@ -409,13 +409,13 @@ class TestRegimeSlTp:
         from trading_config import get_regime_sl_tp
         sl, tp1, tp2 = get_regime_sl_tp("trending_bull", 2.0, 2.0, 4.0)
         assert sl > 2.0  # Wider SL in trend
-        assert tp1 < 2.0  # Tighter TP1 (take profits)
+        assert tp1 > 2.0  # Wider TP1: let momentum carry in trends
 
     def test_consolidation_tightens_sl(self):
         from trading_config import get_regime_sl_tp
         sl, tp1, tp2 = get_regime_sl_tp("consolidation", 2.0, 2.0, 4.0)
         assert sl < 2.0  # Tighter SL
-        assert tp1 > 2.0  # Wider TP1 (breakout target)
+        assert tp1 < 2.0  # Tighter TP1: take profits before mean-reversion snap-back
 
     def test_unknown_regime_no_change(self):
         from trading_config import get_regime_sl_tp

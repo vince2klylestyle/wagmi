@@ -575,19 +575,40 @@ PAPER_PROFILE_OVERRIDES = {
 }
 
 # Regime-conditional SL/TP multipliers (applied on top of base sl_atr_multiplier)
-# Trending: wider SL (let trends breathe), tighter TP (take profits)
-# Consolidation: tighter SL (clear breakout or stop), wider TP (breakout target)
+# Trending: wider SL (let trends breathe), wider TP (let momentum carry)
+# Consolidation: tighter SL (mean-revert or stop), tighter TP (take profits before snap-back)
 # High vol: widest SL (avoid wick stops), tightest TP (grab what you can)
 REGIME_SL_TP_SCALARS = {
-    "trending_bull":    {"sl_mult": 1.2, "tp1_mult": 0.9, "tp2_mult": 0.85},
-    "trending_bear":    {"sl_mult": 1.1, "tp1_mult": 0.8, "tp2_mult": 0.8},
-    "trend":            {"sl_mult": 1.15, "tp1_mult": 0.85, "tp2_mult": 0.85},
-    "consolidation":    {"sl_mult": 0.85, "tp1_mult": 1.2, "tp2_mult": 1.3},
-    "range":            {"sl_mult": 0.9, "tp1_mult": 1.1, "tp2_mult": 1.2},
+    "trending_bull":    {"sl_mult": 1.2, "tp1_mult": 1.3, "tp2_mult": 1.5},   # was tp1=0.9/tp2=0.85: inverted R:R killed trending trades
+    "trending_bear":    {"sl_mult": 1.1, "tp1_mult": 1.2, "tp2_mult": 1.4},   # was tp1=0.8/tp2=0.8: same issue
+    "trend":            {"sl_mult": 1.15, "tp1_mult": 1.25, "tp2_mult": 1.4},  # was tp1=0.85/tp2=0.85
+    "consolidation":    {"sl_mult": 0.85, "tp1_mult": 0.9, "tp2_mult": 0.85},  # was tp1=1.2/tp2=1.3: mean-reversion should take profits fast
+    "range":            {"sl_mult": 0.9, "tp1_mult": 0.95, "tp2_mult": 0.9},   # was tp1=1.1/tp2=1.2: same as consolidation
     "high_volatility":  {"sl_mult": 1.4, "tp1_mult": 0.7, "tp2_mult": 0.7},
     "panic":            {"sl_mult": 1.5, "tp1_mult": 0.6, "tp2_mult": 0.6},
     "low_liquidity":    {"sl_mult": 1.3, "tp1_mult": 0.8, "tp2_mult": 0.8},
 }
+
+
+# Regime-aware risk sizing: bet bigger where edge is proven, smaller where it isn't.
+# 30-day backtest: consolidation 78% WR (+$3.2k), trending_bull 40% WR (-$4k).
+REGIME_RISK_MULTIPLIERS = {
+    "trending_bull":    0.7,    # unproven edge — reduce size
+    "trending_bear":    0.7,
+    "trend":            0.8,
+    "consolidation":    1.3,    # proven 78% WR — lean into edge
+    "range":            0.8,
+    "high_volatility":  0.5,
+    "panic":            0.3,
+    "low_liquidity":    0.5,
+    "news_dislocation": 0.4,
+    "unknown":          0.8,
+}
+
+
+def get_regime_risk_mult(regime: str) -> float:
+    """Return position-size multiplier for the given regime."""
+    return REGIME_RISK_MULTIPLIERS.get(regime, 0.8)
 
 
 def get_regime_sl_tp(regime: str, base_sl_mult: float, base_tp1_mult: float,

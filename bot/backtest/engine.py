@@ -609,8 +609,8 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 2 or _ash >= 2:
-                                _bt_regime = "trend"
+                            if _al >= 3 or _ash >= 3:
+                                _bt_regime = "trend"  # was >=2: alignment 2/4 is weak, not a real trend
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
                             elif _bt_adx > 40:
@@ -923,8 +923,8 @@ class BacktestEngine:
                             _bt_adx = _s.get("adx", 25.0)
                             _al = _s.get("align_long", 0)
                             _ash = _s.get("align_short", 0)
-                            if _al >= 2 or _ash >= 2:
-                                _bt_regime = "trend"
+                            if _al >= 3 or _ash >= 3:
+                                _bt_regime = "trend"  # was >=2: alignment 2/4 is weak, not a real trend
                             elif _bt_adx < 20:
                                 _bt_regime = "range"
                             elif _bt_adx > 40:

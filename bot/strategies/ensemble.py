@@ -147,8 +147,8 @@ class EnsembleStrategy:
     # EV gates + small position size handle quality; min_votes shouldn't over-filter.
     REGIME_MIN_VOTES = {
         'trending_bear':   2,   # 2-of-3 realistic in bear
-        'trending_bull':   1,   # was 2: allow single-strategy high-conf trades at half size
-        'trend':           1,   # same as trending_bull
+        'trending_bull':   2,   # was 1: solo regime_trend had 40% WR in 30d backtest, losing $4k
+        'trend':           2,   # was 1: same issue — weak alignment solo entries are coin flips
         'consolidation':   2,   # mean-reversion needs confirmation
         'range':           2,   # ranging needs confirmation
         'high_volatility': 2,   # was 3: impossible with 4 strategies. EV gate handles quality.

@@ -274,6 +274,17 @@ class RiskFilterChain:
         if corr_reduction < 1.0:
             risk_mult *= corr_reduction
 
+        # Apply regime-based risk sizing: bet bigger where edge is proven
+        try:
+            from trading_config import get_regime_risk_mult
+            _regime = signal.metadata.get("regime", "unknown")
+            _regime_rm = get_regime_risk_mult(_regime)
+            if _regime_rm != 1.0:
+                risk_mult *= _regime_rm
+                meta["regime_risk_mult"] = _regime_rm
+        except ImportError:
+            pass
+
         meta["leverage"] = leverage
         meta["leverage_tier"] = lev_decision.tier
         meta["risk_multiplier"] = round(risk_mult, 2)
@@ -522,6 +533,17 @@ class RiskFilterChain:
         corr_reduction = meta.get("correlation_size_reduction", 1.0)
         if corr_reduction < 1.0:
             risk_mult *= corr_reduction
+
+        # Apply regime-based risk sizing (annotated path)
+        try:
+            from trading_config import get_regime_risk_mult
+            _regime = signal.metadata.get("regime", "unknown")
+            _regime_rm = get_regime_risk_mult(_regime)
+            if _regime_rm != 1.0:
+                risk_mult *= _regime_rm
+                meta["regime_risk_mult"] = _regime_rm
+        except ImportError:
+            pass
 
         meta["leverage"] = leverage
         meta["leverage_tier"] = lev_decision.tier
