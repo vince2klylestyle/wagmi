@@ -1133,3 +1133,46 @@ Walk-Forward: ratio=0.00 (FAIL)
 ### Tests: 1308 passing
 
 The blueprint transforms the bot from **"few big conviction bets"** to **"many small diversified edges"** — the core philosophy of quantitative investing. Each phase independently improves the system; together they compound into institutional-grade architecture.
+
+---
+
+## Quant Research Findings (Session 4 — March 2026)
+
+### The Core Problem: Walk-Forward Ratio = 0.00
+The walk-forward validation shows **zero generalization** to unseen data. This is the mathematically expected outcome:
+- **80+ tunable parameters** on **51 trades** = **0.6 trades per parameter**
+- Academic consensus requires **30+ trades per parameter** for statistical significance
+- The in-sample fit is pure noise memorization — curves look great but predict nothing
+
+### What Top Crypto Quant Funds Do Differently
+
+**Factor persistence:** Only **momentum** and **carry** are proven persistent factors in crypto. Mean-reversion, sentiment, and microstructure factors have decay < 3 months. Our 11-strategy ensemble is over-diversified across unproven factors.
+
+**Parameter discipline:** Successful funds use 4-6 total parameters, not 80+. The 11-multiplier compound sizing system alone has more tunable knobs than most entire strategies at top firms.
+
+**Validation rigor:** Single-path WFO (what we use) has selection bias. Top firms use **Combinatorial Purged Cross-Validation (CPCV)** which creates N*(N-1)/2 train/test paths from N folds, providing distribution of performance rather than single point estimate.
+
+### Priority-Ordered Action Plan
+
+| Priority | Action | Expected Impact | Current → Target |
+|----------|--------|----------------|-----------------|
+| **1** | Reduce to 4-6 total parameters | WFR 0.00 → 0.3-0.5 | 80+ params → 4-6 |
+| **2** | Test each strategy independently | Isolate real edge from noise | 9 strategies untested solo |
+| **3** | Replace 11-multiplier sizing with vol-targeting | Eliminate sizing overfitting | 11 multipliers → 1 param |
+| **4** | Extend backtest to 6-12 months | Statistical significance | 51 trades → 200+ |
+| **5** | Implement CPCV validation | Robust OOS estimation | Single-path WFO → CPCV |
+| **6** | Add cross-sectional momentum | Proven persistent factor | 0 cross-sectional factors |
+| **7** | Replace threshold regimes with 2-state HMM | Fewer params, better detection | 10 regime types → 2 states |
+| **8** | Implement meta-labeling | Replace LLM veto with stats | LLM discretionary → p-values |
+| **9** | Combine microstructure signals | HYPE-specific alpha | Separate signals → combined |
+| **10** | Tighten correlation limits for crashes | Tail risk protection | Static limits → dynamic |
+
+### Key Insight
+> The path to profitability is **radical simplification**, not adding more strategies.
+> A 2-strategy system with 4 parameters on 200+ trades will outperform a 9-strategy system with 80+ parameters on 51 trades — every time.
+
+### Immediate Next Steps
+1. Run 70-day backtest with Session 4 changes (9 strategies, HYPE fixes, R:R corrections)
+2. If HYPE improves: validate with walk-forward
+3. Begin parameter reduction sprint (Phase 8 in ROADMAP)
+4. Fix SOL (-$6,242, 17% WR — actively destroying capital)

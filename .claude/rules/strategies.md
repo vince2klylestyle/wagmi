@@ -1,13 +1,25 @@
 # Strategy Development Rules
 
 ## Architecture
-The bot uses 4 independent trading strategies that vote through a weighted-veto ensemble:
-1. `regime_trend.py` — Regime-based trend following (needs 1h+6h data)
-2. `monte_carlo_zones.py` — Monte Carlo support/resistance (needs daily data)
-3. `confidence_scorer.py` — Multi-factor confidence scoring
-4. `multi_tier_quality.py` — Multi-timeframe signal quality (needs 5m+1h data)
+The bot uses 11 trading strategies (9 active, 2 disabled) that vote through a weighted-veto ensemble:
 
-Ensemble voting happens in `bot/strategies/ensemble.py` (weighted_veto mode).
+**Active (9):**
+1. `regime_trend.py` — Regime-based trend following (1h+6h MACD+MFI)
+2. `confidence_scorer.py` — Multi-factor momentum scoring (ADX+MACD+BB+RSI)
+3. `bollinger_squeeze.py` — BB/KC squeeze detection + breakout
+4. `vmc_cipher.py` — 5-oscillator confluence (WaveTrend-based)
+5. `probability_engine.py` — Regime-conditional Monte Carlo simulation
+6. `monte_carlo_zones.py` — Daily TF mean-reversion zones
+7. `funding_rate.py` — Counter-trades extreme funding (live/paper only, no backtest data)
+8. `oi_delta.py` — Open interest expansion/contraction signals
+9. `liquidation_cascade.py` — Post-cascade reversal signals (volume spikes + wicks)
+
+**Disabled (2):**
+10. `lead_lag_enabled.py` — 0% WR, -$1,100 net (disabled)
+11. `multi_tier_quality.py` — PF 0.82, -$1,223 net (disabled)
+
+Ensemble voting happens in `bot/strategies/ensemble.py` (weighted_veto mode, 1,599 lines).
+Regime-based allowlists gate which strategies can vote in each market condition.
 
 ## Signal Contract
 All strategies MUST return `Optional[Signal]` from their `evaluate()` method.

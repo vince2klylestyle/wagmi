@@ -8,12 +8,19 @@
 - `bot/data/strategy_weights.py` — Rolling strategy performance weights
 
 ## Data Requirements by Strategy
-| Strategy | Timeframes Needed | Data Source |
-|---|---|---|
-| regime_trend | 1h, 6h | CCXT (Hyperliquid) |
-| monte_carlo_zones | daily | CCXT |
-| multi_tier_quality | 5m, 1h | CCXT |
-| confidence_scorer | varies | CCXT |
+| Strategy | Timeframes Needed | Data Source | Notes |
+|---|---|---|---|
+| regime_trend | 1h, 6h | CCXT (Hyperliquid) | |
+| confidence_scorer | varies | CCXT | ADX+MACD+BB+RSI |
+| bollinger_squeeze | 1h | CCXT | BB/KC squeeze |
+| vmc_cipher | 1h | CCXT | WaveTrend oscillators |
+| probability_engine | 1h | CCXT | Monte Carlo sim |
+| monte_carlo_zones | daily | CCXT | Mean-reversion zones |
+| funding_rate | N/A | REST API (live) | No historical data in backtest |
+| oi_delta | N/A | REST API (live) | fetch_open_interest() via CCXT |
+| liquidation_cascade | 1h | CCXT | Volume spikes + wick detection |
+| lead_lag (disabled) | 5m, 1h | CCXT | |
+| multi_tier_quality (disabled) | 5m, 1h | CCXT | |
 
 ## Rules
 - NEVER assume all timeframes are available — strategies must handle missing data

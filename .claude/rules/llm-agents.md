@@ -1,13 +1,16 @@
 # LLM Agent Development Rules
 
 ## Architecture Awareness
-You are working on a **multi-agent LLM trading system** with 6 specialist agents:
+You are working on a **multi-agent LLM trading system** with 9 agents:
 1. **Regime Agent** (Haiku) — classifies market regime + directional outlook
 2. **Trade Agent** (Sonnet) — forms directional thesis, decides go/skip/flip
 3. **Risk Agent** (Haiku) — sizes positions, flags risks
 4. **Critic Agent** (Sonnet) — stress-tests thesis, requires counter-thesis for vetoes
 5. **Learning Agent** (Haiku) — extracts lessons, tracks thesis accuracy per setup type
 6. **Exit Agent** (Haiku) — monitors open positions, reassesses thesis validity
+7. **Scout Agent** (Haiku) — idle-time preparation: watchlists, pre-formed theses
+8. **Overseer Agent** (Haiku) — system health monitoring (periodic)
+9. **Quant Agent** (Haiku) — quantitative analysis (optional)
 
 These agents are orchestrated by `bot/llm/agents/coordinator.py` in a sequential pipeline.
 The Exit Agent runs independently on open positions via `get_exit_intelligence()` method.
@@ -15,11 +18,12 @@ The Exit Agent runs independently on open positions via `get_exit_intelligence()
 ## Key Files
 - `bot/llm/agents/base.py` — AgentRole, AgentOutput, AgentConfig types
 - `bot/llm/agents/coordinator.py` — Pipeline orchestration and output merging
-- `bot/llm/agents/prompts.py` — All 6 agent prompts (REGIME/TRADE/RISK/LEARNING/CRITIC/EXIT)
+- `bot/llm/agents/prompts.py` — All 9 agent prompts
 - `bot/llm/agents/learning_integration.py` — Wires agent output to deep memory, hypotheses, knowledge
-- `bot/llm/agents/shared_context.py` — Shared reasoning framework (if exists)
-- `bot/llm/agents/thought_protocol.py` — Structured reasoning template (if exists)
-- `bot/llm/agents/consistency_checker.py` — Cross-agent coherence validation (if exists)
+- `bot/llm/agents/shared_context.py` — Shared reasoning framework + strategy theory/confluence
+- `bot/llm/agents/thought_protocol.py` — Structured reasoning template
+- `bot/llm/agents/consistency_checker.py` — Cross-agent coherence validation
+- `bot/llm/agents/calibration_ledger.py` — Per-agent accuracy tracking
 - `bot/llm/decision_engine.py` — Monolithic fallback pipeline
 - `bot/llm/usage_tiers.py` — Model routing (Haiku/Sonnet/Opus per trigger)
 - `bot/llm/client.py` — Raw Anthropic API wrapper
