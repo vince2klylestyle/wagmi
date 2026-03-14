@@ -3342,6 +3342,11 @@ class MultiStrategyBot:
                         )
                 except Exception as e:
                     logger.debug(f"Portfolio risk budget check failed: {e}")
+            # Agreement-based sizing: 1-agree trades get half size (quant cherry-pick)
+            _n_agree = signal_result.metadata.get("num_agree", 1) if signal_result.metadata else 1
+            if _n_agree == 1:
+                _compound_mult *= 0.5
+                logger.info(f"[{symbol}] Single-strategy trade: half-size (0.5× compound mult)")
             # Walk-forward degradation: reduce sizing when OOS performance degrades
             _wf_mult = self._get_wf_multiplier()
             if _wf_mult < 1.0:

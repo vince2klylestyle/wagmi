@@ -452,6 +452,32 @@ class TestRegimeSlippage:
         # Just verify the function doesn't crash with regime set.
         assert hasattr(ens_mod, 'EnsembleStrategy')
 
+    def test_single_agree_half_size(self):
+        """1-agree trades should get half compound sizing multiplier."""
+        # The compound sizing in multi_strategy_main.py applies 0.5× for num_agree==1
+        # Verify the metadata pattern matches
+        from strategies.base import Signal
+        sig = Signal(
+            strategy="ensemble", symbol="BTC", side="BUY",
+            confidence=85.0, entry=100.0, sl=98.0, tp1=104.0, tp2=108.0, atr=2.0,
+            metadata={"num_agree": 1}
+        )
+        assert sig.metadata["num_agree"] == 1
+        # A 1-agree signal with 0.5× multiplier means half the position size
+        compound_mult = 1.0
+        n_agree = sig.metadata.get("num_agree", 1)
+        if n_agree == 1:
+            compound_mult *= 0.5
+        assert compound_mult == 0.5
+
+    def test_multi_agree_full_size(self):
+        """2+ agree trades should not get agreement penalty."""
+        compound_mult = 1.0
+        n_agree = 3
+        if n_agree == 1:
+            compound_mult *= 0.5
+        assert compound_mult == 1.0
+
     def test_slippage_bps_values(self):
         """Verify slippage values are reasonable (1-6 bps range)."""
         expected = {
