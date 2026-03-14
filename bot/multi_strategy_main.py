@@ -1993,6 +1993,10 @@ class MultiStrategyBot:
                                 _session_dd = round(
                                     (cb.session_peak_equity - self.risk_mgr.equity) / cb.session_peak_equity * 100, 2
                                 )
+                            # Compute realized R:R for EV calibration
+                            _stop_width = abs(pos.entry - pos.sl) if pos.sl else 0
+                            _realized_rr = round(total_pnl / (_stop_width * (pos.qty or 1)), 3) if _stop_width > 0 and pos.qty else 0
+                            _predicted_ev = pos.entry_reasons.get("ev_per_dollar", "") if pos.entry_reasons else ""
                             self.trade_ledger.record_trade({
                                 "symbol": symbol,
                                 "side": event.side,
@@ -2017,6 +2021,9 @@ class MultiStrategyBot:
                                 "net_pnl": str(round(total_pnl, 2)),
                                 "running_equity": str(round(self.risk_mgr.equity, 2)),
                                 "session_dd_pct": str(_session_dd),
+                                "predicted_ev": str(_predicted_ev),
+                                "realized_rr": str(_realized_rr),
+                                "win": "1" if total_pnl > 0 else "0",
                             })
                         except Exception as e:
                             logger.debug(f"Trade ledger record error: {e}")
@@ -3582,6 +3589,10 @@ class MultiStrategyBot:
             # Signal flagger data for post-trade analysis
             "signal_flags": signal_result.metadata.get("signal_flags", ""),
             "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
+            # EV tracking for calibration
+            "ev_per_dollar": signal_result.metadata.get("ev_per_dollar", ""),
+            "win_prob_deflated": signal_result.metadata.get("win_prob", ""),
+            "fee_drag_pct": signal_result.metadata.get("fee_drag_pct", ""),
         }
 
         # Track portfolio correlation risk for LLM learning feedback

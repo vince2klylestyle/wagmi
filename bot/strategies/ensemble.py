@@ -1385,6 +1385,7 @@ class EnsembleStrategy:
         # This makes EV a LOWER BOUND rather than an optimistic estimate.
         stop_width = abs(entry - best_sl)
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
+        rr_tp2 = abs(entry - best_tp2) / stop_width if stop_width > 0 else 0
         raw_win_prob = combined_conf / 100.0
         # Win probability deflation: regime-aware calibration.
         # Trending regimes have empirically higher WR (58-86%), so deflate less.
@@ -1423,7 +1424,19 @@ class EnsembleStrategy:
         _slippage_bps = _REGIME_SLIPPAGE_BPS.get(_regime_ev, 2)
         _total_cost_bps = _fee_bps * 2 + _slippage_bps  # round-trip fees + slippage
         fee_drag = (entry * _total_cost_bps / 10000.0) / stop_width if stop_width > 0 else 0
-        ev_per_dollar = round(win_prob * (rr_tp1 - fee_drag) - (1.0 - win_prob) * (1.0 + fee_drag), 4)
+        # Partial-close-aware EV: model TP1 partial close + TP2 continuation
+        # After TP1 hit, SL moves to breakeven → remaining position is risk-free
+        # but only ~50% chance of reaching TP2 (conservative estimate)
+        _tp1_close_pct = 0.60  # Default: MEDIUM profile closes 60% at TP1
+        _p_tp2_given_tp1 = 0.45  # Conservative: once TP1 hit and SL at BE, 45% reach TP2
+        # Blended win payoff: tp1_pct gets rr_tp1, remainder gets expected rr_tp2
+        _win_payoff = (
+            _tp1_close_pct * (rr_tp1 - fee_drag)
+            + (1 - _tp1_close_pct) * _p_tp2_given_tp1 * (rr_tp2 - fee_drag)
+            # remaining position that doesn't reach TP2: exits at ~breakeven (0 gain, pay exit fee)
+            + (1 - _tp1_close_pct) * (1 - _p_tp2_given_tp1) * (-fee_drag * 0.5)
+        )
+        ev_per_dollar = round(win_prob * _win_payoff - (1.0 - win_prob) * (1.0 + fee_drag), 4)
 
         # Defense-in-depth: reject negative-EV signals at ensemble level.
         # The signal pipeline also checks EV, but this prevents wasted computation
@@ -1464,7 +1477,9 @@ class EnsembleStrategy:
                 "per_signal_tp1": per_signal_tp1,
                 "mode": self.mode,
                 "ev_per_dollar": ev_per_dollar,
+                "win_prob": round(win_prob, 4),
                 "rr_tp1": round(rr_tp1, 3),
+                "rr_tp2": round(rr_tp2, 3),
                 "fee_drag_pct": round(fee_drag * 100, 1) if stop_width > 0 else 0.0,
                 "stop_width_pct": round(stop_width / entry * 100, 3) if entry > 0 else 0.0,
                 "chop_score": _chop_score,
