@@ -35,6 +35,7 @@ from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
 from execution.risk import RiskManager, CircuitBreaker
 from execution.candidate import TradeCandidate, CandidateLogger
+from feedback.missed_trade_tracker import MissedTradeTracker
 from strategies.chop_detector import ChopDetector
 from strategies.bollinger_squeeze import BollingerSqueezeStrategy
 from strategies.vmc_cipher import VMCCipherStrategy
@@ -110,6 +111,7 @@ class BacktestEngine:
         self.cb_events: List[Dict] = []  # Circuit breaker trip log
         self.signals_blocked_by_cb = 0  # Signals skipped due to CB
         self.signal_rejections: List[Dict] = []  # Track why signals were rejected
+        self.missed_trade_tracker = MissedTradeTracker(data_dir="data")
         self.candle_stats = {"total": 0, "signal": 0, "no_signal": 0, "cb_blocked": 0}
         self.symbol_pnl: Dict[str, float] = {}  # Per-symbol equity attribution
         self._signal_digests: List[Dict] = []  # Per-candle signal digest for quant learning
@@ -188,6 +190,8 @@ class BacktestEngine:
             chop_detector=chop,
             confidence_floor=self.config.ensemble_confidence_floor,
         )
+        # Wire missed trade tracker into ensemble for rejection feedback
+        ensemble.set_missed_trade_tracker(self.missed_trade_tracker)
 
         # Fetch historical data for all symbols
         all_data = {}
@@ -402,6 +406,7 @@ class BacktestEngine:
             logger.info(f"[{symbol}] Resuming from candle {start_idx}")
 
         for i in range(start_idx, total_candles):
+            self._current_candle_idx = i  # Track for missed trade counterfactuals
             # Build windowed data for this point in time
             windowed = {}
             for tf, df in data.items():
@@ -669,6 +674,12 @@ class BacktestEngine:
                         )
                         self.candle_stats.setdefault("regime_blocked", 0)
                         self.candle_stats["regime_blocked"] += 1
+                        self.missed_trade_tracker.record_rejection(
+                            signal=signal,
+                            reason=f"Ranging regime ADX={_bt_adx:.1f} < 20",
+                            gate="regime_filter",
+                            candle_idx=i,
+                        )
                         continue
                     elif regime in ("consolidation",) and _bt_adx < 15.0:
                         logger.info(
@@ -677,6 +688,12 @@ class BacktestEngine:
                         )
                         self.candle_stats.setdefault("regime_blocked", 0)
                         self.candle_stats["regime_blocked"] += 1
+                        self.missed_trade_tracker.record_rejection(
+                            signal=signal,
+                            reason=f"Consolidation ADX={_bt_adx:.1f} < 15",
+                            gate="regime_filter",
+                            candle_idx=i,
+                        )
                         continue
 
                     # Create candidate for dual-world tracking
@@ -746,6 +763,18 @@ class BacktestEngine:
 
         # Force-close any open position at end of symbol walk
         self._force_close_open(symbol, current_price, sim_dt)
+
+        # Compute counterfactuals for missed trades using realized price data
+        try:
+            price_series = df_1h["close"].tolist()
+            self.missed_trade_tracker.compute_counterfactuals(
+                symbol=symbol,
+                price_series=price_series,
+                start_idx=0,
+                candle_duration_hours=1.0,
+            )
+        except Exception as e:
+            logger.debug(f"[{symbol}] Counterfactual computation error: {e}")
 
     def _walk_daily(self, symbol: str, data: Dict[str, pd.DataFrame], ensemble: EnsembleStrategy):
         """Walk forward through daily data points."""
@@ -1368,6 +1397,13 @@ class BacktestEngine:
                     "gate": "risk_filter_chain",
                     "reason": result.rejection_reason,
                 })
+                # Missed trade tracker: full context + counterfactual analysis
+                self.missed_trade_tracker.record_rejection(
+                    signal=signal,
+                    reason=result.rejection_reason,
+                    gate="risk_filter_chain",
+                    candle_idx=getattr(self, '_current_candle_idx', 0),
+                )
 
                 # ── Annotated tracking for filter accuracy analysis ──
                 if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
@@ -1552,6 +1588,8 @@ class BacktestEngine:
             "symbol_pnl": self.symbol_pnl,
             "recommendations": self._generate_recommendations(),
             "equity_curve": self.equity_curve,
+            "missed_trades": self.missed_trade_tracker.generate_report(),
+            "gate_effectiveness": self.missed_trade_tracker.get_gate_effectiveness(),
         }
 
         # Add LLM stats and detailed data if LLM integration was used
@@ -2860,6 +2898,46 @@ def print_report(report: Dict):
             for t in worst:
                 regime_str = f" [{t['llm_regime']}]" if t.get("llm_regime") else ""
                 print(f"    {t['symbol']:6s} {t['strategy']:20s} ${t['pnl']:+8.2f}  {t.get('close_reason', '')}{regime_str}")
+
+    # ── MISSED TRADES FEEDBACK ──
+    missed = report.get("missed_trades", {})
+    if missed.get("total_missed", 0) > 0:
+        print(f"\n{'── MISSED TRADES FEEDBACK ':─<{W}}")
+        print(f"  Total missed:    {missed['total_missed']}")
+        print(f"  With outcome:    {missed.get('with_counterfactual', 0)}")
+        w_won = missed.get('would_have_won', 0)
+        w_lost = missed.get('would_have_lost', 0)
+        if w_won + w_lost > 0:
+            print(f"  Would have won:  {w_won} ({w_won/(w_won+w_lost)*100:.0f}%)")
+            print(f"  Would have lost: {w_lost} ({w_lost/(w_won+w_lost)*100:.0f}%)")
+        gate_acc = missed.get('overall_gate_accuracy_pct', 0)
+        print(f"  Gate accuracy:   {gate_acc:.1f}% (% of rejections that saved us)")
+        net = missed.get('net_gate_value_pct', 0)
+        print(f"  Net gate value:  {net:+.3f}% {'(gates help)' if net > 0 else '(gates hurt — review!)'}")
+
+        by_cat = missed.get("by_category", {})
+        if by_cat:
+            print(f"\n  {'Category':<22s} {'Count':>5s} {'WouldWin':>8s} {'WouldLose':>9s} {'Accuracy':>8s} {'Net%':>7s}")
+            print(f"  {'─'*22} {'─'*5} {'─'*8} {'─'*9} {'─'*8} {'─'*7}")
+            for cat, stats in sorted(by_cat.items(), key=lambda x: -x[1]["count"]):
+                print(f"  {cat:<22s} {stats['count']:>5d} {stats['would_have_won']:>8d} "
+                      f"{stats['would_have_lost']:>9d} {stats['gate_accuracy_pct']:>7.0f}% "
+                      f"{stats['net_impact_pct']:>+7.3f}")
+
+        top_missed = missed.get("top_missed_opportunities", [])
+        if top_missed:
+            print(f"\n  Top Missed Opportunities:")
+            for m in top_missed[:5]:
+                print(f"    {m['symbol']:6s} {m['side']:4s} conf={m['confidence']:.0f}% "
+                      f"missed {m['missed_pnl_pct']:+.2f}% — {m['reason'][:50]}")
+
+    # ── GATE EFFECTIVENESS ──
+    gate_eff = report.get("gate_effectiveness", {})
+    if gate_eff:
+        print(f"\n{'── GATE EFFECTIVENESS ':─<{W}}")
+        for gate, stats in sorted(gate_eff.items(), key=lambda x: -x[1]["total_rejections"]):
+            print(f"  {gate:<20s}  {stats['total_rejections']:>3d} rejected | "
+                  f"{stats['accuracy_pct']:>5.1f}% correct | {stats['recommendation']}")
 
     print("\n" + "=" * W)
 

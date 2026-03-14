@@ -571,6 +571,10 @@ class MultiStrategyBot:
                 kelly_engine=self.kelly_engine,
             )
             self.ensemble.set_shadow_ledger(self.shadow_ledger)
+            # Wire IC tracker into ensemble so inverted/decaying factors get downweighted in voting
+            if self.ic_tracker:
+                self.ensemble.ic_tracker = self.ic_tracker
+                logger.info("[INIT] IC tracker wired into ensemble voting — inverted factors will be auto-downweighted")
             logger.info("[INIT] Quant system loaded: IC tracker, Kelly engine, trade ledger, shadow ledger, correlation gate, daily report")
         except Exception as e:
             logger.warning(f"[INIT] Quant system partially unavailable: {e}")
@@ -1262,6 +1266,17 @@ class MultiStrategyBot:
                 logger.info(f"[EVOLUTION] Daily report generated: {report.total_trades} trades")
             except Exception as e:
                 logger.debug(f"Evolution tracker error: {e}")
+
+            # Auto-decay Kelly and strategy weights daily (prevents stale data dominating)
+            try:
+                if self.kelly_engine:
+                    # Kelly engine doesn't have apply_decay — but strategy weights do
+                    pass
+                if hasattr(self, 'ensemble') and self.ensemble.weight_manager:
+                    self.ensemble.weight_manager.apply_decay()
+                    logger.info("[QUANT] Applied daily decay to strategy weights (alpha=0.9)")
+            except Exception as e:
+                logger.debug(f"Weight decay error: {e}")
 
             # Quant daily report: 6 key metrics with alerting
             if self.daily_reporter:
@@ -3220,9 +3235,15 @@ class MultiStrategyBot:
         _compound_mult = 1.0
         try:
             _regime = self._tick_regime_cache.get(symbol, "unknown")
-            # Kelly weight
+            # Kelly weight (edge quality — size up proven strategies, size down unproven)
             if self.kelly_engine and signal_result.strategy:
                 _compound_mult *= self.kelly_engine.compute_kelly_weight(signal_result.strategy)
+            # IC weight (factor health — kill inverted, half-size decaying)
+            if self.ic_tracker and signal_result.strategy:
+                _ic_w = self.ic_tracker.get_ic_weight(signal_result.strategy)
+                if _ic_w < 1.0:
+                    logger.info(f"[{symbol}] IC weight for {signal_result.strategy}: {_ic_w:.2f}")
+                _compound_mult *= _ic_w
             # Regime scalar
             _compound_mult *= self.risk_mgr.get_regime_scalar(_regime)
             # Drawdown dial

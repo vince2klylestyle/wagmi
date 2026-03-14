@@ -48,12 +48,14 @@ class EnsembleStrategy:
         chop_detector=None,
         confidence_floor: float = 75.0,  # Raised from 65: minimum viable signal quality
         ranging_confidence_floor: float = 80.0,  # Lowered from 88: 88% was nearly impossible
+        ic_tracker=None,
     ):
         self.strategies = strategies
         self.mode = mode
         self.min_votes = min_votes
         self.weights = weights or {s.name: 1.0 for s in strategies}
         self.weight_manager = weight_manager  # StrategyWeightManager instance
+        self.ic_tracker = ic_tracker  # ICTracker: factor inversion protection
         self.veto_ratio = veto_ratio
         self.chop_detector = chop_detector  # ChopDetector instance (Wave 1)
         self.confidence_floor = confidence_floor
@@ -68,6 +70,7 @@ class EnsembleStrategy:
         self._shadow_ledger = None  # Optional: ShadowLedger for dormant strategy tracking
         # Rejection tracking: why signals were rejected (for LLM brain learning)
         self._last_rejections: Dict[str, Dict] = {}  # symbol -> {reason, confidence, side, ...}
+        self._missed_trade_tracker = None  # Optional: MissedTradeTracker for feedback
         # Regime-aware min_votes: current regime per symbol (set externally by engine)
         self._current_regime: Dict[str, str] = {}  # symbol -> regime string (1h)
         self._current_regime_4h: Dict[str, str] = {}  # symbol -> regime string (4h)
@@ -79,6 +82,10 @@ class EnsembleStrategy:
     def set_shadow_ledger(self, ledger):
         """Inject ShadowLedger for tracking disabled strategy predictions."""
         self._shadow_ledger = ledger
+
+    def set_missed_trade_tracker(self, tracker):
+        """Inject MissedTradeTracker for comprehensive rejection feedback."""
+        self._missed_trade_tracker = tracker
 
     def set_regime(self, symbol: str, regime: str):
         """Set the current 1h market regime for a symbol.
@@ -1204,12 +1211,24 @@ class EnsembleStrategy:
 
     def _get_strategy_weight(self, strategy_name: str) -> float:
         """Get weight for a strategy from weight manager, falling back to static weights.
+        Applies IC tracker weight to penalize inverted/decaying factors.
         Caps daily-timeframe strategies (monte_carlo_zones) at MAX_OPPOSITION_WEIGHT
         to prevent a single high-timeframe strategy from dominating voting."""
         if self.weight_manager is not None:
             w = self.weight_manager.get_weight(strategy_name)
         else:
             w = self.weights.get(strategy_name, 1.0)
+        # IC tracker: penalize inverted/decaying factors (0.0 = inverted, 0.5 = unknown, 1.0 = healthy)
+        if self.ic_tracker is not None:
+            try:
+                ic_weight = self.ic_tracker.get_ic_weight(strategy_name)
+                if ic_weight < 1.0:
+                    logger.info(
+                        f"[IC] {strategy_name} weight adjusted by IC: {w:.3f} * {ic_weight:.2f} = {w * ic_weight:.3f}"
+                    )
+                w *= ic_weight
+            except Exception:
+                pass  # IC tracker error shouldn't break voting
         # Cap daily-TF strategies so they can't overpower intraday consensus
         if self.STRATEGY_TIMEFRAME.get(strategy_name) == "daily":
             w = min(w, self.MAX_OPPOSITION_WEIGHT)

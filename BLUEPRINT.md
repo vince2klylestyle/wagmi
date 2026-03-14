@@ -602,12 +602,84 @@ Must achieve over 21 days:
 
 ---
 
+## Session 2 Progress: Quant Wiring & Feedback Loops (March 14, 2026)
+
+### Completed Implementations
+
+#### 1. IC Tracker Wired Into Ensemble Voting & Position Sizing
+- **Files**: `bot/strategies/ensemble.py`, `bot/multi_strategy_main.py`
+- **What**: IC tracker `get_ic_weight()` now multiplies into both ensemble strategy weights AND the compound sizing system
+- **Effect**: Inverted factors (IC < 0) get weight 0.0 (killed), decaying factors get 0.0-1.0 linear scale
+- **Integration points**:
+  - `ensemble._get_strategy_weight()` applies IC weight before voting
+  - `multi_strategy_main.py` line ~3230 applies IC weight as compound sizing multiplier
+  - IC tracker injected into ensemble at init time via `ensemble.ic_tracker = self.ic_tracker`
+
+#### 2. Kelly Sizing Already Wired (Confirmed)
+- **File**: `bot/multi_strategy_main.py` line 3225
+- **What**: `kelly_engine.compute_kelly_weight(strategy)` is the first multiplier in the 8-multiplier compound sizing system
+- **Status**: Was already wired — no changes needed
+
+#### 3. Missed Trade Tracker (NEW — Full Feedback Loop)
+- **New file**: `bot/feedback/missed_trade_tracker.py` (400+ LOC)
+- **What**: Comprehensive tracking of EVERY rejected signal with:
+  - Full signal context (symbol, side, confidence, strategies, regime, EV)
+  - Rejection classification into 18 categories (fee_drag, circuit_breaker, correlation_cluster, etc.)
+  - **Counterfactual analysis**: What WOULD have happened (price after 1h/4h/8h, would TP1/SL hit)
+  - **Missed alpha calculation**: How much profit each gate cost us
+  - **Gate effectiveness**: % of rejections that were correct (saved us from losses)
+  - **Top missed opportunities**: Biggest winners we blocked
+- **Integration**: Wired into `backtest/engine.py` at 3 rejection points:
+  - Risk filter chain rejections (line ~1387)
+  - Regime-blocked signals (lines ~675, ~689)
+  - Backtest report includes `missed_trades` and `gate_effectiveness` sections
+- **Report output**: New sections in backtest report showing per-category breakdown, gate accuracy, and top missed opportunities
+
+#### 4. Auto-Decay for Strategy Weights
+- **File**: `bot/multi_strategy_main.py` line ~1272
+- **What**: Daily decay (alpha=0.9) applied automatically during daily report generation
+- **Effect**: Old trade outcomes gradually lose influence, preventing stale data from dominating
+
+### Quant Infrastructure Audit Summary
+
+| Component | LOC | Status | Wired? | Gap |
+|-----------|-----|--------|--------|-----|
+| IC Tracker | 286 | Full | **YES** (now) | Was dead code — now wired into voting + sizing |
+| Kelly Engine | 276 | Full | YES | Already wired into compound sizing |
+| Strategy Weights | 220 | Full | YES | Auto-decay now added |
+| Correlation Gate | 341 | Full | YES | Active in signal pipeline |
+| Walk-Forward (BT) | 343 | Full | YES | Backtest-only |
+| Walk-Forward (Live) | 205 | Full | Partial | Not continuously monitored |
+| Portfolio Risk | 1134 | Full | Partial | Computed but not enforced on sizing |
+| Quant Analytics | 576 | Full | Partial | Backtest-only |
+| Deployment Gate | 204 | Full | YES | One-time check |
+| Missed Trade Tracker | 400+ | **NEW** | **YES** | Comprehensive feedback loop |
+
+### Backtest Accuracy Gaps Identified
+
+1. **TP fill optimism**: TP exits assume no slippage (limit fill), SL exits add slippage (market) — asymmetric
+2. **No liquidation enforcement**: Positions can go past liquidation in backtest without being force-closed
+3. **Funding rate fixed**: Uses 0.01%/8h fixed vs live variable 0.005-0.05%
+4. **No gap handling**: No detection of overnight/weekend price gaps
+5. **Stale MTM prices**: Multi-symbol equity calc uses up to 1h stale prices for inactive symbols
+6. **No market impact**: Slippage is fixed 3 bps regardless of position size
+
+### Still Pending
+
+- [ ] Enforce portfolio risk budget from `analytics/portfolio_risk.py` into actual position sizing
+- [ ] Wire live walk-forward validation with auto-sizing reduction on edge decay
+- [ ] Implement regime-conditional quant metrics in live trading
+- [ ] Address swarm agent findings (profitability improvements, strategy edge decay, EV math calibration)
+
+---
+
 ## Next Immediate Steps (This Week)
 
-1. **Run 30-day backtest** with new quant parameters (already committed)
-2. **Activate funding_rate + oi_delta + cvd strategies** — 2 hours of work
-3. **Start LLM A/B test** — route 50% of decisions without LLM
-4. **Add significance testing** — after 100 trades, report if edge is real
-5. **Monitor fee drag** — track actual vs modeled execution costs
+1. **Run 30-day backtest** with new quant parameters + missed trade tracking
+2. **Review missed trade report** — identify gates that are blocking too many winners
+3. **Enforce portfolio risk budget** — wire risk parity into actual sizing
+4. **Start LLM A/B test** — route 50% of decisions without LLM
+5. **Add significance testing** — after 100 trades, report if edge is real
+6. **Monitor fee drag** — track actual vs modeled execution costs
 
 The blueprint transforms the bot from **"few big conviction bets"** to **"many small diversified edges"** — the core philosophy of quantitative investing. Each phase independently improves the system; together they compound into institutional-grade architecture.
