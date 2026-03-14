@@ -74,6 +74,7 @@ class EnsembleStrategy:
         # Regime-aware min_votes: current regime per symbol (set externally by engine)
         self._current_regime: Dict[str, str] = {}  # symbol -> regime string (1h)
         self._current_regime_4h: Dict[str, str] = {}  # symbol -> regime string (4h)
+        self._volatility_profiles: Dict[str, str] = {}  # symbol -> "low"/"medium"/"high"
 
     def set_quality_scorer(self, scorer):
         """Inject SignalQualityScorer so quality feedback affects ensemble confidence."""
@@ -145,32 +146,37 @@ class EnsembleStrategy:
     # Quant philosophy: trade more often with smaller size. Single high-conviction
     # strategy trades allowed in trending regimes (risk_mult=0.5 for 1-agree).
     # EV gates + small position size handle quality; min_votes shouldn't over-filter.
+    # With 9 active strategies, 2/9 = 22% agreement is too weak.
+    # Raise to 3 for most regimes. Exception: high_volatility stays at 2
+    # because only 5 strategies are allowlisted there (2/5 = 40% agreement).
     REGIME_MIN_VOTES = {
-        'trending_bear':   2,   # 2-of-3 realistic in bear
-        'trending_bull':   2,   # was 1: solo regime_trend had 40% WR in 30d backtest, losing $4k
-        'trend':           2,   # was 1: same issue — weak alignment solo entries are coin flips
-        'consolidation':   2,   # mean-reversion needs confirmation
-        'range':           2,   # ranging needs confirmation
-        'high_volatility': 2,   # was 3: impossible with 4 strategies. EV gate handles quality.
-        'panic':           3,   # extreme conditions — full conviction
-        'low_liquidity':   3,   # thin books — full conviction
-        'news_dislocation': 3,  # event-driven — full conviction
-        'unknown':         2,   # was 3: blocked everything. EV gate handles quality.
+        'trending_bear':   3,
+        'trending_bull':   3,
+        'trend':           3,
+        'consolidation':   3,
+        'range':           3,
+        'high_volatility': 2,   # only 5 strategies allowed in this regime
+        'panic':           3,
+        'low_liquidity':   3,
+        'news_dislocation': 3,
+        'unknown':         3,
     }
 
     # Regime-specific strategy allowlist: only strategies with proven edge
     # in each regime are allowed to vote.
+    # Regime-specific strategy allowlist: 9 active strategies, regime-gated.
+    # New additions: liquidation_cascade, monte_carlo_zones, funding_rate, oi_delta
     STRATEGY_REGIME_ALLOWLIST = {
-        'trending_bear':    {'confidence_scorer', 'regime_trend', 'probability_engine'},
-        'trending_bull':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine'},
-        'trend':            {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine'},
-        'consolidation':    {'confidence_scorer', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine'},
-        'range':            {'confidence_scorer', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine'},
-        'high_volatility':  {'confidence_scorer', 'probability_engine'},
-        'panic':            {'confidence_scorer'},
+        'trending_bear':    {'confidence_scorer', 'regime_trend', 'probability_engine', 'oi_delta', 'liquidation_cascade'},
+        'trending_bull':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'oi_delta'},
+        'trend':            {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'oi_delta'},
+        'consolidation':    {'confidence_scorer', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'monte_carlo_zones', 'funding_rate'},
+        'range':            {'confidence_scorer', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'monte_carlo_zones', 'funding_rate'},
+        'high_volatility':  {'confidence_scorer', 'probability_engine', 'bollinger_squeeze', 'liquidation_cascade', 'oi_delta'},
+        'panic':            {'confidence_scorer', 'liquidation_cascade'},
         'low_liquidity':    {'confidence_scorer'},
         'news_dislocation': {'confidence_scorer'},
-        'unknown':          {'confidence_scorer', 'probability_engine'},  # was empty — blocked ALL signals
+        'unknown':          {'confidence_scorer', 'probability_engine', 'monte_carlo_zones'},
     }
 
     def _get_effective_min_votes(self, symbol: str) -> int:
@@ -182,6 +188,14 @@ class EnsembleStrategy:
         """
         regime = self._current_regime.get(symbol, "unknown")
         return self.REGIME_MIN_VOTES.get(regime, 3)  # default to 3 — when in doubt, require conviction
+
+    def set_symbol_volatility_profiles(self, profiles: Dict[str, str]):
+        """Set volatility profiles for symbols (e.g., {"HYPE": "high", "BTC": "low"}).
+
+        Used for per-symbol confidence floor capping: high-vol assets get lower
+        max floors because their natural price action is inherently choppy.
+        """
+        self._volatility_profiles = profiles
 
     def set_disabled_strategies(self, names: set):
         """Temporarily disable specific strategies (e.g., for regime filtering)."""
@@ -503,11 +517,13 @@ class EnsembleStrategy:
         result.metadata["chop_score_smoothed"] = round(chop_score, 3)
         if chop_score > 0.35:
             if chop_score >= 0.65:
-                # Extreme chop: floor rises from ranging (88%) toward 93%.
-                # This creates a real gradient above the ranging floor.
+                # Extreme chop: floor rises from ranging toward max.
+                # High-vol assets get lower max: their natural price action is choppy.
+                _vol_profile = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
+                _max_chop_floor = {"low": 93.0, "medium": 90.0, "high": 85.0}.get(_vol_profile, 93.0)
                 chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)  # 0→1 over 0.65→0.85
                 effective_floor = self.ranging_confidence_floor + chop_intensity * (
-                    93.0 - self.ranging_confidence_floor
+                    _max_chop_floor - self.ranging_confidence_floor
                 )
             else:
                 # Moderate chop: interpolate between normal and ranging floor

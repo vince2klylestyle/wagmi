@@ -936,6 +936,30 @@ class DataFetcher:
                 continue
         return None
 
+    def fetch_open_interest(self, symbol_name: str) -> Optional[float]:
+        """Fetch current open interest for a symbol via CCXT.
+
+        Returns total OI in USD. Returns None if not available.
+        """
+        if not self._ccxt_available:
+            return None
+
+        chain = self._symbol_exchanges.get(symbol_name, [])
+        for ex_name, pair in chain:
+            exchange = self._exchanges.get(ex_name)
+            if exchange is None:
+                continue
+            try:
+                self._ccxt_requests += 1
+                oi_data = exchange.fetch_open_interest(pair)
+                oi_value = oi_data.get("openInterestAmount") or oi_data.get("openInterestValue")
+                if oi_value is not None:
+                    return float(oi_value)
+            except Exception as e:
+                logger.debug(f"[{symbol_name}] Open interest {ex_name}: {e}")
+                continue
+        return None
+
     def clear_cache(self):
         """Clear the data cache."""
         self._cache.clear()

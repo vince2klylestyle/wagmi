@@ -154,24 +154,26 @@ class TestCircuitBreakerSessionDD:
 class TestRegimeMinVotes:
     """B1: Regime-gated min_votes lookup table (quant approach: trade more, bet smaller)."""
 
-    def test_bear_regime_requires_2(self):
+    def test_bear_regime_requires_3(self):
+        """With 9 strategies, min_votes=3 ensures 33%+ agreement."""
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bear") == 2
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bear") == 3
 
-    def test_bull_regime_requires_2(self):
-        """Trending bull requires 2-agree: solo regime_trend had 40% WR in 30d backtest."""
+    def test_bull_regime_requires_3(self):
+        """With 9 strategies, min_votes=3 ensures conviction."""
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bull") == 2
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bull") == 3
 
-    def test_consolidation_allows_2(self):
+    def test_consolidation_requires_3(self):
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("consolidation") == 2
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("consolidation") == 3
 
-    def test_unknown_defaults_to_2(self):
+    def test_unknown_defaults_to_3(self):
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("unknown") == 2
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("unknown") == 3
 
     def test_high_vol_requires_2(self):
+        """High vol stays at 2: only 5 strategies allowlisted (2/5 = 40% agreement)."""
         from strategies.ensemble import EnsembleStrategy
         assert EnsembleStrategy.REGIME_MIN_VOTES.get("high_volatility") == 2
 
@@ -179,26 +181,37 @@ class TestRegimeMinVotes:
 class TestRegimeAllowlist:
     """B3: Regime-specific strategy allowlist."""
 
-    def test_bear_allows_confidence_regime_and_probability(self):
+    def test_bear_allows_expanded_set(self):
         from strategies.ensemble import EnsembleStrategy
         allowed = EnsembleStrategy.STRATEGY_REGIME_ALLOWLIST["trending_bear"]
         assert "confidence_scorer" in allowed
         assert "regime_trend" in allowed
         assert "probability_engine" in allowed
-        assert "bollinger_squeeze" not in allowed
-        assert "vmc_cipher" not in allowed
+        assert "oi_delta" in allowed
+        assert "liquidation_cascade" in allowed
 
     def test_consolidation_allows_mean_reversion(self):
         from strategies.ensemble import EnsembleStrategy
         allowed = EnsembleStrategy.STRATEGY_REGIME_ALLOWLIST["consolidation"]
         assert "bollinger_squeeze" in allowed
         assert "vmc_cipher" in allowed
+        assert "monte_carlo_zones" in allowed
+        assert "funding_rate" in allowed
+
+    def test_high_vol_allows_5_strategies(self):
+        from strategies.ensemble import EnsembleStrategy
+        allowed = EnsembleStrategy.STRATEGY_REGIME_ALLOWLIST["high_volatility"]
+        assert len(allowed) == 5
+        assert "bollinger_squeeze" in allowed
+        assert "liquidation_cascade" in allowed
+        assert "oi_delta" in allowed
 
     def test_unknown_allows_fallback(self):
         from strategies.ensemble import EnsembleStrategy
         allowed = EnsembleStrategy.STRATEGY_REGIME_ALLOWLIST["unknown"]
         assert "confidence_scorer" in allowed
         assert "probability_engine" in allowed
+        assert "monte_carlo_zones" in allowed
 
 
 class TestTimeframeAlignment:

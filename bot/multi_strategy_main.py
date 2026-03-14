@@ -441,6 +441,15 @@ class MultiStrategyBot:
         # Apply quant system config disables (kill toxic strategies)
         self.ensemble.apply_config_disables(config)
 
+        # Wire volatility profiles for per-symbol confidence floor capping
+        from trading_config import DEFAULT_SYMBOL_OVERRIDES
+        vol_profiles = {
+            sym: ov.volatility_profile
+            for sym, ov in DEFAULT_SYMBOL_OVERRIDES.items()
+            if hasattr(ov, 'volatility_profile') and ov.volatility_profile
+        }
+        self.ensemble.set_symbol_volatility_profiles(vol_profiles)
+
         # Execution
         self.risk_mgr = RiskManager(
             starting_equity=config.starting_equity,
@@ -519,6 +528,7 @@ class MultiStrategyBot:
         self._last_prices: Dict[str, float] = {}  # symbol -> price
         # Last known funding rates per symbol (updated from fetcher)
         self._last_funding_rates: Dict[str, float] = {}  # symbol -> funding rate
+        self._last_open_interest: Dict[str, float] = {}  # symbol -> OI (for oi_delta strategy)
 
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
@@ -1664,6 +1674,29 @@ class MultiStrategyBot:
             self.degradation.record_exchange_error()
             logger.warning(f"[{symbol}] Exchange fetch failed: {e}")
             return
+
+        # Inject metadata for metadata-dependent strategies (funding_rate, oi_delta)
+        _meta = data.setdefault("_meta", {})
+        _fr = self._last_funding_rates.get(symbol)
+        if _fr is not None:
+            data["_funding_rate"] = _fr
+            _meta["funding_rate"] = _fr
+        # OI: fetch and inject current + previous for delta calculation
+        if self._tick % 60 == 0 or symbol not in self._last_open_interest:
+            try:
+                _oi = self.fetcher.fetch_open_interest(symbol)
+                if _oi is not None:
+                    _oi_prev = self._last_open_interest.get(symbol)
+                    self._last_open_interest[symbol] = _oi
+                    _meta["open_interest"] = _oi
+                    if _oi_prev is not None:
+                        _meta["open_interest_prev"] = _oi_prev
+            except Exception:
+                pass
+        else:
+            _oi = self._last_open_interest.get(symbol)
+            if _oi is not None:
+                _meta["open_interest"] = _oi
 
         # Stale data guard: reject signals if candle data is too old.
         # After restarts or API hiccups, strategies may fire on stale candles.

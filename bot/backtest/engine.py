@@ -192,6 +192,14 @@ class BacktestEngine:
         )
         # Wire missed trade tracker into ensemble for rejection feedback
         ensemble.set_missed_trade_tracker(self.missed_trade_tracker)
+        # Wire volatility profiles for per-symbol confidence floor capping
+        from trading_config import DEFAULT_SYMBOL_OVERRIDES
+        vol_profiles = {
+            sym: ov.volatility_profile
+            for sym, ov in DEFAULT_SYMBOL_OVERRIDES.items()
+            if hasattr(ov, 'volatility_profile') and ov.volatility_profile
+        }
+        ensemble.set_symbol_volatility_profiles(vol_profiles)
 
         # Fetch historical data for all symbols
         all_data = {}
@@ -359,9 +367,9 @@ class BacktestEngine:
             if _bt_sig_log.exists():
                 _bt_sig_log.unlink()
             all_strats["confidence_scorer"] = ConfidenceScorerStrategy(sym_configs, data_dir="backtest_ml_data", backtest_mode=True)
-        if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "true").lower() == "true":
+        if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "false").lower() == "true":  # PF 0.82, -$1,223 net
             all_strats["multi_tier_quality"] = MultiTierQualityStrategy(sym_configs)
-        if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "false").lower() == "true":
+        if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "true").lower() == "true":
             all_strats["monte_carlo_zones"] = MonteCarloZonesStrategy(sym_configs)
 
         # New OHLCV-compatible strategies (only need standard candle data)
@@ -376,12 +384,14 @@ class BacktestEngine:
         if os.getenv("STRATEGY_LEAD_LAG_ENABLED", "false").lower() == "true":  # 0% WR, -$137/trade EV
             all_strats["lead_lag"] = LeadLagStrategy(sym_configs)
 
-        # Metadata-dependent strategies (disabled by default — need exchange API data)
-        if os.getenv("STRATEGY_FUNDING_RATE_ENABLED", "false").lower() == "true":
+        # Metadata-dependent strategies — funding_rate and oi_delta need exchange API
+        # data (return None gracefully when missing). liquidation_cascade works with
+        # OHLCV proxy (volume spikes + wicks).
+        if os.getenv("STRATEGY_FUNDING_RATE_ENABLED", "true").lower() == "true":
             all_strats["funding_rate"] = FundingRateStrategy(sym_configs)
-        if os.getenv("STRATEGY_OI_DELTA_ENABLED", "false").lower() == "true":
+        if os.getenv("STRATEGY_OI_DELTA_ENABLED", "true").lower() == "true":
             all_strats["oi_delta"] = OIDeltaStrategy(sym_configs)
-        if os.getenv("STRATEGY_LIQUIDATION_CASCADE_ENABLED", "false").lower() == "true":
+        if os.getenv("STRATEGY_LIQUIDATION_CASCADE_ENABLED", "true").lower() == "true":
             all_strats["liquidation_cascade"] = LiquidationCascadeStrategy(sym_configs)
 
         if strategy_names:
@@ -2016,9 +2026,9 @@ class BacktestEngine:
             gate_counts[gate] = gate_counts.get(gate, 0) + 1
 
         executed = len(self.signals_generated)
-        llm_vetoed = signal_gen - executed - sum(gate_counts.values())
-        if llm_vetoed < 0:
-            llm_vetoed = 0
+        other_rejections = signal_gen - executed - sum(gate_counts.values())
+        if other_rejections < 0:
+            other_rejections = 0
 
         regime_blocked = self.candle_stats.get("regime_blocked", 0)
 
@@ -2029,7 +2039,7 @@ class BacktestEngine:
             "regime_blocked": regime_blocked,
             "signals_generated": signal_gen,
             "gate_rejections": gate_counts,
-            "llm_vetoed": llm_vetoed,
+            "other_rejections": other_rejections,  # ensemble-level rejections (confidence floor, chop, etc.)
             "executed": executed,
             "conversion_rate": round(executed / total * 100, 1) if total > 0 else 0,
         }
@@ -2672,8 +2682,8 @@ def print_report(report: Dict):
         gates = funnel.get("gate_rejections", {})
         for gate, count in sorted(gates.items(), key=lambda x: -x[1]):
             print(f"      {gate} rejected:  {count:>4}")
-        if funnel.get("llm_vetoed", 0) > 0:
-            print(f"      LLM vetoed:    {funnel['llm_vetoed']:>4}")
+        if funnel.get("other_rejections", 0) > 0:
+            print(f"      other_rejected:{funnel['other_rejections']:>4}")
         print(f"    Executed:        {funnel.get('executed', 0):>6,}")
         print(f"  Conversion:        {funnel.get('conversion_rate', 0):.1f}% (candle -> trade)")
 

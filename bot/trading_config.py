@@ -49,7 +49,7 @@ DEFAULT_SYMBOLS = {
     # Large caps (priority)
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
     "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
-    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "medium"),
+    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),  # was "medium": inconsistent with volatility_profile="high" in overrides
     # Small caps (high volume memes)
     "DOGE": SymbolConfig("DOGE", "DOGE-USD", "dogecoin", "high"),
     "FARTCOIN": SymbolConfig("FARTCOIN", "FARTCOIN-USD", "fartcoin", "high"),
@@ -584,8 +584,8 @@ REGIME_SL_TP_SCALARS = {
     "trend":            {"sl_mult": 1.15, "tp1_mult": 1.25, "tp2_mult": 1.4},  # was tp1=0.85/tp2=0.85
     "consolidation":    {"sl_mult": 0.85, "tp1_mult": 0.9, "tp2_mult": 0.85},  # was tp1=1.2/tp2=1.3: mean-reversion should take profits fast
     "range":            {"sl_mult": 0.9, "tp1_mult": 0.95, "tp2_mult": 0.9},   # was tp1=1.1/tp2=1.2: same as consolidation
-    "high_volatility":  {"sl_mult": 1.4, "tp1_mult": 0.7, "tp2_mult": 0.7},
-    "panic":            {"sl_mult": 1.5, "tp1_mult": 0.6, "tp2_mult": 0.6},
+    "high_volatility":  {"sl_mult": 1.4, "tp1_mult": 1.2, "tp2_mult": 2.0},  # was tp1=0.7/tp2=0.7: same inverted R:R bug — risk 2.8 ATR to make 1.4 ATR
+    "panic":            {"sl_mult": 1.5, "tp1_mult": 0.6, "tp2_mult": 0.6},  # panic: still grab what you can
     "low_liquidity":    {"sl_mult": 1.3, "tp1_mult": 0.8, "tp2_mult": 0.8},
 }
 
@@ -596,9 +596,9 @@ REGIME_RISK_MULTIPLIERS = {
     "trending_bull":    0.7,    # unproven edge — reduce size
     "trending_bear":    0.7,
     "trend":            0.8,
-    "consolidation":    1.3,    # proven 78% WR — lean into edge
+    "consolidation":    1.0,    # was 1.3: 30d showed 78% WR but 70d shows 35% — noisy sample
     "range":            0.8,
-    "high_volatility":  0.5,
+    "high_volatility":  0.7,    # was 0.5: too punitive for HYPE which has tradeable edge
     "panic":            0.3,
     "low_liquidity":    0.5,
     "news_dislocation": 0.4,
