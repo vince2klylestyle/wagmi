@@ -1,8 +1,8 @@
 # nunuIRL Trading Bot — Complete Roadmap
 
-> **Last updated**: 2026-03-12
-> **Current state**: Phase 7.2 DONE. **Quant-grade backtest engine** — all 11 strategies wired into backtest (was 4), quant analytics module (Wilson CI, VaR/CVaR, strategy correlation, Kelly criterion, Monte Carlo robustness), signal digest capture (per-candle strategy fire rates, near-misses), pre-seeded signal quality + confidence calibration + parameter tuner from backtest data, 10-gate deployment readiness checker, enhanced walk-forward with quant metrics. 1177 tests passing.
-> **What's next**: Run 30d backtest (`cd bot && python backtest/runner.py --days 30 --symbols BTC SOL HYPE --learn`) → review Quant Intelligence Summary → pass Deployment Gate → paper trade.
+> **Last updated**: 2026-03-14
+> **Current state**: Phase 7.4 DONE. **9-strategy ensemble** — expanded from 5→9 active strategies (liquidation_cascade, monte_carlo_zones, funding_rate, oi_delta enabled). HYPE-specific tuning (risk_tier fix, R:R inversion fix, confidence floor capping, vol-aware strategy params). min_votes raised 2→3 for 9-strategy ensemble. 1308 tests passing.
+> **What's next**: Run 70d backtest → compare against baseline (51 trades, -$10,196) → validate with walk-forward → fix SOL (17% WR) → paper trade.
 
 ---
 
@@ -27,7 +27,7 @@
 ### Core Pipeline (Working)
 | Layer | Files | Status |
 |---|---|---|
-| **11 Trading Strategies** | `bot/strategies/{regime_trend,confidence_scorer,multi_tier_quality,funding_rate,oi_delta,bollinger_squeeze,vmc_cipher,lead_lag,liquidation_cascade,probability_engine}.py` + monte_carlo_zones (gated) | Working — 3 original + 7 new quant strategies (Phase 6), monte_carlo_zones disabled via env |
+| **11 Trading Strategies (9 active)** | `bot/strategies/{regime_trend,confidence_scorer,multi_tier_quality,funding_rate,oi_delta,bollinger_squeeze,vmc_cipher,lead_lag,liquidation_cascade,probability_engine,monte_carlo_zones}.py` | Working — 9 active + 2 disabled (multi_tier_quality PF=0.82, lead_lag 0% WR) |
 | **Ensemble Voting** | `bot/strategies/ensemble.py` | Working — weighted veto, regime-aware confidence floor, chop detection, soft-filter annotations |
 | **Chop Detector** | `bot/strategies/chop_detector.py` | Working — 5-factor detection, tightened thresholds (0.45/0.45/0.55) |
 | **Regime Detection** | `bot/strategies/regime_detector.py` + standalone in main loop | Working — fed by strategy metadata + tick-level 1h price data + LLM Regime Agent feedback |
@@ -43,7 +43,7 @@
 | **Signal Tracker** | `bot/core/signal_tracker.py` | Working — all signals tracked (approved + rejected) |
 | **Order Execution** | `bot/execution/order_executor.py` | Working — paper/live modes, CCXT submission |
 | **Backtest Engine** | `bot/backtest/engine.py` + `walk_forward.py` + `quant_analytics.py` + `deployment_gate.py` | Working — all 11 strategies, quant analytics (VaR/CI/Kelly/MC), signal digest, deployment gate, pre-seed learning |
-| **Tests** | `bot/tests/` (41 test files) | 1177 tests passing (0 failures) |
+| **Tests** | `bot/tests/` (41 test files) | 1308 tests passing (0 failures) |
 | **Configuration** | `bot/trading_config.py` (490+ lines) | Dataclass-based, per-symbol overrides |
 
 ### Multi-Agent Architecture (9 Agents)
@@ -285,7 +285,19 @@
 - [x] Relaxed blocked combos for 11-strategy ensemble
 - [x] Scout Agent max_tokens 768→1536
 
-### 7.3 Self-Improving Architecture — NOT STARTED
+### 7.4 HYPE Alpha Unlock — 5→9 Strategies ✅ DONE (March 14, 2026)
+- [x] **4 strategies enabled**: liquidation_cascade, monte_carlo_zones, funding_rate, oi_delta
+- [x] **HYPE risk_tier fixed**: "medium"→"high" (was inconsistent with volatility_profile)
+- [x] **high_vol R:R inversion fixed**: tp1=0.7→1.2, tp2=0.7→2.0 (same bug as trending)
+- [x] **Confidence floor capping**: vol-profile-aware (85% max for HYPE, 90% SOL, 93% BTC)
+- [x] **min_votes 2→3**: critical with 9 strategies (2/9=22% was too weak)
+- [x] **Regime allowlists expanded**: new strategies mapped per regime
+- [x] **Data wiring**: funding_rate injected into data dict, fetch_open_interest() added
+- [x] **HYPE-tuned params**: VMC ±55, Prob Engine 0.48/0.18, BB Squeeze 5-bar min
+- [x] **LLM layer fixed**: normalizers.py strategy list, shared_context.py theory/confluence
+- [x] **"llm_vetoed" → "other_rejections"**: cosmetic fix in backtest output
+
+### 7.5 Self-Improving Architecture — NOT STARTED
 - [ ] Portfolio Strategist Agent (cross-asset correlation, portfolio-level sizing)
 - [ ] Automated prompt evolution with A/B testing
 - [ ] Deep RL integration (DQN replacing Q-table in growth system)
@@ -493,7 +505,7 @@ bot/feedback/parameter_tuner.py    → Parameter optimization
 
 ## Priority Order (What to Work On Next)
 
-> Updated March 12, 2026. All regime fixes complete. All 11 strategies emit regime metadata. Backtest engine has regime-fit filtering. Agent prompts modernized for 11 strategies. Focus: paper validate → backtest with regime fix → go live.
+> Updated March 14, 2026. 9-strategy ensemble active. HYPE tuning complete. 1308 tests passing. Focus: validate 70d backtest → fix SOL → walk-forward → paper trade.
 
 ### Completed
 1. ~~**Phase 2.8: Fix 6 critical bugs**~~ ✅ DONE
@@ -504,43 +516,61 @@ bot/feedback/parameter_tuner.py    → Parameter optimization
 6. ~~**Phase 6.3: LLM brain intelligence**~~ ✅ DONE
 7. ~~**Phase 7.1: Proactive risk + brain wiring**~~ ✅ DONE
 8. ~~**Phase 7.2: Zero-trade blocker**~~ ✅ DONE — regime was always "unknown"
-9. ~~**Phase 7.3: Backtest regime parity + prompt modernization**~~ ✅ DONE — all 11 strategies set regime metadata, backtest applies STRATEGY_REGIME_FIT, agent prompts updated
+9. ~~**Phase 7.3: Backtest regime parity + prompt modernization**~~ ✅ DONE
+10. ~~**Session 3: Quant wiring (IC, Kelly, WF, missed trades, 11 multipliers)**~~ ✅ DONE
+11. ~~**Session 4: Fix inverted R:R (trending + high_vol) + trending quality gates**~~ ✅ DONE
+12. ~~**Phase 7.4: HYPE alpha unlock (5→9 strategies + tuning)**~~ ✅ DONE
 
 ### NOW — Critical Path to Profitability
-10. **Paper trade 48-72h** — Run with `cd bot && python run.py paper`. Watch for:
-    - Are signals actually being generated now? (regime fix should unlock them)
-    - What regime classifications are being assigned? (check logs for `_computed_regime`)
-    - Which of the 11 strategies contribute to 3-agree consensus?
-    - Are Scout Agent responses parsing correctly? (truncation fix)
-    - LLM Regime Agent feedback reaching `_tick_regime_cache`?
-    - Thesis accuracy tracking from first live predictions
-    - Graduated risk reduction behavior during any drawdowns
 
-11. **Rerun 100d backtest with regime fix** — Compare PnL before/after regime classification works
-    - `cd bot && python backtest/runner.py --days 100 --symbols BTC ETH SOL`
-    - Backtest now applies STRATEGY_REGIME_FIT filtering (matches live behavior)
-    - Check signal funnel for `regime_blocked` count and per-regime performance
-    - If regime_trend and 3_agree numbers improve, the fix is validated
+**Two-tab workflow** (run simultaneously):
+
+13. **Tab 2: Run 70d backtest** — Compare against baseline after 5→9 strategy expansion:
+    ```bash
+    cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 70
+    ```
+    **70-day baseline** (pre-Session 4): 51 trades, 47.1% WR, -$10,196 net, 0.55x PF
+    - Watch: HYPE PnL (was -$3,571), strategy diversity (was 2-agree dominated)
+    - Watch: 3-agree PF (was 0.95x — close to profitable)
+    - Watch: high_volatility R:R (was inverted, now fixed)
+    - Watch: consolidation WR (was 35% — the biggest loss source)
+
+14. **Tab 1: Walk-forward validation** — The metric that gates deployment:
+    ```bash
+    cd bot && python cli.py --mode walkforward --days 70 --symbols BTC SOL HYPE
+    ```
+    - Target: WF ratio > 0.5 (currently 0.00)
+    - Test profitable: YES required
+    - Train WR vs Test WR gap < 15%
+
+15. **Fix SOL** — 17% WR, -$6,242 is actively destroying capital:
+    - Consider disabling SOL entirely until edge is found
+    - Or: SOL-specific parameter tuning (like HYPE tuning)
+    - Or: Only allow SOL on 3-agree with min confidence 80%
+
+16. **Improve walk-forward ratio** — The single most important metric:
+    - If WF=0 persists: strategy is overfit, need to simplify
+    - Test: disable ensemble confidence floor adjustments
+    - Test: use fixed min_votes=3 for all regimes (no exceptions)
+    - Test: increase MIN_SIGNAL_RR to 2.5 (filter marginal trades)
 
 ### NEXT
-12. **Go live conservative** — SOL+HYPE only, 1% risk, max 3x leverage, 3_agree required
-13. **Phase 4.1: Break up `multi_strategy_main.py`** — 6,028 lines is unsustainable
-14. **Per-strategy regime performance** — data-driven tuning of STRATEGY_REGIME_FIT (needs paper data)
-15. **Phase 5: Config extraction** — single source of truth, startup validation
-16. **Telegram signal integration** — wire incoming Telegram signals to Scout Agent
-17. **Phase 7.4: Self-improving architecture** — portfolio agent, auto-prompt evolution
+17. **Paper trade 48-72h** — Only after WF ratio > 0.3
+18. **Phase 4.1: Break up `multi_strategy_main.py`** — 6,028 lines
+19. **Per-strategy regime performance** — data-driven STRATEGY_REGIME_FIT tuning
+20. **Go live conservative** — BTC+HYPE only, 0.5% risk, 3_agree required
 
 ### BACKLOG
-17. Monte Carlo strategy re-evaluation with 11-strategy ensemble
-18. Proper ADX-based standalone regime (replace volatility proxy)
-19. Phase 6.1: Full pipeline replay backtesting (needs LLM decision history)
-20. Phase 6.4: Strategy discovery agent activation
-21. Hour-gated trading (needs 30+ days of live data)
-22. Prompt versioning & A/B testing
-23. Order flow analysis (Hyperliquid orderbook depth)
-24. Cross-exchange signals (Kraken/Bybit as leading indicators)
-25. Deep RL integration
-26. Multi-bot coordination
+21. Proper ADX-based standalone regime (replace volatility proxy)
+22. Phase 6.1: Full pipeline replay backtesting
+23. Phase 6.4: Strategy discovery agent activation
+24. Hour-gated trading (needs 30+ days of live data)
+25. Prompt versioning & A/B testing
+26. Order flow analysis (Hyperliquid orderbook depth)
+27. Cross-exchange signals (Kraken/Bybit as leading indicators)
+28. Phase 7.5: Self-improving architecture
+29. Telegram signal integration
+30. Phase 5: Config extraction & tunability
 
 ---
 

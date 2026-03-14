@@ -877,7 +877,6 @@ Must achieve over 21 days:
 ### Still Pending
 
 - [ ] Wire rebalance suggestions into exit intelligence (currently computed but ignored)
-- [ ] Run 30-day backtest with full missed trade tracking to calibrate EV
 - [ ] Seed signal quality from backtest before paper trading
 - [ ] Auto-reduce sizing when rolling Sharpe < 0 for 3+ consecutive days
 - [ ] ATR multiplier sweep for BTC-specific optimization
@@ -887,12 +886,250 @@ Must achieve over 21 days:
 
 ---
 
-## Next Immediate Steps (This Week)
+## Session 4: HYPE Alpha Unlock — 5→9 Strategies + HYPE Tuning (March 14, 2026)
 
-1. **Run 30-day backtest** with new quant parameters + missed trade tracking
-2. **Review missed trade report** — identify gates that are blocking too many winners
-3. **Start LLM A/B test** — route 50% of decisions without LLM
-4. **Add significance testing** — after 100 trades, report if edge is real
-5. **Monitor fee drag** — track actual vs modeled execution costs
+### Context & Problem
+70-day backtest baseline: 51 trades, 47.1% WR, -$10,196 net, 0.55x PF.
+- **BTC**: 18 trades, 67% WR, +$440 — solid
+- **SOL**: 12 trades, 17% WR, -$6,242 — terrible
+- **HYPE**: 21 trades, 48% WR, -$3,571 — edge suppressed
+- **Consolidation**: 34 trades, 35% WR, -$12,178 — the 30-day "78% WR" was noise
+- Only 5 of 11 strategies were active. 2-agree dominated (40/51) at 0.45x PF.
+
+### Root Cause Analysis (3 audit agents deployed)
+
+**Strategy Arsenal Problem**: Only 5 strategies active (regime_trend, confidence_scorer, bollinger_squeeze, vmc_cipher, probability_engine). 6 were disabled:
+- liquidation_cascade: works with OHLCV proxy, no API needed — **should be enabled**
+- monte_carlo_zones: fully implemented — **should be enabled**
+- funding_rate: fetcher exists but data not injected into strategy dict — **wiring gap**
+- oi_delta: needs OI fetch method — **needs implementation**
+- multi_tier_quality: PF 0.82, -$1,223 — rightfully disabled
+- lead_lag: 0% WR — rightfully disabled
+
+**HYPE-Specific Suppression**:
+1. HYPE risk_tier was "medium" but volatility_profile was "high" — **mismatch bug**
+2. high_volatility regime only allowed 2 strategies — too few for min_votes=2
+3. Confidence floor climbed to 93% for HYPE — unreachable for a naturally choppy asset
+4. high_volatility R:R scalars were INVERTED: tp1=0.7, tp2=0.7 on sl=1.4 — **same bug as trending**
+
+### Changes Implemented (13 files, 227 insertions, 67 deletions)
+
+#### Phase 1: Enable Strategies (5 → 9)
+1. **liquidation_cascade** — enabled by default in backtest (was `false`)
+2. **monte_carlo_zones** — enabled by default (was `false`)
+3. **funding_rate** — enabled + data wired:
+   - Cached funding rate now injected into `data["_funding_rate"]` and `data["_meta"]["funding_rate"]`
+   - Was fetched but never passed to strategies (`multi_strategy_main.py:1661`)
+4. **oi_delta** — enabled + data wired:
+   - New `fetch_open_interest()` method in `data/fetcher.py` (CCXT)
+   - OI current + previous cached and injected into `data["_meta"]`
+   - OI threshold raised 3%→5% (audit: 3% catches noise on large markets)
+5. **multi_tier_quality** — flipped to `false` in backtest (was `true`, PF 0.82)
+
+**Regime allowlists expanded** (`ensemble.py:163-174`):
+- `trending_bear`: +oi_delta, +liquidation_cascade
+- `trending_bull`: +oi_delta
+- `trend`: +oi_delta
+- `consolidation`: +monte_carlo_zones, +funding_rate
+- `range`: +monte_carlo_zones, +funding_rate
+- `high_volatility`: +bollinger_squeeze, +liquidation_cascade, +oi_delta (2→5 strategies)
+- `panic`: +liquidation_cascade
+- `unknown`: +monte_carlo_zones
+
+#### Phase 2: Ensemble Voting Adjustment
+**min_votes raised from 2 → 3** for most regimes (with 9 strategies, 2/9=22% agreement was too weak):
+- trending_bull/bear/trend/consolidation/range/panic/unknown: all 3
+- **high_volatility stays at 2** (only 5 strategies allowed, 2/5=40% is adequate)
+
+#### Phase 3: HYPE Bug Fixes
+1. **risk_tier "medium"→"high"** in DEFAULT_SYMBOLS (was inconsistent with overrides)
+2. **high_vol R:R inversion fixed**: `{sl:1.4, tp1:0.7, tp2:0.7}` → `{sl:1.4, tp1:1.2, tp2:2.0}`
+3. **Confidence floor capping** — new `set_symbol_volatility_profiles()` method:
+   - BTC (low vol): max floor 93% (unchanged)
+   - SOL (medium vol): max floor 90%
+   - HYPE (high vol): max floor 85%
+4. **Regime risk multipliers adjusted**:
+   - high_volatility: 0.5→0.7 (less punitive for HYPE)
+   - consolidation: 1.3→1.0 (70-day showed 35% WR, not 78%)
+
+#### Phase 4: HYPE-Tuned Strategy Parameters
+1. **VMC Cipher** — WT zones relaxed ±60→±55 for high-vol symbols only
+2. **Probability Engine** — tighter thresholds for high-vol: MIN_PROB 0.45→0.48, MIN_EV 0.15→0.18
+3. **Bollinger Squeeze** — 5-bar squeeze minimum (vs 3) for high-vol; TP2 5→6 ATR for breakouts
+
+#### Phase 5: LLM Layer Fixes
+1. **normalizers.py** — updated hardcoded strategy list (added 4 new, removed dead entries)
+2. **shared_context.py** — STRATEGY_THEORY entries for all 9 active strategies
+3. **shared_context.py** — STRATEGY_CONFLUENCE pairs for new strategy combinations
+
+#### Phase 6: Reporting & Cosmetic
+1. **"llm_vetoed" → "other_rejections"** in backtest funnel output (no LLM in standard backtest)
+2. **runner.py** — updated signal funnel key for new name
+
+### Audit Corrections Applied
+Three audit agents validated the plan and caught errors:
+- **Slippage kept at 4 bps** (audit: spreads widen in high vol, 2 bps would be wrong)
+- **VMC zones conservative** (±55 not ±50 — audit found ±50 increases false signals 15-20%)
+- **BB Squeeze: structural fix** (longer squeeze bars, not wider multipliers)
+- **high_vol R:R properly calibrated** (audit: `{1.4, 1.2, 2.0}` not `{1.5, 1.0, 1.2}`)
+- **min_votes=3 critical** (audit: 2-agree at 9 strategies → signal spam + quality drop)
+
+### Tests
+All 1308 tests pass after changes.
+
+### What to Validate
+Run 70-day backtest and compare against baseline:
+```bash
+cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 70
+```
+Expected improvements:
+- More strategy diversity in BY AGREEMENT (3-agree, 4-agree should appear)
+- HYPE PnL improves from -$3,571 (wider TPs, more signals, lower confidence floor)
+- high_volatility R:R no longer inverted
+- "other_rejections" replaces "llm_vetoed" in output
+
+Note: funding_rate and oi_delta return None in backtest (no historical API data) — their impact shows in paper/live only.
+
+---
+
+## Two-Tab Workflow: Walk-Forward + Backtest Improvement
+
+### Tab 1: Walk-Forward Validation (separate session)
+
+**Purpose**: Continuous walk-forward testing to measure out-of-sample generalization.
+
+**Commands**:
+```bash
+# Quick 7-day walk-forward (fast iteration)
+cd bot && python cli.py --mode walkforward --days 7 --symbols BTC SOL HYPE
+
+# Full 70-day walk-forward (comprehensive validation)
+cd bot && python cli.py --mode walkforward --days 70 --symbols BTC SOL HYPE
+
+# Gate check (deployment readiness)
+cd bot && python cli.py --mode gate --days 30 --symbols BTC SOL HYPE
+```
+
+**What to look for**:
+- **Overfit Ratio** > 0.5 = strategy generalizes (currently 0.00 = failing)
+- **Test Profitable** = YES required for deployment
+- **Train WR vs Test WR** — gap > 15% = overfitting
+- Walk-forward uses 60d train / 20d test windows by default
+
+**Walk-forward is the most important metric.** A strategy can have great backtest PnL but WF=0 means it won't work in production. Every backtest improvement must be validated here.
+
+**Session startup prompt**:
+> I'm running walk-forward validation for the WAGMI trading bot. Run `cd bot && python cli.py --mode walkforward --days 70 --symbols BTC SOL HYPE` and analyze the results. Focus on:
+> 1. Overfit ratio (target > 0.5)
+> 2. Per-window train vs test WR gap
+> 3. Which regimes generalize and which don't
+> 4. Whether the 5→9 strategy expansion improved OOS performance
+> If WF ratio is still 0, diagnose why and propose fixes.
+
+### Tab 2: Backtest Improvement Pipeline (separate session)
+
+**Purpose**: Iterate on strategy parameters, regime classification, and signal quality to improve profitability.
+
+**Commands**:
+```bash
+# 70-day backtest (primary benchmark)
+cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 70
+
+# 30-day backtest (faster iteration)
+cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 30
+
+# With learning (pre-seeds signal quality from results)
+cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 70 --learn
+
+# HYPE-only analysis
+cd bot && python backtest/runner.py --symbols HYPE --days 70
+```
+
+**70-day baseline to beat** (pre-Session 4):
+```
+Total: 51 | WR: 47.1% | PnL: -$10,196 | PF: 0.55x | DD: 21.7%
+BTC: 18 trades, 67% WR, +$440
+SOL: 12 trades, 17% WR, -$6,242
+HYPE: 21 trades, 48% WR, -$3,571
+Consolidation: 34 trades, 35% WR, -$12,178
+2-agree: 40 trades, 45% WR, 0.45x PF
+3-agree: 11 trades, 55% WR, 0.95x PF
+Walk-Forward: ratio=0.00 (FAIL)
+```
+
+**Improvement priority order**:
+1. **Get 3-agree PF > 1.0** — this is where real edge exists (0.95x is close)
+2. **Fix SOL** — 17% WR is active alpha destruction. Consider disabling or special tuning.
+3. **Validate HYPE improvements** — wider TPs + more strategies should help
+4. **Improve WF ratio** — the critical metric for deployment readiness
+5. **Reduce consolidation losses** — 35% WR at 34 trades is the biggest PnL drag
+
+**Session startup prompt**:
+> I'm running backtest improvement for the WAGMI trading bot. Current 70-day baseline: 51 trades, 47.1% WR, -$10,196 net. Key problems: consolidation 35% WR (-$12k), SOL 17% WR (-$6.2k), walk-forward ratio 0.00. Run `cd bot && python backtest/runner.py --symbols BTC SOL HYPE --days 70` with the latest code and compare results against the baseline. Analyze per-symbol, per-regime, and per-agreement level. Identify the biggest opportunities for improvement.
+
+---
+
+## Master Improvement Pipeline
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌───────────────────┐
+│ Tab 2: Backtest │────▶│ Commit & Push    │────▶│ Tab 1: Walk-Fwd   │
+│ Improvement     │     │ Changes          │     │ Validation        │
+│                 │     │                  │     │                   │
+│ • Run 70d BT    │     │ • git commit     │     │ • Run WF test     │
+│ • Analyze gaps  │     │ • git push       │     │ • Check OOS ratio │
+│ • Fix params    │     │                  │     │ • Diagnose overfit │
+│ • Re-run BT     │     │                  │     │                   │
+└─────────────────┘     └──────────────────┘     └───────────────────┘
+         ▲                                                │
+         │              If WF ratio improves              │
+         └────────────────────────────────────────────────┘
+         │              If WF ratio fails                 │
+         └─── Revert changes, try different approach ─────┘
+```
+
+**Decision criteria for each iteration**:
+- Backtest PnL improves AND WF ratio improves → **keep changes**
+- Backtest PnL improves but WF ratio drops → **overfitting, revert**
+- Backtest PnL same but WF ratio improves → **keep, strategy generalizes better**
+- Both worse → **revert immediately**
+
+---
+
+## Current System State (Post-Session 4)
+
+### Active Strategies: 9
+| # | Strategy | Factor | Regime Allowlists |
+|---|----------|--------|-------------------|
+| 1 | regime_trend | Momentum | trending_bull/bear, trend |
+| 2 | confidence_scorer | Momentum | ALL regimes |
+| 3 | bollinger_squeeze | Volatility | trending, consolidation, range, high_vol |
+| 4 | vmc_cipher | Multi-oscillator | trending, consolidation, range |
+| 5 | probability_engine | Statistical | trending, high_vol, unknown |
+| 6 | liquidation_cascade | Microstructure | high_vol, panic, trending_bear |
+| 7 | monte_carlo_zones | Mean-reversion | consolidation, range, unknown |
+| 8 | funding_rate | Carry | consolidation, range, high_vol |
+| 9 | oi_delta | Flow | trending_bull/bear, trend, high_vol |
+
+### Disabled Strategies: 2
+- multi_tier_quality (PF 0.82, -$1,223)
+- lead_lag (0% WR, -$137/trade)
+
+### Compound Sizing: 11-Multiplier System
+| # | Multiplier | Source | Effect |
+|---|-----------|--------|--------|
+| 1 | Kelly weight | `kelly_engine` | Size up proven strategies, down unproven |
+| 2 | IC weight | `ic_tracker` | Kill inverted factors, half-size decaying |
+| 3 | Regime scalar | `risk_mgr` | Reduce in bear/chop, maintain in trend |
+| 4 | Drawdown dial | `risk_mgr` | Progressive reduction during drawdowns |
+| 5 | Vol regime | ATR current/baseline | Inverse volatility sizing |
+| 6 | BTC momentum | 1h price change | Alignment with BTC direction |
+| 7 | Portfolio budget | `portfolio_risk` | Scale down as budget fills (>50%) |
+| 8 | Signal decay | `compute_signal_decay` | Reduce size for stale signals |
+| 9 | Agreement level | `num_agree` | Half-size for 1-agree cherry-picks |
+| 10 | Walk-forward | `_wf_ratio` | Auto-reduce on OOS degradation |
+| 11 | Cap/Floor | 0.1×-2.0× | Prevent extreme sizes |
+
+### Tests: 1308 passing
 
 The blueprint transforms the bot from **"few big conviction bets"** to **"many small diversified edges"** — the core philosophy of quantitative investing. Each phase independently improves the system; together they compound into institutional-grade architecture.
