@@ -62,7 +62,7 @@ COINGECKO_TIMEFRAME_MAP = {
     "6h":    {"days": 90, "freq": "6h"},
     "16h":   {"days": 90, "freq": "16h"},
     "1d":    {"days": 90, "freq": "1D"},
-    "daily": {"days": 30, "freq": "1h"},
+    "daily": {"days": 90, "freq": "1D"},
 }
 
 
@@ -428,9 +428,11 @@ class DataFetcher:
         supported = getattr(exchange, "timeframes", {}) or {}
 
         if timeframe == "daily":
-            # Zone strategies expect hourly-granularity data
-            limit = self._candles_for_days("1h", self.backtest_days) if self.backtest_days else 720
-            return "1h", limit, None
+            # Zone strategies need actual daily OHLCV — aggregate from 1h
+            # Need 60+ days of 1h data to produce 50+ daily candles for indicators
+            days_needed = max(self.backtest_days, 60) if self.backtest_days else 90
+            limit = self._candles_for_days("1h", days_needed)
+            return "1h", limit, "1d"
         elif timeframe == "16h":
             # No exchange supports 16h natively; aggregate from 1h
             limit = self._candles_for_days("1h", self.backtest_days) if self.backtest_days else 500
@@ -700,8 +702,7 @@ class DataFetcher:
         if raw is None or raw.empty:
             return pd.DataFrame()
 
-        if timeframe == "daily":
-            return raw.copy()
+
 
         return self._resample_cg_to_ohlcv(raw, tf_config["freq"])
 
@@ -818,10 +819,7 @@ class DataFetcher:
                     continue
 
                 for tf, freq in tf_list:
-                    if tf == "daily":
-                        df = raw.copy()
-                    else:
-                        df = self._resample_cg_to_ohlcv(raw, freq)
+                    df = self._resample_cg_to_ohlcv(raw, freq)
                     cache_key = f"ohlcv:{symbol_name}:{tf}"
                     if not df.empty:
                         self._set_cache(cache_key, df)

@@ -158,7 +158,7 @@ class RegimeTrendStrategy(BaseStrategy):
         # This is the #1 profitability lever — ranging markets have 24% WR
         adx_val = _adx(df_1h, 14)
         if adx_val < self.adx_min_trending:
-            logger.debug(
+            logger.info(
                 f"[{symbol}] regime_trend: ADX {adx_val:.1f} < {self.adx_min_trending} "
                 f"— ranging market, skipping"
             )

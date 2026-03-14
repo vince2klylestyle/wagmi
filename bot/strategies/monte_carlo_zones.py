@@ -218,6 +218,8 @@ class MonteCarloZonesStrategy(BaseStrategy):
     def evaluate(self, symbol: str, data: Dict[str, pd.DataFrame]) -> Optional[Signal]:
         df = data.get("daily")
         if df is None or len(df) < 50:
+            n = len(df) if df is not None else 0
+            logger.info(f"[{symbol}] monte_carlo_zones: daily data insufficient ({n}/50 candles)")
             return None
 
         sym_config = self.symbols.get(symbol)
