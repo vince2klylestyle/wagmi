@@ -1673,21 +1673,31 @@ class MultiStrategyBot:
         _stale_check_tf = "5m" if "5m" in data else ("1h" if "1h" in data else None)
         if _stale_check_tf and data.get(_stale_check_tf) is not None:
             _stale_df = data[_stale_check_tf]
-            if not _stale_df.empty and _stale_df.index.dtype.kind == 'M':
-                _last_candle_time = _stale_df.index[-1]
-                _candle_age_s = (pd.Timestamp.now(tz="UTC") - _last_candle_time).total_seconds()
-                _tf_period_s = {"5m": 300, "1h": 3600}.get(_stale_check_tf, 3600)
-                # Data is stale if the last candle closed more than (period + tolerance) ago
-                if _candle_age_s > _tf_period_s + _stale_max_s:
-                    # Still process existing positions (SL/TP), but skip new signal generation
-                    if symbol not in self.pos_mgr.get_open_positions():
-                        logger.warning(
-                            f"[{trace_id}][{symbol}] STALE DATA: {_stale_check_tf} candle "
-                            f"is {_candle_age_s:.0f}s old (max {_tf_period_s + _stale_max_s}s), "
-                            f"skipping signal generation"
-                        )
-                        Telemetry.inc("stale_data_skips")
-                        return
+            if not _stale_df.empty:
+                # DataFrame has numeric index with 'time' column (from fetcher)
+                # Fall back to index if 'time' column is missing
+                if "time" in _stale_df.columns:
+                    _last_candle_time = pd.Timestamp(_stale_df["time"].iloc[-1], unit="ms" if isinstance(_stale_df["time"].iloc[-1], (int, float)) and _stale_df["time"].iloc[-1] > 1e12 else None)
+                elif _stale_df.index.dtype.kind == 'M':
+                    _last_candle_time = _stale_df.index[-1]
+                else:
+                    _last_candle_time = None
+                if _last_candle_time is not None:
+                    if _last_candle_time.tzinfo is None:
+                        _last_candle_time = _last_candle_time.tz_localize("UTC")
+                    _candle_age_s = (pd.Timestamp.now(tz="UTC") - _last_candle_time).total_seconds()
+                    _tf_period_s = {"5m": 300, "1h": 3600}.get(_stale_check_tf, 3600)
+                    # Data is stale if the last candle closed more than (period + tolerance) ago
+                    if _candle_age_s > _tf_period_s + _stale_max_s:
+                        # Still process existing positions (SL/TP), but skip new signal generation
+                        if symbol not in self.pos_mgr.get_open_positions():
+                            logger.warning(
+                                f"[{trace_id}][{symbol}] STALE DATA: {_stale_check_tf} candle "
+                                f"is {_candle_age_s:.0f}s old (max {_tf_period_s + _stale_max_s}s), "
+                                f"skipping signal generation"
+                            )
+                            Telemetry.inc("stale_data_skips")
+                            return
 
         # Get current price
         current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)

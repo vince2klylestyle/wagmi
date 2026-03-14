@@ -321,25 +321,29 @@ class DataFetcher:
             self._ccxt_module = None
 
     def _ccxt_rate_limit(self, ex_name: str):
-        """Enforce per-exchange rate limiting."""
-        min_gap = self._exchange_rate_limits.get(ex_name, 0.2)
-        last_ts = self._last_exchange_request_ts.get(ex_name, 0.0)
-        gap = time.time() - last_ts
-        if gap < min_gap:
-            time.sleep(min_gap - gap + random.uniform(0, 0.05))
-        self._last_exchange_request_ts[ex_name] = time.time()
+        """Enforce per-exchange rate limiting (thread-safe)."""
+        with self._lock:
+            min_gap = self._exchange_rate_limits.get(ex_name, 0.2)
+            last_ts = self._last_exchange_request_ts.get(ex_name, 0.0)
+            gap = time.time() - last_ts
+            wait = min_gap - gap + random.uniform(0, 0.05) if gap < min_gap else 0
+            self._last_exchange_request_ts[ex_name] = time.time() + max(0, wait)
+        if wait > 0:
+            time.sleep(wait)
 
     # ─── Cache ────────────────────────────────────────────────────
 
     def _get_cached(self, key: str) -> Optional[pd.DataFrame]:
-        if key in self._cache:
-            ts, df = self._cache[key]
-            if time.time() - ts < self.cache_ttl:
-                return df.copy()
+        with self._lock:
+            if key in self._cache:
+                ts, df = self._cache[key]
+                if time.time() - ts < self.cache_ttl:
+                    return df.copy()
         return None
 
     def _set_cache(self, key: str, df: pd.DataFrame):
-        self._cache[key] = (time.time(), df.copy())
+        with self._lock:
+            self._cache[key] = (time.time(), df.copy())
 
     # ─── Disk cache (backtest reproducibility) ────────────────────
 
