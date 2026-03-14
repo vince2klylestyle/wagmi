@@ -780,13 +780,36 @@ Must achieve over 21 days:
 | 9 | Cap/Floor | 0.1×-2.0× | Prevent extreme sizes |
 | 10 | Circuit breaker | CB constraints | Override during consecutive losses |
 
+### Session 3e: Regime-Conditional SL/TP + Rolling Sharpe
+
+**Source**: Missing quant mechanics swarm (12 findings). Implemented top priorities.
+
+**Changes Implemented:**
+1. **Regime-conditional SL/TP widths** (`trading_config.py`)
+   - `REGIME_SL_TP_SCALARS` lookup table: per-regime multipliers on base SL/TP
+   - `trending_bull`: 1.2× SL (wider), 0.9×/0.85× TP (let winners run)
+   - `high_volatility`: 1.4× SL, 0.7×/0.7× TP (avoid noise stops, quick exits)
+   - `panic`: 1.5× SL, 0.6×/0.6× TP (max stop width, fast exits)
+   - `consolidation`: 0.85× SL (tighter), 1.2×/1.3× TP (larger targets for breakout)
+   - `get_regime_sl_tp()` helper multiplies base × regime scalar
+2. **Wired into confidence_scorer** (`confidence_scorer.py`)
+   - Replaces hardcoded `K * A` with `get_regime_sl_tp()` output
+3. **Wired into regime_trend** (`regime_trend.py`)
+   - Replaces hardcoded `2.0 * R` / `4.0 * R` TP targets
+   - SL also regime-adjusted via `_sl_mult`
+4. **Rolling Sharpe tracker** (`multi_strategy_main.py`)
+   - Daily computation from trade ledger (30-day window)
+   - Warnings on negative Sharpe, info log on low Sharpe (<0.5)
+   - Foundation for auto-reducing position sizes on Sharpe degradation
+5. **4 new tests**: default/trending/panic regime SL/TP, unknown regime passthrough
+
 ### Still Pending
 
 - [ ] Wire rebalance suggestions into exit intelligence (currently computed but ignored)
 - [ ] Run 30-day backtest with full missed trade tracking to calibrate gates
-- [ ] Make TP/SL ratios regime-adaptive (static ATR multipliers currently)
 - [ ] Add regime-specific slippage multipliers to EV calculation
 - [ ] Seed signal quality from backtest before paper trading
+- [ ] Auto-reduce sizing when rolling Sharpe < 0 for 3+ consecutive days
 
 ---
 
