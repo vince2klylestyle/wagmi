@@ -193,7 +193,6 @@ class BacktestEngine:
         # Wire missed trade tracker into ensemble for rejection feedback
         ensemble.set_missed_trade_tracker(self.missed_trade_tracker)
         # Wire volatility profiles for per-symbol confidence floor capping
-        from trading_config import DEFAULT_SYMBOL_OVERRIDES
         vol_profiles = {
             sym: ov.volatility_profile
             for sym, ov in DEFAULT_SYMBOL_OVERRIDES.items()
@@ -595,7 +594,6 @@ class BacktestEngine:
                 self._run_llm_exit(symbol, current_price, windowed, sim_dt)
 
             # Volatility-aware re-entry gap: fast movers need shorter cooldowns
-            from trading_config import DEFAULT_SYMBOL_OVERRIDES
             _vol_profile = getattr(DEFAULT_SYMBOL_OVERRIDES.get(symbol), "volatility_profile", "medium") if DEFAULT_SYMBOL_OVERRIDES.get(symbol) else "medium"
             _RE_ENTRY_GAPS = {"low": 4, "medium": 2, "high": 1}
             re_entry_gap = _RE_ENTRY_GAPS.get(_vol_profile, 3)
@@ -911,7 +909,6 @@ class BacktestEngine:
                 self._run_llm_exit(symbol, current_price, windowed, sim_dt)
 
             # Volatility-aware re-entry gap (same logic as main loop)
-            from trading_config import DEFAULT_SYMBOL_OVERRIDES
             _vol_profile = getattr(DEFAULT_SYMBOL_OVERRIDES.get(symbol), "volatility_profile", "medium") if DEFAULT_SYMBOL_OVERRIDES.get(symbol) else "medium"
             _RE_ENTRY_GAPS = {"low": 4, "medium": 2, "high": 1}
             re_entry_gap = _RE_ENTRY_GAPS.get(_vol_profile, 3)
