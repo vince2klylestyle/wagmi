@@ -859,6 +859,21 @@ Must achieve over 21 days:
 4. **Ensemble metadata expanded** (`ensemble.py`)
    - Now includes `win_prob`, `rr_tp2` for downstream analysis
 
+### Session 3h: Pipeline Rejection Tracking
+
+**Source**: Missed trade design agent (16 rejection gates identified).
+
+**Changes Implemented:**
+1. **MissedTradeTracker wired into main loop** (`multi_strategy_main.py`)
+   - Initialized at startup alongside IC tracker, Kelly engine, trade ledger
+   - Wired into ensemble via `set_missed_trade_tracker()`
+2. **Pipeline rejections now tracked** (`multi_strategy_main.py`)
+   - All `RiskFilterChain.evaluate()` rejections recorded with `gate="pipeline"`
+   - Covers: fee drag, EV floor, circuit breaker, leverage, correlation, liquidation
+3. **RiskFilterChain gains tracker API** (`signal_pipeline.py`)
+   - `set_missed_trade_tracker()` and `_track_pipeline_rejection()` methods
+4. **1 new test** for pipeline rejection tracking
+
 ### Still Pending
 
 - [ ] Wire rebalance suggestions into exit intelligence (currently computed but ignored)
