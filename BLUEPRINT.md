@@ -803,13 +803,50 @@ Must achieve over 21 days:
    - Foundation for auto-reducing position sizes on Sharpe degradation
 5. **4 new tests**: default/trending/panic regime SL/TP, unknown regime passthrough
 
+### Session 3f: Regime Slippage, Signal Decay Sizing, Agreement Sizing
+
+**Source**: Background swarm agents (signal pipeline, position manager, data fetcher audits).
+
+**Changes Implemented:**
+1. **Regime-specific slippage in EV calculation** (`ensemble.py`)
+   - `_REGIME_SLIPPAGE_BPS` table: trending=1bps, panic=6bps, high_vol=4bps
+   - Slippage added to fee_drag in EV formula: `total_cost = fees × 2 + slippage`
+   - Prevents entries where execution costs eat the edge in volatile conditions
+2. **Regime-specific slippage in signal pipeline** (`signal_pipeline.py`)
+   - Same slippage table applied to both `evaluate()` and `evaluate_annotated()` fee-drag gates
+   - Ensures consistent cost modeling between ensemble and pipeline
+3. **Half-size for 1-agree trades** (`multi_strategy_main.py`)
+   - Compound sizing multiplier applies 0.5× when `num_agree == 1`
+   - Was documented/commented but never actually wired in
+4. **Signal decay → compound sizing** (`multi_strategy_main.py`)
+   - Stale signals get reduced position size (not just lower confidence)
+   - Uses `compute_signal_decay()` with 5× decay window for gradual reduction
+   - This is the 11th compound sizing multiplier
+
+### Compound Sizing: Complete 11-Multiplier System (Updated)
+
+| # | Multiplier | Source | Effect |
+|---|-----------|--------|--------|
+| 1 | Kelly weight | `kelly_engine` | Size up proven strategies, down unproven |
+| 2 | IC weight | `ic_tracker` | Kill inverted factors, half-size decaying |
+| 3 | Regime scalar | `risk_mgr` | Reduce in bear/chop, maintain in trend |
+| 4 | Drawdown dial | `risk_mgr` | Progressive reduction during drawdowns |
+| 5 | Vol regime | ATR current/baseline | Inverse volatility sizing |
+| 6 | BTC momentum | 1h price change | Alignment with BTC direction |
+| 7 | Portfolio budget | `portfolio_risk` | Scale down as budget fills (>50%) |
+| 8 | Signal decay | `compute_signal_decay` | Reduce size for stale signals |
+| 9 | Agreement level | `num_agree` | Half-size for 1-agree cherry-picks |
+| 10 | Walk-forward | `_wf_ratio` | Auto-reduce on OOS degradation |
+| 11 | Cap/Floor | 0.1×-2.0× | Prevent extreme sizes |
+
 ### Still Pending
 
 - [ ] Wire rebalance suggestions into exit intelligence (currently computed but ignored)
 - [ ] Run 30-day backtest with full missed trade tracking to calibrate gates
-- [ ] Add regime-specific slippage multipliers to EV calculation
 - [ ] Seed signal quality from backtest before paper trading
 - [ ] Auto-reduce sizing when rolling Sharpe < 0 for 3+ consecutive days
+- [ ] ATR multiplier sweep for BTC-specific optimization
+- [ ] Graduated correlation size reduction (continuous vs binary 0.85 threshold)
 
 ---
 
