@@ -731,6 +731,27 @@ Must achieve over 21 days:
      - Trending: 70% progress, 3 conditions (let trends breathe)
    - Added 3rd condition: extreme SL progress (>80%) counts as condition
 
+### Session 3c: Strategy Edge Calibration (Swarm Agent Findings)
+
+**Source**: Strategy edge decay swarm agent analyzed all 10 strategies.
+
+**Changes Implemented:**
+1. **RSI thresholds crypto-calibrated** across 4 active strategies:
+   - `confidence_scorer.py`: 30/70 → 25/75 (extreme zones for scoring)
+   - `monte_carlo_zones.py`: 30/70 → 25/75 (deep buy/safe sell zones)
+   - `liquidation_cascade.py`: 30/70 → 25/75 (post-cascade reversal)
+   - Crypto RSI runs hotter than equities; 30/70 catches noise, 25/75 catches real extremes
+
+2. **Bollinger squeeze bandwalk RSI contradiction fixed** (`bollinger_squeeze.py:273-283`)
+   - Old: RSI > 80 during upper bandwalk → REJECT (contradicts bandwalk definition)
+   - New: RSI > 85 during bandwalk → +3 confidence (confirms strong trend)
+   - Bandwalk = riding the band = RSI naturally extreme. Rejecting defeats the purpose.
+
+3. **Confidence scorer 6h penalty softened** (`confidence_scorer.py:370-380`)
+   - Old: -15/-20 penalty when 6h diverges
+   - New: -8/-12 penalty (less harsh, keeps more 1h-confirmed signals through)
+   - Old penalty killed signals where 1h had genuine edge but 6h was neutral
+
 ### Still Pending
 
 - [ ] Wire live walk-forward validation with auto-sizing reduction on edge decay

@@ -251,7 +251,7 @@ class MonteCarloZonesStrategy(BaseStrategy):
             confidence += 20
             if _mc_significant(mc["up_prob"], 0.6):
                 confidence += 15
-            if rsi < 30:
+            if rsi < 25:
                 confidence += 10
             if vol_spike and _mc_significant(mc["up_prob"], 0.55):
                 confidence += 5
@@ -277,7 +277,7 @@ class MonteCarloZonesStrategy(BaseStrategy):
             confidence += 20
             if _mc_significant(mc["down_prob"], 0.6):
                 confidence += 15
-            if rsi > 70:
+            if rsi > 75:
                 confidence += 10
             if vol_spike and _mc_significant(mc["down_prob"], 0.55):
                 confidence += 5

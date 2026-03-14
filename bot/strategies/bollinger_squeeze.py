@@ -272,15 +272,16 @@ class BollingerSqueezeStrategy(BaseStrategy):
                 signal_type = "bandwalk"
                 if bandwalk == "upper":
                     side = "BUY"
-                    # Confirm with RSI not extreme (avoid exhaustion)
-                    if rsi > 80:
-                        return None  # Too extended
+                    # RSI > 80 is natural during upper bandwalk — it confirms the trend.
+                    # Only reject if RSI is DECLINING from extreme (exhaustion reversal).
                     confidence = 62.0
+                    if rsi > 85:
+                        confidence += 3.0  # Strong trend confirmation
                 else:
                     side = "SELL"
-                    if rsi < 20:
-                        return None  # Too oversold
                     confidence = 62.0
+                    if rsi < 15:
+                        confidence += 3.0  # Strong trend confirmation
 
                 # Volume confirmation
                 if vol_ratio > 1.2:
