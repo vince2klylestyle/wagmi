@@ -349,7 +349,9 @@ class DataFetcher:
     def _disk_cache_path(self, symbol: str, timeframe: str, days: Optional[int] = None) -> str:
         """Generate disk cache file path for a symbol/timeframe/days combo."""
         d = days or self.backtest_days or 0
-        return os.path.join(self._disk_cache_dir, f"{symbol}_{timeframe}_{d}d.csv")
+        # Sanitize symbol to remove characters unsafe in filenames (/, :, *)
+        safe_symbol = symbol.replace("/", "_").replace(":", "_").replace("*", "_")
+        return os.path.join(self._disk_cache_dir, f"{safe_symbol}_{timeframe}_{d}d.csv")
 
     def _load_disk_cache(self, symbol: str, timeframe: str, days: Optional[int] = None) -> Optional[pd.DataFrame]:
         """Load cached data from disk if available and not --fresh.
@@ -357,6 +359,10 @@ class DataFetcher:
         Cache TTL:
         - backtest_mode: no expiry (data is static for reproducibility)
         - live mode: 1 hour for intraday timeframes, 24 hours for daily
+
+        Coverage check: if `days` is specified, the cached data must cover at
+        least 80% of the requested period or it is rejected as incomplete
+        (e.g. prevents a 90-day CoinGecko fallback from being served as 365 days).
         """
         if self._fresh:
             return None
@@ -377,6 +383,27 @@ class DataFetcher:
             df = pd.read_csv(path, parse_dates=["time"])
             if df.empty or len(df) < 5:
                 return None
+
+            # Restore UTC timezone on the time column (lost when written to CSV)
+            if "time" in df.columns:
+                df["time"] = pd.to_datetime(df["time"], utc=True)
+
+            # Coverage check: reject cache if it doesn't cover the requested period.
+            # This prevents a CoinGecko 90-day fallback being served for a 365-day request.
+            req_days = days or self.backtest_days or 0
+            if req_days > 0 and "time" in df.columns and not df.empty:
+                first_ts = df["time"].iloc[0]
+                last_ts = df["time"].iloc[-1]
+                actual_days = (last_ts - first_ts).total_seconds() / 86400
+                min_required_days = req_days * 0.80  # allow up to 20% shortfall
+                if actual_days < min_required_days:
+                    logger.info(
+                        f"[CACHE] Disk cache for {symbol}/{timeframe} covers only "
+                        f"{actual_days:.1f} days (need {min_required_days:.0f}+ of {req_days}), "
+                        f"discarding and re-fetching"
+                    )
+                    return None
+
             logger.info(f"[CACHE] Loaded {len(df)} candles for {symbol}/{timeframe} from disk cache ({path})")
             return df
         except Exception as e:
@@ -389,10 +416,12 @@ class DataFetcher:
             return
         path = self._disk_cache_path(symbol, timeframe, days)
         try:
+            # Ensure cache directory exists (in case it was deleted mid-run)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             df.to_csv(path, index=False)
-            logger.debug(f"[CACHE] Saved {len(df)} candles for {symbol}/{timeframe} to {path}")
+            logger.info(f"[CACHE] Saved {len(df)} candles for {symbol}/{timeframe} to {path}")
         except Exception as e:
-            logger.debug(f"[CACHE] Failed to save {path}: {e}")
+            logger.warning(f"[CACHE] Failed to save {path}: {e}")
 
     # ─── Data continuity checks ──────────────────────────────────
 
