@@ -47,6 +47,12 @@ from strategies.liquidation_cascade import LiquidationCascadeStrategy
 
 logger = logging.getLogger("bot.backtest")
 
+# Maximum number of historical candles passed to strategies per timeframe window.
+# Strategies only need ~200 candles for their longest indicators (EMA-200, etc.).
+# Without this cap, each iteration copies a growing slice of the full DataFrame,
+# causing peak RAM to balloon from ~1 GB to 5+ GB on 365-day 5m-inclusive runs.
+_MAX_WINDOW_LOOKBACK = 500
+
 
 class BacktestEngine:
     """
@@ -62,10 +68,12 @@ class BacktestEngine:
     """
 
     def __init__(self, config: Optional[TradingConfig] = None, llm_integration=None,
-                 fresh: bool = False, relaxed_cb: bool = False):
+                 fresh: bool = False, relaxed_cb: bool = False, resume: bool = False):
         self.config = config or TradingConfig()
         self.llm = llm_integration  # Optional BacktestLLMIntegration
         self._relaxed_cb = relaxed_cb
+        self._resume = resume
+        self._simple_resume_state: Optional[Dict] = None  # Populated from checkpoint on resume
 
         # Initialize components
         self.fetcher = DataFetcher(cache_ttl=3600, backtest_mode=True, fresh=fresh)
@@ -262,6 +270,18 @@ class BacktestEngine:
         symbols_completed = []
         if self.llm and self.llm.resume_state:
             symbols_completed = list(self.llm.resume_state.symbols_completed)
+        elif self._resume and not self.llm:
+            # Non-LLM resume: load simple checkpoint
+            ckpt = self._load_simple_checkpoint()
+            if ckpt:
+                symbols_completed = list(ckpt.get("symbols_completed", []))
+                self.risk_mgr.equity = ckpt.get("equity", self.risk_mgr.equity)
+                self._simple_resume_state = ckpt  # Used in _walk_hourly to skip to right candle
+                logger.info(
+                    f"Non-LLM resume: equity=${self.risk_mgr.equity:.2f}, "
+                    f"completed={symbols_completed}"
+                )
+        self._symbols_completed_so_far = list(symbols_completed)  # Updated as each symbol finishes
 
         # Walk forward through data
         # Use 1h timeframe as the primary clock
@@ -318,6 +338,14 @@ class BacktestEngine:
             # Record per-symbol equity attribution
             self.symbol_pnl[symbol] = self.risk_mgr.equity - equity_before
             symbols_completed.append(symbol)
+            self._symbols_completed_so_far = list(symbols_completed)
+            # Save checkpoint after each completed symbol (non-LLM, resume mode)
+            if self._resume and not self.llm:
+                self._save_simple_checkpoint(
+                    symbol=symbol,
+                    candle_idx=-1,  # -1 signals symbol fully done
+                    symbols_completed=symbols_completed,
+                )
 
         # Flush LLM decisions and generate report
         if self.llm:
@@ -397,6 +425,44 @@ class BacktestEngine:
             return [s for name, s in all_strats.items() if name in strategy_names]
         return list(all_strats.values())
 
+    # ── Simple (non-LLM) checkpoint helpers ──────────────────────────────────
+
+    def _simple_ckpt_path(self) -> Path:
+        ckpt_dir = Path("data/backtest_checkpoints")
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        return ckpt_dir / "simple_checkpoint.json"
+
+    def _save_simple_checkpoint(self, symbol: str, candle_idx: int,
+                                 symbols_completed: List[str]) -> None:
+        """Persist resume state to disk (non-LLM checkpoint)."""
+        try:
+            state = {
+                "current_symbol": symbol,
+                "candle_idx": candle_idx,
+                "symbols_completed": symbols_completed,
+                "equity": self.risk_mgr.equity,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            self._simple_ckpt_path().write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            logger.debug(f"Simple checkpoint save failed (non-fatal): {e}")
+
+    def _load_simple_checkpoint(self) -> Optional[Dict]:
+        """Load simple checkpoint from disk. Returns None if not found."""
+        try:
+            path = self._simple_ckpt_path()
+            if path.exists():
+                data = json.loads(path.read_text())
+                logger.info(
+                    f"Loaded simple checkpoint: symbol={data.get('current_symbol')} "
+                    f"candle={data.get('candle_idx')} equity=${data.get('equity', 0):.2f} "
+                    f"completed={data.get('symbols_completed', [])}"
+                )
+                return data
+        except Exception as e:
+            logger.warning(f"Simple checkpoint load failed: {e}")
+        return None
+
     def _walk_hourly(self, symbol: str, data: Dict[str, pd.DataFrame], ensemble: EnsembleStrategy):
         """Walk forward through hourly candles."""
         df_1h = data.get("1h", pd.DataFrame())
@@ -412,20 +478,34 @@ class BacktestEngine:
         if (self.llm and self.llm.resume_state
                 and self.llm.resume_state.symbol == symbol):
             start_idx = max(warmup, self.llm.resume_state.candle_index + 1)
-            logger.info(f"[{symbol}] Resuming from candle {start_idx}")
+            logger.info(f"[{symbol}] Resuming from candle {start_idx} (LLM checkpoint)")
+        elif (self._simple_resume_state
+              and self._simple_resume_state.get("current_symbol") == symbol):
+            resume_candle = self._simple_resume_state.get("candle_idx", warmup)
+            start_idx = max(warmup, resume_candle + 1)
+            logger.info(f"[{symbol}] Resuming from candle {start_idx} (simple checkpoint)")
+            self._simple_resume_state = None  # Consume once — next symbol starts fresh
 
         for i in range(start_idx, total_candles):
             self._current_candle_idx = i  # Track for missed trade counterfactuals
-            # Build windowed data for this point in time
+            # Build windowed data for this point in time.
+            # Use searchsorted + fixed-size tail to keep each window bounded at
+            # _MAX_WINDOW_LOOKBACK rows regardless of how far into the backtest we are.
+            # Replaces the old df[mask].copy() pattern which grew O(n) per candle and
+            # caused 5+ GB peak RAM on 365-day runs with 5m data.
             windowed = {}
             for tf, df in data.items():
                 if df.empty:
                     continue
                 current_time = df_1h["time"].iloc[i]
-                # Only include data BEFORE current candle to avoid look-ahead bias.
-                # Signal evaluates on completed candles, entry fills on current close.
-                mask = df["time"] < current_time
-                w = df[mask].copy()
+                # Find the cutoff index (first row >= current_time) without scanning
+                # every row — searchsorted is O(log n) vs O(n) for boolean mask.
+                cutoff = int(df["time"].searchsorted(current_time, side="left"))
+                if cutoff == 0:
+                    continue
+                # Cap window to _MAX_WINDOW_LOOKBACK rows (fixed-size copy, not growing).
+                start_w = max(0, cutoff - _MAX_WINDOW_LOOKBACK)
+                w = df.iloc[start_w:cutoff].copy()
                 # Drop rows with NaN in critical OHLCV columns
                 ohlcv_cols = [c for c in ("open", "high", "low", "close", "volume") if c in w.columns]
                 if ohlcv_cols:
@@ -768,6 +848,13 @@ class BacktestEngine:
                     )
                 if i % 50 == 0:
                     print(self.llm.get_progress_line(i - warmup, total_candles - warmup))
+            # Non-LLM checkpoint: save every 100 candles when --resume was requested
+            elif self._resume and i % 100 == 0:
+                self._save_simple_checkpoint(
+                    symbol=symbol,
+                    candle_idx=i,
+                    symbols_completed=list(getattr(self, "_symbols_completed_so_far", [])),
+                )
 
         # Force-close any open position at end of symbol walk
         self._force_close_open(symbol, current_price, sim_dt)
@@ -804,9 +891,12 @@ class BacktestEngine:
                 if df_tf.empty:
                     continue
                 current_time = df["time"].iloc[i]
-                # Exclude current candle from signal evaluation (look-ahead prevention)
-                mask = df_tf["time"] < current_time
-                windowed[tf] = df_tf[mask].copy()
+                # Fixed-size window: searchsorted + tail cap (same pattern as _walk_hourly).
+                cutoff = int(df_tf["time"].searchsorted(current_time, side="left"))
+                if cutoff == 0:
+                    continue
+                start_w = max(0, cutoff - _MAX_WINDOW_LOOKBACK)
+                windowed[tf] = df_tf.iloc[start_w:cutoff].copy()
 
             current_price = float(df["close"].iloc[i])
             candle_high = float(df["high"].iloc[i]) if "high" in df.columns else current_price
@@ -1398,6 +1488,9 @@ class BacktestEngine:
             )
 
             if not result.approved:
+                logger.info(
+                    f"[{signal.symbol}] Signal REJECTED by risk chain: {result.rejection_reason}"
+                )
                 self.signal_rejections.append({
                     "symbol": signal.symbol, "strategy": signal.strategy,
                     "confidence": signal.confidence, "side": signal.side,
@@ -2023,11 +2116,12 @@ class BacktestEngine:
             gate_counts[gate] = gate_counts.get(gate, 0) + 1
 
         executed = len(self.signals_generated)
-        other_rejections = signal_gen - executed - sum(gate_counts.values())
+        regime_blocked = self.candle_stats.get("regime_blocked", 0)
+        # Subtract regime_blocked so they aren't counted twice (they already
+        # appear in the regime_blocked bucket and should not inflate other_rejections).
+        other_rejections = signal_gen - executed - sum(gate_counts.values()) - regime_blocked
         if other_rejections < 0:
             other_rejections = 0
-
-        regime_blocked = self.candle_stats.get("regime_blocked", 0)
 
         return {
             "candles_processed": total,

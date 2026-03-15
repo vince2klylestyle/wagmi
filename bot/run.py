@@ -83,7 +83,8 @@ def cmd_backtest(args):
 
     fresh_mode = getattr(args, "fresh", False)
     relaxed_cb = getattr(args, "relaxed_cb", False)
-    engine = BacktestEngine(config, llm_integration=llm_integration, fresh=fresh_mode, relaxed_cb=relaxed_cb)
+    engine = BacktestEngine(config, llm_integration=llm_integration, fresh=fresh_mode,
+                            relaxed_cb=relaxed_cb, resume=resume)
 
     raw_mode = getattr(args, "raw", False)
     if raw_mode:
@@ -112,6 +113,8 @@ def cmd_backtest(args):
         print("  + Exit Agent (open positions) + Learning Agent (closed trades)")
         if resume:
             print("  Resume: from last checkpoint")
+    elif resume:
+        print("  Resume: from last checkpoint (simple mode)")
 
     report = engine.run(symbols, args.days, strategies, learn=learn)
 
