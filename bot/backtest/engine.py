@@ -1133,12 +1133,14 @@ class BacktestEngine:
                                 al = s.get("align_long", 0)
                                 ash = s.get("align_short", 0)
                                 adx_val = s.get("adx", 25.0)
-                                if al >= 2:
+                                if al >= 3:
                                     signal.metadata["regime"] = "trending_bull"
-                                elif ash >= 2:
+                                elif ash >= 3:
                                     signal.metadata["regime"] = "trending_bear"
                                 else:
                                     signal.metadata["regime"] = "ranging"
+                                # Aligned with hourly threshold (>=3): prevents daily loop
+                                # from tagging "trending" with lower conviction than hourly.
                                 break
                         signal.metadata["adx"] = round(adx_val, 1)
                     except Exception:
@@ -1910,9 +1912,11 @@ class BacktestEngine:
                 timestamp = str(getattr(event, "timestamp", ""))
                 symbol = getattr(event, "symbol", "unknown")
                 strategy = meta.get("strategy", getattr(event, "strategy", "unknown"))
+            strategies_agree = meta.get("strategies_agree", [])
             records.append({
                 "pnl": float(pnl),
                 "strategy": strategy,
+                "strategies_agree": strategies_agree,  # individual strategy names for correlation
                 "regime": meta.get("regime", "unknown"),
                 "side": side,
                 "confidence": float(meta.get("confidence", 0)),

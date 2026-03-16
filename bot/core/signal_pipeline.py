@@ -173,6 +173,11 @@ class RiskFilterChain:
             min_ev = max(min_ev, 0.22)  # Tight stops: fees eat most of the risk
         elif stop_pct > 0 and stop_pct < 0.006:
             min_ev = max(min_ev, 0.18)  # Medium-tight stops: moderate EV bump
+        # 2-agree trades are PF ~0.99x (near-random) — enforce a higher EV bar.
+        # 3-agree trades are PF ~1.14x — they can stay at the base threshold.
+        _ev_n_agree = signal.metadata.get("num_agree", 3) if signal.metadata else 3
+        if _ev_n_agree <= 2:
+            min_ev = max(min_ev, 0.22)  # Weak consensus needs clear positive EV
         if ev is not None and ev < min_ev:
             _reason = f"EV {ev:.3f} < min {min_ev:.2f} (low expected value)"
             _log_rejection(signal, "ev_floor", _reason)
