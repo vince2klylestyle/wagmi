@@ -374,7 +374,7 @@ class MultiStrategyBot:
         if os.getenv("STRATEGY_REGIME_TREND_ENABLED", "true").lower() == "true":
             self.strategies.append(RegimeTrendStrategy(sym_configs, config.htf_hours))
         if os.getenv("STRATEGY_CONFIDENCE_SCORER_ENABLED", "true").lower() == "true":
-            self.strategies.append(ConfidenceScorerStrategy(sym_configs, data_dir="ml_data"))
+            self.strategies.append(ConfidenceScorerStrategy(sym_configs, data_dir="ml_data", backtest_mode=True))
         if os.getenv("STRATEGY_MULTI_TIER_QUALITY_ENABLED", "true").lower() == "true":
             self.strategies.append(MultiTierQualityStrategy(sym_configs))
         if os.getenv("STRATEGY_MONTE_CARLO_ENABLED", "false").lower() == "true":

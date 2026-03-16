@@ -276,9 +276,9 @@ class OrderExecutor:
         fill_price = price + slippage if side == "buy" else price - slippage
         fill_price = round_price(symbol, fill_price)
 
-        # Estimate fees (Hyperliquid taker: 2.5 bps)
+        # Estimate fees (Hyperliquid taker: 4 bps — matches backtest config)
         notional = qty * fill_price
-        fees = notional * 0.00025
+        fees = notional * 0.0004
         self._total_fees += fees
 
         result = OrderResult(
