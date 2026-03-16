@@ -545,7 +545,7 @@ class BacktestEngine:
         _tf_time_vals = {}
         for tf, df in data.items():
             if not df.empty and "time" in df.columns:
-                _tf_time_vals[tf] = df["time"].values
+                _tf_time_vals[tf] = pd.to_datetime(df["time"]).astype("int64").values
 
         for i in range(start_idx, total_candles):
             self._current_candle_idx = i  # Track for missed trade counterfactuals
@@ -556,8 +556,8 @@ class BacktestEngine:
             # caused 5+ GB peak RAM on 365-day runs with 5m data.
             windowed = {}
             current_time = df_1h["time"].iloc[i]
-            # Convert to a raw value comparable with df["time"].values for searchsorted
-            _ct_val = current_time.value if hasattr(current_time, 'value') else current_time
+            # Convert to int64 nanoseconds for searchsorted (matches _tf_time_vals)
+            _ct_val = pd.Timestamp(current_time).value
             for tf, df in data.items():
                 if df.empty:
                     continue
