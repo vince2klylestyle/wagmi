@@ -838,6 +838,24 @@ class BacktestEngine:
                         )
                         continue
 
+                    # Block trending regimes: negative-EV across 6 backtests (75-150 days).
+                    # trending_bear: avg 33% WR, -$15,542 total; trending_bull: 38% WR, -$8,904 total.
+                    # high_volatility (+$35k) and consolidation are the only edges.
+                    if regime in ("trending_bear", "trending_bull"):
+                        logger.info(
+                            f"[{symbol}] Signal SKIPPED: {regime} regime "
+                            f"(historically negative-EV, ADX={_bt_adx:.1f})"
+                        )
+                        self.candle_stats.setdefault("regime_blocked", 0)
+                        self.candle_stats["regime_blocked"] += 1
+                        self.missed_trade_tracker.record_rejection(
+                            signal=signal,
+                            reason=f"Trending regime {regime} blocked (negative-EV)",
+                            gate="regime_filter",
+                            candle_idx=i,
+                        )
+                        continue
+
                     # Create candidate for dual-world tracking
                     candidate = self._create_candidate(signal, sim_dt)
 
@@ -1136,9 +1154,10 @@ class BacktestEngine:
                     if trend_adj == 0 and signal.metadata.get("regime") not in ("trending_bull", "trending_bear"):
                         signal.metadata["regime"] = "ranging"
 
-                    # Regime filter: skip ranging and unknown trades
+                    # Regime filter: skip ranging/unknown and negative-EV trending regimes.
+                    # trending_bear/bull: -$24k across 6 backtests (75-150 days), avg WR 33-38%.
                     regime = signal.metadata.get("regime", "unknown")
-                    if regime in ("ranging", "unknown"):
+                    if regime in ("ranging", "unknown", "trending_bear", "trending_bull"):
                         logger.info(f"[{symbol}] Signal SKIPPED (daily): {regime} regime")
                         self.candle_stats.setdefault("regime_blocked", 0)
                         self.candle_stats["regime_blocked"] += 1
@@ -1825,6 +1844,41 @@ class BacktestEngine:
         except Exception as e:
             logger.warning(f"Signal digest summary failed: {e}")
             report["signal_digest_summary"] = {"error": str(e)}
+
+        # ── Walk-Forward Validation ──────────────────────────────────────
+        # Uses the existing trade log (no extra backtests). Partitions completed
+        # trades into rolling train/test windows to check OOS generalization.
+        try:
+            import pandas as pd
+            from validation.walk_forward import run_rolling_walk_forward, avg_wf_ratio
+            _wf_records = self._build_quant_trade_records()
+            _wf_input = []
+            for t in _wf_records:
+                ts = t.get("timestamp", "")
+                try:
+                    epoch = pd.Timestamp(ts).timestamp()
+                    _wf_input.append({"timestamp": epoch, "net_pnl": float(t.get("pnl", 0))})
+                except Exception:
+                    pass
+            if len(_wf_input) >= 10:
+                _wf_results = run_rolling_walk_forward(_wf_input)
+                _wf_ratio = avg_wf_ratio(_wf_results) if _wf_results else 0.0
+                _wf_test_profit = sum(r["oos_pnl"] for r in _wf_results) > 0 if _wf_results else False
+                report["walk_forward"] = {
+                    "overfit_ratio": round(_wf_ratio, 3),
+                    "test_profitable": _wf_test_profit,
+                    "n_windows": len(_wf_results),
+                }
+                logger.info(
+                    f"[WF] Walk-forward: {len(_wf_results)} windows, "
+                    f"ratio={_wf_ratio:.2f}, test_profitable={_wf_test_profit}"
+                )
+            else:
+                report["walk_forward"] = {"overfit_ratio": 0.0, "test_profitable": False, "n_windows": 0}
+                logger.info(f"[WF] Insufficient trades for walk-forward ({len(_wf_input)} < 10)")
+        except Exception as e:
+            logger.warning(f"Walk-forward validation failed: {e}")
+            report["walk_forward"] = {"overfit_ratio": 0.0, "test_profitable": False, "error": str(e)}
 
         return report
 
