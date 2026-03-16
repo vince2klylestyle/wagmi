@@ -1019,6 +1019,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if positions_raw:
                     break
 
+        # Try bot.pos_mgr directly (MultiStrategyBot pattern).
+        if not positions_raw:
+            pm = getattr(bot, "pos_mgr", None)
+            if pm is not None:
+                fn = getattr(pm, "get_open_positions", None)
+                if callable(fn):
+                    try:
+                        positions_raw = fn()
+                    except Exception:
+                        pass
+
         # Also try nested engine/position_manager.
         if not positions_raw:
             engine = getattr(bot, "engine", None) or getattr(bot, "trading_engine", None)

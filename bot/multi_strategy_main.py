@@ -3150,9 +3150,8 @@ class MultiStrategyBot:
                 portfolio_risk_engine=self.portfolio_risk if hasattr(self, 'portfolio_risk') else None,
             )
             if not _chain_result.approved:
-                log_rejection(symbol, "risk_filter_chain",
-                              confidence=signal_result.confidence,
-                              reason=_chain_result.rejection_reason)
+                log_rejection(symbol, f"risk_filter_chain: {_chain_result.rejection_reason}",
+                              confidence=signal_result.confidence)
                 logger.info(
                     f"[{trace_id}][{symbol}] RiskFilterChain rejected: "
                     f"{_chain_result.rejection_reason}"
