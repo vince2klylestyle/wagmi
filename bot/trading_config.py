@@ -43,16 +43,12 @@ class SymbolConfig:
     risk_tier: str      # "low", "medium", "high"
 
 
-# Focused symbol set — 3 large caps + 3 high-volume small caps
+# Backtested symbols only — add others after separate backtest validation
 # Fewer symbols = faster rescan loop = better scalp coverage
 DEFAULT_SYMBOLS = {
-    # Large caps (priority)
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
     "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
-    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),  # was "medium": inconsistent with volatility_profile="high" in overrides
-    # Small caps (high volume memes)
-    "DOGE": SymbolConfig("DOGE", "DOGE-USD", "dogecoin", "high"),
-    "FARTCOIN": SymbolConfig("FARTCOIN", "FARTCOIN-USD", "fartcoin", "high"),
+    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),
 }
 
 # Risk multipliers for zone computation (from user's original bots)
