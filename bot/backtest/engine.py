@@ -1705,6 +1705,30 @@ class BacktestEngine:
         # Per-trade timeline (always available, enriched with LLM data when present)
         report["trade_timeline"] = self._report_trade_timeline()
 
+        # Walk-forward validation — detect overfitting
+        try:
+            from validation.walk_forward import run_rolling_walk_forward, avg_wf_ratio
+
+            wf_trades = [
+                {"timestamp": t["timestamp"], "net_pnl": t["pnl"] - t.get("fee", 0)}
+                for t in report["trade_timeline"]
+                if t.get("timestamp", 0) > 0
+            ]
+            wf_results = run_rolling_walk_forward(wf_trades, train_days=60, test_days=20)
+            if wf_results:
+                ratio = avg_wf_ratio(wf_results)
+                test_pnl = sum(r["oos_pnl"] for r in wf_results)
+                report["walk_forward"] = {
+                    "overfit_ratio": ratio,
+                    "test_profitable": test_pnl > 0,
+                    "windows": len(wf_results),
+                }
+            else:
+                report["walk_forward"] = {"overfit_ratio": 0.0, "test_profitable": False}
+        except Exception as e:
+            logger.warning(f"Walk-forward validation failed: {e}")
+            report["walk_forward"] = {"overfit_ratio": 0.0, "test_profitable": False}
+
         # Feed findings into pattern cache for LLM knowledge pipeline
         try:
             from llm.pattern_cache import get_pattern_cache
@@ -2651,6 +2675,7 @@ class BacktestEngine:
                 state_path = meta.get("state_path", "")
 
                 row = {
+                    "timestamp": event.timestamp.timestamp() if hasattr(event.timestamp, 'timestamp') else 0,
                     "symbol": event.symbol,
                     "side": getattr(event, "side", ""),
                     "strategy": event.strategy or "unknown",
