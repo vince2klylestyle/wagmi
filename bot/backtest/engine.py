@@ -2674,8 +2674,21 @@ class BacktestEngine:
                 # State path from metadata
                 state_path = meta.get("state_path", "")
 
+                # Use simulated close time for backtests (event.timestamp is wallclock)
+                _sim_ts = 0
+                _close_sim = meta.get("close_sim_time", "")
+                if _close_sim:
+                    try:
+                        from datetime import datetime as _dt
+                        _parsed = _dt.fromisoformat(str(_close_sim))
+                        _sim_ts = _parsed.timestamp()
+                    except (ValueError, TypeError):
+                        pass
+                if _sim_ts == 0 and hasattr(event.timestamp, 'timestamp'):
+                    _sim_ts = event.timestamp.timestamp()
+
                 row = {
-                    "timestamp": event.timestamp.timestamp() if hasattr(event.timestamp, 'timestamp') else 0,
+                    "timestamp": _sim_ts,
                     "symbol": event.symbol,
                     "side": getattr(event, "side", ""),
                     "strategy": event.strategy or "unknown",
