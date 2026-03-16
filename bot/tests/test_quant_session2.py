@@ -405,11 +405,11 @@ class TestWalkForwardMultiplier:
 # ── Regime-Conditional SL/TP ──────────────────────────────────────
 
 class TestRegimeSlTp:
-    def test_trending_bull_widens_sl(self):
+    def test_trending_bull_tightens_sl(self):
         from trading_config import get_regime_sl_tp
         sl, tp1, tp2 = get_regime_sl_tp("trending_bull", 2.0, 2.0, 4.0)
-        assert sl > 2.0  # Wider SL in trend
-        assert tp1 > 2.0  # Wider TP1: let momentum carry in trends
+        assert sl < 2.0  # Tight SL: real trends move away from entry fast
+        assert tp1 > 2.0  # Wide TP1: let momentum carry in trends
 
     def test_consolidation_tightens_sl(self):
         from trading_config import get_regime_sl_tp
