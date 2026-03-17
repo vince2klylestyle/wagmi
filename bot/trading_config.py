@@ -48,7 +48,7 @@ class SymbolConfig:
 DEFAULT_SYMBOLS = {
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
     "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
-    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),
+    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),  # was "medium": inconsistent with volatility_profile="high" in overrides
 }
 
 # Risk multipliers for zone computation (from user's original bots)
