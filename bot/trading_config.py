@@ -43,16 +43,12 @@ class SymbolConfig:
     risk_tier: str      # "low", "medium", "high"
 
 
-# Focused symbol set — 3 large caps + 3 high-volume small caps
+# Focused symbol set — backtested assets only
 # Fewer symbols = faster rescan loop = better scalp coverage
 DEFAULT_SYMBOLS = {
-    # Large caps (priority)
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
     "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
-    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),  # was "medium": inconsistent with volatility_profile="high" in overrides
-    # Small caps (high volume memes)
-    "DOGE": SymbolConfig("DOGE", "DOGE-USD", "dogecoin", "high"),
-    "FARTCOIN": SymbolConfig("FARTCOIN", "FARTCOIN-USD", "fartcoin", "high"),
+    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),
 }
 
 # Risk multipliers for zone computation (from user's original bots)
@@ -557,8 +553,6 @@ DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
     # BTC risk slightly below global 0.5% since BTC ATR stops are proportionally tighter
     "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium"),
     "HYPE": SymbolOverrides(max_leverage=20.0, volatility_profile="high"),
-    "DOGE": SymbolOverrides(max_leverage=12.0, volatility_profile="high"),
-    "FARTCOIN": SymbolOverrides(max_leverage=10.0, volatility_profile="high"),
 }
 
 
