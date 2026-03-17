@@ -6,8 +6,8 @@ Serves a single-page HTML dashboard with auto-refreshing data via
 fetch() calls to JSON API endpoints backed by the SQLite data layer.
 
 Features:
-  v4.0 — Professional Trading Intelligence Terminal
-  - 6-tab layout: Overview | Charts & Zones | Signals | Trades | Analytics | System
+  v4.1 — Professional Trading Intelligence Terminal
+  - 7-tab layout: Overview | Charts & Zones | Signals | Trades | Analytics | System | Learn
   - TradingView Lightweight Charts with Monte Carlo zone overlays
   - Educational tooltips on every concept (click ? icons)
   - Live positions with price range bars (10s refresh)
@@ -50,7 +50,7 @@ _START_TIME = time.time()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# HTML Dashboard (inline single-page app) — v4.0
+# HTML Dashboard (inline single-page app) — v4.1
 # ═══════════════════════════════════════════════════════════════════════════
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
@@ -59,8 +59,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>NunuIRL Trading Intelligence</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="window._chartJsFailed=true"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" onerror="window._lwcFailed=true"></script>
 <style>
 :root {
   --bg: #060611;
@@ -425,6 +425,9 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 /* ── Footer ── */
 .footer { text-align: center; color: var(--muted); font-size: 10px; padding: 24px 0 12px 0; border-top: 1px solid var(--border); margin-top: 24px; }
 
+/* ── Learn Tab ── */
+.lesson-item:hover { background: var(--bg2); }
+
 /* ── Responsive ── */
 @media(max-width:1400px) { .grid-5 { grid-template-columns: repeat(3,1fr); } .grid-4 { grid-template-columns: repeat(2,1fr); } }
 @media(max-width:1000px) { .grid-5 { grid-template-columns: repeat(2,1fr); } .grid-3,.grid-2 { grid-template-columns: 1fr; } .heatmap-grid { grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); } .tab-btn { padding: 10px 14px; font-size: 11px; } }
@@ -453,6 +456,7 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   <button class="tab-btn" data-tab="trades"><span class="tab-icon">&#9733;</span>Trades</button>
   <button class="tab-btn" data-tab="analytics"><span class="tab-icon">&#9776;</span>Analytics</button>
   <button class="tab-btn" data-tab="system"><span class="tab-icon">&#9881;</span>System</button>
+  <button class="tab-btn" data-tab="learn"><span class="tab-icon">&#127891;</span>Learn</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════ -->
@@ -528,6 +532,14 @@ tr:hover td { background: rgba(255,255,255,0.015); }
     </div>
   </div>
 
+  <!-- Portfolio Correlation Heatmap -->
+  <div class="full-width">
+    <div class="card">
+      <h3>Portfolio Correlation Matrix <button class="info-btn" onclick="showEdu('correlation')">?</button></h3>
+      <div id="correlation-heatmap"><div class="empty"><div class="empty-icon">&#128200;</div>Correlation data loading...<div class="empty-msg">Shows how correlated your watched symbols are</div></div></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════ -->
@@ -593,6 +605,22 @@ tr:hover td { background: rgba(255,255,255,0.015); }
     </div>
   </div>
 
+  <!-- Missed Trade Alpha -->
+  <div class="section-title" style="margin-top:28px;">Missed Trade Alpha <button class="info-btn" onclick="showEdu('missed_alpha')">?</button></div>
+  <div class="grid-3">
+    <div class="card"><h3>Alpha Left on Table</h3><div class="metric green" id="missed-alpha-total">$0.00</div><div class="metric-sub">from rejected signals that would have won</div></div>
+    <div class="card"><h3>Missed Wins</h3><div class="metric yellow" id="missed-win-count">0</div><div class="metric-sub" id="missed-win-pct">0% of rejections profitable</div></div>
+    <div class="card"><h3>Correctly Rejected</h3><div class="metric cyan" id="missed-correct-count">0</div><div class="metric-sub">saved from losing trades</div></div>
+  </div>
+  <div class="card">
+    <div class="scroll-y" style="max-height:300px;">
+      <table>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Confidence</th><th>Blocked By</th><th>Would Have Won?</th><th>Missed PnL</th></tr></thead>
+        <tbody id="missed-trades-body"><tr><td colspan="7" class="empty">Loading missed trade data...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Copy Trade Intelligence -->
   <div class="section-title" style="margin-top:28px;">AI Intelligence <button class="info-btn" onclick="showEdu('llm_agents')">?</button></div>
   <div class="copytrade-card">
@@ -623,6 +651,18 @@ tr:hover td { background: rgba(255,255,255,0.015); }
         <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Action</th><th>Price</th><th>PnL</th><th>Strategy</th></tr></thead>
         <tbody id="trades-body"><tr><td colspan="7" class="empty"><div class="empty-icon">&#128203;</div>No trades yet<div class="empty-msg">Trades will appear here once the bot starts executing</div></td></tr></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Trade Outcome Breakdown -->
+  <div class="grid-2" style="margin-top:16px;">
+    <div class="card">
+      <h3>Outcome Distribution <button class="info-btn" onclick="showEdu('trade_outcomes')">?</button></h3>
+      <div id="outcome-distribution"><div class="empty">No outcome data yet</div></div>
+    </div>
+    <div class="card">
+      <h3>PnL by Exit Type</h3>
+      <div id="outcome-pnl-table"><div class="empty">No outcome data yet</div></div>
     </div>
   </div>
 
@@ -669,6 +709,32 @@ tr:hover td { background: rgba(255,255,255,0.015); }
     <div class="chart-wrap" style="height:200px;"><canvas id="daily-pnl-chart"></canvas></div>
   </div>
 
+  <!-- Strategy Fingerprint Heatmaps -->
+  <div class="section-title" style="margin-top:28px;">Strategy Fingerprints <button class="info-btn" onclick="showEdu('strategy_fingerprints')">?</button></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Strategy x Symbol Win Rate</h3>
+      <div id="fingerprint-symbol" class="scroll-y"><div class="empty">Loading strategy fingerprints...</div></div>
+    </div>
+    <div class="card">
+      <h3>Strategy x Regime Win Rate</h3>
+      <div id="fingerprint-regime" class="scroll-y"><div class="empty">Loading strategy fingerprints...</div></div>
+    </div>
+  </div>
+
+  <!-- Regime Transition Timeline -->
+  <div class="section-title" style="margin-top:28px;">Regime Transitions <button class="info-btn" onclick="showEdu('regime_transitions')">?</button></div>
+  <div class="card">
+    <h3>Regime Timeline (7d)</h3>
+    <div id="regime-timeline" style="overflow-x:auto;"><div class="empty"><div class="empty-icon">&#127758;</div>Regime transition data loading...</div></div>
+  </div>
+
+  <!-- Confidence Calibration -->
+  <div class="card" style="margin-top:16px;">
+    <h3>Confidence Calibration <button class="info-btn" onclick="showEdu('calibration')">?</button></h3>
+    <div id="calibration-chart-container"><div class="empty"><div class="empty-icon">&#127919;</div>Calibration data loading...<div class="empty-msg">Compares predicted confidence vs actual win rate</div></div></div>
+  </div>
+
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════ -->
@@ -695,10 +761,90 @@ tr:hover td { background: rgba(255,255,255,0.015); }
     </div>
   </div>
 
-  <!-- Health Events -->
+  <!-- Agent Decision Pipeline -->
   <div class="card">
+    <h3>Agent Decision Pipeline <button class="info-btn" onclick="showEdu('llm_agents')">?</button></h3>
+    <div id="agent-pipeline"><div class="empty"><div class="empty-icon">&#129302;</div>Agent pipeline data loading...<div class="empty-msg">Shows last decision from each specialist agent</div></div></div>
+  </div>
+
+  <!-- LLM Insight Journal -->
+  <div class="card" style="margin-top:16px;">
+    <h3>LLM Insight Journal <button class="info-btn" onclick="showEdu('insight_journal')">?</button></h3>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;" id="insight-filters">
+      <button class="symbol-tab active" onclick="filterInsights('all')">All</button>
+      <button class="symbol-tab" onclick="filterInsights('strategy')">Strategy</button>
+      <button class="symbol-tab" onclick="filterInsights('symbol')">Symbol</button>
+      <button class="symbol-tab" onclick="filterInsights('regime')">Regime</button>
+      <button class="symbol-tab" onclick="filterInsights('risk')">Risk</button>
+      <button class="symbol-tab" onclick="filterInsights('timing')">Timing</button>
+    </div>
+    <div class="scroll-y" style="max-height:400px;" id="insight-journal-list"><div class="empty"><div class="empty-icon">&#128218;</div>No insights yet<div class="empty-msg">LLM insights will appear as the bot learns from trades</div></div></div>
+  </div>
+
+  <!-- Health Events -->
+  <div class="card" style="margin-top:16px;">
     <h3>Recent Health Events</h3>
     <div class="scroll-y" id="health-events-list"><div class="empty">No health events</div></div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 7: LEARN -->
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-learn">
+
+  <!-- Course Header -->
+  <div class="card-hero" style="margin-bottom:20px;">
+    <h3 style="color:var(--cyan);font-size:14px;">&#127891; NunuIRL Trading Academy</h3>
+    <div style="font-size:22px;font-weight:800;margin-bottom:6px;">Your Path to Algorithmic Trading Mastery</div>
+    <div style="color:var(--text-dim);font-size:13px;">8 modules covering everything from crypto basics to AI-powered autonomous trading. Click any module to expand lessons.</div>
+  </div>
+
+  <!-- Course Modules Accordion -->
+  <div class="section-title">Course Modules</div>
+  <div id="course-modules"></div>
+
+  <!-- Concept Library -->
+  <div class="section-title" style="margin-top:28px;">Concept Library</div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+    <input type="text" id="concept-search" placeholder="Search concepts..." style="flex:1;min-width:200px;padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:12px;outline:none;" oninput="filterConcepts()">
+    <button class="symbol-tab active" onclick="filterConceptCat('all',this)">All</button>
+    <button class="symbol-tab" onclick="filterConceptCat('market',this)">Market</button>
+    <button class="symbol-tab" onclick="filterConceptCat('technical',this)">Technical</button>
+    <button class="symbol-tab" onclick="filterConceptCat('risk',this)">Risk</button>
+    <button class="symbol-tab" onclick="filterConceptCat('bot',this)">Bot</button>
+    <button class="symbol-tab" onclick="filterConceptCat('ai',this)">AI/LLM</button>
+  </div>
+  <div class="heatmap-grid" id="concept-library"></div>
+
+  <!-- See It Live -->
+  <div class="section-title" style="margin-top:28px;">See It Live</div>
+  <div class="grid-3" id="see-it-live">
+    <div class="card" style="cursor:pointer;" onclick="switchToTab('overview')">
+      <h3 style="color:var(--green);">&#127758; Current Market Regime</h3>
+      <div id="live-regime-preview" style="font-size:14px;font-weight:700;">Loading...</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;">Go to Overview &rarr;</div>
+    </div>
+    <div class="card" style="cursor:pointer;" onclick="switchToTab('signals')">
+      <h3 style="color:var(--yellow);">&#9889; Signal Pipeline Now</h3>
+      <div id="live-pipeline-preview" style="font-size:14px;font-weight:700;">Loading...</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;">Go to Signals &rarr;</div>
+    </div>
+    <div class="card" style="cursor:pointer;" onclick="switchToTab('system')">
+      <h3 style="color:var(--red);">&#9889; Circuit Breaker Status</h3>
+      <div id="live-cb-preview" style="font-size:14px;font-weight:700;">Loading...</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;">Go to System &rarr;</div>
+    </div>
+  </div>
+
+  <!-- Glossary -->
+  <div class="section-title" style="margin-top:28px;">Glossary</div>
+  <div style="margin-bottom:12px;">
+    <input type="text" id="glossary-search" placeholder="Search glossary..." style="width:100%;max-width:400px;padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:12px;outline:none;" oninput="filterGlossary()">
+  </div>
+  <div class="card">
+    <div class="scroll-y" style="max-height:500px;" id="glossary-list"></div>
   </div>
 
 </div>
@@ -716,7 +862,7 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 
 <!-- ═══ Footer ═══ -->
 <div style="padding:0 24px;">
-  <div class="footer">NunuIRL Trading Bot &mdash; Dashboard v4.0 &mdash; Positions 10s | Data 30s | Charts on demand</div>
+  <div class="footer">NunuIRL Trading Bot &mdash; Dashboard v4.1 &mdash; Positions 10s | Data 30s | Charts on demand</div>
 </div>
 
 </div>
@@ -777,6 +923,20 @@ const EDUCATION = {
     detail:"<p>A <strong>signal</strong> is a recommendation to buy or sell a specific asset. Each signal includes:</p><p><strong>\u2022 Direction:</strong> BUY (go long) or SELL (go short)<br><strong>\u2022 Confidence:</strong> How certain the bot is (0-100%)<br><strong>\u2022 Entry Price:</strong> The recommended entry level<br><strong>\u2022 Stop Loss:</strong> Where to cut losses if wrong<br><strong>\u2022 Take Profit:</strong> Target prices for locking in gains</p><p>Not every signal becomes a trade. Signals must pass through the safety pipeline first, and many get filtered out. This is intentional \u2014 quality over quantity.</p>" },
   leverage: { title:"Leverage", icon:"\ud83d\udd0d", short:"Borrowed money that amplifies both gains AND losses.",
     detail:"<p><strong>Leverage</strong> lets you trade with more money than you have. 3x leverage means you're controlling 3x your actual capital.</p><p><strong>\u26a0\ufe0f Warning:</strong> Leverage is a double-edged sword. If you use 3x leverage and price moves 10% in your favor, you make 30%. But if it moves 10% against you, you lose 30%.</p><p>The bot calculates leverage based on confidence level and stop loss distance. Higher confidence + wider stops = more leverage allowed. The system caps maximum leverage to prevent excessive risk.</p>" },
+  correlation: { title:"Portfolio Correlation", icon:"\ud83d\udd17", short:"How similarly different assets move \u2014 helps understand diversification risk.",
+    detail:"<p><strong>Correlation</strong> measures how much two assets move together. A correlation of +1.0 means they move identically; -1.0 means they move opposite; 0 means no relationship.</p><p>If your portfolio holds highly correlated assets (e.g., BTC and ETH often have 0.7+ correlation), a drop in one likely means a drop in all \u2014 magnifying losses. The correlation guard prevents the bot from opening too many correlated positions.</p>" },
+  missed_alpha: { title:"Missed Trade Alpha", icon:"\ud83d\udcb8", short:"Profitable trades the bot rejected \u2014 the cost of being conservative.",
+    detail:"<p><strong>Missed Alpha</strong> tracks signals that were rejected by safety gates but would have been profitable. This helps fine-tune gate sensitivity.</p><p>Some missed alpha is expected and healthy \u2014 safety gates protect against catastrophic losses. But if the bot consistently rejects winning signals, gate thresholds may be too tight.</p>" },
+  trade_outcomes: { title:"Trade Outcomes", icon:"\ud83c\udfaf", short:"Detailed exit classification \u2014 not just win/loss but HOW the trade ended.",
+    detail:"<p>Trade outcomes reveal the quality of exits:<br><strong>\u2022 CLEAN_WIN:</strong> Hit take profit target cleanly.<br><strong>\u2022 TP1_ONLY:</strong> Hit first target but stopped out before TP2.<br><strong>\u2022 TRAILING_WIN:</strong> Rode a trend with trailing stop for max profit.<br><strong>\u2022 EARLY_EXIT_SAVE:</strong> LLM recognized deterioration and exited early, saving money.<br><strong>\u2022 CLEAN_LOSS:</strong> Hit stop loss \u2014 normal cost of trading.<br><strong>\u2022 TP1_THEN_SL:</strong> Hit TP1 then reversed to stop loss.</p>" },
+  strategy_fingerprints: { title:"Strategy Fingerprints", icon:"\ud83e\udded", short:"Performance DNA of each strategy across different conditions.",
+    detail:"<p><strong>Strategy fingerprints</strong> map how each strategy performs across symbols and market regimes. This reveals:<br>\u2022 Which strategy works best for which coin<br>\u2022 Which regimes each strategy excels in or fails at<br>\u2022 Hidden correlations between strategy success and market conditions</p><p>Green cells = high win rate, Red = low win rate. The darker the color, the stronger the signal.</p>" },
+  regime_transitions: { title:"Regime Transitions", icon:"\u23f0", short:"How market regimes flow from one to another over time.",
+    detail:"<p><strong>Regime transitions</strong> track how the market moves between states (trend \u2192 range \u2192 panic, etc.). Common patterns:<br>\u2022 Range \u2192 Trend: Breakout, often profitable<br>\u2022 Trend \u2192 High Volatility: Exhaustion, watch for reversal<br>\u2022 Any \u2192 Panic: Sharp selloff, defensive mode needed</p><p>Understanding transitions helps anticipate regime changes before they happen.</p>" },
+  calibration: { title:"Confidence Calibration", icon:"\ud83d\udccf", short:"Is the bot's confidence accurate? Compares predicted vs actual win rates.",
+    detail:"<p><strong>Calibration</strong> answers: when the bot says '70% confident', does it actually win 70% of the time?<br>\u2022 Perfect calibration = the diagonal line<br>\u2022 Above the line = under-confident (wins more than predicted)<br>\u2022 Below the line = over-confident (wins less than predicted)</p><p>Good calibration is essential for proper position sizing \u2014 if confidence is inflated, the bot will over-size losing trades.</p>" },
+  insight_journal: { title:"LLM Insight Journal", icon:"\ud83d\udcd6", short:"The bot's learned conclusions \u2014 validated patterns discovered through trading.",
+    detail:"<p>The <strong>Insight Journal</strong> stores durable conclusions the LLM has extracted from trading experience. Each insight is categorized (strategy, symbol, regime, timing, risk) and tracked for validation.</p><p>Insights with high confidence scores have been repeatedly confirmed by trade outcomes. This is the bot's accumulated wisdom \u2014 its 'trading intuition' made explicit.</p>" },
   candlestick: { title:"Candlestick Charts", icon:"\ud83d\udcca", short:"Each candle shows the open, high, low, and close price for a time period.",
     detail:"<p>A <strong>candlestick</strong> represents price action for one time period (e.g., 1 hour):</p><p><strong>\u2022 Body (thick part):</strong> Shows open-to-close range. Green = price went up, Red = price went down.<br><strong>\u2022 Wicks (thin lines):</strong> Show the high and low reached during that period.<br><strong>\u2022 Long wick down:</strong> Buyers stepped in and pushed price back up (bullish).<br><strong>\u2022 Long wick up:</strong> Sellers stepped in and pushed price back down (bearish).</p><p>Reading candlestick patterns is one of the most fundamental skills in trading. The bot's Monte Carlo zones are overlaid on these charts to show key price levels.</p>" },
   paper_trading: { title:"Paper Trading", icon:"\ud83d\udcdd", short:"Simulated trading with fake money to test strategies before risking real capital.",
@@ -1428,14 +1588,549 @@ async function loadSystemTab() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
+/* CDN FALLBACK DETECTION                                             */
+/* ═══════════════════════════════════════════════════════════════════ */
+function showChartFallback(containerId, libName) {
+  const el = document.getElementById(containerId);
+  if(el) el.innerHTML = '<div class="empty" style="padding:40px;"><div class="empty-icon">&#128200;</div><div style="font-size:14px;font-weight:700;margin-bottom:8px;">Charts Unavailable</div><div class="empty-msg">Could not load '+libName+'. Check your internet connection.</div><button onclick="location.reload()" style="margin-top:12px;padding:8px 20px;background:var(--blue-dim);border:1px solid var(--blue);color:var(--blue);border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600;">Retry</button></div>';
+}
+window.addEventListener('load', function() {
+  if(window._chartJsFailed || typeof Chart === 'undefined') {
+    showChartFallback('equity-chart', 'Chart.js');
+    showChartFallback('daily-pnl-chart', 'Chart.js');
+  }
+  if(window._lwcFailed || typeof LightweightCharts === 'undefined') {
+    showChartFallback('main-chart-container', 'TradingView Charts');
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* TAB HELPER                                                         */
+/* ═══════════════════════════════════════════════════════════════════ */
+function switchToTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const btn = document.querySelector('[data-tab="'+tabName+'"]');
+  if(btn) btn.classList.add('active');
+  const tab = document.getElementById('tab-'+tabName);
+  if(tab) tab.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* CORRELATION HEATMAP (Overview Tab)                                 */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadCorrelation() {
+  try {
+    const res = await fetch('/api/correlation');
+    if(!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('correlation-heatmap');
+    if(!el || !data.symbols || data.symbols.length === 0) { if(el) el.innerHTML='<div class="empty">No correlation data available</div>'; return; }
+    const syms = data.symbols;
+    const matrix = data.matrix || {};
+    let html = '<div style="overflow-x:auto;"><table style="font-size:11px;"><thead><tr><th></th>';
+    syms.forEach(s => { html += '<th style="text-align:center;min-width:60px;">'+s+'</th>'; });
+    html += '</tr></thead><tbody>';
+    syms.forEach((s1,i) => {
+      html += '<tr><td style="font-weight:700;">'+s1+'</td>';
+      syms.forEach((s2,j) => {
+        const key = s1+'_'+s2;
+        const val = (matrix[key] != null) ? matrix[key] : (i===j ? 1.0 : 0);
+        const abs = Math.abs(val);
+        let bg;
+        if(i===j) bg = 'var(--cyan-dim)';
+        else if(val > 0.5) bg = 'rgba(255,68,102,'+(abs*0.4).toFixed(2)+')';
+        else if(val > 0) bg = 'rgba(255,196,68,'+(abs*0.3).toFixed(2)+')';
+        else bg = 'rgba(0,230,160,'+(abs*0.3).toFixed(2)+')';
+        html += '<td style="text-align:center;background:'+bg+';font-weight:600;padding:6px;">'+val.toFixed(2)+'</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    if(data.diversification_score != null) {
+      html += '<div style="margin-top:12px;font-size:12px;">Portfolio Diversification Score: <strong style="color:var(--cyan);">'+data.diversification_score.toFixed(0)+'/100</strong></div>';
+    }
+    el.innerHTML = html;
+  } catch(e) { console.error('Correlation load error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* MISSED TRADE ALPHA (Signals Tab)                                   */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadMissedTrades() {
+  try {
+    const res = await fetch('/api/missed-trades');
+    if(!res.ok) return;
+    const data = await res.json();
+    const trades = data.trades || [];
+    const tbody = document.getElementById('missed-trades-body');
+
+    // Summary stats
+    const missedWins = trades.filter(t => t.would_have_won);
+    const totalMissedPnl = missedWins.reduce((a,t) => a + (t.missed_pnl||0), 0);
+    document.getElementById('missed-alpha-total').textContent = fmt$(totalMissedPnl);
+    document.getElementById('missed-win-count').textContent = missedWins.length;
+    document.getElementById('missed-win-pct').textContent = trades.length > 0 ? ((missedWins.length/trades.length)*100).toFixed(0)+'% of rejections profitable' : '0% of rejections profitable';
+    document.getElementById('missed-correct-count').textContent = trades.length - missedWins.length;
+
+    if(!tbody || trades.length === 0) { if(tbody) tbody.innerHTML='<tr><td colspan="7" class="empty">No missed trade data available</td></tr>'; return; }
+    tbody.innerHTML = trades.slice(0,30).map(t => {
+      const won = t.would_have_won;
+      const rowBg = won ? 'rgba(0,230,160,0.03)' : '';
+      return '<tr style="background:'+rowBg+';"><td>'+fmtDateTime(t.timestamp)+'</td><td><strong>'+(t.symbol||'--')+'</strong></td><td>'+sidePill(t.side)+'</td><td>'+(t.confidence!=null?t.confidence.toFixed(0)+'%':'--')+'</td><td><span class="gate-pill '+(won?'gate-soft':'gate-info')+'">'+(t.gate||'--').toUpperCase()+'</span></td><td><span style="color:'+(won?'var(--green)':'var(--muted)')+';font-weight:600;">'+(won?'YES':'NO')+'</span></td><td style="color:'+pnlColor(t.missed_pnl||0)+';font-weight:600;">'+fmt$(t.missed_pnl||0)+'</td></tr>';
+    }).join('');
+  } catch(e) { console.error('Missed trades error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* TRADE OUTCOME BREAKDOWN (Trades Tab)                               */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadOutcomes() {
+  try {
+    const res = await fetch('/api/outcomes');
+    if(!res.ok) return;
+    const data = await res.json();
+    const outcomes = data.outcomes || {};
+    const distEl = document.getElementById('outcome-distribution');
+    const pnlEl = document.getElementById('outcome-pnl-table');
+    if(Object.keys(outcomes).length === 0) { return; }
+
+    const outcomeColors = { CLEAN_WIN:'var(--green)', TP1_ONLY:'var(--cyan)', TRAILING_WIN:'var(--blue)', EARLY_EXIT_SAVE:'var(--yellow)', CLEAN_LOSS:'var(--red)', TP1_THEN_SL:'var(--orange)', SL_HIT:'var(--red)', OTHER:'var(--muted)' };
+    const total = Object.values(outcomes).reduce((a,o) => a + (o.count||0), 0) || 1;
+
+    // Visual distribution bars
+    let html = '';
+    Object.entries(outcomes).sort((a,b) => b[1].count - a[1].count).forEach(([name, o]) => {
+      const pct = ((o.count||0)/total*100).toFixed(1);
+      const color = outcomeColors[name] || 'var(--muted)';
+      html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><div style="width:120px;font-size:11px;text-align:right;color:'+color+';font-weight:600;">'+name.replace(/_/g,' ')+'</div><div style="flex:1;height:20px;background:var(--border);border-radius:5px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+color+';border-radius:5px;display:flex;align-items:center;padding:0 8px;font-size:10px;font-weight:700;color:#fff;">'+(pct>8?pct+'%':'')+'</div></div><div style="width:40px;font-size:11px;text-align:right;font-weight:700;">'+o.count+'</div></div>';
+    });
+    if(distEl) distEl.innerHTML = html;
+
+    // PnL table
+    let tblHtml = '<table><thead><tr><th>Exit Type</th><th>Count</th><th>Avg PnL</th><th>Total PnL</th></tr></thead><tbody>';
+    Object.entries(outcomes).sort((a,b) => (b[1].total_pnl||0) - (a[1].total_pnl||0)).forEach(([name, o]) => {
+      const color = outcomeColors[name] || 'var(--muted)';
+      tblHtml += '<tr><td style="color:'+color+';font-weight:600;">'+name.replace(/_/g,' ')+'</td><td>'+o.count+'</td><td style="color:'+pnlColor(o.avg_pnl||0)+'">'+fmt$(o.avg_pnl||0)+'</td><td style="color:'+pnlColor(o.total_pnl||0)+';font-weight:600;">'+fmt$(o.total_pnl||0)+'</td></tr>';
+    });
+    tblHtml += '</tbody></table>';
+    if(pnlEl) pnlEl.innerHTML = tblHtml;
+  } catch(e) { console.error('Outcomes error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* STRATEGY FINGERPRINTS (Analytics Tab)                              */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadFingerprints() {
+  try {
+    const res = await fetch('/api/fingerprints');
+    if(!res.ok) return;
+    const data = await res.json();
+
+    function renderHeatmapGrid(container, rowLabel, colLabel, matrix) {
+      const el = document.getElementById(container);
+      if(!el || !matrix || Object.keys(matrix).length === 0) { if(el) el.innerHTML='<div class="empty">No data yet</div>'; return; }
+      const rows = [...new Set(Object.keys(matrix).map(k => k.split('|')[0]))];
+      const cols = [...new Set(Object.keys(matrix).map(k => k.split('|')[1]))];
+      let html = '<table style="font-size:11px;"><thead><tr><th>'+rowLabel+'</th>';
+      cols.forEach(c => { html += '<th style="text-align:center;min-width:70px;">'+c+'</th>'; });
+      html += '</tr></thead><tbody>';
+      rows.forEach(r => {
+        html += '<tr><td style="font-weight:700;">'+r+'</td>';
+        cols.forEach(c => {
+          const key = r+'|'+c;
+          const cell = matrix[key];
+          if(cell) {
+            const wr = cell.win_rate != null ? cell.win_rate : 0;
+            const n = cell.trades || 0;
+            const bg = n===0 ? 'transparent' : (wr >= 0.6 ? 'rgba(0,230,160,'+(0.1+wr*0.3).toFixed(2)+')' : (wr >= 0.4 ? 'rgba(255,196,68,0.15)' : 'rgba(255,68,102,'+(0.1+(1-wr)*0.3).toFixed(2)+')'));
+            html += '<td style="text-align:center;background:'+bg+';font-weight:600;" title="'+n+' trades, '+fmt$(cell.pnl||0)+' PnL">'+(n>0?(wr*100).toFixed(0)+'%':'')+'<div style="font-size:9px;color:var(--muted);">'+n+'</div></td>';
+          } else {
+            html += '<td style="text-align:center;color:var(--muted);">-</td>';
+          }
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
+    renderHeatmapGrid('fingerprint-symbol', 'Strategy', 'Symbol', data.by_symbol);
+    renderHeatmapGrid('fingerprint-regime', 'Strategy', 'Regime', data.by_regime);
+  } catch(e) { console.error('Fingerprints error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* REGIME TIMELINE (Analytics Tab)                                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadRegimeTimeline() {
+  try {
+    const res = await fetch('/api/regimes/history');
+    if(!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('regime-timeline');
+    if(!el) return;
+    const periods = data.periods || [];
+    const transitions = data.transitions || {};
+    if(periods.length === 0) { el.innerHTML = '<div class="empty">No regime history available</div>'; return; }
+
+    const regimeColors = { trend:'var(--green)', range:'var(--yellow)', panic:'var(--red)', high_volatility:'var(--orange)', low_liquidity:'var(--purple)', consolidation:'var(--blue)', unknown:'var(--muted)' };
+
+    // Timeline blocks
+    let html = '<div style="display:flex;height:40px;border-radius:6px;overflow:hidden;margin-bottom:16px;">';
+    const totalDur = periods.reduce((a,p) => a + (p.duration_h||1), 0) || 1;
+    periods.forEach(p => {
+      const pct = ((p.duration_h||1)/totalDur*100).toFixed(1);
+      const color = regimeColors[p.regime] || 'var(--muted)';
+      html += '<div style="width:'+pct+'%;background:'+color+'33;border-right:1px solid var(--bg);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:'+color+';overflow:hidden;white-space:nowrap;" title="'+p.regime+' ('+p.duration_h+'h)">'+((pct>8)?p.regime.substring(0,6):'')+'</div>';
+    });
+    html += '</div>';
+
+    // Legend
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;margin-bottom:16px;">';
+    Object.entries(regimeColors).forEach(([r,c]) => {
+      html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:3px;background:'+c+';"></span>'+r+'</span>';
+    });
+    html += '</div>';
+
+    // Transition matrix (if available)
+    if(Object.keys(transitions).length > 0) {
+      const regimes = [...new Set([...Object.keys(transitions).map(k => k.split('->')[0]),...Object.keys(transitions).map(k => k.split('->')[1])])];
+      html += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);">TRANSITION FREQUENCY</div>';
+      html += '<table style="font-size:11px;"><thead><tr><th>From \\ To</th>';
+      regimes.forEach(r => { html += '<th style="text-align:center;">'+r.substring(0,6)+'</th>'; });
+      html += '</tr></thead><tbody>';
+      regimes.forEach(from => {
+        html += '<tr><td style="font-weight:700;">'+from+'</td>';
+        regimes.forEach(to => {
+          const count = transitions[from+'->'+to] || 0;
+          const bg = count > 0 ? 'rgba(34,211,238,'+(Math.min(count/10,0.4)).toFixed(2)+')' : 'transparent';
+          html += '<td style="text-align:center;background:'+bg+';font-weight:'+(count>0?'700':'400')+';">'+(count||'-')+'</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+    el.innerHTML = html;
+  } catch(e) { console.error('Regime timeline error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* CALIBRATION CURVES (Analytics Tab)                                 */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadCalibration() {
+  try {
+    const res = await fetch('/api/calibration');
+    if(!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('calibration-chart-container');
+    if(!el) return;
+    const buckets = data.buckets || [];
+    if(buckets.length === 0) { el.innerHTML='<div class="empty">Not enough data for calibration</div>'; return; }
+
+    // Render as pure HTML/CSS bar chart (no Chart.js dependency)
+    let html = '<div style="display:flex;gap:20px;align-items:flex-end;height:200px;padding:10px 0;">';
+    buckets.forEach(b => {
+      const predicted = b.predicted || 0;
+      const actual = b.actual || 0;
+      const n = b.trades || 0;
+      const predH = predicted * 1.8;
+      const actH = actual * 1.8;
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+        '<div style="display:flex;gap:2px;align-items:flex-end;height:160px;">' +
+        '<div style="width:16px;height:'+predH+'px;background:var(--blue);border-radius:3px 3px 0 0;opacity:0.5;" title="Predicted: '+predicted.toFixed(0)+'%"></div>' +
+        '<div style="width:16px;height:'+actH+'px;background:'+(actual>=predicted?'var(--green)':'var(--red)') +';border-radius:3px 3px 0 0;" title="Actual: '+actual.toFixed(0)+'%"></div></div>' +
+        '<div style="font-size:9px;color:var(--muted);">'+predicted.toFixed(0)+'%</div>' +
+        '<div style="font-size:8px;color:var(--muted);">n='+n+'</div></div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:16px;font-size:11px;margin-top:8px;"><span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:var(--blue);opacity:0.5;border-radius:2px;"></span>Predicted</span><span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:var(--green);border-radius:2px;"></span>Actual Win Rate</span></div>';
+    if(data.brier_score != null) {
+      html += '<div style="margin-top:8px;font-size:12px;">Brier Score: <strong style="color:var(--cyan);">'+data.brier_score.toFixed(4)+'</strong> <span style="color:var(--muted);font-size:10px;">(lower is better, 0 = perfect)</span></div>';
+    }
+    el.innerHTML = html;
+  } catch(e) { console.error('Calibration error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* AGENT DECISION PIPELINE (System Tab)                               */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadAgentPipeline() {
+  try {
+    const res = await fetch('/api/agents/last');
+    if(!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('agent-pipeline');
+    if(!el) return;
+    if(!data.active) { el.innerHTML='<div class="empty"><div class="empty-icon">&#129302;</div>Multi-Agent System Offline<div class="empty-msg">Enable with LLM_MULTI_AGENT=true</div></div>'; return; }
+
+    const agents = data.agents || [];
+    if(agents.length === 0) { el.innerHTML='<div class="empty">No agent decisions recorded yet</div>'; return; }
+
+    const agentColors = { regime:'var(--blue)', trade:'var(--green)', risk:'var(--orange)', critic:'var(--red)', learning:'var(--purple)', exit:'var(--yellow)', scout:'var(--cyan)' };
+    const actionColors = { proceed:'var(--green)', go:'var(--green)', skip:'var(--muted)', veto:'var(--red)', flat:'var(--muted)', hold:'var(--yellow)', adjust:'var(--orange)', close:'var(--red)' };
+
+    // Pipeline flow
+    let html = '<div style="display:flex;gap:8px;overflow-x:auto;padding:10px 0;">';
+    agents.forEach((a,i) => {
+      const color = agentColors[(a.agent||'').toLowerCase()] || 'var(--muted)';
+      const action = (a.action||a.decision||'--').toLowerCase();
+      const actColor = actionColors[action] || 'var(--muted)';
+      html += '<div style="flex:0 0 auto;min-width:140px;background:var(--bg2);border:1px solid var(--border);border-top:3px solid '+color+';border-radius:8px;padding:12px;">' +
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:'+color+';margin-bottom:6px;">'+(a.agent||'Agent')+'</div>' +
+        '<div style="font-size:9px;color:var(--muted);margin-bottom:4px;">'+(a.model||'')+'</div>' +
+        '<div style="font-size:13px;font-weight:800;color:'+actColor+';margin-bottom:4px;">'+(a.action||a.decision||'--').toUpperCase()+'</div>' +
+        (a.confidence != null ? '<div style="font-size:10px;color:var(--text-dim);">Conf: '+a.confidence.toFixed(0)+'%</div>' : '') +
+        (a.reasoning ? '<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4;max-height:60px;overflow:hidden;">'+a.reasoning.substring(0,120)+'</div>' : '') +
+        '</div>';
+      if(i < agents.length - 1) html += '<div style="display:flex;align-items:center;color:var(--muted);font-size:18px;">&rarr;</div>';
+    });
+    html += '</div>';
+    if(data.timestamp) html += '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Last decision: '+fmtDateTime(data.timestamp)+'</div>';
+    el.innerHTML = html;
+  } catch(e) { console.error('Agent pipeline error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* LLM INSIGHT JOURNAL (System Tab)                                   */
+/* ═══════════════════════════════════════════════════════════════════ */
+let allInsights = [];
+async function loadInsights() {
+  try {
+    const res = await fetch('/api/insights');
+    if(!res.ok) return;
+    const data = await res.json();
+    allInsights = data.insights || [];
+    renderInsights(allInsights);
+  } catch(e) { console.error('Insights error:', e); }
+}
+
+function filterInsights(category) {
+  document.querySelectorAll('#insight-filters .symbol-tab').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if(category === 'all') renderInsights(allInsights);
+  else renderInsights(allInsights.filter(i => (i.category||'').toLowerCase() === category));
+}
+
+function renderInsights(insights) {
+  const el = document.getElementById('insight-journal-list');
+  if(!el) return;
+  if(!insights || insights.length === 0) { el.innerHTML='<div class="empty"><div class="empty-icon">&#128218;</div>No insights in this category</div>'; return; }
+  const catColors = { strategy:'var(--green)', symbol:'var(--blue)', regime:'var(--orange)', timing:'var(--cyan)', risk:'var(--red)', correlation:'var(--purple)', execution:'var(--yellow)', meta:'var(--muted)' };
+  el.innerHTML = insights.slice(0,50).map(i => {
+    const cat = (i.category||'other').toLowerCase();
+    const color = catColors[cat] || 'var(--muted)';
+    const conf = i.confidence || 0;
+    const status = i.validation_status || 'pending';
+    const statusColor = status==='confirmed'?'var(--green)':(status==='rejected'?'var(--red)':'var(--yellow)');
+    return '<div style="background:var(--bg2);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid '+color+';">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<span style="color:'+color+';font-size:10px;font-weight:700;text-transform:uppercase;">'+cat+'</span>' +
+      '<div style="display:flex;gap:8px;align-items:center;"><span style="font-size:10px;color:'+statusColor+';font-weight:600;">'+status.toUpperCase()+'</span><span style="font-size:10px;color:var(--muted);">'+fmtDateTime(i.timestamp)+'</span></div></div>' +
+      '<div style="font-size:12px;color:var(--text);margin-bottom:6px;">'+i.text+'</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:10px;color:var(--muted);">Confidence:</span><div style="width:80px;height:5px;background:var(--border);border-radius:3px;"><div style="width:'+conf+'%;height:100%;background:'+color+';border-radius:3px;"></div></div><span style="font-size:10px;color:var(--muted);">'+conf.toFixed(0)+'%</span></div></div>';
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* EDUCATIONAL TAB — LEARN                                            */
+/* ═══════════════════════════════════════════════════════════════════ */
+const COURSE_MODULES = [
+  { num: 1, title: "Introduction to Crypto Trading", icon: "\ud83d\ude80", desc: "The fundamentals of cryptocurrency markets, exchanges, and how trading works.",
+    lessons: ["What is Cryptocurrency?", "How Exchanges Work (CEX vs DEX)", "Order Types: Market, Limit, Stop", "Reading Your First Chart", "Paper Trading Basics"] },
+  { num: 2, title: "Market Structure & Regimes", icon: "\ud83c\udf0a", desc: "Understanding market phases and why regime detection is the foundation of profitable trading.",
+    lessons: ["What is Market Structure?", "Trend vs Range Markets", "Identifying Regime Changes", "Volatility Regimes", "How the Bot Detects Regimes"] },
+  { num: 3, title: "Technical Analysis Fundamentals", icon: "\ud83d\udcca", desc: "Key indicators, support/resistance, and the math behind trading signals.",
+    lessons: ["Support & Resistance Zones", "Moving Averages (SMA/EMA)", "ATR and Volatility", "Monte Carlo Simulation Zones", "Multi-Timeframe Analysis"] },
+  { num: 4, title: "Risk Management & Position Sizing", icon: "\ud83d\udee1\ufe0f", desc: "The most important skill in trading \u2014 protecting your capital.",
+    lessons: ["Risk Per Trade (1-2% Rule)", "Stop Loss Placement", "Position Sizing Formulas", "Leverage: Friend or Foe?", "Circuit Breakers & Safety Nets"] },
+  { num: 5, title: "Signal Generation & Strategy Logic", icon: "\u26a1", desc: "How the bot generates trading signals and what makes a good signal.",
+    lessons: ["What is a Trading Signal?", "The 4 Bot Strategies Explained", "Signal Confidence Scoring", "Signal Validation & Quality Gates", "The 6-Stage Safety Pipeline"] },
+  { num: 6, title: "The Ensemble Approach", icon: "\ud83e\udd1d", desc: "Why multiple strategies voting together beats any single strategy.",
+    lessons: ["What is Ensemble Trading?", "Weighted Voting System", "Confluence & Agreement", "Veto Power & Risk Rejection", "Adaptive Strategy Weights"] },
+  { num: 7, title: "AI-Powered Trading Decisions", icon: "\ud83e\udd16", desc: "How the multi-agent LLM system adds intelligence to mechanical trading.",
+    lessons: ["Introduction to AI Trading", "The 6 Specialist Agents", "Agent Pipeline: Regime\u2192Trade\u2192Risk\u2192Critic", "LLM Memory & Learning", "Self-Teaching Curriculum"] },
+  { num: 8, title: "Going Live: Paper to Production", icon: "\ud83d\udfe2", desc: "The journey from paper trading to real money \u2014 safely.",
+    lessons: ["Go-Live Gate System", "Paper Trading Validation", "Monitoring & Dashboards", "Common Pitfalls", "Continuous Improvement"] }
+];
+
+function buildCourseModules() {
+  const el = document.getElementById('course-modules');
+  if(!el) return;
+  el.innerHTML = COURSE_MODULES.map((m, idx) => {
+    const lessons = m.lessons.map((l,li) =>
+      '<div class="lesson-item" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.querySelector(\'.lesson-content\').style.display=this.querySelector(\'.lesson-content\').style.display===\'block\'?\'none\':\'block\'">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;font-weight:600;"><span style="color:var(--muted);margin-right:8px;">'+(li+1)+'.</span>'+l+'</span><span style="color:var(--muted);font-size:10px;">&#9660;</span></div>' +
+      '<div class="lesson-content" style="display:none;margin-top:10px;padding:12px;background:var(--bg);border-radius:6px;color:var(--text-dim);font-size:12px;line-height:1.7;">Your lesson content here. Replace this placeholder with your course material for <strong>'+l+'</strong>.</div></div>'
+    ).join('');
+    return '<div class="card" style="margin-bottom:10px;overflow:hidden;">' +
+      '<div style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:4px 0;" onclick="const b=this.nextElementSibling;b.style.display=b.style.display===\'block\'?\'none\':\'block\';this.querySelector(\'.expand-arrow\').textContent=b.style.display===\'block\'?\'\\u25B2\':\'\\u25BC\'">' +
+      '<div style="font-size:28px;">'+m.icon+'</div>' +
+      '<div style="flex:1;"><div style="font-size:14px;font-weight:800;">Module '+m.num+': '+m.title+'</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+m.desc+'</div></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">'+m.lessons.length+' lessons</span><span class="expand-arrow" style="color:var(--cyan);font-size:12px;">&#9660;</span></div></div>' +
+      '<div style="display:none;border-top:1px solid var(--border);margin-top:10px;">'+lessons+'</div></div>';
+  }).join('');
+}
+
+const CONCEPT_LIBRARY = [
+  { title:"Market Regime", cat:"market", icon:"\ud83c\udf0a", short:"Current market personality \u2014 trend, range, panic, or volatile.", key:"market_regime" },
+  { title:"Signal Pipeline", cat:"bot", icon:"\ud83d\udd0d", short:"6-stage safety filter every signal passes through.", key:"signal_pipeline" },
+  { title:"Ensemble Voting", cat:"bot", icon:"\ud83d\uddf3\ufe0f", short:"4 strategies vote on each trade \u2014 majority rules.", key:"ensemble" },
+  { title:"Circuit Breaker", cat:"risk", icon:"\u26a1", short:"Emergency stop after too many losses.", key:"circuit_breaker" },
+  { title:"Leverage", cat:"risk", icon:"\ud83d\udd0d", short:"Borrowed money that amplifies gains AND losses.", key:"leverage" },
+  { title:"Candlestick Charts", cat:"technical", icon:"\ud83d\udcca", short:"OHLC price visualization for each time period.", key:"candlestick" },
+  { title:"Monte Carlo Zones", cat:"technical", icon:"\ud83c\udfb2", short:"Statistical S/R zones from thousands of simulations.", key:"monte_carlo" },
+  { title:"Win Rate", cat:"market", icon:"\ud83c\udfaf", short:"Percentage of trades that made money.", key:"win_rate" },
+  { title:"PnL (Profit & Loss)", cat:"market", icon:"\ud83d\udcc8", short:"Net money made or lost over a period.", key:"daily_pnl" },
+  { title:"Stop Loss", cat:"risk", icon:"\ud83d\uded1", short:"Automatic exit to limit losses on a trade.", key:"positions" },
+  { title:"Take Profit", cat:"risk", icon:"\ud83c\udf1f", short:"Automatic exit to lock in gains at target levels.", key:"positions" },
+  { title:"Equity Curve", cat:"market", icon:"\ud83d\udcc8", short:"Chart of account value over time.", key:"equity_curve" },
+  { title:"Confluence", cat:"bot", icon:"\ud83e\udd1d", short:"Multiple strategies agreeing on the same direction.", key:"signal_confluence" },
+  { title:"Strategy Weights", cat:"bot", icon:"\u2696\ufe0f", short:"Adaptive influence of each strategy in voting.", key:"strategy_weights" },
+  { title:"Go-Live Gates", cat:"bot", icon:"\ud83d\udea6", short:"5 checkpoints before real money trading.", key:"go_live_gates" },
+  { title:"Paper Trading", cat:"market", icon:"\ud83d\udcdd", short:"Simulated trading to validate strategies.", key:"paper_trading" },
+  { title:"LLM Agents", cat:"ai", icon:"\ud83e\udd16", short:"6 AI agents analyzing trades from different angles.", key:"llm_agents" },
+  { title:"Correlation", cat:"risk", icon:"\ud83d\udd17", short:"How similarly assets move together.", key:"correlation" },
+  { title:"Calibration", cat:"ai", icon:"\ud83d\udccf", short:"Is predicted confidence matching actual outcomes?", key:"calibration" },
+  { title:"Trade Outcomes", cat:"bot", icon:"\ud83c\udfaf", short:"Detailed exit types: CLEAN_WIN, TRAILING_WIN, etc.", key:"trade_outcomes" },
+];
+
+let conceptFilter = 'all';
+function buildConceptLibrary() {
+  const el = document.getElementById('concept-library');
+  if(!el) return;
+  renderConceptCards(CONCEPT_LIBRARY);
+}
+function renderConceptCards(items) {
+  const el = document.getElementById('concept-library');
+  const catColors = { market:'var(--blue)', technical:'var(--cyan)', risk:'var(--red)', bot:'var(--green)', ai:'var(--purple)' };
+  el.innerHTML = items.map(c => {
+    const color = catColors[c.cat] || 'var(--muted)';
+    return '<div class="heatmap-cell concept-card" data-cat="'+c.cat+'" data-title="'+c.title.toLowerCase()+'" data-short="'+c.short.toLowerCase()+'" style="border-left-color:'+color+';cursor:pointer;" onclick="showEdu(\''+c.key+'\')">' +
+      '<div style="font-size:20px;margin-bottom:6px;">'+c.icon+'</div>' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">'+c.title+'</div>' +
+      '<div style="font-size:11px;color:var(--text-dim);line-height:1.5;">'+c.short+'</div>' +
+      '<div style="font-size:9px;color:'+color+';margin-top:6px;text-transform:uppercase;">'+c.cat+'</div></div>';
+  }).join('');
+}
+function filterConceptCat(cat, btn) {
+  conceptFilter = cat;
+  document.querySelectorAll('#concept-search').value = '';
+  const cards = document.querySelectorAll('.concept-card');
+  cards.forEach(c => { c.style.display = (cat==='all' || c.dataset.cat===cat) ? '' : 'none'; });
+  // Toggle active button
+  btn.parentElement.querySelectorAll('.symbol-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function filterConcepts() {
+  const q = document.getElementById('concept-search').value.toLowerCase();
+  document.querySelectorAll('.concept-card').forEach(c => {
+    const match = c.dataset.title.includes(q) || c.dataset.short.includes(q);
+    c.style.display = match ? '' : 'none';
+  });
+}
+
+const GLOSSARY = [
+  { term:"ATR", def:"Average True Range \u2014 measures market volatility over a period." },
+  { term:"Backtest", def:"Testing a strategy against historical data to evaluate performance." },
+  { term:"Candlestick", def:"A chart element showing open, high, low, close prices for a time period." },
+  { term:"Circuit Breaker", def:"Safety mechanism that halts trading after excessive losses." },
+  { term:"Confluence", def:"When multiple independent signals agree on the same trade direction." },
+  { term:"Drawdown", def:"Peak-to-trough decline in account equity, expressed as a percentage." },
+  { term:"Ensemble", def:"A group of strategies that vote together on trading decisions." },
+  { term:"Equity", def:"Total account value including cash and unrealized PnL from open positions." },
+  { term:"Fee Drag", def:"The cumulative cost of trading fees eating into profits over time." },
+  { term:"Go-Live Gate", def:"A validation checkpoint that must pass before live trading is authorized." },
+  { term:"Leverage", def:"Using borrowed capital to increase position size; amplifies gains and losses." },
+  { term:"Liquidation", def:"Forced closure of a leveraged position when losses approach margin." },
+  { term:"Long", def:"A trade that profits when price goes up (buying)." },
+  { term:"Monte Carlo", def:"Statistical technique using thousands of random simulations to predict outcomes." },
+  { term:"OHLCV", def:"Open, High, Low, Close, Volume \u2014 the 5 data points in each candle." },
+  { term:"Paper Trading", def:"Simulated trading with fake money to test strategies without risk." },
+  { term:"PnL", def:"Profit and Loss \u2014 net result of trading activity." },
+  { term:"Position Sizing", def:"Determining how much capital to allocate to each trade." },
+  { term:"Regime", def:"The current market state (trend, range, panic, high_volatility)." },
+  { term:"R:R Ratio", def:"Risk-to-Reward ratio \u2014 potential profit divided by potential loss." },
+  { term:"Sharpe Ratio", def:"Risk-adjusted return metric; higher is better (above 1.0 is good)." },
+  { term:"Short", def:"A trade that profits when price goes down (selling borrowed assets)." },
+  { term:"Signal", def:"A buy or sell recommendation generated by analysis strategies." },
+  { term:"Slippage", def:"The difference between expected and actual execution price." },
+  { term:"SMA", def:"Simple Moving Average \u2014 average price over N periods." },
+  { term:"Stop Loss", def:"An order that automatically closes a trade to limit losses." },
+  { term:"Take Profit", def:"An order that automatically closes a trade to lock in gains." },
+  { term:"Trailing Stop", def:"A stop loss that moves with price to protect accumulating profits." },
+  { term:"Veto", def:"When a strategy or agent blocks a trade it considers too risky." },
+  { term:"Win Rate", def:"Percentage of trades that were profitable." },
+];
+
+function buildGlossary() {
+  const el = document.getElementById('glossary-list');
+  if(!el) return;
+  renderGlossaryItems(GLOSSARY);
+}
+function renderGlossaryItems(items) {
+  const el = document.getElementById('glossary-list');
+  let currentLetter = '';
+  let html = '';
+  items.forEach(g => {
+    const letter = g.term[0].toUpperCase();
+    if(letter !== currentLetter) {
+      currentLetter = letter;
+      html += '<div style="font-size:16px;font-weight:800;color:var(--cyan);margin:16px 0 8px 0;border-bottom:1px solid var(--border);padding-bottom:4px;">'+letter+'</div>';
+    }
+    html += '<div class="glossary-item" data-term="'+g.term.toLowerCase()+'" style="padding:6px 0;"><strong style="color:var(--text);">'+g.term+'</strong> <span style="color:var(--text-dim);">\u2014 '+g.def+'</span></div>';
+  });
+  el.innerHTML = html;
+}
+function filterGlossary() {
+  const q = document.getElementById('glossary-search').value.toLowerCase();
+  document.querySelectorAll('.glossary-item').forEach(el => {
+    el.style.display = el.dataset.term.includes(q) ? '' : 'none';
+  });
+}
+
+function initLearnTab() {
+  buildCourseModules();
+  buildConceptLibrary();
+  buildGlossary();
+  // Load live previews
+  fetch('/api/market').then(r=>r.json()).then(d => {
+    const regimes = d.map(m => m.regime).filter(Boolean);
+    document.getElementById('live-regime-preview').textContent = regimes.length > 0 ? regimes.join(', ') : 'No data';
+  }).catch(() => {});
+  fetch('/api/pipeline').then(r=>r.json()).then(d => {
+    document.getElementById('live-pipeline-preview').textContent = (d.total_signals||0)+' signals, '+(d.passed||0)+' passed, '+(d.total_rejected||0)+' rejected';
+  }).catch(() => {});
+  fetch('/api/risk').then(r=>r.json()).then(d => {
+    document.getElementById('live-cb-preview').textContent = d.cb_tripped ? 'TRIPPED!' : 'SAFE \u2014 '+Math.abs(d.daily_pnl||0).toFixed(2)+' / '+d.daily_limit+' daily limit';
+    if(d.cb_tripped) document.getElementById('live-cb-preview').style.color = 'var(--red)';
+  }).catch(() => {});
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
 /* INITIALIZATION                                                     */
 /* ═══════════════════════════════════════════════════════════════════ */
 loadAll();
 setInterval(loadAll, 30000);
 setInterval(refreshPositionsOnly, 10000);
 
-// Load system tab data when switching to it
-document.querySelector('[data-tab="system"]').addEventListener('click', () => setTimeout(loadSystemTab, 100));
+// Load tab data on demand
+let learnInitialized = false;
+let systemDataLoaded = false;
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(btn.dataset.tab === 'system' && !systemDataLoaded) { systemDataLoaded=true; setTimeout(() => { loadSystemTab(); loadAgentPipeline(); loadInsights(); }, 100); }
+    else if(btn.dataset.tab === 'system') { loadAgentPipeline(); loadInsights(); }
+    if(btn.dataset.tab === 'learn' && !learnInitialized) { learnInitialized=true; setTimeout(initLearnTab, 100); }
+    if(btn.dataset.tab === 'signals') { loadMissedTrades(); }
+    if(btn.dataset.tab === 'trades') { loadOutcomes(); }
+    if(btn.dataset.tab === 'analytics') { loadFingerprints(); loadRegimeTimeline(); loadCalibration(); }
+    if(btn.dataset.tab === 'overview') { loadCorrelation(); }
+  });
+});
+
+// Initial overview load
+setTimeout(loadCorrelation, 2000);
 </script>
 </body>
 </html>
@@ -1474,6 +2169,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/performance":  self._serve_performance,
             "/api/signals/active": self._serve_active_signals,
             "/api/gates":        self._serve_gates,
+            "/api/missed-trades": self._serve_missed_trades,
+            "/api/outcomes":     self._serve_outcomes,
+            "/api/fingerprints": self._serve_fingerprints,
+            "/api/agents/last":  self._serve_agents_last,
+            "/api/regimes/history": self._serve_regimes_history,
+            "/api/calibration":  self._serve_calibration,
+            "/api/insights":     self._serve_insights,
+            "/api/correlation":  self._serve_correlation,
         }
         handler = routes.get(path)
         if handler:
@@ -1889,6 +2592,409 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.exception("Error serving /api/gates")
             self._send_json({"error": str(exc)}, status=500)
+
+    # ── /api/missed-trades — Counterfactual missed trade analysis ─────
+    def _serve_missed_trades(self):
+        try:
+            from data.db import get_signal_rejections
+            rejections = get_signal_rejections(hours=168)  # 7 days
+            trades = []
+            for r in (rejections or [])[:100]:
+                meta = r.get("metadata")
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except Exception:
+                        meta = {}
+                if not isinstance(meta, dict):
+                    meta = {}
+                cf_pnl = meta.get("counterfactual_pnl") or meta.get("cf_pnl") or meta.get("missed_pnl")
+                would_have_won = meta.get("would_have_won")
+                if would_have_won is None and cf_pnl is not None:
+                    would_have_won = float(cf_pnl) > 0
+                trades.append({
+                    "timestamp": r.get("timestamp"),
+                    "symbol": r.get("symbol"),
+                    "side": r.get("side"),
+                    "confidence": r.get("confidence"),
+                    "gate": r.get("gate"),
+                    "would_have_won": bool(would_have_won) if would_have_won is not None else None,
+                    "missed_pnl": float(cf_pnl) if cf_pnl is not None else 0,
+                })
+            self._send_json({"trades": trades})
+        except Exception as exc:
+            logger.exception("Error serving /api/missed-trades")
+            self._send_json({"trades": []})
+
+    # ── /api/outcomes — Trade outcome type breakdown ───────────────────
+    def _serve_outcomes(self):
+        try:
+            from data.db import get_recent_trades
+            trades = get_recent_trades(days=30) if hasattr(__import__('data.db', fromlist=['get_recent_trades']), 'get_recent_trades') else []
+        except Exception:
+            trades = []
+
+        try:
+            if not trades:
+                from data.db import get_dashboard_data
+                data = get_dashboard_data()
+                trades = data.get("recent_trades", [])
+        except Exception:
+            trades = []
+
+        outcomes = {}
+        for t in (trades or []):
+            action = (t.get("action") or t.get("exit_type") or "OTHER").upper()
+            # Classify into outcome types
+            pnl = t.get("pnl") or 0
+            if action in ("TP1", "TP1_HIT"):
+                otype = "TP1_ONLY"
+            elif action in ("TP2", "TP2_HIT"):
+                otype = "CLEAN_WIN"
+            elif action in ("TRAILING_STOP", "TRAIL"):
+                otype = "TRAILING_WIN" if pnl > 0 else "TRAILING_LOSS"
+            elif action in ("SL", "STOP_LOSS", "SL_HIT"):
+                otype = "CLEAN_LOSS"
+            elif action in ("EARLY_EXIT", "EMERGENCY"):
+                otype = "EARLY_EXIT_SAVE" if pnl > 0 else "EARLY_EXIT_LOSS"
+            elif pnl > 0:
+                otype = "CLEAN_WIN"
+            elif pnl < 0:
+                otype = "CLEAN_LOSS"
+            else:
+                otype = "OTHER"
+
+            if otype not in outcomes:
+                outcomes[otype] = {"count": 0, "total_pnl": 0, "avg_pnl": 0}
+            outcomes[otype]["count"] += 1
+            outcomes[otype]["total_pnl"] += pnl
+
+        for otype, data in outcomes.items():
+            data["avg_pnl"] = data["total_pnl"] / data["count"] if data["count"] > 0 else 0
+
+        self._send_json({"outcomes": outcomes})
+
+    # ── /api/fingerprints — Strategy performance matrix ────────────────
+    def _serve_fingerprints(self):
+        try:
+            # Try deep memory first
+            by_symbol = {}
+            by_regime = {}
+            try:
+                fp_path = os.path.join(_BOT_DIR, "data", "llm", "deep_memory", "strategy_fingerprints.json")
+                if os.path.exists(fp_path):
+                    with open(fp_path, "r") as f:
+                        fp_data = json.load(f)
+                    # Parse fingerprint data into heatmap format
+                    for strat, info in (fp_data or {}).items():
+                        if isinstance(info, dict):
+                            for sym, stats in info.get("by_symbol", {}).items():
+                                key = f"{strat}|{sym}"
+                                by_symbol[key] = {
+                                    "win_rate": stats.get("win_rate", 0),
+                                    "trades": stats.get("trades", 0),
+                                    "pnl": stats.get("pnl", 0),
+                                }
+                            for reg, stats in info.get("by_regime", {}).items():
+                                key = f"{strat}|{reg}"
+                                by_regime[key] = {
+                                    "win_rate": stats.get("win_rate", 0),
+                                    "trades": stats.get("trades", 0),
+                                    "pnl": stats.get("pnl", 0),
+                                }
+            except Exception:
+                pass
+
+            # Fallback: build from performance_daily table
+            if not by_symbol:
+                try:
+                    from data.db import get_performance_history
+                    history = get_performance_history(30) or []
+                    for row in history:
+                        strat = row.get("strategy", "unknown")
+                        sym = row.get("symbol", "ALL")
+                        trades = row.get("trades", 0)
+                        wins = row.get("wins", 0)
+                        pnl = row.get("net_pnl", row.get("pnl", 0))
+                        if trades > 0 and strat and sym:
+                            key = f"{strat}|{sym}"
+                            if key not in by_symbol:
+                                by_symbol[key] = {"win_rate": 0, "trades": 0, "pnl": 0}
+                            by_symbol[key]["trades"] += trades
+                            by_symbol[key]["pnl"] += pnl
+                            total_t = by_symbol[key]["trades"]
+                            by_symbol[key]["win_rate"] = (by_symbol[key].get("_wins", 0) + wins) / total_t if total_t > 0 else 0
+                            by_symbol[key]["_wins"] = by_symbol[key].get("_wins", 0) + wins
+                except Exception:
+                    pass
+
+            self._send_json({"by_symbol": by_symbol, "by_regime": by_regime})
+        except Exception as exc:
+            logger.exception("Error serving /api/fingerprints")
+            self._send_json({"by_symbol": {}, "by_regime": {}})
+
+    # ── /api/agents/last — Last agent pipeline decision ────────────────
+    def _serve_agents_last(self):
+        try:
+            bot = DashboardHandler.bot_instance
+            active = False
+            agents = []
+            timestamp = None
+
+            if bot is not None:
+                coord = None
+                for attr in ("agent_coordinator", "coordinator", "llm_engine"):
+                    coord = getattr(bot, attr, None)
+                    if coord:
+                        break
+                if coord is None:
+                    engine = getattr(bot, "engine", None) or getattr(bot, "trading_engine", None)
+                    if engine:
+                        coord = getattr(engine, "agent_coordinator", None)
+
+                if coord and hasattr(coord, "last_pipeline_results"):
+                    active = True
+                    results = coord.last_pipeline_results or {}
+                    for role, output in results.items():
+                        if isinstance(output, dict):
+                            agents.append({
+                                "agent": role,
+                                "model": output.get("model", ""),
+                                "action": output.get("action") or output.get("decision", ""),
+                                "confidence": output.get("confidence"),
+                                "reasoning": output.get("reasoning", "")[:200],
+                            })
+                            if output.get("timestamp"):
+                                timestamp = output["timestamp"]
+
+            if not active:
+                active = os.getenv("LLM_MULTI_AGENT", "").lower() in ("true", "1", "yes")
+
+            # Fallback: read from decisions.jsonl
+            if not agents:
+                try:
+                    decisions_path = os.path.join(_BOT_DIR, "data", "llm", "decisions.jsonl")
+                    if os.path.exists(decisions_path):
+                        with open(decisions_path, "r") as f:
+                            lines = f.readlines()
+                        for line in lines[-20:]:
+                            try:
+                                dec = json.loads(line.strip())
+                                agent = dec.get("agent") or dec.get("source")
+                                if agent:
+                                    agents.append({
+                                        "agent": agent,
+                                        "model": dec.get("model", ""),
+                                        "action": dec.get("action") or dec.get("decision", ""),
+                                        "confidence": dec.get("confidence"),
+                                        "reasoning": (dec.get("reasoning") or dec.get("summary") or "")[:200],
+                                    })
+                                    timestamp = dec.get("timestamp") or timestamp
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            self._send_json({"active": active, "agents": agents[-6:], "timestamp": timestamp})
+        except Exception as exc:
+            logger.exception("Error serving /api/agents/last")
+            self._send_json({"active": False, "agents": [], "timestamp": None})
+
+    # ── /api/regimes/history — Regime transition timeline ──────────────
+    def _serve_regimes_history(self):
+        try:
+            periods = []
+            transitions = {}
+
+            # Try deep memory regime history
+            try:
+                rh_path = os.path.join(_BOT_DIR, "data", "llm", "deep_memory", "regime_history.json")
+                if os.path.exists(rh_path):
+                    with open(rh_path, "r") as f:
+                        rh_data = json.load(f)
+                    if isinstance(rh_data, dict):
+                        periods = rh_data.get("periods", [])
+                        transitions = rh_data.get("transitions", {})
+                    elif isinstance(rh_data, list):
+                        periods = rh_data
+            except Exception:
+                pass
+
+            # Fallback: derive from market data signals
+            if not periods:
+                try:
+                    from data.db import get_signals_today
+                    signals = get_signals_today() or []
+                    last_regime = None
+                    for sig in signals:
+                        meta = sig.get("metadata")
+                        if isinstance(meta, str):
+                            try:
+                                meta = json.loads(meta)
+                            except Exception:
+                                continue
+                        if isinstance(meta, dict):
+                            regime = meta.get("regime") or meta.get("market_regime")
+                            if regime and regime != last_regime:
+                                if last_regime:
+                                    key = f"{last_regime}->{regime}"
+                                    transitions[key] = transitions.get(key, 0) + 1
+                                periods.append({"regime": regime, "duration_h": 1, "start": sig.get("timestamp")})
+                                last_regime = regime
+                            elif regime == last_regime and periods:
+                                periods[-1]["duration_h"] = periods[-1].get("duration_h", 0) + 1
+                except Exception:
+                    pass
+
+            self._send_json({"periods": periods[-50:], "transitions": transitions})
+        except Exception as exc:
+            logger.exception("Error serving /api/regimes/history")
+            self._send_json({"periods": [], "transitions": {}})
+
+    # ── /api/calibration — Confidence calibration data ─────────────────
+    def _serve_calibration(self):
+        try:
+            buckets = []
+            brier_score = None
+
+            # Try signal quality scorer
+            try:
+                sq_path = os.path.join(_BOT_DIR, "data", "feedback", "signal_quality.json")
+                if os.path.exists(sq_path):
+                    with open(sq_path, "r") as f:
+                        sq_data = json.load(f)
+                    cal = sq_data.get("calibration", {})
+                    if cal:
+                        for bucket_name, stats in sorted(cal.items()):
+                            predicted = stats.get("predicted", 0)
+                            actual = stats.get("actual_win_rate", 0)
+                            n = stats.get("trades", 0)
+                            buckets.append({"predicted": predicted, "actual": actual * 100 if actual <= 1 else actual, "trades": n})
+            except Exception:
+                pass
+
+            # Fallback: compute from signal outcomes in DB
+            if not buckets:
+                try:
+                    from data.db import get_dashboard_data
+                    data = get_dashboard_data()
+                    trades = data.get("recent_trades", [])
+                    # Bucket by confidence
+                    conf_buckets = {}
+                    for t in trades:
+                        conf = t.get("confidence")
+                        if conf is None:
+                            continue
+                        bucket = int(conf // 20) * 20
+                        if bucket not in conf_buckets:
+                            conf_buckets[bucket] = {"wins": 0, "total": 0}
+                        conf_buckets[bucket]["total"] += 1
+                        if (t.get("pnl") or 0) > 0:
+                            conf_buckets[bucket]["wins"] += 1
+                    for bucket in sorted(conf_buckets.keys()):
+                        stats = conf_buckets[bucket]
+                        actual_wr = (stats["wins"] / stats["total"] * 100) if stats["total"] > 0 else 0
+                        buckets.append({"predicted": bucket + 10, "actual": actual_wr, "trades": stats["total"]})
+                except Exception:
+                    pass
+
+            self._send_json({"buckets": buckets, "brier_score": brier_score})
+        except Exception as exc:
+            logger.exception("Error serving /api/calibration")
+            self._send_json({"buckets": [], "brier_score": None})
+
+    # ── /api/insights — LLM insight journal ────────────────────────────
+    def _serve_insights(self):
+        try:
+            insights = []
+            try:
+                ij_path = os.path.join(_BOT_DIR, "data", "llm", "deep_memory", "insight_journal.json")
+                if os.path.exists(ij_path):
+                    with open(ij_path, "r") as f:
+                        ij_data = json.load(f)
+                    if isinstance(ij_data, list):
+                        for entry in ij_data:
+                            insights.append({
+                                "text": entry.get("text") or entry.get("insight") or "",
+                                "category": entry.get("category", "meta"),
+                                "confidence": entry.get("confidence", 50),
+                                "validation_status": entry.get("validation_status") or entry.get("status", "pending"),
+                                "timestamp": entry.get("timestamp"),
+                            })
+                    elif isinstance(ij_data, dict):
+                        for cat, entries in ij_data.items():
+                            if isinstance(entries, list):
+                                for entry in entries:
+                                    insights.append({
+                                        "text": entry.get("text") or entry.get("insight") or str(entry),
+                                        "category": cat,
+                                        "confidence": entry.get("confidence", 50) if isinstance(entry, dict) else 50,
+                                        "validation_status": entry.get("validation_status", "pending") if isinstance(entry, dict) else "pending",
+                                        "timestamp": entry.get("timestamp") if isinstance(entry, dict) else None,
+                                    })
+            except Exception:
+                pass
+
+            # Sort by confidence descending
+            insights.sort(key=lambda x: -(x.get("confidence") or 0))
+            self._send_json({"insights": insights[:100]})
+        except Exception as exc:
+            logger.exception("Error serving /api/insights")
+            self._send_json({"insights": []})
+
+    # ── /api/correlation — Portfolio correlation matrix ─────────────────
+    def _serve_correlation(self):
+        try:
+            symbols = []
+            matrix = {}
+            div_score = None
+
+            # Try correlation cache
+            try:
+                cc_path = os.path.join(_BOT_DIR, "data", "portfolio_risk", "correlation_cache.json")
+                if os.path.exists(cc_path):
+                    with open(cc_path, "r") as f:
+                        cc_data = json.load(f)
+                    if isinstance(cc_data, dict):
+                        symbols = cc_data.get("symbols", [])
+                        raw_matrix = cc_data.get("matrix", cc_data.get("correlations", {}))
+                        if isinstance(raw_matrix, dict):
+                            matrix = raw_matrix
+                        elif isinstance(raw_matrix, list) and symbols:
+                            for i, row in enumerate(raw_matrix):
+                                if isinstance(row, list):
+                                    for j, val in enumerate(row):
+                                        if i < len(symbols) and j < len(symbols):
+                                            matrix[f"{symbols[i]}_{symbols[j]}"] = val
+            except Exception:
+                pass
+
+            # Fallback: use watched symbols with placeholder
+            if not symbols:
+                try:
+                    from trading_config import DEFAULT_SYMBOLS
+                    symbols = list(DEFAULT_SYMBOLS.keys())[:8]
+                except Exception:
+                    symbols = []
+
+            # Calculate diversification score from matrix
+            if matrix and len(symbols) > 1:
+                corr_sum = 0
+                count = 0
+                for i, s1 in enumerate(symbols):
+                    for j, s2 in enumerate(symbols):
+                        if i < j:
+                            val = matrix.get(f"{s1}_{s2}", 0)
+                            corr_sum += abs(val)
+                            count += 1
+                if count > 0:
+                    avg_corr = corr_sum / count
+                    div_score = max(0, min(100, (1 - avg_corr) * 100))
+
+            self._send_json({"symbols": symbols, "matrix": matrix, "diversification_score": div_score})
+        except Exception as exc:
+            logger.exception("Error serving /api/correlation")
+            self._send_json({"symbols": [], "matrix": {}, "diversification_score": None})
 
     # ═══════════════════════════════════════════════════════════════════
     # Data extraction helpers (all READ-ONLY)
