@@ -880,6 +880,12 @@ tr.pos-row:hover { background:var(--card-hover); }
     </div>
   </div>
 
+  <!-- ML Intelligence -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3>ML Model Intelligence <span style="font-size:10px;color:var(--cyan);font-weight:400;margin-left:8px;">Quantitative Predictions</span></h3>
+    <div id="intel-ml-predictions"><div class="empty" style="font-size:11px;">Loading ML data...</div></div>
+  </div>
+
   <!-- LLM Agent Intelligence -->
   <div class="card" style="margin-bottom:16px;">
     <h3>AI Agent Intelligence</h3>
@@ -7098,23 +7104,25 @@ let marketIntelInterval = null;
 
 async function loadMarketIntel() {
   try {
-    const [marketRes, pipelineRes, rejectionsRes, weightsRes, riskRes, agentsRes] = await Promise.allSettled([
+    const [marketRes, pipelineRes, rejectionsRes, weightsRes, riskRes, agentsRes, mlRes] = await Promise.allSettled([
       fetch('/api/market'), fetch('/api/pipeline'), fetch('/api/rejections'),
-      fetch('/api/weights'), fetch('/api/risk'), fetch('/api/agents/last')
+      fetch('/api/weights'), fetch('/api/risk'), fetch('/api/agents/last'), fetch('/api/ml')
     ]);
 
-    let market=null, pipeline=null, rejections=null, weights=null, risk=null, agents=null;
+    let market=null, pipeline=null, rejections=null, weights=null, risk=null, agents=null, ml=null;
     if(marketRes.status==='fulfilled' && marketRes.value.ok) try { market = await marketRes.value.json(); } catch {}
     if(pipelineRes.status==='fulfilled' && pipelineRes.value.ok) try { pipeline = await pipelineRes.value.json(); } catch {}
     if(rejectionsRes.status==='fulfilled' && rejectionsRes.value.ok) try { rejections = await rejectionsRes.value.json(); } catch {}
     if(weightsRes.status==='fulfilled' && weightsRes.value.ok) try { weights = await weightsRes.value.json(); } catch {}
     if(riskRes.status==='fulfilled' && riskRes.value.ok) try { risk = await riskRes.value.json(); } catch {}
     if(agentsRes.status==='fulfilled' && agentsRes.value.ok) try { agents = await agentsRes.value.json(); } catch {}
+    if(mlRes.status==='fulfilled' && mlRes.value.ok) try { ml = await mlRes.value.json(); } catch {}
 
     renderMarketRegimes(market);
     renderIntelPipeline(pipeline, rejections);
     renderStrategyConsensus(weights);
     renderRiskIntel(risk);
+    renderMLIntel(ml);
     renderAgentIntel(agents);
     renderBestOpportunities(rejections);
   } catch(e) { console.error('Market intel error:', e); }
@@ -7266,6 +7274,85 @@ function renderRiskIntel(risk) {
     '<div style="background:var(--bg2);border-radius:6px;padding:10px;text-align:center;grid-column:1/-1;">' +
     '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Daily Drawdown</div>' +
     '<div style="font-size:14px;font-weight:700;color:' + ddColor + ';">' + dailyDD + '%</div></div></div>';
+}
+
+function renderMLIntel(ml) {
+  var el = document.getElementById('intel-ml-predictions');
+  if(!el) return;
+  if(!ml || Object.keys(ml).length === 0 || ml.error) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:12px;">No ML model data available yet. ML predictions appear after the bot has processed enough trades.</div>';
+    return;
+  }
+
+  var phase = ml.phase || 'unknown';
+  var phaseColors = { mature: 'var(--green)', learning: 'var(--yellow)', cold_start: 'var(--red)', unknown: 'var(--muted)' };
+  var phaseLabels = { mature: 'Mature (Reliable)', learning: 'Learning', cold_start: 'Cold Start', unknown: 'Unknown' };
+  var trained = ml.trades_trained || 0;
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;">';
+
+  // Phase card
+  html += '<div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center;">' +
+    '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Model Phase</div>' +
+    '<div style="font-size:14px;font-weight:700;color:' + (phaseColors[phase]||'var(--muted)') + ';">' + (phaseLabels[phase]||phase) + '</div>' +
+    '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">' + trained + ' trades trained</div></div>';
+
+  // Direction probability
+  if(ml.direction_prob != null) {
+    var dp = ml.direction_prob;
+    var dpPct = (dp * 100).toFixed(1);
+    var dpColor = dp > 0.65 ? 'var(--green)' : (dp < 0.35 ? 'var(--red)' : 'var(--yellow)');
+    var dpLabel = dp > 0.65 ? 'Bullish' : (dp < 0.35 ? 'Bearish' : 'Neutral');
+    html += '<div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Direction Prediction</div>' +
+      '<div style="font-size:20px;font-weight:700;color:' + dpColor + ';">' + dpPct + '%</div>' +
+      '<div style="font-size:11px;color:' + dpColor + ';margin-top:2px;">' + dpLabel + '</div>' +
+      '<div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden;margin-top:6px;">' +
+      '<div style="width:' + dpPct + '%;height:100%;background:' + dpColor + ';border-radius:4px;transition:width 0.3s;"></div></div></div>';
+  }
+
+  // Snapshot model samples
+  if(ml.snapshot_model_samples != null) {
+    html += '<div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Snapshot Model</div>' +
+      '<div style="font-size:14px;font-weight:700;color:var(--cyan);">' + ml.snapshot_model_samples + ' samples</div>' +
+      '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">78% accuracy target</div></div>';
+  }
+
+  html += '</div>';
+
+  // Strategy win rates
+  if(ml.strategy_win_rates) {
+    html += '<div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;">ML Strategy Win Rates (Rolling)</div>';
+    var stratNames = { regime_trend: 'Regime Trend', monte_carlo_zones: 'Monte Carlo', multi_tier_quality: 'Multi-Tier', confidence_scorer: 'Confidence' };
+    Object.entries(ml.strategy_win_rates).forEach(function(e) {
+      var name = e[0], wr = e[1];
+      var wrPct = (wr * 100).toFixed(0);
+      var wrColor = wr >= 0.55 ? 'var(--green)' : (wr >= 0.45 ? 'var(--yellow)' : 'var(--red)');
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+        '<span style="font-size:11px;color:var(--text-dim);min-width:100px;">' + (stratNames[name]||name) + '</span>' +
+        '<div style="flex:1;background:var(--bg2);border-radius:4px;height:8px;overflow:hidden;">' +
+        '<div style="width:' + wrPct + '%;height:100%;background:' + wrColor + ';border-radius:4px;transition:width 0.3s;"></div></div>' +
+        '<span style="font-size:11px;font-weight:600;color:' + wrColor + ';min-width:35px;text-align:right;">' + wrPct + '%</span></div>';
+    });
+    html += '</div>';
+  }
+
+  // Strategy weights
+  if(ml.strategy_weights) {
+    html += '<div><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;">ML Recommended Weights</div>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    var stratNames = { regime_trend: 'Regime', monte_carlo_zones: 'MC Zones', multi_tier_quality: 'Multi-Tier', confidence_scorer: 'Confidence' };
+    Object.entries(ml.strategy_weights).forEach(function(e) {
+      var name = e[0], w = e[1];
+      html += '<div style="background:var(--bg2);border-radius:6px;padding:6px 10px;text-align:center;">' +
+        '<div style="font-size:9px;color:var(--text-dim);">' + (stratNames[name]||name) + '</div>' +
+        '<div style="font-size:13px;font-weight:700;color:var(--cyan);">' + w.toFixed(2) + '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  el.innerHTML = html;
 }
 
 function renderAgentIntel(agents) {
@@ -7424,6 +7511,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/calibration":  self._serve_calibration,
             "/api/insights":     self._serve_insights,
             "/api/correlation":  self._serve_correlation,
+            "/api/ml":           self._serve_ml,
         }
         handler = routes.get(path)
         if handler:
@@ -8242,6 +8330,81 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.exception("Error serving /api/correlation")
             self._send_json({"symbols": [], "matrix": {}, "diversification_score": None})
+
+    # ── /api/ml — ML Intelligence data ──────────────────────────────────
+    def _serve_ml(self):
+        try:
+            bot = DashboardHandler.bot_instance
+            ml_data = {}
+
+            if bot is not None:
+                ml = getattr(bot, "ml", None)
+                if ml is not None:
+                    try:
+                        ml_data["phase"] = (
+                            "mature" if len(getattr(ml, "outcomes", [])) >= 50
+                            else ("learning" if len(getattr(ml, "outcomes", [])) >= getattr(ml, "min_samples", 10)
+                                  else "cold_start")
+                        )
+                        ml_data["trades_trained"] = len(getattr(ml, "outcomes", []))
+                    except Exception:
+                        ml_data["phase"] = "unknown"
+                        ml_data["trades_trained"] = 0
+
+                    # Direction probability
+                    try:
+                        gctx = getattr(bot, "global_ctx", None)
+                        btc_1h = getattr(gctx, "btc_change_1h_pct", 0) if gctx else 0
+                        btc_24h = getattr(gctx, "btc_change_24h_pct", 0) if gctx else 0
+                        dir_prob = ml.predict_direction(
+                            price_change_1h_pct=btc_1h,
+                            price_change_24h_pct=btc_24h,
+                        )
+                        if dir_prob is not None:
+                            ml_data["direction_prob"] = round(dir_prob, 3)
+                    except Exception:
+                        pass
+
+                    # Strategy win rates
+                    try:
+                        strat_wrs = {}
+                        for name in ("regime_trend", "monte_carlo_zones", "multi_tier_quality", "confidence_scorer"):
+                            wr = ml.get_strategy_win_rate(name)
+                            if wr is not None:
+                                strat_wrs[name] = round(wr, 2)
+                        if strat_wrs:
+                            ml_data["strategy_win_rates"] = strat_wrs
+                    except Exception:
+                        pass
+
+                    # Strategy weights
+                    try:
+                        sw = ml.get_strategy_weights()
+                        if sw:
+                            ml_data["strategy_weights"] = {k: round(v, 2) for k, v in sw.items()}
+                    except Exception:
+                        pass
+
+                    # Snapshot model info
+                    try:
+                        if getattr(ml, "snapshot_weights", None) is not None:
+                            filled = sum(1 for s in ml.snapshots if s.future_return_1h is not None)
+                            ml_data["snapshot_model_samples"] = filled
+                    except Exception:
+                        pass
+
+                    # Performance report
+                    try:
+                        perf = ml.get_performance_report()
+                        if perf:
+                            ml_data["performance"] = perf
+                    except Exception:
+                        pass
+
+            self._send_json(ml_data)
+        except Exception as exc:
+            logger.exception("Error serving /api/ml")
+            self._send_json({"error": str(exc)}, status=500)
 
     # ═══════════════════════════════════════════════════════════════════
     # Data extraction helpers (all READ-ONLY)
