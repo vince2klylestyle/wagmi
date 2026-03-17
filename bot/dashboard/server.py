@@ -6,7 +6,7 @@ Serves a single-page HTML dashboard with auto-refreshing data via
 fetch() calls to JSON API endpoints backed by the SQLite data layer.
 
 Features:
-  v4.1 — Professional Trading Intelligence Terminal
+  v4.2 — Professional Trading Intelligence Terminal
   - 7-tab layout: Overview | Charts & Zones | Signals | Trades | Analytics | System | Learn
   - TradingView Lightweight Charts with Monte Carlo zone overlays
   - Educational tooltips on every concept (click ? icons)
@@ -50,7 +50,7 @@ _START_TIME = time.time()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# HTML Dashboard (inline single-page app) — v4.1
+# HTML Dashboard (inline single-page app) — v4.2
 # ═══════════════════════════════════════════════════════════════════════════
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
@@ -428,10 +428,104 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 /* ── Learn Tab ── */
 .lesson-item:hover { background: var(--bg2); }
 
+/* ── Toast Notifications ── */
+.toast-container { position:fixed; top:60px; right:20px; z-index:10000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.toast { pointer-events:auto; padding:12px 18px; border-radius:8px; font-size:12px; font-weight:600; color:var(--text); background:var(--card); border:1px solid var(--border); box-shadow:var(--shadow-md); transform:translateX(120%); opacity:0; transition:all 0.3s ease; max-width:360px; display:flex; align-items:center; gap:10px; }
+.toast.show { transform:translateX(0); opacity:1; }
+.toast-success { border-left:4px solid var(--green); }
+.toast-error { border-left:4px solid var(--red); }
+.toast-warning { border-left:4px solid var(--yellow); }
+.toast-info { border-left:4px solid var(--blue); }
+.toast-icon { font-size:16px; flex-shrink:0; }
+.toast-body { flex:1; }
+.toast-title { font-weight:800; font-size:11px; text-transform:uppercase; margin-bottom:2px; }
+.toast-msg { font-size:11px; color:var(--text-dim); }
+.toast-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; padding:0 0 0 8px; }
+
+/* ── Sortable Tables ── */
+th.sortable { cursor:pointer; user-select:none; position:relative; transition:color var(--transition); }
+th.sortable:hover { color:var(--cyan); }
+th.sortable::after { content:'⇅'; font-size:9px; margin-left:4px; opacity:0.3; }
+th.sort-asc::after { content:'↑'; opacity:1; color:var(--cyan); }
+th.sort-desc::after { content:'↓'; opacity:1; color:var(--cyan); }
+
+/* ── Countdown Timer ── */
+.countdown-wrap { display:flex; align-items:center; gap:6px; }
+.countdown-bar { width:50px; height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+.countdown-fill { height:100%; background:var(--cyan); border-radius:2px; transition:width 1s linear; }
+.countdown-text { font-size:9px; color:var(--muted); min-width:18px; }
+
+/* ── PnL Calendar Heatmap ── */
+.pnl-calendar { display:flex; flex-direction:column; gap:2px; }
+.pnl-cal-row { display:flex; gap:2px; align-items:center; }
+.pnl-cal-label { width:24px; font-size:9px; color:var(--muted); text-align:right; padding-right:4px; flex-shrink:0; }
+.cal-cell { width:14px; height:14px; border-radius:2px; position:relative; cursor:pointer; transition:transform 0.1s; }
+.cal-cell:hover { transform:scale(1.6); z-index:10; outline:1px solid var(--cyan); }
+.cal-tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:10px; white-space:nowrap; z-index:100; pointer-events:none; opacity:0; transition:opacity 0.15s; box-shadow:var(--shadow-md); }
+.cal-cell:hover .cal-tooltip { opacity:1; }
+.cal-month-label { font-size:9px; color:var(--muted); text-align:center; }
+
+/* ── Export Button ── */
+.btn-export { padding:4px 12px; font-size:10px; font-weight:700; background:var(--bg2); border:1px solid var(--border); color:var(--cyan); border-radius:4px; cursor:pointer; font-family:inherit; text-transform:uppercase; letter-spacing:0.5px; transition:all var(--transition); }
+.btn-export:hover { background:var(--cyan-dim); border-color:var(--cyan); }
+.btn-group { display:flex; gap:6px; align-items:center; }
+
+/* ── Fullscreen Chart ── */
+.btn-fullscreen { position:absolute; top:8px; right:8px; padding:4px 8px; font-size:11px; background:var(--bg2); border:1px solid var(--border); color:var(--text-dim); border-radius:4px; cursor:pointer; font-family:inherit; z-index:10; transition:all var(--transition); }
+.btn-fullscreen:hover { color:var(--cyan); border-color:var(--cyan); }
+.chart-fullscreen { position:fixed!important; top:0; left:0; width:100vw!important; height:100vh!important; z-index:9999; background:var(--bg); padding:20px; margin:0!important; border-radius:0!important; }
+.chart-fullscreen .btn-fullscreen { top:20px; right:20px; font-size:14px; padding:8px 14px; }
+
+/* ── Position Expand ── */
+.pos-expand-row td { padding:0!important; }
+.pos-detail { background:var(--bg2); padding:14px 20px; border-top:1px dashed var(--border); font-size:11px; }
+.pos-detail-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+.pos-detail-item { display:flex; flex-direction:column; gap:2px; }
+.pos-detail-label { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:0.5px; }
+.pos-detail-value { color:var(--text); font-weight:700; }
+tr.pos-row { cursor:pointer; transition:background var(--transition); }
+tr.pos-row:hover { background:var(--card-hover); }
+
+/* ── Streak Badge ── */
+.streak-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; }
+.streak-win { background:var(--green-dim); color:var(--green); }
+.streak-loss { background:var(--red-dim); color:var(--red); }
+
+/* ── Quick Stats Row ── */
+.quick-stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.quick-stat { display:flex; align-items:center; gap:6px; padding:6px 14px; background:var(--card); border:1px solid var(--border); border-radius:20px; font-size:11px; white-space:nowrap; }
+.quick-stat-label { color:var(--muted); }
+.quick-stat-value { font-weight:800; }
+
+/* ── Keyboard Shortcut Hints ── */
+.kb-hint { font-size:8px; color:var(--muted); background:var(--bg2); border:1px solid var(--border); border-radius:3px; padding:1px 4px; margin-left:3px; opacity:0; transition:opacity 0.2s; vertical-align:middle; }
+.tab-btn:hover .kb-hint { opacity:0.8; }
+
+/* ── Skeleton Loading ── */
+@keyframes skeleton-pulse { 0%,100% { opacity:0.15; } 50% { opacity:0.35; } }
+.skeleton { background:linear-gradient(90deg,var(--border) 25%,var(--card-hover) 50%,var(--border) 75%); background-size:200% 100%; animation:skeleton-pulse 1.5s ease-in-out infinite; border-radius:4px; }
+.skeleton-text { height:12px; margin-bottom:6px; width:80%; }
+.skeleton-metric { height:28px; width:120px; margin-bottom:4px; }
+.skeleton-card { height:60px; border-radius:var(--radius); }
+
+/* ── Latency Indicator ── */
+.latency-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; }
+.latency-good { background:var(--green); }
+.latency-ok { background:var(--yellow); }
+.latency-bad { background:var(--red); }
+
+/* ── Keyboard Shortcut Modal ── */
+.kb-modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--card); border:1px solid var(--border-bright); border-radius:var(--radius); padding:24px; z-index:10001; min-width:340px; box-shadow:var(--shadow-md); }
+.kb-modal.visible { display:block; }
+.kb-modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; }
+.kb-modal-overlay.visible { display:block; }
+.kb-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.kb-key { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:2px 8px; font-weight:700; font-size:11px; color:var(--cyan); min-width:28px; text-align:center; }
+
 /* ── Responsive ── */
 @media(max-width:1400px) { .grid-5 { grid-template-columns: repeat(3,1fr); } .grid-4 { grid-template-columns: repeat(2,1fr); } }
-@media(max-width:1000px) { .grid-5 { grid-template-columns: repeat(2,1fr); } .grid-3,.grid-2 { grid-template-columns: 1fr; } .heatmap-grid { grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); } .tab-btn { padding: 10px 14px; font-size: 11px; } }
-@media(max-width:600px) { .grid-5,.grid-4 { grid-template-columns: 1fr; } .heatmap-grid { grid-template-columns: 1fr; } .top-bar { padding: 0 12px; } .tab-content { padding: 14px 12px; } .top-bar .equity-ticker { display: none; } }
+@media(max-width:1000px) { .grid-5 { grid-template-columns: repeat(2,1fr); } .grid-3,.grid-2 { grid-template-columns: 1fr; } .heatmap-grid { grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); } .tab-btn { padding: 10px 14px; font-size: 11px; } .toast-container { right:10px; left:10px; } .kb-hint { display:none; } }
+@media(max-width:600px) { .grid-5,.grid-4 { grid-template-columns: 1fr; } .heatmap-grid { grid-template-columns: 1fr; } .top-bar { padding: 0 12px; } .tab-content { padding: 14px 12px; } .top-bar .equity-ticker { display: none; } .quick-stats { gap:6px; } .quick-stat { padding:4px 10px; font-size:10px; } }
 </style>
 </head>
 <body>
@@ -445,18 +539,19 @@ tr:hover td { background: rgba(255,255,255,0.015); }
     <span><span class="dot dot-green" id="health-dot"></span><span id="health-label">Connecting...</span></span>
     <span id="uptime-display">--</span>
     <span><span class="refresh-pulse"></span><span id="last-refresh">--</span></span>
+    <span class="countdown-wrap"><span class="latency-dot latency-good" id="latency-dot" title="API latency"></span><span class="countdown-bar"><span class="countdown-fill" id="countdown-fill" style="width:100%"></span></span><span class="countdown-text" id="countdown-text">30s</span></span>
   </div>
 </div>
 
 <!-- ═══ Tab Navigation ═══ -->
 <div class="tab-nav">
-  <button class="tab-btn active" data-tab="overview"><span class="tab-icon">&#9670;</span>Overview</button>
-  <button class="tab-btn" data-tab="charts"><span class="tab-icon">&#9636;</span>Charts &amp; Zones</button>
-  <button class="tab-btn" data-tab="signals"><span class="tab-icon">&#9889;</span>Signals</button>
-  <button class="tab-btn" data-tab="trades"><span class="tab-icon">&#9733;</span>Trades</button>
-  <button class="tab-btn" data-tab="analytics"><span class="tab-icon">&#9776;</span>Analytics</button>
-  <button class="tab-btn" data-tab="system"><span class="tab-icon">&#9881;</span>System</button>
-  <button class="tab-btn" data-tab="learn"><span class="tab-icon">&#127891;</span>Learn</button>
+  <button class="tab-btn active" data-tab="overview"><span class="tab-icon">&#9670;</span>Overview<span class="kb-hint">1</span></button>
+  <button class="tab-btn" data-tab="charts"><span class="tab-icon">&#9636;</span>Charts &amp; Zones<span class="kb-hint">2</span></button>
+  <button class="tab-btn" data-tab="signals"><span class="tab-icon">&#9889;</span>Signals<span class="kb-hint">3</span></button>
+  <button class="tab-btn" data-tab="trades"><span class="tab-icon">&#9733;</span>Trades<span class="kb-hint">4</span></button>
+  <button class="tab-btn" data-tab="analytics"><span class="tab-icon">&#9776;</span>Analytics<span class="kb-hint">5</span></button>
+  <button class="tab-btn" data-tab="system"><span class="tab-icon">&#9881;</span>System<span class="kb-hint">6</span></button>
+  <button class="tab-btn" data-tab="learn"><span class="tab-icon">&#127891;</span>Learn<span class="kb-hint">7</span></button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════ -->
@@ -492,6 +587,16 @@ tr:hover td { background: rgba(255,255,255,0.015); }
       <div class="metric" id="kpi-unrealized-pnl">$0.00</div>
       <div class="metric-sub" id="kpi-unrealized-pnl-sub">across all positions</div>
     </div>
+  </div>
+
+  <!-- Quick Stats Strip -->
+  <div class="quick-stats" id="quick-stats">
+    <div class="quick-stat"><span class="quick-stat-label">Streak:</span><span class="quick-stat-value" id="qs-streak">--</span></div>
+    <div class="quick-stat"><span class="quick-stat-label">Best Trade:</span><span class="quick-stat-value" id="qs-best-trade">--</span></div>
+    <div class="quick-stat"><span class="quick-stat-label">Worst Trade:</span><span class="quick-stat-value" id="qs-worst-trade">--</span></div>
+    <div class="quick-stat"><span class="quick-stat-label">Avg Hold:</span><span class="quick-stat-value" id="qs-avg-hold">--</span></div>
+    <div class="quick-stat"><span class="quick-stat-label">Profit Factor:</span><span class="quick-stat-value" id="qs-profit-factor">--</span></div>
+    <div class="quick-stat"><span class="quick-stat-label">Signals Today:</span><span class="quick-stat-value" id="qs-signals-today">--</span></div>
   </div>
 
   <!-- Live Positions Hero -->
@@ -561,7 +666,8 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   </div>
 
   <!-- Main Chart -->
-  <div class="card" style="padding:14px;">
+  <div class="card" style="padding:14px;position:relative;" id="chart-card">
+    <button class="btn-fullscreen" onclick="toggleChartFullscreen()" title="Toggle fullscreen (F)">&#x26F6; Fullscreen</button>
     <div class="chart-container large" id="main-chart-container"></div>
   </div>
 
@@ -645,10 +751,16 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 
   <!-- Recent Trades Table -->
   <div class="card">
-    <h3>Recent Trades <button class="info-btn" onclick="showEdu('trades')">?</button></h3>
+    <h3 style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Recent Trades <button class="info-btn" onclick="showEdu('trades')">?</button></span>
+      <div class="btn-group">
+        <button class="btn-export" onclick="exportTrades('csv')" title="Export as CSV">&#8681; CSV</button>
+        <button class="btn-export" onclick="exportTrades('json')" title="Export as JSON">&#8681; JSON</button>
+      </div>
+    </h3>
     <div class="scroll-y" style="max-height:500px;">
       <table>
-        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Action</th><th>Price</th><th>PnL</th><th>Strategy</th></tr></thead>
+        <thead><tr><th class="sortable" data-sort="time">Time</th><th class="sortable" data-sort="symbol">Symbol</th><th class="sortable" data-sort="side">Side</th><th>Action</th><th class="sortable" data-sort="price">Price</th><th class="sortable" data-sort="pnl">PnL</th><th>Strategy</th></tr></thead>
         <tbody id="trades-body"><tr><td colspan="7" class="empty"><div class="empty-icon">&#128203;</div>No trades yet<div class="empty-msg">Trades will appear here once the bot starts executing</div></td></tr></tbody>
       </table>
     </div>
@@ -707,6 +819,19 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   <div class="card" style="margin-top:16px;">
     <h3>Daily PnL History <button class="info-btn" onclick="showEdu('daily_pnl')">?</button></h3>
     <div class="chart-wrap" style="height:200px;"><canvas id="daily-pnl-chart"></canvas></div>
+  </div>
+
+  <!-- PnL Calendar Heatmap -->
+  <div class="card" style="margin-top:16px;">
+    <h3 style="display:flex;justify-content:space-between;align-items:center;">
+      <span>PnL Calendar (90d) <button class="info-btn" onclick="showEdu('daily_pnl')">?</button></span>
+      <div style="display:flex;gap:12px;align-items:center;font-size:10px;color:var(--muted);">
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:rgba(255,68,102,0.6);"></span>Loss</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--border);"></span>$0</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:rgba(0,230,160,0.6);"></span>Profit</span>
+      </div>
+    </h3>
+    <div id="pnl-calendar" style="margin-top:12px;overflow-x:auto;"><div class="empty"><div class="empty-icon">&#128197;</div>PnL calendar loading...</div></div>
   </div>
 
   <!-- Strategy Fingerprint Heatmaps -->
@@ -860,9 +985,30 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   </div>
 </div>
 
+<!-- ═══ Toast Container ═══ -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ═══ Keyboard Shortcut Modal ═══ -->
+<div class="kb-modal-overlay" id="kb-overlay" onclick="toggleKbModal()"></div>
+<div class="kb-modal" id="kb-modal">
+  <h3 style="color:var(--cyan);font-size:13px;margin-bottom:14px;">&#9000; Keyboard Shortcuts</h3>
+  <div class="kb-row"><span>Overview tab</span><span class="kb-key">1</span></div>
+  <div class="kb-row"><span>Charts &amp; Zones tab</span><span class="kb-key">2</span></div>
+  <div class="kb-row"><span>Signals tab</span><span class="kb-key">3</span></div>
+  <div class="kb-row"><span>Trades tab</span><span class="kb-key">4</span></div>
+  <div class="kb-row"><span>Analytics tab</span><span class="kb-key">5</span></div>
+  <div class="kb-row"><span>System tab</span><span class="kb-key">6</span></div>
+  <div class="kb-row"><span>Learn tab</span><span class="kb-key">7</span></div>
+  <div class="kb-row"><span>Refresh data</span><span class="kb-key">R</span></div>
+  <div class="kb-row"><span>Toggle chart fullscreen</span><span class="kb-key">F</span></div>
+  <div class="kb-row"><span>Show shortcuts</span><span class="kb-key">?</span></div>
+  <div class="kb-row"><span>Close modal / Exit fullscreen</span><span class="kb-key">Esc</span></div>
+  <div style="text-align:center;margin-top:14px;"><button onclick="toggleKbModal()" style="padding:6px 20px;background:var(--bg2);border:1px solid var(--border);color:var(--text-dim);border-radius:6px;cursor:pointer;font-family:inherit;">Close</button></div>
+</div>
+
 <!-- ═══ Footer ═══ -->
 <div style="padding:0 24px;">
-  <div class="footer">NunuIRL Trading Bot &mdash; Dashboard v4.1 &mdash; Positions 10s | Data 30s | Charts on demand</div>
+  <div class="footer">NunuIRL Trading Bot &mdash; Dashboard v4.2 &mdash; Positions 10s | Data 30s | Charts on demand &mdash; Press <span class="kb-key" style="font-size:9px;">?</span> for shortcuts</div>
 </div>
 
 </div>
@@ -2108,6 +2254,445 @@ function initLearnTab() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
+/* TOAST NOTIFICATION SYSTEM                                          */
+/* ═══════════════════════════════════════════════════════════════════ */
+function showToast(title, message, type='info', duration=4000) {
+  const container = document.getElementById('toast-container');
+  if(!container) return;
+  const icons = { success:'&#10003;', error:'&#10007;', warning:'&#9888;', info:'&#8505;' };
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-'+type;
+  toast.innerHTML = '<span class="toast-icon">'+(icons[type]||icons.info)+'</span><div class="toast-body"><div class="toast-title" style="color:var(--'+({success:'green',error:'red',warning:'yellow',info:'blue'}[type]||'blue')+');">'+title+'</div><div class="toast-msg">'+message+'</div></div><button class="toast-close" onclick="this.parentElement.remove()">&times;</button>';
+  container.appendChild(toast);
+  requestAnimationFrame(() => { requestAnimationFrame(() => { toast.classList.add('show'); }); });
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, duration);
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* KEYBOARD SHORTCUTS                                                  */
+/* ═══════════════════════════════════════════════════════════════════ */
+const TAB_ORDER = ['overview','charts','signals','trades','analytics','system','learn'];
+function toggleKbModal() {
+  document.getElementById('kb-overlay').classList.toggle('visible');
+  document.getElementById('kb-modal').classList.toggle('visible');
+}
+
+document.addEventListener('keydown', function(e) {
+  // Don't trigger when typing in inputs
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable) return;
+
+  // Number keys 1-7 for tab switching
+  if(e.key>='1' && e.key<='7' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const idx = parseInt(e.key) - 1;
+    if(idx < TAB_ORDER.length) {
+      const btn = document.querySelector('[data-tab="'+TAB_ORDER[idx]+'"]');
+      if(btn) { btn.click(); showToast('Tab', 'Switched to '+TAB_ORDER[idx].charAt(0).toUpperCase()+TAB_ORDER[idx].slice(1), 'info', 1500); }
+    }
+    return;
+  }
+
+  // R = refresh
+  if(e.key==='r' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); loadAll(); showToast('Refresh', 'Data refreshed', 'success', 1500); countdownSeconds=30; return; }
+
+  // F = fullscreen chart (only on charts tab)
+  if(e.key==='f' && !e.ctrlKey && !e.metaKey) {
+    const chartsTab = document.getElementById('tab-charts');
+    if(chartsTab && chartsTab.classList.contains('active')) { toggleChartFullscreen(); return; }
+  }
+
+  // ? or / = keyboard shortcuts
+  if(e.key==='?' || (e.key==='/' && !e.ctrlKey)) { toggleKbModal(); return; }
+
+  // Escape = close modals, exit fullscreen
+  if(e.key==='Escape') {
+    closeEdu();
+    const kb = document.getElementById('kb-modal');
+    if(kb && kb.classList.contains('visible')) toggleKbModal();
+    const card = document.getElementById('chart-card');
+    if(card && card.classList.contains('chart-fullscreen')) toggleChartFullscreen();
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* FULLSCREEN CHART TOGGLE                                             */
+/* ═══════════════════════════════════════════════════════════════════ */
+function toggleChartFullscreen() {
+  const card = document.getElementById('chart-card');
+  if(!card) return;
+  const isFS = card.classList.toggle('chart-fullscreen');
+  const btn = card.querySelector('.btn-fullscreen');
+  if(btn) btn.innerHTML = isFS ? '&#10005; Exit' : '&#x26F6; Fullscreen';
+  if(tvChart) {
+    const container = document.getElementById('main-chart-container');
+    setTimeout(() => {
+      tvChart.applyOptions({ width: container.clientWidth, height: isFS ? window.innerHeight - 60 : 420 });
+      tvChart.timeScale().fitContent();
+    }, 100);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* REFRESH COUNTDOWN TIMER                                             */
+/* ═══════════════════════════════════════════════════════════════════ */
+let countdownSeconds = 30;
+function updateCountdown() {
+  countdownSeconds--;
+  if(countdownSeconds <= 0) countdownSeconds = 30;
+  const fill = document.getElementById('countdown-fill');
+  const text = document.getElementById('countdown-text');
+  if(fill) fill.style.width = ((countdownSeconds/30)*100)+'%';
+  if(text) text.textContent = countdownSeconds+'s';
+}
+setInterval(updateCountdown, 1000);
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* CONNECTION QUALITY / LATENCY TRACKING                               */
+/* ═══════════════════════════════════════════════════════════════════ */
+let lastLatency = 0;
+async function measureLatency() {
+  const start = performance.now();
+  try {
+    await fetch('/api/health');
+    lastLatency = Math.round(performance.now() - start);
+  } catch { lastLatency = -1; }
+  const dot = document.getElementById('latency-dot');
+  if(dot) {
+    if(lastLatency < 0) { dot.className='latency-dot latency-bad'; dot.title='Connection lost'; }
+    else if(lastLatency < 200) { dot.className='latency-dot latency-good'; dot.title='Latency: '+lastLatency+'ms'; }
+    else if(lastLatency < 1000) { dot.className='latency-dot latency-ok'; dot.title='Latency: '+lastLatency+'ms'; }
+    else { dot.className='latency-dot latency-bad'; dot.title='Latency: '+lastLatency+'ms'; }
+  }
+}
+setInterval(measureLatency, 60000);
+setTimeout(measureLatency, 3000);
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* CSV / JSON EXPORT                                                   */
+/* ═══════════════════════════════════════════════════════════════════ */
+let cachedTrades = [];
+
+function exportTrades(format) {
+  if(cachedTrades.length === 0) { showToast('Export', 'No trade data to export', 'warning'); return; }
+  let content, filename, mime;
+  if(format === 'csv') {
+    const headers = ['Time','Symbol','Side','Action','Price','PnL','Strategy'];
+    const rows = cachedTrades.map(t => [
+      t.timestamp||'', t.symbol||'', t.side||'', t.action||'', t.price||0, t.pnl||0, t.strategy||''
+    ].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','));
+    content = headers.join(',') + '\n' + rows.join('\n');
+    filename = 'trades_'+new Date().toISOString().slice(0,10)+'.csv';
+    mime = 'text/csv';
+  } else {
+    content = JSON.stringify(cachedTrades, null, 2);
+    filename = 'trades_'+new Date().toISOString().slice(0,10)+'.json';
+    mime = 'application/json';
+  }
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Export', 'Downloaded '+filename+' ('+cachedTrades.length+' trades)', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* SORTABLE TABLE COLUMNS                                              */
+/* ═══════════════════════════════════════════════════════════════════ */
+let sortState = {};
+document.addEventListener('click', function(e) {
+  const th = e.target.closest('th.sortable');
+  if(!th) return;
+  const table = th.closest('table');
+  if(!table) return;
+  const tbody = table.querySelector('tbody');
+  if(!tbody) return;
+  const idx = Array.from(th.parentElement.children).indexOf(th);
+  const key = th.dataset.sort || idx;
+
+  // Toggle sort direction
+  const currentDir = sortState[key] || 'none';
+  const newDir = currentDir === 'asc' ? 'desc' : 'asc';
+
+  // Reset all headers in this table
+  th.parentElement.querySelectorAll('th.sortable').forEach(h => { h.classList.remove('sort-asc','sort-desc'); });
+  th.classList.add('sort-'+newDir);
+  sortState[key] = newDir;
+
+  // Sort rows
+  const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => !r.querySelector('.empty'));
+  rows.sort((a,b) => {
+    const aCell = a.children[idx]; const bCell = b.children[idx];
+    if(!aCell||!bCell) return 0;
+    let aVal = aCell.textContent.trim().replace(/[$+,%]/g,'');
+    let bVal = bCell.textContent.trim().replace(/[$+,%]/g,'');
+    const aNum = parseFloat(aVal); const bNum = parseFloat(bVal);
+    if(!isNaN(aNum) && !isNaN(bNum)) return newDir==='asc' ? aNum-bNum : bNum-aNum;
+    return newDir==='asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+});
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* QUICK STATS & STREAK CALCULATION                                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+function updateQuickStats(trades, pipeline) {
+  if(!trades || trades.length === 0) return;
+
+  // Win/Loss streak
+  let streak = 0;
+  let streakType = '';
+  for(let i=trades.length-1; i>=0; i--) {
+    const pnl = trades[i].pnl || 0;
+    if(i === trades.length-1) { streakType = pnl >= 0 ? 'win' : 'loss'; streak = 1; }
+    else {
+      if((pnl >= 0 && streakType === 'win') || (pnl < 0 && streakType === 'loss')) streak++;
+      else break;
+    }
+  }
+  const streakEl = document.getElementById('qs-streak');
+  if(streakEl) {
+    streakEl.innerHTML = '<span class="streak-badge streak-'+streakType+'">'+streak+' '+streakType+(streak>1?'s':'')+(streakType==='win'?' &#128293;':' &#10052;')+'</span>';
+  }
+
+  // Best & worst trade
+  const pnls = trades.map(t => t.pnl||0).filter(p => p !== 0);
+  if(pnls.length > 0) {
+    const best = Math.max(...pnls);
+    const worst = Math.min(...pnls);
+    const bestEl = document.getElementById('qs-best-trade');
+    const worstEl = document.getElementById('qs-worst-trade');
+    if(bestEl) { bestEl.textContent = fmt$(best); bestEl.style.color = 'var(--green)'; }
+    if(worstEl) { worstEl.textContent = fmt$(worst); worstEl.style.color = 'var(--red)'; }
+  }
+
+  // Profit factor
+  const grossWin = pnls.filter(p=>p>0).reduce((a,b)=>a+b,0);
+  const grossLoss = Math.abs(pnls.filter(p=>p<0).reduce((a,b)=>a+b,0));
+  const pfEl = document.getElementById('qs-profit-factor');
+  if(pfEl) {
+    const pf = grossLoss > 0 ? (grossWin/grossLoss).toFixed(2) : (grossWin > 0 ? '∞' : '--');
+    pfEl.textContent = pf;
+    pfEl.style.color = parseFloat(pf) >= 1.5 ? 'var(--green)' : (parseFloat(pf) >= 1 ? 'var(--yellow)' : 'var(--red)');
+  }
+
+  // Signals today
+  if(pipeline) {
+    const sigEl = document.getElementById('qs-signals-today');
+    if(sigEl) sigEl.textContent = (pipeline.total_signals||0) + ' (' + (pipeline.passed||0) + ' passed)';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* PNL CALENDAR HEATMAP                                                */
+/* ═══════════════════════════════════════════════════════════════════ */
+async function loadPnlCalendar() {
+  try {
+    const res = await fetch('/api/performance?days=90');
+    if(!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('pnl-calendar');
+    if(!el || !data || data.length === 0) { if(el) el.innerHTML='<div class="empty">No performance data for calendar</div>'; return; }
+
+    // Build date->pnl map
+    const pnlMap = {};
+    let maxPnl = 0;
+    data.forEach(d => {
+      if(d.date && d.pnl != null) {
+        pnlMap[d.date] = d.pnl;
+        maxPnl = Math.max(maxPnl, Math.abs(d.pnl));
+      }
+    });
+    if(maxPnl === 0) maxPnl = 1;
+
+    // Generate 90-day grid (13 weeks)
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 89);
+    // Align to start of week (Sunday)
+    startDate.setDate(startDate.getDate() - startDate.getDay());
+
+    const dayNames = ['S','M','T','W','T','F','S'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    let weeks = [];
+    let currentWeek = [];
+    let d = new Date(startDate);
+
+    while(d <= today || currentWeek.length > 0) {
+      if(currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+      if(d > today && currentWeek.length === 0) break;
+      const dateStr = d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');
+      currentWeek.push({ date:dateStr, day:d.getDay(), month:d.getMonth(), dayOfMonth:d.getDate(), pnl:pnlMap[dateStr], future:d > today });
+      d.setDate(d.getDate() + 1);
+    }
+    if(currentWeek.length > 0) { while(currentWeek.length < 7) currentWeek.push({future:true}); weeks.push(currentWeek); }
+
+    // Render
+    let html = '<div class="pnl-calendar">';
+    // Day labels row
+    html += '<div class="pnl-cal-row"><div class="pnl-cal-label"></div>';
+    // Month labels
+    let lastMonth = -1;
+    weeks.forEach((week,wi) => {
+      const firstDay = week.find(d => !d.future && d.dayOfMonth);
+      const mo = firstDay ? firstDay.month : -1;
+      if(mo !== lastMonth && mo >= 0) { html += '<div style="width:14px;font-size:9px;color:var(--muted);text-align:center;">'+months[mo].charAt(0)+'</div>'; lastMonth = mo; }
+      else { html += '<div style="width:14px;"></div>'; }
+    });
+    html += '</div>';
+
+    // Rows for each day of week
+    for(let dow=0; dow<7; dow++) {
+      html += '<div class="pnl-cal-row"><div class="pnl-cal-label">'+dayNames[dow]+'</div>';
+      weeks.forEach(week => {
+        const cell = week[dow];
+        if(!cell || cell.future) { html += '<div style="width:14px;height:14px;"></div>'; return; }
+        const pnl = cell.pnl;
+        let bg;
+        if(pnl == null) bg = 'var(--border)';
+        else if(pnl === 0) bg = 'var(--border)';
+        else if(pnl > 0) { const intensity = Math.min(Math.abs(pnl)/maxPnl, 1); bg = 'rgba(0,230,160,'+(0.15 + intensity*0.65).toFixed(2)+')'; }
+        else { const intensity = Math.min(Math.abs(pnl)/maxPnl, 1); bg = 'rgba(255,68,102,'+(0.15 + intensity*0.65).toFixed(2)+')'; }
+        const tooltip = pnl != null ? '<div class="cal-tooltip"><strong>'+cell.date+'</strong><br>PnL: <span style="color:'+pnlColor(pnl)+'">'+fmt$(pnl)+'</span></div>' : '<div class="cal-tooltip">'+cell.date+' &mdash; No trades</div>';
+        html += '<div class="cal-cell" style="background:'+bg+';" title="">'+tooltip+'</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Summary stats
+    const tradingDays = Object.keys(pnlMap).length;
+    const profitDays = Object.values(pnlMap).filter(p => p > 0).length;
+    const lossDays = Object.values(pnlMap).filter(p => p < 0).length;
+    const totalPnl = Object.values(pnlMap).reduce((a,b)=>a+b, 0);
+    html += '<div style="display:flex;gap:20px;margin-top:12px;font-size:11px;">';
+    html += '<span style="color:var(--muted);">'+tradingDays+' trading days</span>';
+    html += '<span style="color:var(--green);">'+profitDays+' profit days ('+(tradingDays>0?((profitDays/tradingDays)*100).toFixed(0):0)+'%)</span>';
+    html += '<span style="color:var(--red);">'+lossDays+' loss days</span>';
+    html += '<span style="color:'+pnlColor(totalPnl)+';font-weight:700;">Total: '+fmt$(totalPnl)+'</span>';
+    html += '</div>';
+
+    el.innerHTML = html;
+  } catch(e) { console.error('PnL calendar error:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* POSITION ROW EXPANSION                                              */
+/* ═══════════════════════════════════════════════════════════════════ */
+function makePositionsExpandable() {
+  const tbody = document.getElementById('positions-body');
+  if(!tbody) return;
+  tbody.querySelectorAll('tr.pos-row').forEach(row => {
+    row.addEventListener('click', function() {
+      const next = this.nextElementSibling;
+      if(next && next.classList.contains('pos-expand-row')) {
+        next.style.display = next.style.display === 'none' ? 'table-row' : 'none';
+      }
+    });
+  });
+}
+
+/* Enhanced position rendering with expandable details */
+const _origRenderPositions = renderPositions;
+renderPositions = function(positions) {
+  const tbody = document.getElementById('positions-body');
+  if(!tbody) return;
+  if(!positions || positions.length === 0) {
+    _origRenderPositions(positions);
+    return;
+  }
+  _origRenderPositions(positions);
+
+  // Now enhance rows with expandable details
+  const rows = tbody.querySelectorAll('tr');
+  const newRows = [];
+  positions.forEach((p, i) => {
+    if(i < rows.length) {
+      rows[i].classList.add('pos-row');
+      rows[i].title = 'Click to expand details';
+      // Create detail row
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'pos-expand-row';
+      detailRow.style.display = 'none';
+      detailRow.innerHTML = '<td colspan="11"><div class="pos-detail"><div class="pos-detail-grid">' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">Stop Loss</div><div class="pos-detail-value" style="color:var(--red);">'+fmtPrice(p.sl)+'</div></div>' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">Take Profit 1</div><div class="pos-detail-value" style="color:var(--green);">'+fmtPrice(p.tp1)+'</div></div>' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">Take Profit 2</div><div class="pos-detail-value" style="color:var(--green);">'+fmtPrice(p.tp2)+'</div></div>' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">Confidence</div><div class="pos-detail-value">'+(p.confidence!=null?p.confidence.toFixed(0)+'%':'--')+'</div></div>' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">Risk (SL Distance)</div><div class="pos-detail-value">'+(p.entry_price&&p.sl?((Math.abs(p.entry_price-p.sl)/p.entry_price)*100).toFixed(2)+'%':'--')+'</div></div>' +
+        '<div class="pos-detail-item"><div class="pos-detail-label">R:R to TP1</div><div class="pos-detail-value">'+(p.entry_price&&p.sl&&p.tp1?((Math.abs(p.tp1-p.entry_price)/Math.abs(p.entry_price-p.sl))).toFixed(2)+'x':'--')+'</div></div>' +
+        (p.notes ? '<div class="pos-detail-item" style="grid-column:1/-1;"><div class="pos-detail-label">Notes</div><div class="pos-detail-value" style="font-weight:400;color:var(--text-dim);">'+p.notes+'</div></div>' : '') +
+        '</div></div></td>';
+      newRows.push({after: rows[i], detail: detailRow});
+    }
+  });
+  newRows.forEach(nr => nr.after.after(nr.detail));
+  makePositionsExpandable();
+};
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* ENHANCED DATA LOADING (with quick stats + toast alerts)             */
+/* ═══════════════════════════════════════════════════════════════════ */
+let prevCBTripped = false;
+let prevPositionCount = 0;
+let prevErrorCount = 0;
+
+const _origLoadAll = loadAll;
+loadAll = async function() {
+  countdownSeconds = 30;
+  const startTime = performance.now();
+  await _origLoadAll();
+  const elapsed = Math.round(performance.now() - startTime);
+
+  // Update latency display
+  const dot = document.getElementById('latency-dot');
+  if(dot) {
+    if(elapsed < 500) { dot.className='latency-dot latency-good'; }
+    else if(elapsed < 2000) { dot.className='latency-dot latency-ok'; }
+    else { dot.className='latency-dot latency-bad'; }
+    dot.title = 'Last fetch: '+elapsed+'ms';
+  }
+
+  // Load quick stats data
+  try {
+    const [dataRes, pipelineRes] = await Promise.allSettled([fetch('/api/data'), fetch('/api/pipeline')]);
+    let trades = [], pipeline = null;
+    if(dataRes.status==='fulfilled' && dataRes.value.ok) {
+      const data = await dataRes.value.json();
+      trades = data.recent_trades || [];
+      cachedTrades = trades;
+    }
+    if(pipelineRes.status==='fulfilled' && pipelineRes.value.ok) pipeline = await pipelineRes.value.json();
+    updateQuickStats(trades, pipeline);
+
+    // Toast alerts for state changes
+    try {
+      const riskRes = await fetch('/api/risk');
+      if(riskRes.ok) {
+        const risk = await riskRes.json();
+        if(risk.cb_tripped && !prevCBTripped) showToast('Circuit Breaker', 'Circuit breaker has been TRIPPED! Trading paused.', 'error', 8000);
+        else if(!risk.cb_tripped && prevCBTripped) showToast('Circuit Breaker', 'Circuit breaker reset. Trading resumed.', 'success', 5000);
+        prevCBTripped = risk.cb_tripped;
+      }
+    } catch {}
+
+    // Position change alerts
+    try {
+      const posRes = await fetch('/api/positions');
+      if(posRes.ok) {
+        const positions = await posRes.json();
+        if(positions.length > prevPositionCount && prevPositionCount >= 0) {
+          const newPos = positions[positions.length-1];
+          if(prevPositionCount > 0) showToast('New Position', (newPos.symbol||'???')+' '+(newPos.side||'')+ ' opened at '+fmtPrice(newPos.entry_price), 'info', 5000);
+        } else if(positions.length < prevPositionCount && prevPositionCount > 0) {
+          showToast('Position Closed', 'A position was closed', 'info', 4000);
+        }
+        prevPositionCount = positions.length;
+      }
+    } catch {}
+  } catch {}
+};
+
+/* ═══════════════════════════════════════════════════════════════════ */
 /* INITIALIZATION                                                     */
 /* ═══════════════════════════════════════════════════════════════════ */
 loadAll();
@@ -2124,13 +2709,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if(btn.dataset.tab === 'learn' && !learnInitialized) { learnInitialized=true; setTimeout(initLearnTab, 100); }
     if(btn.dataset.tab === 'signals') { loadMissedTrades(); }
     if(btn.dataset.tab === 'trades') { loadOutcomes(); }
-    if(btn.dataset.tab === 'analytics') { loadFingerprints(); loadRegimeTimeline(); loadCalibration(); }
+    if(btn.dataset.tab === 'analytics') { loadFingerprints(); loadRegimeTimeline(); loadCalibration(); loadPnlCalendar(); }
     if(btn.dataset.tab === 'overview') { loadCorrelation(); }
   });
 });
 
 // Initial overview load
 setTimeout(loadCorrelation, 2000);
+
+// Welcome toast
+setTimeout(() => showToast('Dashboard Ready', 'Press ? for keyboard shortcuts', 'success', 3000), 1500);
 </script>
 </body>
 </html>
