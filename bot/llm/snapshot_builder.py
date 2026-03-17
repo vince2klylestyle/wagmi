@@ -151,10 +151,11 @@ def build_snapshot(
     remaining_slots = MAX_MARKETS_IN_SNAPSHOT - len(position_markets)
     selected = position_markets + active_markets[:max(remaining_slots, 0)]
 
-    # Truncate memory (increased from 500 to 1500 for richer context)
+    # Memory budget: reduced from 1500 to 800.
+    # Pattern cache and deep memory handle durable knowledge; mem is for recent notes only.
     trimmed_memory = None
     if memory_summary:
-        trimmed_memory = memory_summary[:1500]
+        trimmed_memory = memory_summary[:800]
 
     return LLMInputSnapshot(
         markets=selected,
@@ -232,7 +233,17 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             _fit = _regime_fit_map.get(s.strategy)
             if _fit and _fit != "moderate":  # Only flag non-neutral fitness
                 sig["rf"] = _fit  # regime_fit: strong/weak/avoid
+            # Quality score (from feedback loop learning)
+            if s.quality_score and s.quality_score > 0:
+                sig["qs"] = round(s.quality_score, 2)
             if s.meta:
+                # Surface signal flags prominently
+                _flags = s.meta.get("signal_flags")
+                if _flags:
+                    sig["flags"] = _flags
+                _fpri = s.meta.get("flag_max_priority")
+                if _fpri and _fpri >= 3:
+                    sig["fpri"] = _fpri
                 sig["meta"] = s.meta
             sigs.append(sig)
         if sigs:
@@ -289,10 +300,41 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         # Deep memory edge map: setup type win rates for Trade/Critic
         if g.extra.get("setup_edge_map"):
             result["g"]["edge"] = g.extra["setup_edge_map"]
+        else:
+            # Fallback: build edge map from evolution tracker
+            try:
+                from feedback.evolution_tracker import EvolutionTracker
+                et = EvolutionTracker()
+                edge_map = et.get_setup_edge_map()
+                if edge_map:
+                    result["g"]["edge"] = edge_map
+            except Exception:
+                pass
         if g.extra.get("strategy_performance"):
             result["g"]["stperf"] = g.extra["strategy_performance"]
         if g.extra.get("confluence_wr"):
             result["g"]["confl_wr"] = g.extra["confluence_wr"]
+        # Strategy Signal Digest: every strategy's reading for every symbol
+        # Gives the LLM full visibility into what strategies detect (not just passing signals)
+        if g.extra.get("signal_digest"):
+            result["sd"] = g.extra["signal_digest"]
+        # Quant data: convergence matrix + Bayesian priors (compact)
+        try:
+            from llm.quant_data import get_quant_provider
+            _qp = get_quant_provider()
+            _conv = _qp.compute_convergence_matrix(min_trades=3)
+            if _conv:
+                _top = sorted(_conv.items(), key=lambda x: x[1]["n"], reverse=True)[:5]
+                _conv_data = {k: {"wr": v["wr"], "n": v["n"]} for k, v in _top if v.get("convergent")}
+                if _conv_data:
+                    result["g"]["conv"] = _conv_data
+            _priors = _qp.compute_bayesian_priors()
+            if _priors.get("base", {}).get("n", 0) >= 5:
+                result["g"]["bpr"] = {"base": _priors["base"]["wr"], "n": _priors["base"]["n"]}
+                if _priors.get("by_regime"):
+                    result["g"]["bpr"]["rg"] = {k: v["wr"] for k, v in _priors["by_regime"].items()}
+        except Exception:
+            pass
         # Scout Agent preparation (pre-formed theses, watchlist priority)
         if g.extra.get("scout_preparation"):
             result["g"]["scout"] = g.extra["scout_preparation"]
@@ -319,6 +361,16 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
                 result["g"]["surv"] = _ss[:100]
             elif isinstance(_ss, dict):
                 result["g"]["surv"] = _ss
+
+    # Graduated rules (learned patterns → executable rules)
+    try:
+        from llm.graduated_rules import get_graduated_rules_engine
+        _gre = get_graduated_rules_engine()
+        _rules_summary = _gre.get_active_rules_summary()
+        if _rules_summary:
+            result["rules"] = _rules_summary[:400]
+    except Exception:
+        pass
 
     # Trigger
     if snapshot.trigger_reason:
@@ -399,7 +451,9 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
     try:
         from llm.deep_memory import get_deep_memory
         dm = get_deep_memory()
-        _dm_limit = 1200 if _high_value_trigger else 800
+        # Reduced budget: pattern cache now handles actionable per-setup knowledge.
+        # Deep memory provides aggregate stats and sniper models only.
+        _dm_limit = 600 if _high_value_trigger else 400
         knowledge = dm.build_llm_knowledge_summary(
             symbol=_ctx_symbol, regime=_ctx_regime
         )
@@ -407,6 +461,24 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
             result["deep_memory"] = knowledge[:_dm_limit]
     except Exception as e:
         logger.debug(f"[SNAPSHOT] Deep memory unavailable: {e}")
+
+    # Pattern cache: actionable per-setup patterns (compact, symbol-specific)
+    try:
+        from llm.pattern_cache import get_pattern_cache
+        pc = get_pattern_cache()
+        _pc_side = ""
+        if snapshot.trigger_context:
+            for _word in snapshot.trigger_context.split():
+                if _word.upper() in ("LONG", "SHORT", "BUY", "SELL"):
+                    _pc_side = _word.upper()
+                    break
+        patterns_ctx = pc.get_prompt_context(
+            symbol=_ctx_symbol, side=_pc_side, regime=_ctx_regime
+        )
+        if patterns_ctx:
+            result["patterns"] = patterns_ctx
+    except Exception as e:
+        logger.debug(f"[SNAPSHOT] Pattern cache unavailable: {e}")
 
     # Few-shot examples: similar past trades from deep memory
     try:
@@ -509,6 +581,17 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         cs_patterns = g.extra.get("cross_symbol_patterns")
         if cs_patterns:
             result["cross_pat"] = cs_patterns
+
+    # ── Filter annotations (soft-filter architecture) ──
+    # When ENABLE_SOFT_FILTERS is active, signals carry filter assessments.
+    # Inject into snapshot so LLM agents see what each filter measured.
+    if g and g.extra:
+        filter_annotations = g.extra.get("filter_annotations")
+        if filter_annotations:
+            result["filt"] = filter_annotations  # Per-signal filter assessments
+        near_miss_signals = g.extra.get("near_miss_signals")
+        if near_miss_signals:
+            result["near"] = near_miss_signals  # Soft-rejected but annotated signals
 
     # Funding cost reminder — injected when positions are open
     if snapshot.active_positions:

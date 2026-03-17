@@ -142,6 +142,36 @@ STRATEGY_THEORY = {
         "trust": "Best for confirmed multi-TF entries. When EMA+VWAP+6h all align=high conviction entry.",
         "fail": "Noisy in ranges (EMA whipsaw). Must confirm with slower strategy. MANUAL tier=low conviction.",
     },
+    "bollinger_squeeze": {
+        "how": "BB/KC squeeze detection. When BB contracts inside KC=compression. Breakout direction from MACD histogram. Bandwalk continuation signals.",
+        "trust": "Best for volatility expansion plays. Squeeze breakout with 5+ bars compression=strong. HYPE's dominant pattern.",
+        "fail": "False squeezes in low-vol sideways. Squeeze can resolve without directional breakout.",
+    },
+    "vmc_cipher": {
+        "how": "5 oscillators: WaveTrend, RSI, StochRSI, MACD, MFI. Requires >=3 agreement. Divergence detection for reversals.",
+        "trust": "Best when multiple oscillators align. Divergence signals=high probability reversals. Cross-validation reduces false signals.",
+        "fail": "Ranging markets=oscillator noise. All oscillators lag. WT zones relaxed for high-vol assets (±55 vs ±60).",
+    },
+    "probability_engine": {
+        "how": "Monte Carlo simulation with antithetic variates. Computes prob(TP1), prob(TP2), prob(SL) for proposed trade. EV filtering.",
+        "trust": "Best for statistical edge validation. High prob_tp1 + positive EV = high quality. Tighter thresholds for high-vol assets.",
+        "fail": "Assumes log-normal returns. Fat-tail events (HYPE crashes) not captured. MC sims are forward estimates, not guarantees.",
+    },
+    "funding_rate": {
+        "how": "Counter-trade extreme funding rates. Positive funding → SELL (longs overpaying), negative → BUY. ADX trend guard prevents fading strong trends.",
+        "trust": "Best in ranging/high-vol markets. HYPE funding spikes 10x normal. Mean-reversion from crowded positioning.",
+        "fail": "Funding can stay extreme in strong trends. ADX guard silences signals when they'd work best. Needs live data (no backtest).",
+    },
+    "oi_delta": {
+        "how": "OI expansion/contraction + price direction. OI↑+Price↑=accumulation, OI↓+Price↓=liquidation reversal. 5% threshold filters noise.",
+        "trust": "Best for conviction measurement. Works across all regimes. HYPE OI swings 30-50% daily=frequent signals.",
+        "fail": "Needs live exchange data. 5% threshold may miss early moves. OI data can be delayed.",
+    },
+    "liquidation_cascade": {
+        "how": "Detects cascade events via volume spikes (3x avg) + large wicks (>60% of range). Signals reversal after forced selling/buying.",
+        "trust": "Best for HYPE/high-leverage tokens. Weekly 20-30% cascades are tradeable. Proxy detection works with OHLCV only.",
+        "fail": "Cascades can continue (no immediate reversal 30-40% of time). Conflicts with trend-following strategies.",
+    },
 }
 
 # When two strategies agree, the QUALITY of that agreement varies:
@@ -155,6 +185,12 @@ STRATEGY_CONFLUENCE = {
     ("monte_carlo_zones", "confidence_scorer"): "convergent — statistical zones + momentum indicators. Different methodologies (mean-reversion vs trend-following). High-value agreement.",
     ("monte_carlo_zones", "multi_tier_quality"): "convergent — statistical zone + EMA multi-TF trend. If both BUY: mean-reversion level confirmed by 1h+6h momentum shift.",
     ("confidence_scorer", "multi_tier_quality"): "convergent — ADX/MACD momentum + EMA multi-TF quality. If both BUY: momentum + multi-timeframe structure both confirm entry.",
+    ("funding_rate", "oi_delta"): "convergent — positioning (funding) + conviction (OI). Complementary signals: both measure market participants' behavior, not just price.",
+    ("liquidation_cascade", "funding_rate"): "convergent — both fade crowded positions. Cascade = forced exit, funding = overpay. If both signal: crowded trade is unwinding.",
+    ("oi_delta", "regime_trend"): "convergent — OI conviction + trend momentum. OI↑ + trend BUY = genuine accumulation. Very strong in trending regimes.",
+    ("bollinger_squeeze", "vmc_cipher"): "convergent — volatility compression (BB) + multi-oscillator momentum (VMC). If both BUY: squeeze breakout confirmed by oscillator consensus.",
+    ("probability_engine", "monte_carlo_zones"): "redundant — both use Monte Carlo simulation (different implementations). Agreement is expected; disagreement is more informative.",
+    ("liquidation_cascade", "oi_delta"): "convergent — cascade event + OI drop confirms forced position closure. Post-cascade reversal with OI contraction = high quality.",
 }
 
 # Confluence quality weights: convergent > timeframe > redundant
@@ -281,13 +317,46 @@ def _classify_setup(strategies: List[str], best_confluence: str, regime: str) ->
 
 
 STRATEGY_REGIME_FIT = {
-    "trend":            {"regime_trend": "strong", "monte_carlo_zones": "weak",     "confidence_scorer": "strong",   "multi_tier_quality": "moderate"},
-    "range":            {"regime_trend": "avoid",  "monte_carlo_zones": "strong",   "confidence_scorer": "weak",     "multi_tier_quality": "weak"},
-    "panic":            {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
-    "high_volatility":  {"regime_trend": "weak",   "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate"},
-    "low_liquidity":    {"regime_trend": "avoid",  "monte_carlo_zones": "avoid",    "confidence_scorer": "avoid",    "multi_tier_quality": "avoid"},
-    "news_dislocation": {"regime_trend": "avoid",  "monte_carlo_zones": "weak",     "confidence_scorer": "weak",     "multi_tier_quality": "avoid"},
-    "unknown":          {"regime_trend": "weak",   "monte_carlo_zones": "weak",     "confidence_scorer": "moderate", "multi_tier_quality": "weak"},
+    "trend": {
+        "regime_trend": "strong", "monte_carlo_zones": "weak", "confidence_scorer": "strong", "multi_tier_quality": "moderate",
+        "bollinger_squeeze": "weak", "funding_rate": "strong", "lead_lag": "moderate", "liquidation_cascade": "moderate",
+        "oi_delta": "strong", "probability_engine": "strong", "vmc_cipher": "moderate",
+    },
+    "range": {
+        "regime_trend": "avoid", "monte_carlo_zones": "strong", "confidence_scorer": "weak", "multi_tier_quality": "weak",
+        "bollinger_squeeze": "strong", "funding_rate": "moderate", "lead_lag": "weak", "liquidation_cascade": "weak",
+        "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "strong",
+    },
+    "panic": {
+        "regime_trend": "avoid", "monte_carlo_zones": "avoid", "confidence_scorer": "weak", "multi_tier_quality": "avoid",
+        "bollinger_squeeze": "avoid", "funding_rate": "weak", "lead_lag": "avoid", "liquidation_cascade": "strong",
+        "oi_delta": "strong", "probability_engine": "weak", "vmc_cipher": "avoid",
+    },
+    "high_volatility": {
+        "regime_trend": "weak", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",
+        "bollinger_squeeze": "moderate", "funding_rate": "moderate", "lead_lag": "strong", "liquidation_cascade": "strong",
+        "oi_delta": "strong", "probability_engine": "moderate", "vmc_cipher": "moderate",
+    },
+    "low_liquidity": {
+        "regime_trend": "avoid", "monte_carlo_zones": "avoid", "confidence_scorer": "avoid", "multi_tier_quality": "avoid",
+        "bollinger_squeeze": "avoid", "funding_rate": "avoid", "lead_lag": "avoid", "liquidation_cascade": "moderate",
+        "oi_delta": "weak", "probability_engine": "avoid", "vmc_cipher": "avoid",
+    },
+    "news_dislocation": {
+        "regime_trend": "avoid", "monte_carlo_zones": "weak", "confidence_scorer": "weak", "multi_tier_quality": "avoid",
+        "bollinger_squeeze": "avoid", "funding_rate": "weak", "lead_lag": "moderate", "liquidation_cascade": "moderate",
+        "oi_delta": "moderate", "probability_engine": "weak", "vmc_cipher": "avoid",
+    },
+    "consolidation": {
+        "regime_trend": "weak", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",
+        "bollinger_squeeze": "strong", "funding_rate": "moderate", "lead_lag": "weak", "liquidation_cascade": "weak",
+        "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "strong",
+    },
+    "unknown": {
+        "regime_trend": "weak", "monte_carlo_zones": "weak", "confidence_scorer": "moderate", "multi_tier_quality": "weak",
+        "bollinger_squeeze": "moderate", "funding_rate": "moderate", "lead_lag": "moderate", "liquidation_cascade": "moderate",
+        "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "moderate",
+    },
 }
 
 

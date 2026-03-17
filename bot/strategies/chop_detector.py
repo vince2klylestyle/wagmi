@@ -35,10 +35,13 @@ _WEIGHTS = {
 # and kills signals that are actually valid.
 # BTC raised from 0.50→0.55: the tighter threshold was over-filtering BTC
 # in normal sideways markets, suppressing valid signals (38% WR on 10d backtest).
+# Tightened thresholds (March 2026): 100d backtest showed 335 ranging trades
+# at 24% WR losing $29K. Lower thresholds = more aggressive chop filtering.
+# Combined with per-strategy ADX gates, this creates a multi-layer ranging filter.
 VOLATILITY_THRESHOLDS = {
-    "low": 0.60,     # BTC: raised from 0.55 — was over-filtering valid BTC signals
-    "medium": 0.55,  # SOL: default
-    "high": 0.65,    # HYPE/memes: looser — allow more volatility through
+    "low": 0.45,     # BTC: tighter — BTC ranges lose money consistently
+    "medium": 0.45,  # SOL: tighter — ranging SOL has poor WR
+    "high": 0.55,    # HYPE/memes: still looser for natural volatility
 }
 
 
@@ -46,7 +49,7 @@ class ChopDetector:
     """Multi-factor choppy market detector."""
 
     def __init__(self, threshold: float = None):
-        self.threshold = threshold or float(os.getenv("CHOP_THRESHOLD", "0.55"))
+        self.threshold = threshold or float(os.getenv("CHOP_THRESHOLD", "0.45"))
         self._symbol_profiles: Dict[str, str] = {}  # symbol -> volatility profile
 
     def set_symbol_profile(self, symbol: str, profile: str):
@@ -101,10 +104,14 @@ class ChopDetector:
         factors["whipsaw"] = whipsaw_score
         details.append(f"whip={whipsaw_score:.2f}")
 
-        # Weighted combination
+        # Weighted combination (NaN guard: treat NaN factors as choppy)
+        import math
         chop_score = sum(
             _WEIGHTS[k] * factors[k] for k in _WEIGHTS if k in factors
         )
+        if math.isnan(chop_score):
+            logger.warning(f"[{symbol}] Chop score is NaN (data quality issue), defaulting to choppy")
+            chop_score = 1.0  # Conservative: treat NaN as definitely choppy
 
         effective_threshold = self._get_threshold(symbol)
         is_chop = chop_score >= effective_threshold

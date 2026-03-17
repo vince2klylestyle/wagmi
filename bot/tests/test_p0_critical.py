@@ -441,8 +441,8 @@ class TestRiskFilterChainGates:
     def test_gate5b_rejects_low_ev_with_high_leverage(self):
         """Gate 5b: High leverage + low EV → rejected."""
         chain, _, _ = self._make_chain()
-        # EV=0.12: passes gate 1c (>0.10) but should fail gate 5b (>4x needs >=0.20)
-        sig = self._make_signal(confidence=85.0, metadata={"ev_per_dollar": 0.12})
+        # EV=0.21: passes gate 1d (>0.20) but should fail gate 5b (>4x needs >=0.22 for 3-agree)
+        sig = self._make_signal(confidence=85.0, metadata={"ev_per_dollar": 0.21})
         result = chain.evaluate(sig, equity=10000, num_strategies_agree=3, total_strategies=4)
         # If leverage > 2.0, gate 5b should require higher EV
         if not result.approved and "EV" in result.rejection_reason:
@@ -485,10 +485,10 @@ class TestRiskFilterChainGates:
         """All gates pass → approved with leverage, risk_mult, and qty."""
         chain, _, _ = self._make_chain()
         sig = self._make_signal(
-            confidence=75.0, entry=100.0, sl=97.0, tp1=106.0, tp2=112.0,
+            confidence=85.0, entry=100.0, sl=97.0, tp1=106.0, tp2=112.0,
             metadata={"ev_per_dollar": 0.50},
         )
-        result = chain.evaluate(sig, equity=10000, num_strategies_agree=2, total_strategies=4)
+        result = chain.evaluate(sig, equity=10000, num_strategies_agree=3, total_strategies=4)
         assert result.approved
         assert result.leverage >= 1.0
         assert result.position_qty > 0
@@ -669,7 +669,7 @@ class TestMTMEquityCircuitBreaker:
         assert pos.funding_costs > initial_funding  # Costs accumulate
 
     def test_post_cooldown_caution_mode(self):
-        """After CB cooldown, next 2 trades get reduced size (caution mode)."""
+        """After CB cooldown, next 4 trades get reduced size (caution mode)."""
         from execution.risk import CircuitBreaker
 
         cb = CircuitBreaker(daily_loss_limit_pct=0.05, cooldown_minutes=1)
@@ -685,12 +685,12 @@ class TestMTMEquityCircuitBreaker:
         allowed = cb.is_trading_allowed(confidence=75, sim_time=after_cooldown)
         assert allowed
         assert not cb.tripped  # CB reset
-        assert cb.post_cooldown_caution == 2  # Next 2 trades at reduced size
+        assert cb.post_cooldown_caution == 4  # Next 4 trades at reduced size
 
         # Constraints should be "cautious"
         constraints = cb.get_override_constraints(75)
         assert constraints["constrained"]
-        assert constraints["max_leverage"] <= 3.0
+        assert constraints["max_leverage"] <= 2.0
         assert constraints["size_multiplier"] == 0.5
 
 

@@ -94,6 +94,12 @@ class BacktestRunner:
         # Save results
         self._save_results(results, symbols, days)
 
+        # Print Quant Intelligence Summary
+        self._print_quant_summary(results)
+
+        # Run Deployment Gate
+        self._run_deployment_gate(results)
+
         return results
 
     def _save_results(self, results: dict, symbols: list, days: int):
@@ -119,6 +125,127 @@ class BacktestRunner:
             df = pd.DataFrame(results["equity_curve"])
             df.to_csv(equity_file, index=False)
             logger.info(f"✅ Equity curve saved to {equity_file}")
+
+    def _print_quant_summary(self, results: dict):
+        """Print Quant Intelligence Summary from backtest results."""
+        try:
+            q = results.get("quant_analytics", {})
+            if not q or q.get("error"):
+                return
+
+            lines = []
+            lines.append("")
+            lines.append("=" * 58)
+            lines.append("           QUANT INTELLIGENCE SUMMARY")
+            lines.append("=" * 58)
+
+            # Win rate with CI
+            wr = q.get("win_rate", 0)
+            ci = q.get("win_rate_ci_95", [0, 0])
+            if isinstance(ci, list) and len(ci) >= 2:
+                lines.append(f"  Win Rate:       {wr:.1%} [{ci[0]:.1%} - {ci[1]:.1%}] (95% CI)")
+            else:
+                lines.append(f"  Win Rate:       {wr:.1%}")
+
+            # Expectancy & Kelly
+            exp = q.get("expectancy_per_trade", 0)
+            kelly = q.get("kelly_fraction", 0)
+            hk = q.get("half_kelly", 0)
+            lines.append(f"  Expectancy:     ${exp:+.2f}/trade {'(+)' if exp > 0 else '(-)'}")
+            lines.append(f"  Kelly:          {kelly:.1%} (half-Kelly: {hk:.1%})")
+
+            # Sharpe significance
+            p_val = q.get("sharpe_p_value", 1.0)
+            sig = "significant" if p_val < 0.05 else "marginal" if p_val < 0.10 else "not significant"
+            lines.append(f"  Sharpe p-value: {p_val:.3f} ({sig})")
+
+            # Tail risk
+            var = q.get("var_95_daily")
+            cvar = q.get("cvar_95_daily")
+            if var is not None:
+                lines.append(f"  VaR (95%):      {var:.4%} daily")
+            if cvar is not None:
+                lines.append(f"  CVaR (ES):      {cvar:.4%} daily")
+
+            # Distribution
+            dist = q.get("distribution", {})
+            if dist:
+                lines.append(f"  Skewness:       {dist.get('skewness', 0):.3f}")
+                lines.append(f"  Kurtosis:       {dist.get('kurtosis', 0):.3f}")
+
+            # Streaks
+            streaks = q.get("streaks", {})
+            if streaks:
+                lines.append(
+                    f"  Streaks:        max win={streaks.get('max_consecutive_wins', 0)}, "
+                    f"max loss={streaks.get('max_consecutive_losses', 0)}"
+                )
+
+            # Strategy correlation
+            corr = q.get("strategy_correlation", {})
+            if corr:
+                ind = corr.get("independent_count", 0)
+                total = corr.get("total_strategies", 0)
+                lines.append(f"  Independence:   {ind}/{total} truly independent (|r| < 0.3)")
+                for pair in corr.get("redundant_pairs", []):
+                    p = pair.get("pair", [])
+                    r = pair.get("correlation", 0)
+                    if len(p) >= 2:
+                        lines.append(f"    Redundant: {p[0]} <> {p[1]} (r={r:.2f})")
+
+            # Monte Carlo
+            mc = q.get("monte_carlo", {})
+            if mc and not mc.get("insufficient_data"):
+                pp = mc.get("p_profitable", 0)
+                verdict = mc.get("verdict", "?")
+                lines.append(f"  Monte Carlo:    {pp:.0%} profitable ({verdict})")
+                lines.append(
+                    f"    Median DD: {mc.get('median_max_drawdown', 0):.1%}, "
+                    f"95th DD: {mc.get('dd_95th_percentile', 0):.1%}"
+                )
+
+            # Best/worst regime
+            by_regime = q.get("by_regime", {})
+            if by_regime:
+                lines.append("")
+                lines.append("  Regime Breakdown:")
+                for regime, metrics in sorted(by_regime.items()):
+                    if isinstance(metrics, dict) and not metrics.get("insufficient_data"):
+                        e = metrics.get("expectancy", 0)
+                        w = metrics.get("win_rate", 0)
+                        n = metrics.get("n", 0)
+                        lines.append(
+                            f"    {regime:<20} WR={w:.0%}, E=${e:+.1f}, n={n}"
+                        )
+
+            # Signal digest summary
+            digest = results.get("signal_digest_summary", {})
+            if digest and digest.get("total_evaluations", 0) > 0:
+                lines.append("")
+                near = digest.get("near_misses", {}).get("count", 0)
+                lines.append(f"  Near-Misses:    {near} signals missed by 1 vote")
+                fire_rates = digest.get("strategy_fire_rates", {})
+                if fire_rates:
+                    lines.append("  Strategy Fire Rates:")
+                    for strat, data in sorted(fire_rates.items(), key=lambda x: -x[1].get("fire_rate", 0)):
+                        fr = data.get("fire_rate", 0)
+                        ac = data.get("avg_confidence", 0)
+                        lines.append(f"    {strat:<24} {fr:.1%} (avg conf: {ac:.0f})")
+
+            lines.append("=" * 58)
+            print("\n".join(lines))
+
+        except Exception as e:
+            logger.debug(f"Quant summary print failed: {e}")
+
+    def _run_deployment_gate(self, results: dict):
+        """Run the 10-gate deployment readiness check."""
+        try:
+            from backtest.deployment_gate import check_deployment_readiness, format_gate_report
+            verdict = check_deployment_readiness(results)
+            print(format_gate_report(verdict))
+        except Exception as e:
+            logger.debug(f"Deployment gate failed: {e}")
 
     def compare_paper_vs_backtest(
         self,
@@ -226,8 +353,9 @@ def main():
     parser.add_argument("--symbols", nargs="+", default=None, help="Symbols to test (default: all)")
     parser.add_argument("--days", type=int, default=30, help="Days of historical data (default: 30)")
     parser.add_argument("--equity", type=float, default=50000, help="Starting equity (default: $50k)")
-    parser.add_argument("--risk", type=float, default=1.5, help="Risk per trade % (default: 1.5%%)")
+    parser.add_argument("--risk", type=float, default=1.5, help="Risk per trade %% (default: 1.5%%)")
     parser.add_argument("--compare", action="store_true", help="Compare paper vs backtest results")
+    parser.add_argument("--learn", action="store_true", help="Feed results into all learning systems")
 
     args = parser.parse_args()
 
@@ -246,6 +374,7 @@ def main():
             days=args.days,
             starting_equity=args.equity,
             risk_per_trade=args.risk / 100,
+            learn=args.learn,
         )
         _print_backtest_summary(results)
 
@@ -256,22 +385,128 @@ def _print_backtest_summary(results: dict):
         print("❌ Backtest failed - no results")
         return
 
-    summary = results.get("summary", {})
-    pnl = results.get("pnl", {})
+    # Trade data lives in results["results"] (engine spreads trade_summary there)
+    res = results.get("results", {})
+    config = results.get("config", {})
+
+    total_trades = res.get("total_trades", 0)
+    wins = res.get("wins", 0)
+    losses = res.get("losses", 0)
+    win_rate = res.get("win_rate", 0) * 100  # win_rate is decimal 0-1, convert to pct
+    net_pnl = res.get("net_pnl", 0)
+    gross_pnl = res.get("gross_pnl", 0)
+    pf = res.get("profit_factor", 0)
+    final_eq = res.get("final_equity", config.get("starting_equity", 50000))
+    start_eq = config.get("starting_equity", 50000)
+    max_dd = res.get("max_drawdown_pct", 0)
+    total_return = res.get("total_return_pct", 0)
 
     print("\n" + "=" * 60)
     print("BACKTEST RESULTS")
     print("=" * 60)
 
-    print("\n📊 SUMMARY:")
-    print(f"  Total Trades: {summary.get('total_trades', 0)}")
-    print(f"  Wins: {summary.get('wins', 0)} | Losses: {summary.get('losses', 0)}")
-    print(f"  Win Rate: {summary.get('win_rate_pct', 0):.1f}%")
+    print(f"\n  Period: {config.get('days', '?')} days | Symbols: {config.get('symbols', [])}")
+    print(f"  Starting Equity: ${start_eq:,.2f}")
 
-    print("\n💵 PNL:")
-    print(f"  Net P&L: ${pnl.get('net_pnl', 0):+.2f}")
-    print(f"  Gross P&L: ${pnl.get('gross_pnl', 0):+.2f}")
-    print(f"  Profit Factor: {pnl.get('profit_factor', 0):.2f}x")
+    print("\n  TRADES:")
+    print(f"  Total: {total_trades} | Wins: {wins} | Losses: {losses}")
+    print(f"  Win Rate: {win_rate:.1f}%")
+
+    print("\n  PNL:")
+    print(f"  Net P&L: ${net_pnl:+,.2f}")
+    print(f"  Gross P&L: ${gross_pnl:+,.2f}")
+    print(f"  Profit Factor: {pf:.2f}x")
+    print(f"  Final Equity: ${final_eq:,.2f} ({total_return:+.1f}%)")
+    print(f"  Max Drawdown: {max_dd:.1f}%")
+
+    # Per-symbol breakdown
+    by_sym = results.get("by_symbol", {})
+    if by_sym:
+        print("\n  BY SYMBOL:")
+        for sym, data in by_sym.items():
+            sym_trades = data.get("total_trades", data.get("trades", 0))
+            sym_pnl = data.get("net_pnl", data.get("pnl", 0))
+            sym_wr = data.get("win_rate", 0) * 100  # decimal to pct
+            if sym_trades > 0:
+                print(f"    {sym:>10}: {sym_trades} trades | WR {sym_wr:.0f}% | PnL ${sym_pnl:+,.2f}")
+
+    # Per-agreement breakdown
+    by_agree = results.get("by_agreement", {})
+    if by_agree:
+        print("\n  BY AGREEMENT:")
+        for level, data in sorted(by_agree.items()):
+            a_trades = data.get("trades", 0)
+            a_wr = data.get("win_rate", 0) * 100  # decimal to pct
+            a_pf = data.get("profit_factor", 0)
+            if a_trades > 0:
+                print(f"    {level}_agree: {a_trades} trades | WR {a_wr:.0f}% | PF {a_pf:.2f}x")
+
+    # Exit types
+    exit_types = results.get("exit_types", {})
+    if exit_types:
+        print("\n  EXIT TYPES:")
+        for etype, stats in sorted(exit_types.items(), key=lambda x: -x[1].get("trades", 0) if isinstance(x[1], dict) else -x[1]):
+            if isinstance(stats, dict):
+                trades = stats.get("trades", 0)
+                if trades > 0:
+                    wr = stats.get("win_rate", 0)
+                    pnl = stats.get("pnl", 0)
+                    print(f"    {etype}: {trades} trades | WR {wr:.0%} | PnL ${pnl:+,.2f}")
+            elif stats > 0:
+                print(f"    {etype}: {stats}")
+
+    # Quant risk metrics (Sharpe, Sortino, Calmar, etc.)
+    risk = results.get("risk_metrics", {})
+    if risk:
+        print("\n  RISK METRICS:")
+        print(f"    Sharpe Ratio:    {risk.get('sharpe', 0):+.2f}")
+        print(f"    Sortino Ratio:   {risk.get('sortino', 0):+.2f}")
+        print(f"    Calmar Ratio:    {risk.get('calmar', 0):+.2f}")
+        print(f"    Recovery Factor: {risk.get('recovery_factor', 0):+.2f}")
+        print(f"    Time in Market:  {risk.get('time_in_market_pct', 0):.1f}%%")
+        ann_ret = risk.get("annualized_return_pct", 0)
+        print(f"    Ann. Return:     {ann_ret:+.1f}%%")
+
+    # Signal funnel (shows where signals get filtered)
+    funnel = results.get("signal_funnel", {})
+    if funnel:
+        print("\n  SIGNAL FUNNEL:")
+        for key in ("total", "signal", "no_signal", "cb_blocked", "regime_blocked",
+                     "llm_approved", "other_rejections", "llm_vetoed"):
+            val = funnel.get(key, 0)
+            if val > 0:
+                print(f"    {key:>16}: {val}")
+
+    # By-regime performance
+    by_regime = results.get("by_regime", {})
+    if by_regime:
+        print("\n  BY REGIME:")
+        for regime, data in sorted(by_regime.items()):
+            r_trades = data.get("trades", 0)
+            r_wr = data.get("win_rate", 0)
+            r_pnl = data.get("net_pnl", data.get("pnl", 0))
+            if r_trades > 0:
+                print(f"    {regime:>16}: {r_trades} trades | WR {r_wr:.0f}%% | PnL ${r_pnl:+,.2f}")
+
+    # Costs breakdown
+    costs = results.get("costs", {})
+    if costs:
+        total_fees = costs.get("total_fees", 0)
+        total_funding = costs.get("total_funding", 0)
+        total_slippage = costs.get("total_slippage", 0)
+        if total_fees or total_funding or total_slippage:
+            print(f"\n  COSTS:")
+            print(f"    Fees:     ${total_fees:,.2f}")
+            print(f"    Funding:  ${total_funding:,.2f}")
+            print(f"    Slippage: ${total_slippage:,.2f}")
+
+    # Leverage stats
+    lev = results.get("leverage_stats", {})
+    if lev:
+        avg_lev = lev.get("avg_leverage", 0)
+        max_lev = lev.get("max_leverage", 0)
+        if avg_lev:
+            print(f"\n  LEVERAGE: avg {avg_lev:.1f}x | max {max_lev:.1f}x")
 
     print("\n" + "=" * 60 + "\n")
 

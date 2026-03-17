@@ -61,15 +61,55 @@ def _atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return tr.rolling(n, min_periods=1).mean()
 
 
+def _adx(df: pd.DataFrame, period: int = 14) -> float:
+    """Compute ADX (Average Directional Index). Returns 0-100.
+    ADX < 20 = ranging/no trend, ADX > 25 = trending."""
+    if len(df) < period + 1:
+        return 25.0  # insufficient data, assume neutral
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    prev_close = close.shift(1)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+
+    atr_val = tr.rolling(period, min_periods=1).mean()
+    plus_di = (plus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+    minus_di = (minus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+
+    dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-9)) * 100
+    adx_val = float(dx.rolling(period, min_periods=1).mean().iloc[-1])
+    return adx_val
+
+
 class RegimeTrendStrategy(BaseStrategy):
     """
     Multi-timeframe regime trend strategy.
     1h WaveTrend crossovers filtered by 6h+16h MACD/MFI regime alignment.
     """
 
-    def __init__(self, symbols: Dict[str, Any], htf_hours: int = 16):
+    def __init__(self, symbols: Dict[str, Any], htf_hours: int = 16,
+                 adx_min_trending: float = 0.0):
         super().__init__("regime_trend", symbols)
         self.htf_hours = htf_hours
+        # Use centralized ADX threshold from config (default 22.0)
+        if adx_min_trending > 0:
+            self.adx_min_trending = adx_min_trending
+        else:
+            try:
+                from trading_config import TradingConfig as _TC
+                self.adx_min_trending = _TC().adx_min_trending
+            except Exception:
+                self.adx_min_trending = 22.0
 
     def get_required_timeframes(self) -> List[str]:
         return ["1h", "6h"]
@@ -114,6 +154,16 @@ class RegimeTrendStrategy(BaseStrategy):
         if df_htf.empty or len(df_htf) < 5:
             return None
 
+        # ADX filter: skip signal generation in ranging markets (ADX < threshold)
+        # This is the #1 profitability lever — ranging markets have 24% WR
+        adx_val = _adx(df_1h, 14)
+        if adx_val < self.adx_min_trending:
+            logger.info(
+                f"[{symbol}] regime_trend: ADX {adx_val:.1f} < {self.adx_min_trending} "
+                f"— ranging market, skipping"
+            )
+            return None
+
         # 1h WaveTrend + MFI
         src_1h = (df_1h["high"] + df_1h["low"] + df_1h["close"]) / 3.0
         wt1, wt2 = _wavetrend(src_1h)
@@ -139,7 +189,17 @@ class RegimeTrendStrategy(BaseStrategy):
         # ATR for TP/SL
         c = float(df_1h["close"].iloc[-1])
         A = float(_atr(df_1h, 14).iloc[-1])
-        R = 1.5 * A
+        # Regime-conditional ATR multiplier for SL/TP
+        try:
+            from trading_config import TradingConfig as _TC, get_regime_sl_tp
+            _cfg = _TC()
+            _regime = self._current_regime if hasattr(self, '_current_regime') else "unknown"
+            _sl_mult, self._tp1_mult, self._tp2_mult = get_regime_sl_tp(
+                _regime, _cfg.sl_atr_multiplier, 2.0, 4.0
+            )
+        except Exception:
+            _sl_mult, self._tp1_mult, self._tp2_mult = 1.5, 2.0, 4.0
+        R = _sl_mult * A
 
         # Alignment scoring
         align_long = int(cu) + int(mfi_1h_val > 50) + int(regime_6h["ok"]) + int(regime_htf["ok"])
@@ -181,16 +241,16 @@ class RegimeTrendStrategy(BaseStrategy):
             confidence = align_long * base_mult
             side = "BUY"
             sl = c - R
-            tp1 = c + 2.0 * R
-            tp2 = c + 4.0 * R
+            tp1 = c + self._tp1_mult * R
+            tp2 = c + self._tp2_mult * R
         else:
             full_align = full_bear
             base_mult = 20.0 if not full_align else (22.0 if is_momentum else 25.0)
             confidence = align_short * base_mult
             side = "SELL"
             sl = c + R
-            tp1 = c - 2.0 * R
-            tp2 = c - 4.0 * R
+            tp1 = c - self._tp1_mult * R
+            tp2 = c - self._tp2_mult * R
 
         # Cross recency: boost confidence if multiple recent crosses confirm direction
         try:
@@ -239,8 +299,16 @@ class RegimeTrendStrategy(BaseStrategy):
                 "regime_6h": regime_6h,
                 "regime_htf": regime_htf,
                 "atr_1h": A,
+                "adx": round(adx_val, 1),
                 "cross": "up" if cu else ("down" if cd else "none"),
                 "is_momentum": is_momentum,
+                # Regime classification for system-wide regime detector
+                "regime": (
+                    "trend" if (regime_6h["ok"] or regime_6h["bearish"]) else
+                    "high_volatility" if adx_val > 40 else
+                    "range" if adx_val < 20 else
+                    "unknown"
+                ),
             },
         )
 
@@ -279,4 +347,5 @@ class RegimeTrendStrategy(BaseStrategy):
             "align_long": align_long,
             "align_short": align_short,
             "atr_1h": float(_atr(df_1h, 14).iloc[-1]),
+            "adx": round(_adx(df_1h, 14), 1),
         }

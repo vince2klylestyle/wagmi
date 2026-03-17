@@ -83,7 +83,8 @@ def cmd_backtest(args):
 
     fresh_mode = getattr(args, "fresh", False)
     relaxed_cb = getattr(args, "relaxed_cb", False)
-    engine = BacktestEngine(config, llm_integration=llm_integration, fresh=fresh_mode, relaxed_cb=relaxed_cb)
+    engine = BacktestEngine(config, llm_integration=llm_integration, fresh=fresh_mode,
+                            relaxed_cb=relaxed_cb, resume=resume)
 
     raw_mode = getattr(args, "raw", False)
     if raw_mode:
@@ -114,6 +115,8 @@ def cmd_backtest(args):
         print("  + Exit Agent (open positions) + Learning Agent (closed trades)")
         if resume:
             print("  Resume: from last checkpoint")
+    elif resume:
+        print("  Resume: from last checkpoint (simple mode)")
 
     report = engine.run(symbols, args.days, strategies, learn=learn)
 
@@ -149,6 +152,13 @@ def cmd_signals(args):
     from strategies.monte_carlo_zones import MonteCarloZonesStrategy
     from strategies.confidence_scorer import ConfidenceScorerStrategy
     from strategies.multi_tier_quality import MultiTierQualityStrategy
+    from strategies.funding_rate import FundingRateStrategy
+    from strategies.oi_delta import OIDeltaStrategy
+    from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+    from strategies.vmc_cipher import VMCCipherStrategy
+    from strategies.lead_lag import LeadLagStrategy
+    from strategies.liquidation_cascade import LiquidationCascadeStrategy
+    from strategies.probability_engine import ProbabilityEngineStrategy
     from strategies.ensemble import EnsembleStrategy
     from execution.leverage import LeverageManager
 
@@ -161,6 +171,13 @@ def cmd_signals(args):
         MonteCarloZonesStrategy(DEFAULT_SYMBOLS),
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
+        FundingRateStrategy(DEFAULT_SYMBOLS),
+        OIDeltaStrategy(DEFAULT_SYMBOLS),
+        BollingerSqueezeStrategy(DEFAULT_SYMBOLS),
+        VMCCipherStrategy(DEFAULT_SYMBOLS),
+        LeadLagStrategy(DEFAULT_SYMBOLS),
+        LiquidationCascadeStrategy(DEFAULT_SYMBOLS),
+        ProbabilityEngineStrategy(DEFAULT_SYMBOLS),
     ]
     ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()
@@ -300,6 +317,13 @@ def cmd_status(args):
     from strategies.monte_carlo_zones import MonteCarloZonesStrategy
     from strategies.confidence_scorer import ConfidenceScorerStrategy
     from strategies.multi_tier_quality import MultiTierQualityStrategy
+    from strategies.funding_rate import FundingRateStrategy
+    from strategies.oi_delta import OIDeltaStrategy
+    from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+    from strategies.vmc_cipher import VMCCipherStrategy
+    from strategies.lead_lag import LeadLagStrategy
+    from strategies.liquidation_cascade import LiquidationCascadeStrategy
+    from strategies.probability_engine import ProbabilityEngineStrategy
     from strategies.ensemble import EnsembleStrategy
 
     config = TradingConfig()
@@ -310,6 +334,13 @@ def cmd_status(args):
         MonteCarloZonesStrategy(DEFAULT_SYMBOLS),
         ConfidenceScorerStrategy(DEFAULT_SYMBOLS, data_dir="ml_data"),
         MultiTierQualityStrategy(DEFAULT_SYMBOLS),
+        FundingRateStrategy(DEFAULT_SYMBOLS),
+        OIDeltaStrategy(DEFAULT_SYMBOLS),
+        BollingerSqueezeStrategy(DEFAULT_SYMBOLS),
+        VMCCipherStrategy(DEFAULT_SYMBOLS),
+        LeadLagStrategy(DEFAULT_SYMBOLS),
+        LiquidationCascadeStrategy(DEFAULT_SYMBOLS),
+        ProbabilityEngineStrategy(DEFAULT_SYMBOLS),
     ]
     ensemble = EnsembleStrategy(strategies=strategies, mode=config.ensemble_mode, min_votes=config.min_votes_required, veto_ratio=config.veto_ratio)
     needed_tfs = ensemble.get_all_required_timeframes()

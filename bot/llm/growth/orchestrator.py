@@ -49,7 +49,6 @@ class GrowthOrchestrator:
         self._last_learning_cycle: float = 0
         self._learning_cycle_interval_s: float = 1800  # 30 min
         self._trade_buffer: List[Dict[str, Any]] = []  # Buffer trades for batch learning
-        self._backtest_mode: bool = False  # When True, skip LLM API calls
 
         # Lazy-initialized subsystem references
         self._rec_engine = None
@@ -70,45 +69,77 @@ class GrowthOrchestrator:
             from llm.growth.recommendation_engine import get_recommendation_engine
             self._rec_engine = get_recommendation_engine()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init recommendation engine: {e}")
+            logger.error(f"[GROWTH] Failed to init recommendation engine: {e}")
 
         try:
             from llm.growth.hypothesis_tracker import get_hypothesis_tracker
             self._hypo_tracker = get_hypothesis_tracker()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init hypothesis tracker: {e}")
+            logger.error(f"[GROWTH] Failed to init hypothesis tracker: {e}")
 
         try:
             from llm.growth.explainability import get_explainer
             self._explainer = get_explainer()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init explainability: {e}")
+            logger.error(f"[GROWTH] Failed to init explainability: {e}")
 
         try:
             from llm.growth.veto_feedback import get_veto_tracker
             self._veto_tracker = get_veto_tracker()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init veto tracker: {e}")
+            logger.error(f"[GROWTH] Failed to init veto tracker: {e}")
 
         try:
             from llm.growth.self_improvement import get_self_improvement_engine
             self._improvement_engine = get_self_improvement_engine()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init self-improvement: {e}")
+            logger.error(f"[GROWTH] Failed to init self-improvement: {e}")
 
         try:
             from llm.growth.growth_report import get_growth_reporter
             self._reporter = get_growth_reporter()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init reporter: {e}")
+            logger.error(f"[GROWTH] Failed to init reporter: {e}")
 
         try:
             from llm.self_teaching import get_teaching_engine
             self._teaching_engine = get_teaching_engine()
         except Exception as e:
-            logger.warning(f"[GROWTH] Failed to init teaching engine: {e}")
+            logger.error(f"[GROWTH] Failed to init teaching engine: {e}")
 
-        logger.info("[GROWTH] Orchestrator initialized")
+        subsystems = {
+            "recommendation_engine": self._rec_engine,
+            "hypothesis_tracker": self._hypo_tracker,
+            "explainability": self._explainer,
+            "veto_tracker": self._veto_tracker,
+            "self_improvement": self._improvement_engine,
+            "reporter": self._reporter,
+            "teaching_engine": self._teaching_engine,
+        }
+        n_active = sum(1 for v in subsystems.values() if v is not None)
+        n_total = len(subsystems)
+        logger.info(f"[GROWTH] Orchestrator initialized: {n_active}/{n_total} subsystems active")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Return which subsystems are active (not None) and their names."""
+        self._ensure_init()
+        subsystems = {
+            "recommendation_engine": self._rec_engine,
+            "hypothesis_tracker": self._hypo_tracker,
+            "explainability": self._explainer,
+            "veto_tracker": self._veto_tracker,
+            "self_improvement": self._improvement_engine,
+            "reporter": self._reporter,
+            "teaching_engine": self._teaching_engine,
+        }
+        active = [name for name, obj in subsystems.items() if obj is not None]
+        failed = [name for name, obj in subsystems.items() if obj is None]
+        return {
+            "active_count": len(active),
+            "total_count": len(subsystems),
+            "active": active,
+            "failed": failed,
+        }
 
     # ── Event Handlers ────────────────────────────────────────
 
@@ -149,18 +180,47 @@ class GrowthOrchestrator:
 
         # Multi-Agent Learning Agent: run dedicated LLM analysis on closed trade
         # This produces deeper insights than the deterministic post_trade_learner
-        # Skip in backtest mode to avoid burning LLM credits
-        if not self._backtest_mode:
-            try:
-                from llm.agents.coordinator import is_multi_agent_enabled, get_coordinator
-                if is_multi_agent_enabled():
-                    coordinator = get_coordinator()
-                    lesson_data = coordinator.get_post_trade_lesson(trade_data)
-                    if lesson_data:
-                        from llm.agents.learning_integration import process_agent_lesson
-                        process_agent_lesson(lesson_data, trade_data)
-            except Exception as e:
-                logger.debug(f"[GROWTH] Multi-agent learning error: {e}")
+        try:
+            from llm.agents.coordinator import is_multi_agent_enabled, get_coordinator
+            if is_multi_agent_enabled():
+                coordinator = get_coordinator()
+                lesson_data = coordinator.get_post_trade_lesson(trade_data)
+                if lesson_data:
+                    from llm.agents.learning_integration import process_agent_lesson
+                    process_agent_lesson(lesson_data, trade_data)
+            else:
+                # Fallback: extract basic lesson without LLM when multi-agent is disabled
+                outcome = trade_data.get("outcome", "UNKNOWN")
+                pnl = trade_data.get("pnl", 0)
+                lesson = {
+                    "win": outcome == "WIN",
+                    "outcome": outcome,
+                    "regime": trade_data.get("regime", "unknown"),
+                    "strategy": trade_data.get("strategy", "unknown"),
+                    "symbol": trade_data.get("symbol", ""),
+                    "hold_time_s": trade_data.get("hold_time_s", 0),
+                    "pnl": pnl,
+                }
+                # Feed to hypothesis tracker
+                if self._hypo_tracker:
+                    try:
+                        self._hypo_tracker.add_evidence_by_trade(trade_data)
+                    except Exception as he:
+                        logger.debug(f"[GROWTH] Fallback hypothesis evidence error: {he}")
+                # Feed to deep memory
+                try:
+                    from llm.deep_memory import get_deep_memory
+                    dm = get_deep_memory()
+                    dm.record_trade(trade_data)
+                except Exception as de:
+                    logger.debug(f"[GROWTH] Fallback deep memory error: {de}")
+                logger.info(
+                    f"[GROWTH] Fallback learning (no multi-agent): "
+                    f"{lesson['symbol']} {lesson['outcome']} ${pnl:+.2f} "
+                    f"regime={lesson['regime']} strategy={lesson['strategy']}"
+                )
+        except Exception as e:
+            logger.debug(f"[GROWTH] Multi-agent learning error: {e}")
 
         logger.debug(
             f"[GROWTH] Trade closed: {trade_data.get('symbol')} "
@@ -330,6 +390,21 @@ class GrowthOrchestrator:
                                     f"[GROWTH] Auto-applicable: {h.statement[:60]} "
                                     f"({h.supporting_count}/{h.total_evidence} = {h.evidence_ratio:.0%})"
                                 )
+
+                    # Graduate validated hypotheses into executable signal rules
+                    try:
+                        from llm.graduated_rules import get_graduated_rules_engine
+                        gre = get_graduated_rules_engine()
+                        for h in graduated:
+                            if h.stage == "validated" and h.total_evidence >= 10 and h.evidence_ratio >= 0.70:
+                                rule = gre.graduate_hypothesis(h)
+                                if rule:
+                                    logger.info(
+                                        f"[GROWTH] Hypothesis → Rule: {rule.action.upper()} "
+                                        f"when {rule.conditions} ({h.statement[:50]})"
+                                    )
+                    except Exception as ge:
+                        logger.debug(f"[GROWTH] Graduated rules integration error: {ge}")
             except Exception as e:
                 logger.debug(f"[GROWTH] Hypothesis graduation error: {e}")
 

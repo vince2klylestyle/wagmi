@@ -36,6 +36,13 @@ from strategies.regime_trend import RegimeTrendStrategy
 from strategies.monte_carlo_zones import MonteCarloZonesStrategy
 from strategies.confidence_scorer import ConfidenceScorerStrategy
 from strategies.multi_tier_quality import MultiTierQualityStrategy
+from strategies.funding_rate import FundingRateStrategy
+from strategies.oi_delta import OIDeltaStrategy
+from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+from strategies.vmc_cipher import VMCCipherStrategy
+from strategies.lead_lag import LeadLagStrategy
+from strategies.liquidation_cascade import LiquidationCascadeStrategy
+from strategies.probability_engine import ProbabilityEngineStrategy
 from strategies.ensemble import EnsembleStrategy
 from execution.position_manager import PositionManager
 from execution.leverage import LeverageManager
@@ -377,6 +384,32 @@ class MultiStrategyBot:
                 mc_hours=config.mc_forward_hours,
             ))
 
+        # New quant strategies (Phase 6 alpha generation)
+        if os.getenv("STRATEGY_FUNDING_RATE_ENABLED", "true").lower() == "true":
+            self.strategies.append(FundingRateStrategy(sym_configs))
+        if os.getenv("STRATEGY_OI_DELTA_ENABLED", "true").lower() == "true":
+            self.strategies.append(OIDeltaStrategy(sym_configs))
+        if os.getenv("STRATEGY_BOLLINGER_SQUEEZE_ENABLED", "true").lower() == "true":
+            self.strategies.append(BollingerSqueezeStrategy(sym_configs))
+        if os.getenv("STRATEGY_VMC_CIPHER_ENABLED", "true").lower() == "true":
+            self.strategies.append(VMCCipherStrategy(sym_configs))
+        if os.getenv("STRATEGY_LEAD_LAG_ENABLED", "true").lower() == "true":
+            self.strategies.append(LeadLagStrategy(sym_configs))
+        if os.getenv("STRATEGY_LIQUIDATION_CASCADE_ENABLED", "true").lower() == "true":
+            self.strategies.append(LiquidationCascadeStrategy(sym_configs))
+        if os.getenv("STRATEGY_PROBABILITY_ENGINE_ENABLED", "true").lower() == "true":
+            self.strategies.append(ProbabilityEngineStrategy(
+                sym_configs,
+                num_sims=config.mc_num_sims,
+                forward_bars=config.mc_forward_hours,
+            ))
+        if os.getenv("STRATEGY_CVD_SIGNAL_ENABLED", "false").lower() == "true":
+            try:
+                from strategies.cvd_signal import CVDSignalStrategy
+                self.strategies.append(CVDSignalStrategy(sym_configs))
+            except Exception as e:
+                logger.warning(f"[INIT] CVD signal strategy unavailable: {e}")
+
         enabled_names = [s.name for s in self.strategies]
         logger.info(f"[INIT] Active strategies: {enabled_names}")
         # Chop detector: multi-factor choppy market filter
@@ -402,7 +435,20 @@ class MultiStrategyBot:
             veto_ratio=config.veto_ratio,
             chop_detector=chop,
             confidence_floor=config.ensemble_confidence_floor,
+            ranging_confidence_floor=config.ranging_confidence_floor,
         )
+
+        # Apply quant system config disables (kill toxic strategies)
+        self.ensemble.apply_config_disables(config)
+
+        # Wire volatility profiles for per-symbol confidence floor capping
+        from trading_config import DEFAULT_SYMBOL_OVERRIDES
+        vol_profiles = {
+            sym: ov.volatility_profile
+            for sym, ov in DEFAULT_SYMBOL_OVERRIDES.items()
+            if hasattr(ov, 'volatility_profile') and ov.volatility_profile
+        }
+        self.ensemble.set_symbol_volatility_profiles(vol_profiles)
 
         # Execution
         self.risk_mgr = RiskManager(
@@ -482,6 +528,7 @@ class MultiStrategyBot:
         self._last_prices: Dict[str, float] = {}  # symbol -> price
         # Last known funding rates per symbol (updated from fetcher)
         self._last_funding_rates: Dict[str, float] = {}  # symbol -> funding rate
+        self._last_open_interest: Dict[str, float] = {}  # symbol -> OI (for oi_delta strategy)
 
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
@@ -510,6 +557,55 @@ class MultiStrategyBot:
 
         # Feedback loop: self-improving confidence, backtesting, quality scoring
         self.feedback = FeedbackLoop(data_dir="data/feedback")
+
+        # Quant system: IC tracker, Kelly engine, trade ledger, shadow ledger, daily report
+        try:
+            from feedback.ic_tracker import ICTracker
+            from feedback.kelly_engine import KellyEngine
+            from feedback.trade_ledger import TradeLedger
+            from feedback.shadow_ledger import ShadowLedger
+            from feedback.daily_report import DailyReporter
+            from execution.correlation_gate import CorrelationGate
+            self.ic_tracker = ICTracker(data_dir="data")
+            self.kelly_engine = KellyEngine(data_path="data/kelly_weights.json")
+            self.trade_ledger = TradeLedger(data_dir="data")
+            self.shadow_ledger = ShadowLedger(data_dir="data")
+            self.correlation_gate = CorrelationGate()
+            from execution.sector_exposure import SectorExposure
+            self._sector_exposure_cls = SectorExposure
+            from execution.execution_analytics import ExecutionAnalytics
+            self.execution_analytics = ExecutionAnalytics(data_dir="data")
+            self.daily_reporter = DailyReporter(
+                trade_ledger=self.trade_ledger,
+                ic_tracker=self.ic_tracker,
+                kelly_engine=self.kelly_engine,
+            )
+            self.ensemble.set_shadow_ledger(self.shadow_ledger)
+            # Wire missed trade tracker into ensemble + main loop
+            try:
+                from feedback.missed_trade_tracker import MissedTradeTracker
+                self._missed_trade_tracker = MissedTradeTracker(data_dir="data")
+                self.ensemble.set_missed_trade_tracker(self._missed_trade_tracker)
+                logger.info("[INIT] MissedTradeTracker wired into ensemble + pipeline")
+            except Exception as mt_e:
+                logger.debug(f"[INIT] MissedTradeTracker unavailable: {mt_e}")
+                self._missed_trade_tracker = None
+            # Wire IC tracker into ensemble so inverted/decaying factors get downweighted in voting
+            if self.ic_tracker:
+                self.ensemble.ic_tracker = self.ic_tracker
+                logger.info("[INIT] IC tracker wired into ensemble voting — inverted factors will be auto-downweighted")
+            logger.info("[INIT] Quant system loaded: IC tracker, Kelly engine, trade ledger, shadow ledger, correlation gate, daily report")
+        except Exception as e:
+            logger.warning(f"[INIT] Quant system partially unavailable: {e}")
+            self.ic_tracker = None
+            self.kelly_engine = None
+            self.trade_ledger = None
+            self.shadow_ledger = None
+            self.correlation_gate = None
+            self._sector_exposure_cls = None
+            self.execution_analytics = None
+            self._missed_trade_tracker = None
+            self.daily_reporter = None
 
         # Growth intelligence: self-evolving meta-brain
         self.growth = get_growth_orchestrator()
@@ -610,6 +706,24 @@ class MultiStrategyBot:
         self.dashboard = get_dashboard_server() if (
             _DASHBOARD_AVAILABLE and config.enable_dashboard
         ) else None
+
+        # Paper trading hourly checkpoint (paper mode only)
+        self.paper_validator = None
+        self._paper_checkpoint_last = time.time()
+        if config.is_paper:
+            try:
+                from monitoring.paper_validator import PaperValidator
+                from core.signal_pipeline import enable_rejection_logging
+                enable_rejection_logging(True)
+                self.paper_validator = PaperValidator(
+                    risk_mgr=self.risk_mgr,
+                    pos_mgr=self.pos_mgr,
+                    alert_router=self.alerts,
+                    start_equity=getattr(config, "starting_equity", 0.0),
+                )
+                logger.info("[PAPER-VALIDATOR] Hourly checkpoint monitoring enabled")
+            except Exception as e:
+                logger.debug(f"[PAPER-VALIDATOR] Not available: {e}")
 
     def _run_health_check(self):
         """Startup symbol health check: validate precision, connectivity, leverage caps."""
@@ -743,6 +857,28 @@ class MultiStrategyBot:
         except Exception as e:
             logger.warning(f"[INIT] Health server start failed: {e}")
 
+        # Go-live gate: evaluate 5 deployment criteria
+        try:
+            from validation.go_live_gate import GoLiveGate
+            self._go_live_gate = GoLiveGate(
+                trade_ledger=self.trade_ledger,
+                ic_tracker=self.ic_tracker,
+                circuit_breaker=self.risk_mgr.circuit_breaker if hasattr(self.risk_mgr, 'circuit_breaker') else None,
+            )
+            gate_result = self._go_live_gate.evaluate()
+            gate_text = self._go_live_gate.format_report(gate_result)
+            logger.info(f"\n{gate_text}")
+            if not gate_result["passed"] and os.environ.get("ENVIRONMENT") == "production":
+                logger.critical("GO-LIVE GATE FAILED — aborting live session")
+                raise SystemExit("Go-live gate not passed. Run in paper mode first.")
+            elif not gate_result["passed"]:
+                logger.warning("Go-live gate not passed — running in paper/backtest mode despite failures")
+        except SystemExit:
+            raise
+        except Exception as e:
+            logger.warning(f"[INIT] Go-live gate evaluation error: {e}")
+            self._go_live_gate = None
+
         # Signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -762,6 +898,16 @@ class MultiStrategyBot:
                     self._log_periodic_summary()
                 except Exception as e:
                     logger.debug(f"Periodic summary error: {e}")
+
+            # Paper trading hourly checkpoint
+            if self.paper_validator is not None:
+                _now = time.time()
+                if _now - self._paper_checkpoint_last >= 3600:
+                    try:
+                        self.paper_validator.run_checkpoint()
+                        self._paper_checkpoint_last = _now
+                    except Exception as e:
+                        logger.debug(f"Paper validator checkpoint error: {e}")
 
             self._sleep_interruptible(self._adaptive_scan_interval())
 
@@ -828,6 +974,13 @@ class MultiStrategyBot:
         trace_id = uuid.uuid4().hex[:8]
         _loop_start = time.time()
 
+        # Per-trade compound sizing cache: stored at entry, read at close for attribution
+        self._compound_mult_cache: Dict[str, float] = {}
+
+        # Walk-forward degradation: auto-reduce sizing when OOS performance degrades
+        self._wf_ratio: float = 1.0  # Default: no degradation
+        self._wf_last_computed: float = 0.0  # Epoch of last computation
+
         # Per-tick regime cache: computed once, reused by all subsystems
         # (avoids 5x redundant get_regime() calls per symbol per tick)
         self._tick_regime_cache = {}
@@ -840,9 +993,20 @@ class MultiStrategyBot:
         # ── PARALLEL PREFETCH: fetch all symbols' data concurrently ──
         # This front-loads all exchange I/O so _process_symbol hits cache.
         _prefetch_start = time.time()
-        self.fetcher.prefetch_all_symbols(DEFAULT_SYMBOLS, self._needed_tfs)
+        prefetch_results = self.fetcher.prefetch_all_symbols(DEFAULT_SYMBOLS, self._needed_tfs)
         _prefetch_ms = (time.time() - _prefetch_start) * 1000
-        logger.info(f"[{trace_id}] Prefetch done: {len(DEFAULT_SYMBOLS)} symbols in {_prefetch_ms:.0f}ms")
+        # Track prefetch failures for degradation awareness
+        prefetch_failures = sum(1 for v in prefetch_results.values() if not v)
+        prefetch_total = len(prefetch_results)
+        if prefetch_failures > 0:
+            logger.warning(
+                f"[{trace_id}] Prefetch: {prefetch_failures}/{prefetch_total} symbols failed"
+            )
+            if prefetch_failures == prefetch_total:
+                logger.error(f"[{trace_id}] ALL prefetches failed — exchange may be down")
+                self.degradation.record_exchange_error()
+        else:
+            logger.info(f"[{trace_id}] Prefetch done: {prefetch_total} symbols in {_prefetch_ms:.0f}ms")
 
         # Collect candidate signals for rotation evaluation
         self._tick_candidates: list = []
@@ -1143,9 +1307,122 @@ class MultiStrategyBot:
                     except Exception as e:
                         logger.debug(f"Evolution→LLM memory feed error: {e}")
 
+                # ── Feed evolution lessons into Parameter Tuner ──
+                # Closes the evolution→tuner feedback loop: lessons about what's
+                # working/failing flow into dynamic parameter adjustments.
+                try:
+                    if hasattr(self, 'feedback') and hasattr(self.feedback, 'tuner'):
+                        _tuner_result = tracker.apply_lessons_to_tuner(report, self.feedback.tuner)
+                        if _tuner_result:
+                            logger.info(f"[EVOLUTION→TUNER] Applied lessons: {_tuner_result}")
+                except Exception as e:
+                    logger.debug(f"Evolution→Tuner feed error: {e}")
+
                 logger.info(f"[EVOLUTION] Daily report generated: {report.total_trades} trades")
             except Exception as e:
                 logger.debug(f"Evolution tracker error: {e}")
+
+            # Auto-decay Kelly and strategy weights daily (prevents stale data dominating)
+            try:
+                if self.kelly_engine:
+                    # Kelly engine doesn't have apply_decay — but strategy weights do
+                    pass
+                if hasattr(self, 'ensemble') and self.ensemble.weight_manager:
+                    self.ensemble.weight_manager.apply_decay()
+                    logger.info("[QUANT] Applied daily decay to strategy weights (alpha=0.9)")
+            except Exception as e:
+                logger.debug(f"Weight decay error: {e}")
+
+            # Walk-forward ratio: auto-reduce sizing when OOS performance degrades
+            try:
+                if self.trade_ledger:
+                    _wf_trades = self.trade_ledger.get_trades(lookback_days=60)
+                    if len(_wf_trades) >= 10:
+                        from validation.walk_forward import run_rolling_walk_forward, avg_wf_ratio
+                        _wf_input = [
+                            {"pnl": float(t.get("net_pnl", "0")),
+                             "timestamp": float(t.get("timestamp", "0"))}
+                            for t in _wf_trades
+                        ]
+                        _wf_results = run_rolling_walk_forward(_wf_input)
+                        self._wf_ratio = avg_wf_ratio(_wf_results) if _wf_results else 1.0
+                        _wf_mult = self._get_wf_multiplier()
+                        logger.info(
+                            f"[QUANT] Walk-forward ratio: {self._wf_ratio:.3f} "
+                            f"→ sizing mult={_wf_mult:.2f}"
+                        )
+                        if self._wf_ratio < 0.4:
+                            logger.warning(
+                                f"[QUANT] WALK-FORWARD CRITICAL: ratio={self._wf_ratio:.3f} "
+                                f"— sizing reduced to {_wf_mult:.0%}"
+                            )
+            except Exception as e:
+                logger.debug(f"Walk-forward computation error: {e}")
+
+            # Rolling Sharpe: early edge degradation detection
+            try:
+                if self.trade_ledger:
+                    import math
+                    _sharpe_trades = self.trade_ledger.get_trades(lookback_days=30)
+                    _pnls = [float(t.get("net_pnl", "0")) for t in _sharpe_trades if t.get("net_pnl")]
+                    if len(_pnls) >= 10:
+                        _mean = sum(_pnls) / len(_pnls)
+                        _var = sum((p - _mean) ** 2 for p in _pnls) / len(_pnls)
+                        _std = math.sqrt(_var) if _var > 0 else 0.001
+                        _sharpe_30d = round(_mean / _std, 3)
+                        logger.info(f"[QUANT] 30-day rolling Sharpe: {_sharpe_30d:.3f} ({len(_pnls)} trades)")
+                        if _sharpe_30d < 0:
+                            logger.warning(f"[QUANT] NEGATIVE SHARPE ({_sharpe_30d:.3f}) — edge may be degraded")
+                        elif _sharpe_30d < 0.3:
+                            logger.warning(f"[QUANT] LOW SHARPE ({_sharpe_30d:.3f}) — monitor for further degradation")
+            except Exception as e:
+                logger.debug(f"Rolling Sharpe error: {e}")
+
+            # Quant daily report: 6 key metrics with alerting
+            if self.daily_reporter:
+                try:
+                    _qr = self.daily_reporter.generate_report()
+                    _qr_text = self.daily_reporter.format_report(_qr)
+                    logger.info(f"\n{_qr_text}")
+                    if self.alerts and _qr.get("alerts"):
+                        self.alerts.send_market_update(
+                            f"📊 Quant Daily Report — {len(_qr['alerts'])} alerts\n"
+                            + "\n".join(_qr["alerts"][:5])
+                        )
+                except Exception as e:
+                    logger.debug(f"Quant daily report error: {e}")
+
+            # Execution analytics summary
+            if hasattr(self, 'execution_analytics') and self.execution_analytics:
+                try:
+                    _ea_summary = self.execution_analytics.get_slippage_summary(lookback_days=7)
+                    if _ea_summary.get("total_fills", 0) > 0:
+                        logger.info(
+                            f"[EXEC-ANALYTICS] 7d Summary: "
+                            f"mean_slippage={_ea_summary['overall_mean_bps']:.2f}bps "
+                            f"fills={_ea_summary['total_fills']} "
+                            f"maker_rate={_ea_summary['maker_rate']:.1%}"
+                        )
+                        if self.alerts and _ea_summary["overall_mean_bps"] > 3.0:
+                            self.alerts.send_market_update(
+                                f"Execution Alert: avg slippage {_ea_summary['overall_mean_bps']:.1f}bps > 3bps threshold"
+                            )
+                except Exception as e:
+                    logger.debug(f"Execution analytics summary error: {e}")
+
+            # Go-live gate status check (runs with daily report)
+            if hasattr(self, '_go_live_gate') and self._go_live_gate:
+                try:
+                    _gate_result = self._go_live_gate.evaluate()
+                    _gate_text = self._go_live_gate.format_report(_gate_result)
+                    logger.info(f"\n{_gate_text}")
+                    if self.alerts and not _gate_result["passed"]:
+                        _n_fail = len([g for g in _gate_result["gates"].values() if not g.get("passed")])
+                        self.alerts.send_market_update(
+                            f"Go-Live Gate: {_n_fail} gate(s) failed — {_gate_result['recommendation']}"
+                        )
+                except Exception as e:
+                    logger.debug(f"Go-live gate daily check error: {e}")
 
         # Uplift Analytics + Progression: evaluate LLM value and autonomy readiness
         # Runs every 720 ticks (~12 hours) — gives enough time for data to accumulate
@@ -1361,27 +1638,52 @@ class MultiStrategyBot:
                 pass
 
         # ── Periodic position reconciliation ──
-        # Every 60 ticks (~1h): detect phantom (bot-only) and orphan (exchange-only) positions
+        # Every 60 ticks (~1h): detect and auto-correct position mismatches
         if self._tick % 60 == 45 and self._tick > 0:
             try:
                 result = periodic_reconciliation_check(
                     pos_mgr=self.pos_mgr,
                     exchanges=self.fetcher._exchanges,
+                    last_prices=self._last_prices,
                 )
-                if result.get("phantoms") or result.get("orphans"):
+                phantoms = result.get("phantom", [])
+                orphans = result.get("orphan", [])
+                if phantoms or orphans:
                     logger.warning(
                         f"[RECONCILE] Drift detected: "
-                        f"{len(result.get('phantoms', []))} phantom, "
-                        f"{len(result.get('orphans', []))} orphan"
+                        f"{len(phantoms)} phantom, {len(orphans)} orphan"
                     )
-                    if self.alerts:
+                    # Auto-correct phantom positions (bot tracking, exchange closed)
+                    for sym in phantoms:
+                        pos = self.pos_mgr.positions.get(sym)
+                        if pos and pos.state != "CLOSED":
+                            logger.warning(
+                                f"[RECONCILE] Closing phantom position {sym} "
+                                f"(exchange says closed)"
+                            )
+                            pos.state = "CLOSED"
+                            pos.close_time = datetime.now(timezone.utc)
+                            pos.close_reason = "reconciliation_phantom"
+                    # Alert for orphans (need manual review)
+                    if self.alerts and orphans:
                         self.alerts.send_market_update(
-                            f"Position drift detected: "
-                            f"{len(result.get('phantoms', []))} phantom, "
-                            f"{len(result.get('orphans', []))} orphan positions"
+                            f"⚠️ {len(orphans)} orphan positions on exchange "
+                            f"not tracked by bot: {orphans}"
                         )
             except Exception as e:
                 logger.debug(f"[{trace_id}] Periodic reconciliation error: {e}")
+
+    def _get_wf_multiplier(self) -> float:
+        """Walk-forward degradation multiplier for compound sizing.
+        WF ratio >= 0.7: 1.0× (no reduction)
+        WF ratio 0.0-0.7: linear scale (0.0× to 1.0×)
+        WF ratio < 0.0: 0.0× (halt new entries — overfitting detected)
+        """
+        if self._wf_ratio >= 0.7:
+            return 1.0
+        if self._wf_ratio < 0.0:
+            return 0.0
+        return max(0.0, self._wf_ratio / 0.7)
 
     def _process_symbol(self, symbol: str, sym_cfg, trace_id: str = ""):
         """Process one symbol: fetch data, check positions, generate signals."""
@@ -1401,6 +1703,63 @@ class MultiStrategyBot:
             logger.warning(f"[{symbol}] Exchange fetch failed: {e}")
             return
 
+        # Inject metadata for metadata-dependent strategies (funding_rate, oi_delta)
+        _meta = data.setdefault("_meta", {})
+        _fr = self._last_funding_rates.get(symbol)
+        if _fr is not None:
+            data["_funding_rate"] = _fr
+            _meta["funding_rate"] = _fr
+        # OI: fetch and inject current + previous for delta calculation
+        if self._tick % 60 == 0 or symbol not in self._last_open_interest:
+            try:
+                _oi = self.fetcher.fetch_open_interest(symbol)
+                if _oi is not None:
+                    _oi_prev = self._last_open_interest.get(symbol)
+                    self._last_open_interest[symbol] = _oi
+                    _meta["open_interest"] = _oi
+                    if _oi_prev is not None:
+                        _meta["open_interest_prev"] = _oi_prev
+            except Exception:
+                pass
+        else:
+            _oi = self._last_open_interest.get(symbol)
+            if _oi is not None:
+                _meta["open_interest"] = _oi
+
+        # Stale data guard: reject signals if candle data is too old.
+        # After restarts or API hiccups, strategies may fire on stale candles.
+        # Check the most granular timeframe (5m or 1h) — if its last candle
+        # is older than 5 minutes past its expected close, skip signal generation.
+        _stale_max_s = 300  # 5 minutes tolerance
+        _stale_check_tf = "5m" if "5m" in data else ("1h" if "1h" in data else None)
+        if _stale_check_tf and data.get(_stale_check_tf) is not None:
+            _stale_df = data[_stale_check_tf]
+            if not _stale_df.empty:
+                # DataFrame has numeric index with 'time' column (from fetcher)
+                # Fall back to index if 'time' column is missing
+                if "time" in _stale_df.columns:
+                    _last_candle_time = pd.Timestamp(_stale_df["time"].iloc[-1], unit="ms" if isinstance(_stale_df["time"].iloc[-1], (int, float)) and _stale_df["time"].iloc[-1] > 1e12 else None)
+                elif _stale_df.index.dtype.kind == 'M':
+                    _last_candle_time = _stale_df.index[-1]
+                else:
+                    _last_candle_time = None
+                if _last_candle_time is not None:
+                    if _last_candle_time.tzinfo is None:
+                        _last_candle_time = _last_candle_time.tz_localize("UTC")
+                    _candle_age_s = (pd.Timestamp.now(tz="UTC") - _last_candle_time).total_seconds()
+                    _tf_period_s = {"5m": 300, "1h": 3600}.get(_stale_check_tf, 3600)
+                    # Data is stale if the last candle closed more than (period + tolerance) ago
+                    if _candle_age_s > _tf_period_s + _stale_max_s:
+                        # Still process existing positions (SL/TP), but skip new signal generation
+                        if symbol not in self.pos_mgr.get_open_positions():
+                            logger.warning(
+                                f"[{trace_id}][{symbol}] STALE DATA: {_stale_check_tf} candle "
+                                f"is {_candle_age_s:.0f}s old (max {_tf_period_s + _stale_max_s}s), "
+                                f"skipping signal generation"
+                            )
+                            Telemetry.inc("stale_data_skips")
+                            return
+
         # Get current price
         current_price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
         if current_price is None:
@@ -1415,6 +1774,13 @@ class MultiStrategyBot:
                 logger.warning(f"[{symbol}] PRICE REJECTED: {err}")
                 return
         self._last_prices[symbol] = current_price
+
+        # Feed correlation gate with price data
+        if self.correlation_gate:
+            try:
+                self.correlation_gate.update_prices(symbol, current_price, time.time())
+            except Exception:
+                pass
 
         # Cross-symbol pattern tracking: record price for lead-lag detection
         if self.cross_symbol_tracker:
@@ -1672,6 +2038,82 @@ class MultiStrategyBot:
                     )
                 except Exception as e:
                     logger.warning(f"Feedback outcome error: {e}")
+
+                # Quant system: record to IC tracker, Kelly engine, trade ledger, resolve shadows
+                if pos:
+                    _factors = pos.entry_reasons.get("strategies", []) if pos.entry_reasons else []
+                    if not _factors and event.strategy:
+                        _factors = [event.strategy]
+                    _direction = 1 if (pos.side if hasattr(pos, 'side') else event.side) == "LONG" else -1
+                    _actual_return = total_pnl / (self.risk_mgr.equity or 1.0)
+                    _pnl_pct = _actual_return * 100
+
+                    if self.ic_tracker:
+                        try:
+                            for _factor in _factors:
+                                self.ic_tracker.record(_factor, _direction, _actual_return)
+                        except Exception as e:
+                            logger.debug(f"IC tracker record error: {e}")
+
+                    if self.kelly_engine:
+                        try:
+                            for _factor in _factors:
+                                self.kelly_engine.record_trade(_factor, total_pnl > 0, _pnl_pct)
+                        except Exception as e:
+                            logger.debug(f"Kelly engine record error: {e}")
+
+                    if self.trade_ledger:
+                        try:
+                            _hold_hours = event.metadata.get("hold_time_s", 0) / 3600
+                            _regime = _rg_fb or self._tick_regime_cache.get(symbol, "unknown")
+                            _factors_str = ",".join(_factors)
+                            _num_agree = pos.entry_reasons.get("num_agree", 1) if pos.entry_reasons else 1
+                            _session_dd = 0.0
+                            cb = self.risk_mgr.circuit_breaker
+                            if hasattr(cb, 'session_peak_equity') and cb.session_peak_equity > 0:
+                                _session_dd = round(
+                                    (cb.session_peak_equity - self.risk_mgr.equity) / cb.session_peak_equity * 100, 2
+                                )
+                            # Compute realized R:R for EV calibration
+                            _stop_width = abs(pos.entry - pos.sl) if pos.sl else 0
+                            _realized_rr = round(total_pnl / (_stop_width * (pos.qty or 1)), 3) if _stop_width > 0 and pos.qty else 0
+                            _predicted_ev = pos.entry_reasons.get("ev_per_dollar", "") if pos.entry_reasons else ""
+                            self.trade_ledger.record_trade({
+                                "symbol": symbol,
+                                "side": event.side,
+                                "regime_1h": _regime,
+                                "regime_4h": self._tick_regime_cache.get(f"{symbol}_4h", ""),
+                                "agreement_level": str(_num_agree),
+                                "contributing_factors": _factors_str,
+                                "confidence_score": str(pos.confidence),
+                                "kelly_weight_applied": str(
+                                    self.kelly_engine.compute_kelly_weight(event.strategy)
+                                    if self.kelly_engine and event.strategy else ""
+                                ),
+                                "compound_size_multiplier": str(self._compound_mult_cache.pop(symbol, "")),
+                                "leverage": str(pos.leverage),
+                                "hold_hours": f"{_hold_hours:.2f}",
+                                "exit_type": event.action,
+                                "entry_price": str(pos.entry),
+                                "exit_price": str(event.price),
+                                "gross_pnl": str(round(total_pnl + (pos.fees_paid or 0), 2)),
+                                "fees": str(round(pos.fees_paid or 0, 2)),
+                                "funding": "0",
+                                "net_pnl": str(round(total_pnl, 2)),
+                                "running_equity": str(round(self.risk_mgr.equity, 2)),
+                                "session_dd_pct": str(_session_dd),
+                                "predicted_ev": str(_predicted_ev),
+                                "realized_rr": str(_realized_rr),
+                                "win": "1" if total_pnl > 0 else "0",
+                            })
+                        except Exception as e:
+                            logger.debug(f"Trade ledger record error: {e}")
+
+                    if self.shadow_ledger:
+                        try:
+                            self.shadow_ledger.resolve_shadows(symbol, event.price)
+                        except Exception as e:
+                            logger.debug(f"Shadow ledger resolve error: {e}")
 
                 # Growth intelligence: feed trade data to self-evolving systems
                 try:
@@ -2086,7 +2528,19 @@ class MultiStrategyBot:
                 )
                 if liq_check["at_risk"]:
                     logger.warning(f"[{symbol}] LIQUIDATION RISK: {liq_check}")
-                    self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
+                    event = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
+                    # Submit exchange close order (force_close only updates internal state)
+                    if event and event.qty > 0:
+                        close_side = "SELL" if event.side == "LONG" else "BUY"
+                        self.order_executor.close_position(
+                            symbol, close_side, event.qty, current_price,
+                            reason="LIQUIDATION_AVOID"
+                        )
+                        if self.alerts:
+                            self.alerts.send_trade_alert(
+                                f"🚨 LIQUIDATION AVOID: {symbol} {event.side} "
+                                f"force-closed @ {current_price}"
+                            )
 
         # Clean up stale closed positions (prevent memory growth overnight)
         from execution.position_state import CLOSED as _CLOSED
@@ -2184,12 +2638,103 @@ class MultiStrategyBot:
                         )
                     else:
                         self.ensemble.set_disabled_strategies(set())
+                    # Set regime for regime-aware min_votes
+                    self.ensemble.set_regime(symbol, _cur_regime)
                 else:
                     self.ensemble.set_disabled_strategies(set())
+                    self.ensemble.set_regime(symbol, "unknown")
             except Exception:
                 self.ensemble.set_disabled_strategies(set())
+                self.ensemble.set_regime(symbol, "unknown")
+
+        # ── Standalone regime classification (runs every tick, independent of signals) ──
+        # Breaks the chicken-and-egg loop: regime was always "unknown" because it
+        # only got fed from signal metadata, but signals need regime to pass filters.
+        try:
+            df_1h = data.get("1h")
+            if df_1h is not None and not df_1h.empty and len(df_1h) > 20:
+                _adx = float(df_1h["close"].diff().abs().rolling(14).mean().iloc[-1] /
+                             df_1h["close"].iloc[-1] * 10000) if len(df_1h) > 14 else 0
+                # Simple but effective: use price volatility as ADX proxy
+                _returns = df_1h["close"].pct_change().tail(20)
+                _vol = float(_returns.std() * 100) if len(_returns) > 5 else 0
+                _trend_strength = abs(float(_returns.tail(10).mean() * 1000)) if len(_returns) > 10 else 0
+
+                if _vol > 5:
+                    _computed_regime = "high_volatility"
+                elif _trend_strength > 2 and _vol > 1.5:
+                    _computed_regime = "trend"
+                elif _vol < 1.0:
+                    _computed_regime = "range"
+                elif _trend_strength > 1:
+                    _computed_regime = "trend"
+                else:
+                    _computed_regime = "consolidation"
+
+                # Feed regime detector on every tick (not just when signals pass)
+                self.regime_detector.update(symbol, _computed_regime)
+                self._tick_regime_cache[symbol] = _computed_regime
+        except Exception:
+            pass
+
+        # ── 4h regime confirmation (B2) ──
+        try:
+            df_4h = data.get("4h")
+            if df_4h is not None and not df_4h.empty and len(df_4h) > 20:
+                _returns_4h = df_4h["close"].pct_change().tail(20)
+                _vol_4h = float(_returns_4h.std() * 100) if len(_returns_4h) > 5 else 0
+                _trend_4h = abs(float(_returns_4h.tail(10).mean() * 1000)) if len(_returns_4h) > 10 else 0
+
+                if _vol_4h > 5:
+                    _regime_4h = "high_volatility"
+                elif _trend_4h > 2 and _vol_4h > 1.5:
+                    _regime_4h = "trend"
+                elif _vol_4h < 1.0:
+                    _regime_4h = "range"
+                elif _trend_4h > 1:
+                    _regime_4h = "trend"
+                else:
+                    _regime_4h = "consolidation"
+
+                self.ensemble.set_regime_4h(symbol, _regime_4h)
+        except Exception:
+            pass
 
         signal_result = self.ensemble.evaluate(symbol, data)
+
+        # ── Soft-filter annotation: run annotated ensemble in parallel ──
+        # When enabled, this captures filter assessments for LLM visibility
+        # even when the signal passes hard filters normally.
+        if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+            try:
+                annotated_ensemble = self.ensemble.evaluate_with_annotations(symbol, data)
+                if annotated_ensemble is not None:
+                    # Store for LLM snapshot injection and signal tracking
+                    if not hasattr(self, '_pending_annotations'):
+                        self._pending_annotations = {}
+                    self._pending_annotations[symbol] = annotated_ensemble
+
+                    # Track signal in signal tracker (all signals, not just approved)
+                    from core.signal_tracker import get_signal_tracker
+                    tracker = get_signal_tracker()
+                    tracker.record_signal(
+                        symbol=symbol,
+                        side=annotated_ensemble.signal.side if hasattr(annotated_ensemble.signal, 'side') else "",
+                        confidence=annotated_ensemble.signal.confidence if hasattr(annotated_ensemble.signal, 'confidence') else 0,
+                        strategy=annotated_ensemble.signal.strategy if hasattr(annotated_ensemble.signal, 'strategy') else "",
+                        passed=annotated_ensemble.passed_all,
+                        hard_rejected=annotated_ensemble.hard_rejected,
+                        hard_rejection_reason=annotated_ensemble.hard_rejection_reason,
+                        annotations=[
+                            {"gate": a.gate, "severity": a.severity, "value": a.value, "threshold": a.threshold}
+                            for a in annotated_ensemble.annotations
+                        ],
+                        filter_metadata=annotated_ensemble.filter_metadata,
+                        num_strategies_agree=annotated_ensemble.filter_metadata.get("num_strategies_signaled", 0),
+                        regime=annotated_ensemble.filter_metadata.get("regime", ""),
+                    )
+            except Exception as e:
+                logger.debug(f"[{symbol}] Soft-filter annotation error: {e}")
 
         # Update last snapshot with ensemble context for ML learning
         if self.ml and self.ml.snapshots:
@@ -2612,18 +3157,82 @@ class MultiStrategyBot:
                     f"[{trace_id}][{symbol}] RiskFilterChain rejected: "
                     f"{_chain_result.rejection_reason}"
                 )
+                # Track pipeline rejection in missed trade tracker
+                if self._missed_trade_tracker is not None:
+                    try:
+                        self._missed_trade_tracker.record_rejection(
+                            signal=signal_result,
+                            reason=_chain_result.rejection_reason,
+                            gate="pipeline",
+                        )
+                    except Exception:
+                        pass
+
+                # ── Annotated chain: record what filters measured even on rejection ──
+                if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+                    try:
+                        _annotated = _chain.evaluate_annotated(
+                            signal=signal_result,
+                            equity=self.risk_mgr.equity,
+                            num_strategies_agree=num_agree,
+                            total_strategies=total,
+                            current_open_count=len(open_pos),
+                            current_extreme_count=extreme_count,
+                            risk_tier=sym_cfg.risk_tier,
+                            open_positions=open_pos,
+                            portfolio_risk_engine=self.portfolio_risk if hasattr(self, 'portfolio_risk') else None,
+                        )
+                        # Merge pipeline annotations with ensemble annotations
+                        if hasattr(self, '_pending_annotations') and symbol in self._pending_annotations:
+                            existing = self._pending_annotations[symbol]
+                            existing.annotations.extend(_annotated.annotations)
+                            existing.filter_metadata.update(_annotated.filter_metadata)
+                            if _annotated.hard_rejected:
+                                existing.hard_rejected = True
+                                existing.hard_rejection_reason = _annotated.hard_rejection_reason
+
+                            # Track the chain-rejected signal
+                            from core.signal_tracker import get_signal_tracker
+                            tracker = get_signal_tracker()
+                            tracker.record_signal(
+                                symbol=symbol,
+                                side=signal_result.side,
+                                confidence=signal_result.confidence,
+                                strategy=signal_result.strategy or "ensemble",
+                                passed=False,
+                                hard_rejected=_annotated.hard_rejected,
+                                hard_rejection_reason=_annotated.hard_rejection_reason,
+                                annotations=[
+                                    {"gate": a.gate, "severity": a.severity, "value": a.value, "threshold": a.threshold}
+                                    for a in _annotated.annotations
+                                ],
+                                filter_metadata=_annotated.filter_metadata,
+                                num_strategies_agree=num_agree,
+                            )
+                    except Exception as ann_e:
+                        logger.debug(f"[{symbol}] Annotated chain error: {ann_e}")
+
                 return
         except Exception as e:
-            logger.debug(f"RiskFilterChain error (falling back to inline): {e}")
+            logger.warning(f"[{trace_id}][{symbol}] RiskFilterChain error: {e} — rejecting signal for safety")
+            return  # Do NOT fall through to weaker inline checks
 
-        # Determine leverage (inline path preserved for live-specific caps below)
-        lev_decision = self.leverage_mgr.decide(
-            signal_result.confidence,
-            num_agree,
-            total,
-            sym_cfg.risk_tier,
-            extreme_count,
-        )
+        # Use leverage from RiskFilterChain (already computed by leverage_mgr.decide()
+        # inside the chain). Avoids double-computation which could diverge if state
+        # changes between calls. Live-specific caps are applied below.
+        if '_chain_result' in dir() and _chain_result.approved:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
+            # Override with chain result's leverage to stay consistent
+            lev_decision.leverage = _chain_result.leverage
+            lev_decision.risk_multiplier = _chain_result.risk_multiplier
+        else:
+            lev_decision = self.leverage_mgr.decide(
+                signal_result.confidence, num_agree, total,
+                sym_cfg.risk_tier, extreme_count,
+            )
 
         if lev_decision.leverage <= 0:
             return  # Confidence too low
@@ -2784,6 +3393,32 @@ class MultiStrategyBot:
             lev_decision.leverage = _sym_max_lev
         _sym_risk = get_symbol_param(symbol, "risk_per_trade", self.config)
 
+        # Vol-targeting: single-parameter sizing (replaces 11-multiplier compound system).
+        # Scales risk inversely with current ATR vs 1.5% baseline ATR (crypto long-run avg).
+        # High vol (3% ATR) → 0.5× risk. Low vol (0.75% ATR) → 2× risk, capped at 2× base.
+        # Circuit breaker still halts trading on drawdowns — safety preserved.
+        # Kelly/IC weights can be re-enabled after 200+ trades of live calibration data.
+        _compound_mult = 1.0
+        _atr_pct = 0.0
+        try:
+            if hasattr(signal_result, 'atr') and signal_result.atr > 0 and signal_result.entry > 0:
+                _atr_pct = signal_result.atr / signal_result.entry
+                _BASELINE_ATR = 0.015  # 1.5% daily ATR = neutral
+                _compound_mult = _BASELINE_ATR / max(_atr_pct, 0.001)
+                _compound_mult = max(0.3, min(2.0, _compound_mult))  # bound 0.3×–2.0×
+            _sym_risk = self.config.vol_target_pct * _compound_mult
+            # Safety cap: never exceed 2× base risk_per_trade
+            _sym_risk = min(_sym_risk, self.config.risk_per_trade * 2)
+            # Cache for trade ledger attribution at close
+            self._compound_mult_cache[symbol] = round(_compound_mult, 4)
+            logger.debug(
+                f"[{symbol}] Vol-target sizing: atr_pct={_atr_pct:.3%}, "
+                f"mult={_compound_mult:.2f}, risk={_sym_risk:.4f}"
+            )
+        except Exception as e:
+            logger.debug(f"Vol-target sizing error (using base): {e}")
+            _sym_risk = _sym_risk or self.config.risk_per_trade
+
         # Calculate position size (risk-based: qty = risk$ / (stop_dist * leverage))
         qty = self.risk_mgr.calculate_qty(
             signal_result.entry, signal_result.sl,
@@ -2815,6 +3450,54 @@ class MultiStrategyBot:
                 logger.info(f"[{trace_id}][{symbol}] Correlation guard (medium): qty * 0.85")
         except Exception:
             pass
+
+        # Dedicated CorrelationGate: per-symbol cluster logic
+        if self.correlation_gate:
+            try:
+                _open_for_corr = [
+                    {"symbol": s, "side": p.side}
+                    for s, p in open_pos.items()
+                ]
+                _corr_mult = self.correlation_gate.check_correlation_budget(
+                    new_symbol=symbol,
+                    new_side=side,
+                    open_positions=_open_for_corr,
+                )
+                if _corr_mult == 0.0:
+                    logger.info(f"[{trace_id}][{symbol}] CorrelationGate: cluster at capacity — SKIP")
+                    return
+                elif _corr_mult < 1.0:
+                    qty = qty * _corr_mult
+                    logger.info(f"[{trace_id}][{symbol}] CorrelationGate: size reduced to {_corr_mult:.0%}")
+            except Exception as e:
+                logger.debug(f"CorrelationGate check error: {e}")
+
+        # Sector exposure gate: prevent thematic concentration
+        if hasattr(self, '_sector_exposure_cls') and self._sector_exposure_cls:
+            try:
+                _se = self._sector_exposure_cls(total_equity=self.risk_mgr.equity)
+                _open_notionals = [
+                    (s, p.qty * p.entry) for s, p in open_pos.items()
+                ]
+                _se_result = _se.check_new_position(
+                    symbol=symbol,
+                    new_notional=qty * actual_entry if 'actual_entry' in dir() else qty * signal_result.entry,
+                    open_positions=_open_notionals,
+                )
+                if not _se_result.allowed:
+                    logger.info(
+                        f"[{trace_id}][{symbol}] SectorExposure: blocked by "
+                        f"{_se_result.limiting_sector} cap — SKIP"
+                    )
+                    return
+                elif _se_result.size_multiplier < 1.0:
+                    qty = qty * _se_result.size_multiplier
+                    logger.info(
+                        f"[{trace_id}][{symbol}] SectorExposure: size reduced to "
+                        f"{_se_result.size_multiplier:.0%} ({_se_result.limiting_sector})"
+                    )
+            except Exception as e:
+                logger.debug(f"SectorExposure check error: {e}")
 
         # Global Brain bias: adjust sizing based on macro regime
         try:
@@ -2948,6 +3631,10 @@ class MultiStrategyBot:
             # Signal flagger data for post-trade analysis
             "signal_flags": signal_result.metadata.get("signal_flags", ""),
             "flag_max_priority": signal_result.metadata.get("flag_max_priority", 0),
+            # EV tracking for calibration
+            "ev_per_dollar": signal_result.metadata.get("ev_per_dollar", ""),
+            "win_prob_deflated": signal_result.metadata.get("win_prob", ""),
+            "fee_drag_pct": signal_result.metadata.get("fee_drag_pct", ""),
         }
 
         # Track portfolio correlation risk for LLM learning feedback
@@ -3458,6 +4145,22 @@ class MultiStrategyBot:
         actual_entry = order_result.fill_price if order_result.fill_price > 0 else actual_entry
         qty = order_result.fill_qty if order_result.fill_qty > 0 else qty
 
+        # Record fill quality for execution analytics
+        if hasattr(self, 'execution_analytics') and self.execution_analytics:
+            try:
+                self.execution_analytics.record_fill(
+                    trade_id=f"{symbol}_{int(time.time())}",
+                    symbol=symbol,
+                    side=side,
+                    expected_price=snapshot_entry,
+                    actual_fill=order_result.fill_price if order_result.fill_price > 0 else actual_entry,
+                    notional=qty * actual_entry,
+                    regime=self._tick_regime_cache.get(symbol, "unknown"),
+                    signal_time=entry_reasons.get("signal_time", time.time()),
+                )
+            except Exception as e:
+                logger.debug(f"Execution analytics record error: {e}")
+
         self.pos_mgr.open_position(
             symbol=symbol,
             side=side,
@@ -3735,12 +4438,20 @@ class MultiStrategyBot:
             f"new_conf={action.confidence_new:.0f}%"
         )
 
-        # 1. Close the old position
+        # 1. Close the old position (exchange order + internal state)
         close_price = self._last_prices.get(close_symbol)
         if close_price is None:
             logger.warning(f"[{trace_id}] Rotation aborted: no price for {close_symbol}")
             return
 
+        # Submit exchange close order BEFORE updating internal state
+        _rot_pos = self.pos_mgr.positions.get(close_symbol)
+        if _rot_pos and _rot_pos.qty > 0:
+            _rot_close_side = "SELL" if _rot_pos.side == "LONG" else "BUY"
+            self.order_executor.close_position(
+                close_symbol, _rot_close_side, _rot_pos.qty, close_price,
+                reason=action.close_reason
+            )
         close_event = self.pos_mgr.force_close(
             close_symbol, close_price, action.close_reason
         )
@@ -4196,6 +4907,13 @@ class MultiStrategyBot:
                                             f"{result['details']} (urgency={urgency})"
                                         )
                                         if action_name == "close":
+                                            _exit_pos = self.pos_mgr.positions.get(symbol)
+                                            if _exit_pos and _exit_pos.qty > 0:
+                                                _ex_side = "SELL" if _exit_pos.side == "LONG" else "BUY"
+                                                self.order_executor.close_position(
+                                                    symbol, _ex_side, _exit_pos.qty, current_price,
+                                                    reason="LLM_EXIT_AGENT"
+                                                )
                                             self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_AGENT")
                                         elif action_name == "partial":
                                             partial_pct = result.get("partial_pct", 0.5)
@@ -4358,6 +5076,13 @@ class MultiStrategyBot:
 
                         # Handle close/partial actions that need exchange execution
                         if action == "close":
+                            _exit_pos2 = self.pos_mgr.positions.get(symbol)
+                            if _exit_pos2 and _exit_pos2.qty > 0:
+                                _ex_side2 = "SELL" if _exit_pos2.side == "LONG" else "BUY"
+                                self.order_executor.close_position(
+                                    symbol, _ex_side2, _exit_pos2.qty, current_price,
+                                    reason="LLM_EXIT_ENGINE"
+                                )
                             self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_ENGINE")
                         elif action == "partial":
                             # Partial close: reduce qty, log the partial
@@ -4523,6 +5248,11 @@ class MultiStrategyBot:
         btc_1h = 0.0
         btc_24h = 0.0
         eth_price = 0.0
+        # ETH isn't in DEFAULT_SYMBOLS but we need its price for ETH/BTC ratio context
+        try:
+            eth_price = self.fetcher.latest_price("ETH", "ethereum") or 0.0
+        except Exception:
+            pass
 
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             price = self._last_prices.get(symbol)
@@ -4801,6 +5531,47 @@ class MultiStrategyBot:
         except Exception as e:
             logger.debug(f"Deep memory edge map injection error: {e}")
 
+        # Strategy Signal Digest: full visibility into what ALL strategies are reading
+        # This gives the LLM brain access to every strategy's output — not just passing ones
+        try:
+            all_digests = self.ensemble.get_all_signal_digests()
+            if all_digests:
+                # Compact for token efficiency: only include symbols with signals
+                compact_digests = {}
+                for sym, digest in all_digests.items():
+                    if digest and digest.get("n_strategies", 0) > 0:
+                        compact_digests[sym] = {
+                            "n": digest["n_strategies"],
+                            "side": digest["consensus"]["dominant_side"],
+                            "agree": digest["consensus"]["agreement"],
+                            "dissent": digest["consensus"]["dissent"],
+                            "avg_conf": digest["consensus"]["avg_confidence"],
+                            "pass_votes": digest["consensus"]["would_pass_votes"],
+                            "readings": [
+                                {
+                                    "s": r["strategy"][:15],
+                                    "sd": r["side"][0],  # B or S
+                                    "c": r["confidence"],
+                                    "w": r["weight"],
+                                }
+                                for r in digest.get("readings", [])
+                            ],
+                        }
+                        if digest.get("chop_score", 0) > 0.3:
+                            compact_digests[sym]["chop"] = digest["chop_score"]
+                        # Include rejection reason so LLM knows why signals were blocked
+                        rej = digest.get("last_rejection")
+                        if rej:
+                            compact_digests[sym]["rejected"] = {
+                                "reason": rej["reason"],
+                                "conf": rej["confidence"],
+                                "side": rej["side"][0],  # B or S
+                            }
+                if compact_digests:
+                    global_ctx.extra["signal_digest"] = compact_digests
+        except Exception as e:
+            logger.debug(f"Signal digest injection error: {e}")
+
         # Risk context
         risk_ctx = LLMRiskContext(
             daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
@@ -4939,6 +5710,31 @@ class MultiStrategyBot:
             except Exception as e:
                 logger.debug(f"Adaptive risk context injection error: {e}")
 
+        # ── Soft-filter annotations: inject into LLM context ──
+        if getattr(self.config, 'enable_soft_filters', False) or getattr(self.config, 'soft_filter_log_only', False):
+            if hasattr(self, '_pending_annotations') and self._pending_annotations:
+                try:
+                    # Build compact filter assessment for each annotated signal
+                    filter_assessments = []
+                    near_misses = []
+                    for sym, ann_sig in self._pending_annotations.items():
+                        compact = ann_sig.to_compact_dict()
+                        compact["sym"] = sym
+                        if ann_sig.passed_all:
+                            filter_assessments.append(compact)
+                        elif not ann_sig.hard_rejected:
+                            near_misses.append(compact)
+
+                    if filter_assessments:
+                        global_ctx.extra["filter_annotations"] = filter_assessments
+                    if near_misses and getattr(self.config, 'soft_filter_near_miss', True):
+                        global_ctx.extra["near_miss_signals"] = near_misses[:5]  # Cap at 5
+
+                    # Clear pending annotations for next tick
+                    self._pending_annotations = {}
+                except Exception as e:
+                    logger.debug(f"Filter annotation injection error: {e}")
+
         return markets, global_ctx, risk_ctx, active_positions
 
     def _run_llm_metabrain(self, trace_id: str = ""):
@@ -5008,6 +5804,16 @@ class MultiStrategyBot:
                 f"regime={d.regime} size_mult={d.size_multiplier:.2f} "
                 f"trigger={trigger_label} | {d.notes}"
             )
+
+            # Feed LLM regime classification back to system-wide regime detector
+            # This closes the loop: LLM Regime Agent → system cache → strategy filters
+            if d.regime and d.regime != "unknown":
+                try:
+                    for sym in DEFAULT_SYMBOLS:
+                        self.regime_detector.update(sym, d.regime)
+                        self._tick_regime_cache[sym] = d.regime
+                except Exception:
+                    pass
 
             # In ADVISORY/VETO_ONLY mode: send to alerts for visibility
             if self.llm_mode in (LLMMode.ADVISORY, LLMMode.VETO_ONLY):

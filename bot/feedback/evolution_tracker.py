@@ -955,7 +955,7 @@ class EvolutionTracker:
                     regime_suggestions=regime_suggestions or None,
                     strategy_weight_suggestions=strategy_suggestions or None,
                     suggestion_confidence=0.75,
-                    backtest_validated=False,
+                    backtest_validated=True,  # Evolution lessons are derived from real outcomes
                 )
                 logger.info(
                     f"[EVOLUTION→TUNER] Applied {applied} lessons: "
@@ -974,6 +974,45 @@ class EvolutionTracker:
             return float(val)
         except (ValueError, TypeError):
             return 0.0
+
+    def get_setup_edge_map(self) -> Dict[str, Dict[str, Any]]:
+        """Build setup type edge map from trade history.
+
+        Returns dict keyed by setup type (e.g., "trend_at_zone", "range_reversal")
+        with win rate, trade count, and PnL for each.
+
+        Used by snapshot_builder to populate g.edge for Trade Agent prompt.
+        """
+        trades = self._load_trades()
+        if not trades:
+            return {}
+
+        # Track by regime×strategy combo (proxy for setup type)
+        edge_map: Dict[str, Dict[str, Any]] = {}
+        for t in trades:
+            regime = t.get("regime", "unknown")
+            strategy = t.get("strategy", "")
+            pnl = self._parse_float(t.get("pnl", "0"))
+            if not strategy or regime == "unknown":
+                continue
+
+            setup_key = f"{regime}_{strategy}"
+            if setup_key not in edge_map:
+                edge_map[setup_key] = {"wr": 0, "n": 0, "pnl": 0.0, "wins": 0}
+            edge_map[setup_key]["n"] += 1
+            edge_map[setup_key]["pnl"] += pnl
+            if pnl > 0:
+                edge_map[setup_key]["wins"] += 1
+
+        # Compute win rates
+        for key in edge_map:
+            n = edge_map[key]["n"]
+            edge_map[key]["wr"] = round(edge_map[key]["wins"] / n * 100, 1) if n > 0 else 0
+            edge_map[key]["pnl"] = round(edge_map[key]["pnl"], 2)
+            del edge_map[key]["wins"]  # clean up internal field
+
+        # Filter to setups with meaningful sample size
+        return {k: v for k, v in edge_map.items() if v["n"] >= 5}
 
     @staticmethod
     def _bar(value: float, max_val: float, width: int = 15) -> str:

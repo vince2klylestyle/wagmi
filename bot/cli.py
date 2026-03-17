@@ -41,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--mode", "-m",
-        choices=["paper", "replay", "live", "evolve", "tiers", "optimize"],
+        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare", "walkforward", "gate"],
         default="paper",
         help="Trading mode (default: paper)",
     )
@@ -78,6 +78,11 @@ def main():
         choices=["sharpe", "total_pnl", "win_rate", "total_return_pct"],
         help="Optimization metric (default: sharpe)",
     )
+    parser.add_argument(
+        "--modes",
+        default="0,2,3,5",
+        help="Comma-separated LLM modes for compare mode (default: 0,2,3,5)",
+    )
 
     args = parser.parse_args()
 
@@ -85,12 +90,18 @@ def main():
         _run_replay(args.replay_file)
     elif args.mode == "live":
         _run_live(args.yes)
+    elif args.mode == "compare":
+        _run_compare(args.symbols, args.days, args.modes)
+    elif args.mode == "walkforward":
+        _run_walkforward(args.symbols, args.days)
     elif args.mode == "evolve":
         _run_evolve()
     elif args.mode == "tiers":
         _run_tiers()
     elif args.mode == "optimize":
         _run_optimize(args.symbols, args.days, args.trials, args.metric)
+    elif args.mode == "gate":
+        _run_gate()
     else:
         _run_paper()
 
@@ -196,6 +207,40 @@ def _run_tiers():
     print(format_tier_comparison())
 
 
+def _run_walkforward(symbols_str: str, days: int):
+    """Run walk-forward validation to detect overfitting."""
+    from backtest.walk_forward import WalkForwardRunner
+
+    symbols = [s.strip() for s in symbols_str.split(",")]
+
+    print("=" * 70)
+    print(f"WALK-FORWARD VALIDATION: {', '.join(symbols)} | {days} days")
+    print("=" * 70)
+    print()
+
+    runner = WalkForwardRunner(symbols=symbols, total_days=days)
+    report = runner.run()
+    print(runner.format_report(report))
+
+
+def _run_compare(symbols_str: str, days: int, modes_str: str):
+    """Run mode comparison: A/B test LLM autonomy levels."""
+    from backtest.mode_comparison import ModeComparisonRunner
+
+    symbols = [s.strip() for s in symbols_str.split(",")]
+    modes = [int(m.strip()) for m in modes_str.split(",")]
+
+    print("=" * 70)
+    print(f"MODE COMPARISON: {', '.join(symbols)} | {days} days")
+    print(f"Modes: {modes}")
+    print("=" * 70)
+    print()
+
+    runner = ModeComparisonRunner(symbols=symbols, days=days, modes=modes)
+    report = runner.run()
+    print(runner.format_report(report))
+
+
 def _run_optimize(symbols_str: str, days: int, max_trials: int, metric: str):
     """Run parameter optimization against historical backtests."""
     from optimization.param_optimizer import (
@@ -275,6 +320,34 @@ def _run_optimize(symbols_str: str, days: int, max_trials: int, metric: str):
             "days": days,
         }, f, indent=2)
     print(f"\nResults saved to {output_path}")
+
+
+def _run_gate():
+    """Run go-live gate evaluation and print results."""
+    from validation.go_live_gate import GoLiveGate
+    from feedback.trade_ledger import TradeLedger
+
+    print("=" * 60)
+    print("  GO-LIVE GATE EVALUATION")
+    print("=" * 60)
+
+    try:
+        ledger = TradeLedger("data")
+    except Exception:
+        ledger = None
+
+    ic_tracker = None
+    try:
+        from feedback.ic_tracker import ICTracker
+        ic_tracker = ICTracker(data_dir="data")
+    except Exception:
+        pass
+
+    gate = GoLiveGate(trade_ledger=ledger, ic_tracker=ic_tracker)
+    result = gate.evaluate()
+    print(gate.format_report(result))
+
+    sys.exit(0 if result["passed"] else 1)
 
 
 if __name__ == "__main__":

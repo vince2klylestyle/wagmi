@@ -48,8 +48,8 @@ def make_signal(strategy: str, side: str, confidence: float) -> Signal:
         confidence=confidence,
         entry=100.0,
         sl=95.0,
-        tp1=105.0,
-        tp2=110.0,
+        tp1=110.0,   # R:R = 2.0 (sufficient for positive EV after fee drag)
+        tp2=120.0,
         atr=2.0,
     )
 
@@ -284,8 +284,8 @@ class TestWeightedEnsemble:
         ]
 
         merged = ensemble._merge_signals("BTC", signals)
-        # Plain average: (80+60)/2 = 70, * 1.01 consensus mult (2 agree) = 70.7
-        assert merged.confidence == pytest.approx(70.7, abs=0.1)
+        # Plain average: (80+60)/2 = 70, * 1.04 consensus mult (2 agree, default regime) = 72.8
+        assert merged.confidence == pytest.approx(72.8, abs=0.1)
 
 
 # ─── Weighted veto mode tests ────────────────────────────────────

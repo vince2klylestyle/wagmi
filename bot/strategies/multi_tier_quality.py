@@ -29,9 +29,12 @@ def _add_emas(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.copy()
     n = len(df)
-    df["EMA20"] = df["close"].ewm(span=min(20, max(2, n)), adjust=False).mean()
-    df["EMA50"] = df["close"].ewm(span=min(50, max(2, n)), adjust=False).mean()
-    df["EMA200"] = df["close"].ewm(span=min(200, max(2, n)), adjust=False).mean()
+    # Use proper min_periods (= span) to avoid garbage EMAs on sparse data.
+    # The strategy's len() guard requires 50+ bars, so EMA20/EMA50 will be valid.
+    # EMA200 will have NaN for early bars — downstream code handles this.
+    df["EMA20"] = df["close"].ewm(span=20, min_periods=20, adjust=False).mean()
+    df["EMA50"] = df["close"].ewm(span=50, min_periods=50, adjust=False).mean()
+    df["EMA200"] = df["close"].ewm(span=200, min_periods=min(200, n), adjust=False).mean()
     prev = df["close"].shift(1)
     tr = pd.concat([
         df["high"] - df["low"],
@@ -54,6 +57,33 @@ class MultiTierQualityStrategy(BaseStrategy):
 
     def get_required_timeframes(self) -> List[str]:
         return ["1h", "6h"]
+
+    def _compute_adx(self, df: pd.DataFrame, period: int = 14) -> float:
+        """Compute ADX. Returns 0-100. ADX < 20 = ranging."""
+        if len(df) < period + 1:
+            return 25.0  # insufficient data, assume neutral
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        close = df["close"].astype(float)
+        prev_close = close.shift(1)
+
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+        tr = pd.concat([
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ], axis=1).max(axis=1)
+
+        atr_val = tr.rolling(period, min_periods=1).mean()
+        plus_di = (plus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+        minus_di = (minus_dm.rolling(period, min_periods=1).mean() / atr_val.replace(0, 1e-9)) * 100
+
+        dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-9)) * 100
+        return float(dx.rolling(period, min_periods=1).mean().iloc[-1])
 
     def _ema_side_slope(self, df: pd.DataFrame) -> tuple:
         """Get EMA50 side (above/below) and slope (up/down)."""
@@ -164,7 +194,7 @@ class MultiTierQualityStrategy(BaseStrategy):
         df_1h = data.get("1h")
         df_6h = data.get("6h")
 
-        if df_1h is None or df_1h.empty or len(df_1h) < 20:
+        if df_1h is None or df_1h.empty or len(df_1h) < 50:
             return None
         if df_6h is None or df_6h.empty or len(df_6h) < 5:
             return None
@@ -172,6 +202,33 @@ class MultiTierQualityStrategy(BaseStrategy):
         # Add indicators
         df_1h = _add_emas(df_1h)
         df_6h = _add_emas(df_6h)
+
+        # ADX filter: skip signal generation in ranging/weak-trend markets
+        # multi_tier_quality is the biggest PnL loser — most vulnerable to chop.
+        # ADX 20-22 is the "maybe trending" zone with terrible WR. Raised to 22.
+        adx_val = self._compute_adx(df_1h)
+        # Use centralized ADX threshold from config
+        try:
+            from trading_config import TradingConfig as _TC
+            _adx_thresh = _TC().adx_min_trending
+        except Exception:
+            _adx_thresh = 22.0
+        if adx_val < _adx_thresh:
+            return None
+
+        # Squeeze detection: skip signals during volatility compression.
+        # ATR compression (current ATR < 60% of 20-bar ATR average) = squeeze.
+        # During squeeze, price direction is 50/50 — signals are coin flips.
+        if "ATR14" in df_1h.columns and not df_1h["ATR14"].isna().all():
+            _cur_atr = float(df_1h["ATR14"].iloc[-1])
+            _avg_atr = float(df_1h["ATR14"].tail(20).mean())
+            try:
+                from trading_config import TradingConfig as _TC
+                _squeeze_ratio = _TC().squeeze_atr_ratio
+            except Exception:
+                _squeeze_ratio = 0.65
+            if _avg_atr > 0 and _cur_atr < _avg_atr * _squeeze_ratio:
+                return None  # Volatility squeeze — skip
 
         # Determine side from 1h EMA crossover
         side_1h = self._one_hour_side(df_1h)
@@ -200,7 +257,12 @@ class MultiTierQualityStrategy(BaseStrategy):
         atr_val = float(df_1h["ATR14"].iloc[-1]) if "ATR14" in df_1h.columns and not df_1h["ATR14"].isna().all() else None
         swing = self._detect_swing(df_1h, side)
 
-        K = 1.8
+        # Use centralized ATR multiplier (was hardcoded 1.8, now from config for consistency)
+        try:
+            from trading_config import TradingConfig as _TC
+            K = _TC().sl_atr_multiplier
+        except Exception:
+            K = 1.5
         if swing is None or pd.isna(swing):
             if atr_val is None:
                 return None
@@ -244,15 +306,21 @@ class MultiTierQualityStrategy(BaseStrategy):
             else:
                 ema_6h_align = df_6h["EMA20"].iloc[-1] < df_6h["EMA50"].iloc[-1]
 
-        if tier == "PRIORITY" and not ema_6h_align and conf < 80:
-            tier = "REGULAR"
+        # 6h misalignment downgrades ANY tier (not just PRIORITY).
+        # REGULAR/MANUAL signals with opposite 6h trend are net losers.
+        if not ema_6h_align and conf < 80:
+            if tier == "PRIORITY":
+                tier = "REGULAR"
+            elif tier == "REGULAR":
+                tier = "MANUAL"
+            elif tier == "MANUAL":
+                return None  # No tier left — reject signal
 
-        # Soft regime gate: in non-trending regimes, cap confidence instead of hard reject
+        # Hard regime gate: neutral regime (no directional conviction) → reject.
+        # Backtest data shows neutral-regime trades are net losers. The previous
+        # soft-cap to 68% still allowed losing trades through.
         if abs(regime) == 0:
-            if not ema_6h_align or not vwap_align:
-                conf = min(conf, 45)  # Soft cap — still allows signal through
-            else:
-                conf = min(conf, 68)  # Both align but no trend — moderate cap
+            return None  # No trend on any timeframe = no trade
 
         if conf < 55:
             return None
@@ -285,6 +353,13 @@ class MultiTierQualityStrategy(BaseStrategy):
                 "ema_6h_align": ema_6h_align,
                 "stop_width": stop_width,
                 "swing_used": swing is not None,
+                "adx": round(adx_val, 1),
+                # Regime classification for system-wide regime detector
+                "regime": (
+                    "trend" if abs(regime) >= 2 else
+                    "range" if regime == 0 else
+                    "unknown"
+                ),
             },
         )
 

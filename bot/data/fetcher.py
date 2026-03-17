@@ -62,7 +62,7 @@ COINGECKO_TIMEFRAME_MAP = {
     "6h":    {"days": 90, "freq": "6h"},
     "16h":   {"days": 90, "freq": "16h"},
     "1d":    {"days": 90, "freq": "1D"},
-    "daily": {"days": 30, "freq": "1h"},
+    "daily": {"days": 90, "freq": "1D"},
 }
 
 
@@ -191,6 +191,81 @@ class DataFetcher:
         self._ccxt_failures = 0
         self._ccxt_first_success: Dict[str, bool] = {}  # log first success per symbol
 
+        # Data freshness tracking: {(symbol, timeframe): timestamp}
+        self._last_fetch_ts: Dict[Tuple[str, str], float] = {}
+
+    # ─── OHLCV integrity validation ───────────────────────────────
+
+    def _validate_ohlcv(self, df: pd.DataFrame, symbol: str, timeframe: str) -> pd.DataFrame:
+        """Validate OHLCV candle integrity. Drop invalid rows, warn if >10% bad.
+
+        Checks per candle:
+        - No NaN/inf in OHLCV columns
+        - high >= open, high >= close, high >= low
+        - low <= open, low <= close
+        - volume >= 0
+        - close > 0, open > 0
+        """
+        if df is None or df.empty:
+            return df
+
+        ohlcv_cols = ["open", "high", "low", "close", "volume"]
+        present = [c for c in ohlcv_cols if c in df.columns]
+        if len(present) < 4:  # need at least OHLC
+            return df
+
+        original_len = len(df)
+        mask = pd.Series(True, index=df.index)
+
+        # Check for NaN/inf
+        for col in present:
+            mask &= df[col].notna() & ~df[col].isin([float("inf"), float("-inf")])
+
+        # OHLC relationship checks
+        if all(c in df.columns for c in ["open", "high", "low", "close"]):
+            mask &= (df["high"] >= df["open"]) & (df["high"] >= df["close"])
+            mask &= (df["low"] <= df["open"]) & (df["low"] <= df["close"])
+            mask &= (df["high"] >= df["low"])
+            mask &= (df["close"] > 0) & (df["open"] > 0)
+
+        # Volume check
+        if "volume" in df.columns:
+            mask &= df["volume"] >= 0
+
+        invalid_count = original_len - mask.sum()
+        if invalid_count > 0:
+            pct_bad = invalid_count / original_len * 100
+            df = df[mask].reset_index(drop=True)
+            if pct_bad > 10:
+                logger.warning(
+                    f"[DATA] {symbol}/{timeframe}: {invalid_count}/{original_len} "
+                    f"candles INVALID ({pct_bad:.1f}%) — dataset suspect"
+                )
+            else:
+                logger.info(
+                    f"[DATA] {symbol}/{timeframe}: dropped {invalid_count} invalid "
+                    f"candle(s) ({pct_bad:.1f}%)"
+                )
+
+        return df
+
+    def get_data_freshness(self, symbol: str, timeframe: str) -> Optional[float]:
+        """Return seconds since last successful fetch for symbol/timeframe.
+
+        Returns None if never fetched.
+        """
+        ts = self._last_fetch_ts.get((symbol, timeframe))
+        if ts is None:
+            return None
+        return time.time() - ts
+
+    def is_data_stale(self, symbol: str, timeframe: str, max_age_s: float = 300.0) -> bool:
+        """Check if data is stale (>max_age_s since last fetch). Default 5 min."""
+        age = self.get_data_freshness(symbol, timeframe)
+        if age is None:
+            return True  # never fetched = stale
+        return age > max_age_s
+
     # ─── CCXT initialization ─────────────────────────────────────
 
     def _init_ccxt(self):
@@ -246,25 +321,29 @@ class DataFetcher:
             self._ccxt_module = None
 
     def _ccxt_rate_limit(self, ex_name: str):
-        """Enforce per-exchange rate limiting."""
-        min_gap = self._exchange_rate_limits.get(ex_name, 0.2)
-        last_ts = self._last_exchange_request_ts.get(ex_name, 0.0)
-        gap = time.time() - last_ts
-        if gap < min_gap:
-            time.sleep(min_gap - gap + random.uniform(0, 0.05))
-        self._last_exchange_request_ts[ex_name] = time.time()
+        """Enforce per-exchange rate limiting (thread-safe)."""
+        with self._lock:
+            min_gap = self._exchange_rate_limits.get(ex_name, 0.2)
+            last_ts = self._last_exchange_request_ts.get(ex_name, 0.0)
+            gap = time.time() - last_ts
+            wait = min_gap - gap + random.uniform(0, 0.05) if gap < min_gap else 0
+            self._last_exchange_request_ts[ex_name] = time.time() + max(0, wait)
+        if wait > 0:
+            time.sleep(wait)
 
     # ─── Cache ────────────────────────────────────────────────────
 
     def _get_cached(self, key: str) -> Optional[pd.DataFrame]:
-        if key in self._cache:
-            ts, df = self._cache[key]
-            if time.time() - ts < self.cache_ttl:
-                return df.copy()
+        with self._lock:
+            if key in self._cache:
+                ts, df = self._cache[key]
+                if time.time() - ts < self.cache_ttl:
+                    return df.copy()
         return None
 
     def _set_cache(self, key: str, df: pd.DataFrame):
-        self._cache[key] = (time.time(), df.copy())
+        with self._lock:
+            self._cache[key] = (time.time(), df.copy())
 
     # ─── Disk cache (backtest reproducibility) ────────────────────
 
@@ -353,9 +432,11 @@ class DataFetcher:
         supported = getattr(exchange, "timeframes", {}) or {}
 
         if timeframe == "daily":
-            # Zone strategies expect hourly-granularity data
-            limit = self._candles_for_days("1h", self.backtest_days) if self.backtest_days else 720
-            return "1h", limit, None
+            # Zone strategies need actual daily OHLCV — aggregate from 1h
+            # Need 60+ days of 1h data to produce 50+ daily candles for indicators
+            days_needed = max(self.backtest_days, 60) if self.backtest_days else 90
+            limit = self._candles_for_days("1h", days_needed)
+            return "1h", limit, "1d"
         elif timeframe == "16h":
             # No exchange supports 16h natively; aggregate from 1h
             limit = self._candles_for_days("1h", self.backtest_days) if self.backtest_days else 500
@@ -398,7 +479,7 @@ class DataFetcher:
 
                 # Calculate `since` — always pass it (required for Hyperliquid)
                 tf_ms = TIMEFRAME_MS.get(fetch_tf, 60 * 60_000)
-                since_ms = int((time.time() * 1000) - (limit * tf_ms * 1.1))
+                since_ms = int((time.time() * 1000) - (limit * tf_ms))
 
                 # Rate limit + retry on 429
                 candles = None
@@ -462,7 +543,13 @@ class DataFetcher:
                                 f"(max {max_age}m) from {ex_name}"
                             )
 
+                # Validate OHLCV integrity
+                df = self._validate_ohlcv(df, symbol_name, timeframe)
+                if df.empty or len(df) < 5:
+                    continue
+
                 self._circuit_breaker.record_success(ex_name)
+                self._last_fetch_ts[(symbol_name, timeframe)] = time.time()
 
                 logger.info(
                     f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} "
@@ -619,8 +706,7 @@ class DataFetcher:
         if raw is None or raw.empty:
             return pd.DataFrame()
 
-        if timeframe == "daily":
-            return raw.copy()
+
 
         return self._resample_cg_to_ohlcv(raw, tf_config["freq"])
 
@@ -660,10 +746,12 @@ class DataFetcher:
         logger.info(f"[{symbol_name}] CCXT unavailable for {timeframe}, falling back to CoinGecko")
         df = self._fetch_cg_ohlcv(coin_id, timeframe)
         if not df.empty:
+            df = self._validate_ohlcv(df, symbol_name, timeframe)
             logger.info(f"[DATA] {symbol_name} fetched {len(df)} candles for {timeframe} via CoinGecko")
             self._check_data_continuity(df, symbol_name, timeframe)
             self._save_disk_cache(symbol_name, timeframe, df)
             self._set_cache(cache_key, df)
+            self._last_fetch_ts[(symbol_name, timeframe)] = time.time()
         return df
 
     def fetch_multi_timeframe(
@@ -735,10 +823,7 @@ class DataFetcher:
                     continue
 
                 for tf, freq in tf_list:
-                    if tf == "daily":
-                        df = raw.copy()
-                    else:
-                        df = self._resample_cg_to_ohlcv(raw, freq)
+                    df = self._resample_cg_to_ohlcv(raw, freq)
                     cache_key = f"ohlcv:{symbol_name}:{tf}"
                     if not df.empty:
                         self._set_cache(cache_key, df)
@@ -848,6 +933,30 @@ class DataFetcher:
                     return float(rate)
             except Exception as e:
                 logger.debug(f"[{symbol_name}] Funding rate {ex_name}: {e}")
+                continue
+        return None
+
+    def fetch_open_interest(self, symbol_name: str) -> Optional[float]:
+        """Fetch current open interest for a symbol via CCXT.
+
+        Returns total OI in USD. Returns None if not available.
+        """
+        if not self._ccxt_available:
+            return None
+
+        chain = self._symbol_exchanges.get(symbol_name, [])
+        for ex_name, pair in chain:
+            exchange = self._exchanges.get(ex_name)
+            if exchange is None:
+                continue
+            try:
+                self._ccxt_requests += 1
+                oi_data = exchange.fetch_open_interest(pair)
+                oi_value = oi_data.get("openInterestAmount") or oi_data.get("openInterestValue")
+                if oi_value is not None:
+                    return float(oi_value)
+            except Exception as e:
+                logger.debug(f"[{symbol_name}] Open interest {ex_name}: {e}")
                 continue
         return None
 

@@ -1257,6 +1257,44 @@
         "agreement"
       ],
       "source": "student_course"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "Overconfidence detected: 11 high-conf trades lost",
+      "confidence": 0.6,
+      "evidence_count": 3,
+      "supporting": [
+        "11 losses at >80% confidence",
+        "11 losses at >80% confidence",
+        "11 losses at >80% confidence"
+      ],
+      "contradicting": [],
+      "created_at": 1773758320.4518354,
+      "last_validated": 1773767095.8282857,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "calibration",
+      "tags": [
+        "overconfident"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 44% win rate (50 trades)",
+      "confidence": 1.5,
+      "evidence_count": 2,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1773758320.4626155,
+      "last_validated": 1773767095.8433554,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
     }
   ]
 }

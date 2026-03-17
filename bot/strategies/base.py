@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any, List
 
 import pandas as pd
 
+from trading_config import TradingConfig as _TC
+
 
 @dataclass
 class Signal:
@@ -27,9 +29,9 @@ class Signal:
     signal_context: str = ""  # human-readable WHY this signal fired
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    # Minimum stop width as fraction of entry price (0.3%).
+    # Single source of truth: trading_config.py MIN_STOP_WIDTH_PCT env var.
     # Prevents near-zero stops from creating infinite R:R and giant positions.
-    MIN_STOP_WIDTH_PCT = 0.003
+    MIN_STOP_WIDTH_PCT = _TC().min_stop_width_pct
 
     @property
     def stop_width(self) -> float:

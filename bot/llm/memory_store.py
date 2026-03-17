@@ -233,9 +233,12 @@ def _is_quality_note(text: str) -> bool:
         return True
 
     # Generic/obvious statements that don't teach anything
+    # Note: "lost money" and "made money" removed — these ARE useful when paired
+    # with specific context (e.g., "we lost money shorting SOL in trends").
+    # Only reject truly vague forms: "lost some money", "made some money".
     _NOISE_PATTERNS = [
         "went up", "went down", "price increased", "price decreased",
-        "lost money", "made money", "trade lost", "trade won",
+        "lost some money", "made some money",
         "market is uncertain", "regime is unknown", "no clear direction",
         "will monitor", "need more data", "waiting for",
         "nothing notable", "no significant", "flat market",
@@ -244,10 +247,16 @@ def _is_quality_note(text: str) -> bool:
         if pattern in text_lower:
             return False
 
+    # Notes with specific data (symbols + percentages/dollars) are always valuable
+    import re
+    has_specific_data = bool(re.search(r'\d+%|\$\d+|\d+\.\d+', text))
+    has_symbol = any(sym in text.upper() for sym in ["BTC", "ETH", "SOL", "DOGE", "HYPE", "PEPE", "FARTCOIN", "WIF"])
+    if has_specific_data and has_symbol:
+        return True
+
     # Should mention at least one of: symbol, condition, or outcome pattern
     # Notes with commas or semicolons likely have structure (condition + result)
     has_structure = any(c in text for c in [",", ";", "—", "→", "because", "when", "if"])
-    has_symbol = any(sym in text.upper() for sym in ["BTC", "ETH", "SOL", "DOGE", "HYPE", "PEPE"])
 
     # Accept if it has structure OR mentions a specific symbol
     return has_structure or has_symbol
