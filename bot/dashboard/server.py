@@ -288,6 +288,156 @@ tr:hover td { background: rgba(255,255,255,0.015); }
 .scroll-y::-webkit-scrollbar-track { background: transparent; }
 .scroll-y::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+/* ── Heatmap tiles ─────────────────────────────────────────────────── */
+.heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px;
+}
+.heatmap-tile {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--muted);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.heatmap-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.heatmap-tile.bull { border-left-color: var(--green); }
+.heatmap-tile.bear { border-left-color: var(--red); }
+.heatmap-tile.neutral { border-left-color: var(--muted); }
+.heatmap-tile.danger {
+    border-left-color: var(--red);
+    animation: danger-pulse 2s ease infinite;
+}
+@keyframes danger-pulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(255,68,102,0); }
+    50% { box-shadow: 0 0 12px rgba(255,68,102,0.3); }
+}
+.tile-symbol { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.tile-bias {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.tile-bias.bull { color: var(--green); }
+.tile-bias.bear { color: var(--red); }
+.tile-bias.neutral { color: var(--muted); }
+.tile-conf-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+.tile-conf-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+.tile-meta {
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+}
+.tile-arrow { font-size: 20px; position: absolute; top: 12px; right: 14px; }
+
+/* ── Copy trader banner ───────────────────────────────────────────── */
+.copy-banner {
+    background: linear-gradient(135deg, rgba(0,230,160,0.08), rgba(68,136,255,0.08));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.copy-banner-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+.copy-banner-value {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+/* ── Rejected / What-if signals ───────────────────────────────────── */
+.reject-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(28,28,48,0.5);
+    font-size: 12px;
+    gap: 12px;
+}
+.reject-row:hover { background: rgba(255,255,255,0.015); }
+.reject-gate {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255,196,68,0.12);
+    color: var(--yellow);
+    white-space: nowrap;
+}
+.reject-symbol { font-weight: 700; width: 80px; }
+.reject-side { width: 50px; }
+.reject-conf { width: 50px; color: var(--muted); }
+.reject-reason { flex: 1; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reject-whatif {
+    font-weight: 700;
+    width: 80px;
+    text-align: right;
+}
+
+/* ── Enhanced position row ────────────────────────────────────────── */
+.pos-state {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.pos-state-open { background: rgba(68,136,255,0.15); color: var(--blue); }
+.pos-state-tp1  { background: rgba(0,230,160,0.15); color: var(--green); }
+.pos-state-trailing { background: rgba(163,102,255,0.15); color: var(--purple); }
+.pos-notes {
+    font-size: 10px;
+    color: var(--muted);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pos-levels {
+    font-size: 10px;
+    color: var(--muted);
+}
+.pos-levels .sl { color: var(--red); }
+.pos-levels .tp { color: var(--green); }
+
+/* ── Unrealized PnL hero ─────────────────────────────────────────── */
+.pnl-hero {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1.1;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────── */
 @media (max-width: 1280px) {
     .grid-5 { grid-template-columns: repeat(3, 1fr); }
@@ -370,25 +520,59 @@ tr:hover td { background: rgba(255,255,255,0.015); }
             </div>
         </div>
         <div class="card">
-            <h3>Open Positions</h3>
+            <h3>Open Positions &mdash; <span id="total-unrealized" style="color:var(--muted)">$0.00 unrealized</span></h3>
             <div class="scroll-y">
                 <table>
                     <thead>
                         <tr>
                             <th>Symbol</th>
                             <th>Side</th>
+                            <th>State</th>
                             <th>Entry</th>
+                            <th>SL / TP1 / TP2</th>
                             <th>Unrealized PnL</th>
                             <th>Leverage</th>
                             <th>Hold Time</th>
+                            <th>Thesis</th>
                         </tr>
                     </thead>
                     <tbody id="positions-body">
-                        <tr><td colspan="6" class="empty">No open positions</td></tr>
+                        <tr><td colspan="9" class="empty">No open positions</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
+    </div>
+
+    <!-- ═══ Copy Trader Summary ══════════════════════════════════════ -->
+    <div class="copy-banner" id="copy-banner" style="display:none;">
+        <div>
+            <div class="copy-banner-label">Copy Trader Summary</div>
+            <div class="copy-banner-value" id="copy-summary">No active positions</div>
+        </div>
+        <div style="text-align:right;">
+            <div class="copy-banner-label">Session PnL</div>
+            <div class="copy-banner-value" id="copy-session-pnl" style="color:var(--muted)">$0.00</div>
+        </div>
+    </div>
+
+    <!-- ═══ Market Heatmap ═════════════════════════════════════════════ -->
+    <div class="section-title">Market Heatmap</div>
+    <div class="card" style="margin-bottom:20px;">
+        <h3>Signal Strength by Symbol &mdash; <span style="color:var(--green)">&#9650; Bullish</span> &nbsp; <span style="color:var(--red)">&#9660; Bearish</span> &nbsp; <span style="color:var(--yellow)">&#9888; Danger</span></h3>
+        <div class="heatmap-grid" id="heatmap-grid">
+            <div class="empty">Loading market data...</div>
+        </div>
+    </div>
+
+    <!-- ═══ Rejected Signals / What-If ═════════════════════════════════ -->
+    <div class="section-title">Rejected Signals &mdash; What If?</div>
+    <div class="card" style="margin-bottom:20px;">
+        <h3>Signals blocked by risk gates (last 24h) &mdash; Could they have been winners?</h3>
+        <div class="scroll-y" id="rejections-list">
+            <div class="empty">No rejected signals</div>
+        </div>
+        <div id="rejection-summary" style="padding:10px 0 0 0; font-size:11px; color:var(--muted);"></div>
     </div>
 
     <!-- ═══ Today's Performance + Signal Performance ═════════════════ -->
@@ -654,6 +838,105 @@ function renderStrategyBars(byStrategy) {
     }).join('');
 }
 
+// ── Render heatmap tiles ──────────────────────────────────────────────
+function renderHeatmap(marketData) {
+    const grid = document.getElementById('heatmap-grid');
+    if (!marketData || !marketData.symbols || marketData.symbols.length === 0) {
+        grid.innerHTML = '<div class="empty">No market signals yet — waiting for first scan</div>';
+        return;
+    }
+
+    // Sort: strongest signals first
+    const sorted = marketData.symbols.sort((a, b) => b.max_confidence - a.max_confidence);
+
+    grid.innerHTML = sorted.map(s => {
+        const bias = s.bias || 'NEUTRAL';
+        const biasClass = bias === 'BULL' ? 'bull' : (bias === 'BEAR' ? 'bear' : 'neutral');
+        const isDanger = s.is_danger || false;
+        const tileClass = isDanger ? 'heatmap-tile danger' : ('heatmap-tile ' + biasClass);
+        const arrow = bias === 'BULL' ? '<span class="tile-arrow" style="color:var(--green)">&#9650;</span>' :
+                      bias === 'BEAR' ? '<span class="tile-arrow" style="color:var(--red)">&#9660;</span>' :
+                      '<span class="tile-arrow" style="color:var(--muted)">&#9644;</span>';
+        const confPct = Math.min(s.max_confidence || 0, 100);
+        const confColor = bias === 'BULL' ? 'var(--green)' : (bias === 'BEAR' ? 'var(--red)' : 'var(--muted)');
+        const dangerTag = isDanger ? ' <span style="color:var(--yellow);font-size:10px;">&#9888; CONFLICTING</span>' : '';
+
+        return '<div class="' + tileClass + '">' +
+            arrow +
+            '<div class="tile-symbol">' + s.symbol + dangerTag + '</div>' +
+            '<div class="tile-bias ' + biasClass + '">' + bias + ' — ' + confPct.toFixed(0) + '% conf</div>' +
+            '<div class="tile-conf-track"><div class="tile-conf-fill" style="width:' + confPct + '%;background:' + confColor + '"></div></div>' +
+            '<div class="tile-meta">' +
+                '<span>' + (s.num_strategies || 0) + ' strat' + (s.num_strategies !== 1 ? 's' : '') + ' agree</span>' +
+                '<span>' + (s.buy_signals || 0) + 'B / ' + (s.sell_signals || 0) + 'S</span>' +
+            '</div>' +
+            (s.regime ? '<div style="font-size:10px;color:var(--cyan);margin-top:4px;">Regime: ' + s.regime + '</div>' : '') +
+        '</div>';
+    }).join('');
+}
+
+// ── Render rejected signals ──────────────────────────────────────────
+function renderRejections(rejData) {
+    const container = document.getElementById('rejections-list');
+    const summary = document.getElementById('rejection-summary');
+
+    if (!rejData || !rejData.rejections || rejData.rejections.length === 0) {
+        container.innerHTML = '<div class="empty">No rejected signals in the last 24h — all signals passed gates or no signals generated</div>';
+        summary.textContent = '';
+        return;
+    }
+
+    container.innerHTML = rejData.rejections.slice(0, 30).map(r => {
+        const isLong = (r.side || '').toUpperCase() === 'BUY' || (r.side || '').toUpperCase() === 'LONG';
+        return '<div class="reject-row">' +
+            '<span class="reject-symbol">' + (r.symbol || '?') + '</span>' +
+            '<span class="reject-side">' + sidePill(r.side) + '</span>' +
+            '<span class="reject-conf">' + (r.confidence || 0).toFixed(0) + '%</span>' +
+            '<span class="reject-gate">' + (r.gate || 'unknown') + '</span>' +
+            '<span class="reject-reason" title="' + (r.reason || '') + '">' + (r.reason || 'No reason given') + '</span>' +
+            '<span style="color:var(--muted);font-size:10px;width:80px;text-align:right;">' + (r.strategy || '') + '</span>' +
+        '</div>';
+    }).join('');
+
+    // Rejection summary
+    if (rejData.gate_summary) {
+        const gates = Object.entries(rejData.gate_summary).sort((a,b) => b[1] - a[1]);
+        summary.innerHTML = 'Gate breakdown: ' + gates.map(([gate, count]) =>
+            '<span class="reject-gate" style="margin-right:6px;">' + gate + ': ' + count + '</span>'
+        ).join('');
+    }
+}
+
+// ── State badge helper ───────────────────────────────────────────────
+function stateBadge(state) {
+    const s = (state || 'OPEN').toUpperCase();
+    if (s === 'TP1_HIT' || s === 'TP1') return '<span class="pos-state pos-state-tp1">TP1 HIT</span>';
+    if (s === 'TRAILING') return '<span class="pos-state pos-state-trailing">TRAILING</span>';
+    return '<span class="pos-state pos-state-open">OPEN</span>';
+}
+
+// ── Load market heatmap data ─────────────────────────────────────────
+async function loadMarket() {
+    try {
+        const resp = await fetch('/api/market');
+        const data = await resp.json();
+        renderHeatmap(data);
+    } catch (err) {
+        console.error('Market load error:', err);
+    }
+}
+
+// ── Load rejected signals ────────────────────────────────────────────
+async function loadRejections() {
+    try {
+        const resp = await fetch('/api/rejections');
+        const data = await resp.json();
+        renderRejections(data);
+    } catch (err) {
+        console.error('Rejections load error:', err);
+    }
+}
+
 // ── Main data loader ──────────────────────────────────────────────────
 async function loadAll() {
     try {
@@ -722,24 +1005,59 @@ async function loadAll() {
             buildEquityChart(eq);
         }
 
-        // ── Open Positions ────────────────────────────────────────
+        // ── Open Positions (enhanced) ────────────────────────────
         const positions = data.positions || [];
         const posBody = document.getElementById('positions-body');
         if (positions.length > 0) {
+            // Total unrealized PnL
+            const totalUnrealized = positions.reduce((sum, p) => sum + (p.unrealized_pnl || p.pnl || 0), 0);
+            const tuEl = document.getElementById('total-unrealized');
+            tuEl.textContent = fmt$(totalUnrealized) + ' unrealized';
+            tuEl.style.color = pnlColor(totalUnrealized);
+
             posBody.innerHTML = positions.map(p => {
                 const pnlVal = p.unrealized_pnl || p.pnl || 0;
                 const holdSec = p.hold_time_s || 0;
+                const entry = p.entry_price || p.entry || 0;
+                const sl = p.sl || 0;
+                const tp1 = p.tp1 || 0;
+                const tp2 = p.tp2 || 0;
+                const state = p.state || 'OPEN';
+                const notes = p.notes || '';
+                const levelsHtml = (sl ? '<span class="sl">SL $' + sl.toFixed(2) + '</span>' : '') +
+                    (tp1 ? ' / <span class="tp">TP1 $' + tp1.toFixed(2) + '</span>' : '') +
+                    (tp2 ? ' / <span class="tp">TP2 $' + tp2.toFixed(2) + '</span>' : '');
+
                 return '<tr>' +
                     '<td><strong>' + (p.symbol || '--') + '</strong></td>' +
                     '<td>' + sidePill(p.side) + '</td>' +
-                    '<td>$' + (p.entry_price || p.entry || 0).toFixed(2) + '</td>' +
+                    '<td>' + stateBadge(state) + '</td>' +
+                    '<td>$' + entry.toFixed(2) + '</td>' +
+                    '<td class="pos-levels">' + (levelsHtml || '--') + '</td>' +
                     '<td class="' + (pnlVal >= 0 ? 'pos-pnl-positive' : 'pos-pnl-negative') + '">' + fmt$(pnlVal) + '</td>' +
                     '<td>' + (p.leverage || 1) + 'x</td>' +
                     '<td>' + fmtDuration(holdSec) + '</td>' +
+                    '<td class="pos-notes" title="' + notes.replace(/"/g, '&quot;') + '">' + (notes || '--') + '</td>' +
                 '</tr>';
             }).join('');
+
+            // Copy trader banner
+            const banner = document.getElementById('copy-banner');
+            banner.style.display = 'flex';
+            const posCount = positions.length;
+            const sides = positions.map(p => (p.side || '').toUpperCase());
+            const longs = sides.filter(s => s === 'BUY' || s === 'LONG').length;
+            const shorts = posCount - longs;
+            document.getElementById('copy-summary').textContent =
+                posCount + ' position' + (posCount > 1 ? 's' : '') + ' open (' + longs + ' long, ' + shorts + ' short)';
+            const sessionPnlEl = document.getElementById('copy-session-pnl');
+            sessionPnlEl.textContent = fmt$(totalUnrealized);
+            sessionPnlEl.style.color = pnlColor(totalUnrealized);
         } else {
-            posBody.innerHTML = '<tr><td colspan="6" class="empty">No open positions</td></tr>';
+            posBody.innerHTML = '<tr><td colspan="9" class="empty">No open positions</td></tr>';
+            document.getElementById('total-unrealized').textContent = '$0.00 unrealized';
+            document.getElementById('total-unrealized').style.color = 'var(--muted)';
+            document.getElementById('copy-banner').style.display = 'none';
         }
 
         // ── Signal Performance by Strategy ────────────────────────
@@ -866,7 +1184,11 @@ async function loadAll() {
 
 // ── Initial load + auto-refresh ───────────────────────────────────────
 loadAll();
-setInterval(loadAll, 30000);
+loadMarket();
+loadRejections();
+setInterval(loadAll, 15000);      // positions + PnL every 15s
+setInterval(loadMarket, 60000);   // heatmap every 60s
+setInterval(loadRejections, 120000); // rejections every 2min
 </script>
 </body>
 </html>"""
@@ -896,6 +1218,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/equity":     self._serve_equity_data,
             "/api/positions":  self._serve_positions,
             "/api/health":     self._serve_health,
+            "/api/market":     self._serve_market_data,
+            "/api/rejections": self._serve_rejections,
         }
         handler = routes.get(path)
         if handler:
@@ -991,6 +1315,115 @@ class DashboardHandler(BaseHTTPRequestHandler):
             logger.exception("Error serving /api/health")
             self._send_json({"error": str(exc)}, status=500)
 
+    # ── /api/market (heatmap data) ────────────────────────────────────
+    def _serve_market_data(self):
+        """Aggregate today's signals by symbol for the heatmap."""
+        try:
+            from data.db import get_signals_today
+            signals = get_signals_today()
+
+            by_symbol: Dict[str, Any] = {}
+            for sig in signals:
+                sym = sig.get("symbol", "???")
+                if sym not in by_symbol:
+                    by_symbol[sym] = {
+                        "symbol": sym,
+                        "buy_signals": 0,
+                        "sell_signals": 0,
+                        "max_confidence": 0,
+                        "avg_confidence": 0,
+                        "strategies": set(),
+                        "regime": None,
+                        "latest_entry": 0,
+                        "latest_sl": 0,
+                        "latest_tp1": 0,
+                        "_conf_sum": 0,
+                        "_count": 0,
+                    }
+                rec = by_symbol[sym]
+                side = (sig.get("side") or "").upper()
+                if side in ("BUY", "LONG"):
+                    rec["buy_signals"] += 1
+                else:
+                    rec["sell_signals"] += 1
+
+                conf = sig.get("confidence") or 0
+                rec["_conf_sum"] += conf
+                rec["_count"] += 1
+                if conf > rec["max_confidence"]:
+                    rec["max_confidence"] = conf
+                    rec["latest_entry"] = sig.get("entry") or 0
+                    rec["latest_sl"] = sig.get("sl") or 0
+                    rec["latest_tp1"] = sig.get("tp1") or 0
+
+                strat = sig.get("strategy")
+                if strat:
+                    rec["strategies"].add(strat)
+
+                # Try to extract regime from metadata
+                meta = sig.get("metadata")
+                if isinstance(meta, dict) and meta.get("regime"):
+                    rec["regime"] = meta["regime"]
+                elif isinstance(meta, str):
+                    try:
+                        import json as _j
+                        m = _j.loads(meta)
+                        if m.get("regime"):
+                            rec["regime"] = m["regime"]
+                    except Exception:
+                        pass
+
+            # Finalize
+            symbols_list = []
+            for sym, rec in by_symbol.items():
+                rec["avg_confidence"] = (
+                    rec["_conf_sum"] / rec["_count"] if rec["_count"] > 0 else 0
+                )
+                rec["num_strategies"] = len(rec["strategies"])
+                rec["strategies"] = list(rec["strategies"])
+                # Determine bias
+                if rec["buy_signals"] > rec["sell_signals"]:
+                    rec["bias"] = "BULL"
+                elif rec["sell_signals"] > rec["buy_signals"]:
+                    rec["bias"] = "BEAR"
+                else:
+                    rec["bias"] = "NEUTRAL"
+                # Danger: conflicting signals with decent confidence
+                rec["is_danger"] = (
+                    rec["buy_signals"] > 0
+                    and rec["sell_signals"] > 0
+                    and rec["max_confidence"] > 40
+                )
+                # Cleanup internal fields
+                del rec["_conf_sum"]
+                del rec["_count"]
+                symbols_list.append(rec)
+
+            self._send_json({
+                "symbols": symbols_list,
+                "total_signals_today": len(signals),
+            })
+        except Exception as exc:
+            logger.exception("Error serving /api/market")
+            self._send_json({"error": str(exc), "symbols": []}, status=500)
+
+    # ── /api/rejections (missed signals) ────────────────────────────────
+    def _serve_rejections(self):
+        """Return recently rejected signals with gate breakdown."""
+        try:
+            from data.db import get_signal_rejections, get_rejection_summary
+            rejections = get_signal_rejections(hours=24)
+            gate_summary = get_rejection_summary(hours=24)
+
+            self._send_json({
+                "rejections": rejections[:50],  # limit to 50 most recent
+                "gate_summary": gate_summary,
+                "total": len(rejections),
+            })
+        except Exception as exc:
+            logger.exception("Error serving /api/rejections")
+            self._send_json({"error": str(exc), "rejections": [], "gate_summary": {}}, status=500)
+
     # ── Position extraction from bot ───────────────────────────────────
     def _get_positions_list(self) -> list:
         """Try to pull open positions from the bot instance.
@@ -1083,6 +1516,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "unrealized_pnl":  pos.get("unrealized_pnl") or pos.get("pnl") or 0,
                     "leverage":        pos.get("leverage", 1),
                     "hold_time_s":     hold_time,
+                    "sl":              pos.get("sl") or 0,
+                    "tp1":             pos.get("tp1") or 0,
+                    "tp2":             pos.get("tp2") or 0,
+                    "state":           pos.get("state", "OPEN"),
+                    "notes":           pos.get("notes", ""),
+                    "setup_type":      pos.get("setup_type", ""),
+                    "strategy":        pos.get("strategy", ""),
+                    "confidence":      pos.get("confidence", 0),
                 })
             else:
                 # Object with attributes
@@ -1102,6 +1543,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "unrealized_pnl":  getattr(pos, "unrealized_pnl", 0) or getattr(pos, "pnl", 0),
                         "leverage":        getattr(pos, "leverage", 1),
                         "hold_time_s":     hold_time,
+                        "sl":              getattr(pos, "sl", 0),
+                        "tp1":             getattr(pos, "tp1", 0),
+                        "tp2":             getattr(pos, "tp2", 0),
+                        "state":           getattr(pos, "state", "OPEN"),
+                        "notes":           getattr(pos, "notes", ""),
+                        "setup_type":      getattr(pos, "setup_type", ""),
+                        "strategy":        getattr(pos, "strategy", ""),
+                        "confidence":      getattr(pos, "confidence", 0),
                     })
                 except Exception:
                     pass
