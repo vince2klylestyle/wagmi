@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import type { LlmDecision, LlmMarketView } from '../src/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,210 @@ const TV_SYMBOLS: Record<string, string> = {
   HYPE: 'BYBIT:HYPEUSDT',
 };
 
+// ─── LLM Helpers ─────────────────────────────────────────────────────────────
+
+function getActionStyle(action: string): { label: string; color: string; bgColor: string } {
+  const a = (action || '').toLowerCase();
+  if (a === 'proceed' || a === 'go')
+    return { label: 'TRADE', color: '#16a34a', bgColor: '#dcfce7' };
+  if (a === 'flip' || a === 'reverse')
+    return { label: 'FLIP', color: '#7c3aed', bgColor: '#ede9fe' };
+  return { label: 'SKIP', color: '#6b7280', bgColor: '#f3f4f6' };
+}
+
+function getBiasStyle(bias: string): { color: string; bgColor: string } {
+  if (bias === 'bullish') return { color: '#16a34a', bgColor: '#dcfce7' };
+  if (bias === 'volatile') return { color: '#7c3aed', bgColor: '#ede9fe' };
+  if (bias === 'mixed') return { color: '#ea580c', bgColor: '#fff7ed' };
+  return { color: '#6b7280', bgColor: '#f3f4f6' };
+}
+
+function ConfidenceBar({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 70 ? '#16a34a' : pct >= 45 ? '#eab308' : '#dc2626';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.3s' }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 600, color, minWidth: 34 }}>{pct}%</span>
+    </div>
+  );
+}
+
+function timeAgo(isoOrTs: string | number | null): string {
+  if (!isoOrTs) return '';
+  try {
+    const ts = typeof isoOrTs === 'number' ? isoOrTs * 1000 : new Date(isoOrTs).getTime();
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  } catch {
+    return '';
+  }
+}
+
+// ─── LLM Brain Banner ────────────────────────────────────────────────────────
+
+function LlmBrainBanner({ view }: { view: LlmMarketView | null }) {
+  if (!view) {
+    return (
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 20px', marginBottom: 24, fontSize: 13, color: '#94a3b8' }}>
+        LLM Brain View loading...
+      </div>
+    );
+  }
+
+  if (!view.has_data) {
+    return (
+      <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 20px', marginBottom: 24 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#92400e', marginBottom: 4 }}>LLM not running yet</div>
+        <div style={{ fontSize: 13, color: '#78350f' }}>
+          Start the bot with <code style={{ background: '#fef3c7', padding: '1px 4px', borderRadius: 3 }}>LLM_MODE=1 LLM_MULTI_AGENT=true</code> to see AI market analysis here.
+        </div>
+      </div>
+    );
+  }
+
+  const biasStyle = getBiasStyle(view.overall_bias);
+  const symbols = Object.keys(view.per_symbol);
+
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '16px 20px', marginBottom: 24, color: '#e2e8f0' }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.3 }}>LLM Brain</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#1e293b', color: '#94a3b8' }}>
+            ADVISORY MODE
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: '#64748b' }}>
+          <span>Regime: <strong style={{ color: '#cbd5e1' }}>{view.regime}</strong></span>
+          <span
+            style={{
+              padding: '2px 10px', borderRadius: 10,
+              background: biasStyle.bgColor, color: biasStyle.color,
+              fontWeight: 700, fontSize: 11,
+            }}
+          >
+            {(view.overall_bias || 'neutral').toUpperCase()}
+          </span>
+          {view.last_updated && (
+            <span style={{ color: '#475569' }}>{timeAgo(view.last_updated)}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Per-symbol stance */}
+      {symbols.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          {symbols.map((sym) => {
+            const d = view.per_symbol[sym];
+            const style = getActionStyle(d.action);
+            return (
+              <div key={sym} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e293b', borderRadius: 8, padding: '6px 12px' }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{sym}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: style.bgColor, color: style.color }}>
+                  {style.label}
+                </span>
+                <span style={{ fontSize: 11, color: '#64748b' }}>{Math.round(d.confidence * 100)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Summary text */}
+      {view.summary && (
+        <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #1e293b', paddingTop: 10 }}>
+          {view.summary}
+        </div>
+      )}
+
+      {/* Decision counts */}
+      {view.decision_counts && (
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: '#475569' }}>
+          <span>Last 10: <strong style={{ color: '#16a34a' }}>{view.decision_counts.proceed} trade</strong></span>
+          <span><strong style={{ color: '#6b7280' }}>{view.decision_counts.flat} skip</strong></span>
+          <span><strong style={{ color: '#7c3aed' }}>{view.decision_counts.flip} flip</strong></span>
+          {view.avg_confidence !== null && (
+            <span>avg confidence <strong style={{ color: '#e2e8f0' }}>{Math.round((view.avg_confidence || 0) * 100)}%</strong></span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── LLM Decision Card (per-symbol) ──────────────────────────────────────────
+
+function LlmDecisionPanel({ decision }: { decision: LlmDecision | null }) {
+  if (!decision) {
+    return (
+      <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#94a3b8' }}>
+        No LLM analysis for this symbol yet.
+      </div>
+    );
+  }
+
+  const actionStyle = getActionStyle(decision.action);
+
+  return (
+    <div style={{ padding: '14px 16px', background: '#0f172a', borderRadius: 8, color: '#e2e8f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>LLM Decision</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                fontSize: 16, fontWeight: 800, padding: '3px 12px', borderRadius: 6,
+                background: actionStyle.bgColor, color: actionStyle.color,
+              }}
+            >
+              {actionStyle.label}
+            </span>
+            {decision.is_veto && (
+              <span style={{ fontSize: 11, padding: '2px 8px', background: '#fef2f2', color: '#dc2626', borderRadius: 5, fontWeight: 600 }}>
+                VETOED
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Regime</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#cbd5e1' }}>{decision.regime || '—'}</div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Confidence</div>
+        <ConfidenceBar value={decision.confidence} />
+      </div>
+
+      {decision.notes && (
+        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #1e293b', paddingTop: 8, marginTop: 4 }}>
+          {decision.notes}
+        </div>
+      )}
+
+      {decision.gate_reason && !decision.allowed && (
+        <div style={{ fontSize: 11, marginTop: 8, padding: '6px 10px', background: '#1e293b', borderRadius: 5, color: '#94a3b8' }}>
+          Blocked: {decision.gate_reason}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 11, color: '#475569' }}>
+        <span>{decision.mode}</span>
+        {decision.model && <span>{decision.model}</span>}
+        <span>{timeAgo(decision.ts_iso || decision.ts)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Signal Strength ─────────────────────────────────────────────────────────
 
 function getSignalStrength(signal: Signal): {
@@ -66,7 +271,6 @@ function getSignalStrength(signal: Signal): {
   emoji: string;
 } {
   const label = signal.label || '';
-  const score = signal.score || 0;
 
   if (label.includes('Aggressive Accumulation')) {
     return { direction: 'BULLISH', color: '#16a34a', bgColor: '#dcfce7', strength: 'Strong', emoji: '' };
@@ -122,7 +326,7 @@ function TradingViewChart({ symbol }: { symbol: string }) {
 
 // ─── Copy Trade Card ─────────────────────────────────────────────────────────
 
-function CopyTradeCard({ signal }: { signal: Signal }) {
+function CopyTradeCard({ signal, llmDecision }: { signal: Signal; llmDecision: LlmDecision | null }) {
   const info = getSignalStrength(signal);
   const trendUp = signal.sma20 > signal.sma50;
   const rsiVal = signal.rsi14 ?? 50;
@@ -168,7 +372,15 @@ function CopyTradeCard({ signal }: { signal: Signal }) {
         </div>
       </div>
 
-      {/* Signal Summary - the "at a glance" section */}
+      {/* LLM Brain Section */}
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', background: '#fafbfc' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          LLM Brain — What the AI Would Do
+        </div>
+        <LlmDecisionPanel decision={llmDecision} />
+      </div>
+
+      {/* Signal Summary */}
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           What the Bot Sees
@@ -254,7 +466,7 @@ function CopyTradeCard({ signal }: { signal: Signal }) {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           How to Trade This (Manual)
         </div>
-        <HowToTrade signal={signal} info={info} />
+        <HowToTrade signal={signal} info={info} llmDecision={llmDecision} />
       </div>
     </div>
   );
@@ -279,10 +491,22 @@ function PriceLevel({ label, price, color, currentPrice }: { label: string; pric
 
 // ─── How to Trade Instructions ───────────────────────────────────────────────
 
-function HowToTrade({ signal, info }: { signal: Signal; info: ReturnType<typeof getSignalStrength> }) {
+function HowToTrade({
+  signal,
+  info,
+  llmDecision,
+}: {
+  signal: Signal;
+  info: ReturnType<typeof getSignalStrength>;
+  llmDecision: LlmDecision | null;
+}) {
   const isBullish = info.direction.includes('BULLISH');
   const isBearish = info.direction.includes('BEARISH');
   const isNeutral = info.direction === 'NEUTRAL';
+
+  // LLM alignment check
+  const llmSaysSkip = llmDecision && llmDecision.action === 'flat';
+  const llmSaysTrade = llmDecision && llmDecision.would_have_traded;
 
   if (isNeutral) {
     return (
@@ -299,6 +523,32 @@ function HowToTrade({ signal, info }: { signal: Signal; info: ReturnType<typeof 
 
   return (
     <div>
+      {/* LLM alignment banner */}
+      {llmDecision && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: 8,
+            marginBottom: 12,
+            background: llmSaysSkip ? '#fef2f2' : llmSaysTrade ? '#f0fdf4' : '#fafafa',
+            border: `1px solid ${llmSaysSkip ? '#fca5a5' : llmSaysTrade ? '#86efac' : '#e5e7eb'}`,
+            fontSize: 13,
+          }}
+        >
+          {llmSaysSkip ? (
+            <span style={{ color: '#dc2626', fontWeight: 600 }}>
+              LLM says SKIP — the AI would not trade this setup right now. ({llmDecision.notes?.slice(0, 80) || 'No details'})
+            </span>
+          ) : llmSaysTrade ? (
+            <span style={{ color: '#16a34a', fontWeight: 600 }}>
+              LLM agrees — the AI would also trade this setup ({Math.round(llmDecision.confidence * 100)}% confidence).
+            </span>
+          ) : (
+            <span style={{ color: '#6b7280' }}>LLM stance: {llmDecision.action} — use your judgment.</span>
+          )}
+        </div>
+      )}
+
       <div
         style={{
           padding: 16,
@@ -373,19 +623,26 @@ function HowToTrade({ signal, info }: { signal: Signal; info: ReturnType<typeof 
 
 export default function CopyTrade() {
   const [data, setData] = useState<SignalsPayload>({});
+  const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
   const [loading, setLoading] = useState(true);
   const apiBase = resolveApiBase();
 
   useEffect(() => {
     const fetcher = async () => {
       try {
-        const res = await fetch(`${apiBase}/v1/signals`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
+        const [signalsRes, llmRes] = await Promise.allSettled([
+          fetch(`${apiBase}/v1/signals`),
+          fetch(`${apiBase}/v1/llm/market-view`),
+        ]);
+
+        if (signalsRes.status === 'fulfilled' && signalsRes.value.ok) {
+          setData(await signalsRes.value.json());
+        }
+        if (llmRes.status === 'fulfilled' && llmRes.value.ok) {
+          setLlmView(await llmRes.value.json());
         }
       } catch (e) {
-        console.error('Signals fetch error:', e);
+        console.error('Fetch error:', e);
       }
       setLoading(false);
     };
@@ -397,9 +654,7 @@ export default function CopyTrade() {
 
   const signals = data.signals || {};
   const symbolOrder = ['BTC', 'SOL', 'HYPE'];
-  const orderedSignals = symbolOrder
-    .map((sym) => signals[sym])
-    .filter(Boolean);
+  const orderedSignals = symbolOrder.map((sym) => signals[sym]).filter(Boolean);
 
   return (
     <div>
@@ -407,15 +662,18 @@ export default function CopyTrade() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Copy Trade</h1>
         <p style={{ fontSize: 15, color: '#6b7280', margin: 0, maxWidth: 700 }}>
-          See what the bot sees, then decide for yourself. Each card below shows a symbol&apos;s current
-          signal, key price levels, and step-by-step instructions for placing a trade on Hyperliquid.
+          See what the bot sees — including the AI brain — then decide for yourself. Each card shows signals,
+          key price levels, the LLM&apos;s reasoning, and step-by-step trade instructions for Hyperliquid.
         </p>
         {data.last_updated && (
           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>
-            Last updated: {new Date(data.last_updated).toLocaleString()} | Regime: {data.regime || 'Neutral'}
+            Signals updated: {new Date(data.last_updated).toLocaleString()} | Regime: {data.regime || 'Neutral'}
           </div>
         )}
       </div>
+
+      {/* LLM Brain Banner */}
+      <LlmBrainBanner view={llmView} />
 
       {/* Quick Guide */}
       <div
@@ -435,10 +693,10 @@ export default function CopyTrade() {
             <strong>1.</strong> The bot scans BTC, SOL, and HYPE every 60 seconds using 9 different strategies.
           </div>
           <div style={{ marginBottom: 6 }}>
-            <strong>2.</strong> Each card below shows the bot&apos;s analysis: direction, strength, key levels.
+            <strong>2.</strong> The <strong>LLM Brain</strong> (Claude AI) evaluates each setup in advisory mode — it logs what it would trade but does NOT execute.
           </div>
           <div style={{ marginBottom: 6 }}>
-            <strong>3.</strong> Use the chart and levels to form your own view, then follow the steps to place a trade.
+            <strong>3.</strong> Each card shows both the technical signal and the AI&apos;s reasoning. Use both to form your own view.
           </div>
           <div>
             <strong>4.</strong> Always use a stop loss. Start with small size. This is a tool, not a guarantee.
@@ -454,10 +712,16 @@ export default function CopyTrade() {
           No signals available yet. The bot needs ~60 seconds to generate the first scan.
         </div>
       ) : (
-        orderedSignals.map((signal) => <CopyTradeCard key={signal.symbol} signal={signal} />)
+        orderedSignals.map((signal) => (
+          <CopyTradeCard
+            key={signal.symbol}
+            signal={signal}
+            llmDecision={llmView?.per_symbol?.[signal.symbol] ?? null}
+          />
+        ))
       )}
 
-      {/* If some symbols are missing, show placeholder cards */}
+      {/* Placeholder cards for missing symbols */}
       {!loading &&
         symbolOrder
           .filter((sym) => !signals[sym])
@@ -491,7 +755,7 @@ export default function CopyTrade() {
         }}
       >
         <strong>Disclaimer:</strong> This is not financial advice. All trading involves risk.
-        The signals shown are generated by an automated bot and are for informational purposes only.
+        The signals and AI analysis shown are generated by an automated bot and are for informational purposes only.
         You are solely responsible for your own trading decisions. Never invest more than you can afford to lose.
       </div>
     </div>
