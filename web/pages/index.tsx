@@ -98,10 +98,18 @@ function TradingViewChart({ symbol }: { symbol: string }) {
     if (!containerRef.current) return;
     containerRef.current.innerHTML = '';
 
+    // Required: inner widget div (TradingView embed structure)
+    const widgetDiv = document.createElement('div');
+    widgetDiv.className = 'tradingview-widget-container__widget';
+    widgetDiv.style.cssText = 'height:100%;width:100%';
+    containerRef.current.appendChild(widgetDiv);
+
+    // Config script: type + textContent (not innerHTML) is the correct pattern
     const script = document.createElement('script');
+    script.type = 'text/javascript';
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
     script.async = true;
-    script.innerHTML = JSON.stringify({
+    script.textContent = JSON.stringify({
       autosize: true,
       symbol: tvSymbol,
       interval: '60',

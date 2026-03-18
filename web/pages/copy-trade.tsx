@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { LlmDecision, LlmMarketView } from '../src/types';
+import type { LlmDecision, LlmMarketView, ActivityEvent } from '../src/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -295,13 +295,20 @@ function TradingViewChart({ symbol }: { symbol: string }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    // Clear previous widget
     containerRef.current.innerHTML = '';
 
+    // Required: inner widget div (TradingView embed structure)
+    const widgetDiv = document.createElement('div');
+    widgetDiv.className = 'tradingview-widget-container__widget';
+    widgetDiv.style.cssText = 'height:100%;width:100%';
+    containerRef.current.appendChild(widgetDiv);
+
+    // Config script: type + textContent (not innerHTML) is the correct pattern
     const script = document.createElement('script');
+    script.type = 'text/javascript';
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
     script.async = true;
-    script.innerHTML = JSON.stringify({
+    script.textContent = JSON.stringify({
       autosize: true,
       symbol: tvSymbol,
       interval: '60',
@@ -321,6 +328,92 @@ function TradingViewChart({ symbol }: { symbol: string }) {
 
   return (
     <div className="tradingview-widget-container" ref={containerRef} style={{ height: 400, width: '100%' }} />
+  );
+}
+
+// ─── Activity Feed ────────────────────────────────────────────────────────────
+
+function ActivityFeed({ events }: { events: ActivityEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div style={{ background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Bot Activity</div>
+        <div style={{ fontSize: 13, color: '#9ca3af' }}>
+          No activity yet. Start the bot with <code style={{ background: '#f3f4f6', padding: '1px 4px', borderRadius: 3 }}>LLM_MODE=1</code> to see live decisions here.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+          Bot Activity
+          <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#16a34a', fontWeight: 400 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+            live
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: '#9ca3af' }}>last {events.length} events</span>
+      </div>
+
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', maxHeight: 340, overflowY: 'auto' }}>
+        {events.map((event, i) => (
+          <div
+            key={`${event.ts}-${i}`}
+            style={{
+              padding: '12px 16px',
+              borderBottom: i < events.length - 1 ? '1px solid #f3f4f6' : 'none',
+              background: '#fff',
+            }}
+          >
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 7px',
+                    borderRadius: 4,
+                    background: event.badge_color + '18',
+                    color: event.badge_color,
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  {event.badge}
+                </span>
+                {event.symbol && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{event.symbol}</span>
+                )}
+              </div>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(event.ts_iso || event.ts)}</span>
+            </div>
+
+            {/* Detail line */}
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>{event.detail}</div>
+
+            {/* Scalp insight */}
+            {event.scalp_insight && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: '#374151',
+                  background: '#f8fafc',
+                  borderLeft: `3px solid ${event.badge_color}`,
+                  padding: '4px 8px',
+                  borderRadius: '0 4px 4px 0',
+                  lineHeight: 1.5,
+                }}
+              >
+                {event.scalp_insight}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -624,15 +717,17 @@ function HowToTrade({
 export default function CopyTrade() {
   const [data, setData] = useState<SignalsPayload>({});
   const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const apiBase = resolveApiBase();
 
   useEffect(() => {
     const fetcher = async () => {
       try {
-        const [signalsRes, llmRes] = await Promise.allSettled([
+        const [signalsRes, llmRes, activityRes] = await Promise.allSettled([
           fetch(`${apiBase}/v1/signals`),
           fetch(`${apiBase}/v1/llm/market-view`),
+          fetch(`${apiBase}/v1/activity/feed?limit=25`),
         ]);
 
         if (signalsRes.status === 'fulfilled' && signalsRes.value.ok) {
@@ -640,6 +735,10 @@ export default function CopyTrade() {
         }
         if (llmRes.status === 'fulfilled' && llmRes.value.ok) {
           setLlmView(await llmRes.value.json());
+        }
+        if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
+          const actData = await activityRes.value.json();
+          setActivityEvents(actData?.items || []);
         }
       } catch (e) {
         console.error('Fetch error:', e);
@@ -674,6 +773,9 @@ export default function CopyTrade() {
 
       {/* LLM Brain Banner */}
       <LlmBrainBanner view={llmView} />
+
+      {/* Activity Feed */}
+      <ActivityFeed events={activityEvents} />
 
       {/* Quick Guide */}
       <div

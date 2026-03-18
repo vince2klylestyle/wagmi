@@ -67,3 +67,22 @@ export type Trade = {
   fee?: number;
   pnl?: number;
 };
+
+export type ActivityEvent = {
+  ts: number;
+  ts_iso: string | null;
+  event_type: string;
+  symbol: string | null;
+  title: string;
+  detail: string;
+  scalp_insight: string;
+  badge: string;
+  badge_color: string;
+  data: Record<string, unknown>;
+};
+
+export type ActivityFeedResponse = {
+  items: ActivityEvent[];
+  has_data: boolean;
+  sources: { decisions: number; missed_trades: number };
+};
