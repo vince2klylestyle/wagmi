@@ -1,168 +1,419 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { C, R, S, F, fmtUsd, timeAgo } from '../../src/theme';
+
+type OpenPosition = {
+  side?: string;
+  size?: number;
+  avg_entry?: number;
+  unrealized_pnl?: number;
+};
 
 type Strategy = {
   id: string;
   name?: string;
+  status?: string;
   lastHeartbeat?: string | null;
+  last_seen?: string | null;
   lastTradeAt?: string | null;
-  openPosition?: any;
+  last_trade_ts?: string | null;
   pnl?: number | null;
+  pnl_realized?: number | null;
+  realizedPnL?: number | null;
+  open_position?: OpenPosition | null;
 };
 
 function resolveApiBase(): string {
-  const envVal = process.env.NEXT_PUBLIC_API_URL as string | undefined;
+  const envVal =
+    (process.env.NEXT_PUBLIC_API_URL as string | undefined) ||
+    (process.env.NEXT_PUBLIC_API_BASE_URL as string | undefined);
   if (envVal && envVal.trim().length > 0) return envVal;
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    // In production on Render, default to the live API if env is missing
     if (host && host !== 'localhost' && host !== '127.0.0.1') {
       return 'https://nunuirl-platform.onrender.com';
     }
   }
-  // Local dev fallback
   return 'http://localhost:8000';
+}
+
+function getHeartbeatTs(s: Strategy): string | null {
+  return s.lastHeartbeat || s.last_seen || null;
+}
+
+function getLastTradeTss(s: Strategy): string | null {
+  return (s as any).lastTradeAt || (s as any).last_trade_ts || null;
+}
+
+function getPnl(s: Strategy): number | null {
+  const v = (s as any).pnl_realized ?? (s as any).pnl ?? (s as any).realizedPnL ?? null;
+  return v !== null && v !== undefined ? Number(v) : null;
+}
+
+function isOnline(s: Strategy): boolean {
+  const ts = getHeartbeatTs(s);
+  if (!ts) return false;
+  const parsed = Date.parse(ts);
+  return !isNaN(parsed) && (Date.now() - parsed) / 1000 <= 120;
+}
+
+function SkeletonCard() {
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: 20,
+      animation: 'skeletonPulse 1.4s ease-in-out infinite',
+    }}>
+      <div style={{ height: 16, width: '60%', background: C.border, borderRadius: 4, marginBottom: 12 }} />
+      <div style={{ height: 12, width: '40%', background: C.border, borderRadius: 4, marginBottom: 8 }} />
+      <div style={{ height: 12, width: '80%', background: C.border, borderRadius: 4 }} />
+    </div>
+  );
+}
+
+function StrategyCard({ strategy, index }: { strategy: Strategy; index: number }) {
+  const online = isOnline(strategy);
+  const pnl = getPnl(strategy);
+  const heartTs = getHeartbeatTs(strategy);
+  const lastTradeTs = getLastTradeTss(strategy);
+  const openPos = (strategy as any).open_position as OpenPosition | null;
+  const unrPnl = openPos?.unrealized_pnl;
+  const name = strategy.name || strategy.id;
+
+  return (
+    <div
+      style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '20px 24px',
+        boxShadow: S.sm,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        animation: `fadeInUp 0.35s ease ${index * 0.06}s both`,
+        transition: 'box-shadow 0.2s, transform 0.2s',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = S.md;
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = S.sm;
+        (e.currentTarget as HTMLElement).style.transform = 'none';
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: F.lg, fontWeight: 700, color: C.text, marginBottom: 4 }}>{name}</div>
+          <div style={{ fontSize: F.xs, color: C.muted }}>ID: {strategy.id}</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <span style={{
+            padding: '4px 12px',
+            borderRadius: 20,
+            fontSize: F.xs,
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            background: online ? '#166534' : C.border,
+            color: online ? '#bbf7d0' : C.muted,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}>
+            <span style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: online ? '#4ade80' : C.muted,
+              display: 'inline-block',
+              boxShadow: online ? '0 0 6px #4ade80' : 'none',
+            }} />
+            {online ? 'LIVE' : 'OFFLINE'}
+          </span>
+        </div>
+      </div>
+
+      {/* Heartbeat row */}
+      <div style={{ display: 'flex', gap: 20, fontSize: F.sm }}>
+        <div>
+          <span style={{ color: C.muted }}>Last seen: </span>
+          <span style={{ color: online ? '#4ade80' : C.text, fontWeight: 500 }}>
+            {heartTs ? timeAgo(heartTs) : '—'}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: C.muted }}>Last trade: </span>
+          <span style={{ color: C.text, fontWeight: 500 }}>
+            {lastTradeTs ? timeAgo(lastTradeTs) : 'none'}
+          </span>
+        </div>
+      </div>
+
+      {/* PnL row */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#0f172a',
+        borderRadius: R.md,
+        padding: '10px 14px',
+      }}>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 3 }}>Realized PnL</div>
+          <div style={{
+            fontSize: F.xl,
+            fontWeight: 700,
+            color: pnl === null ? C.muted : pnl >= 0 ? C.bull : C.bear,
+          }}>
+            {pnl !== null ? fmtUsd(pnl) : '—'}
+          </div>
+        </div>
+        {openPos && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 3 }}>Open Position</div>
+            <div style={{ fontSize: F.sm, fontWeight: 600, color: openPos.side === 'LONG' ? C.bull : C.bear }}>
+              {openPos.side} · {openPos.size} @ {openPos.avg_entry?.toFixed(2)}
+            </div>
+            {unrPnl !== undefined && unrPnl !== null && (
+              <div style={{
+                fontSize: F.xs,
+                fontWeight: 600,
+                color: unrPnl >= 0 ? C.bull : C.bear,
+              }}>
+                Unrealized: {unrPnl >= 0 ? '+' : ''}{fmtUsd(unrPnl)}
+              </div>
+            )}
+          </div>
+        )}
+        {!openPos && (
+          <div style={{ fontSize: F.xs, color: C.muted, padding: '4px 10px', background: C.border, borderRadius: R.sm }}>
+            No open position
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <a
+        href={`/strategies/${encodeURIComponent(strategy.id)}`}
+        style={{
+          display: 'block',
+          textAlign: 'center',
+          padding: '9px 0',
+          background: 'transparent',
+          border: `1px solid ${C.brand}`,
+          borderRadius: R.md,
+          color: C.brand,
+          fontSize: F.sm,
+          fontWeight: 600,
+          textDecoration: 'none',
+          transition: 'background 0.2s, color 0.2s',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLAnchorElement).style.background = C.brand;
+          (e.currentTarget as HTMLAnchorElement).style.color = '#fff';
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLAnchorElement).style.background = 'transparent';
+          (e.currentTarget as HTMLAnchorElement).style.color = C.brand;
+        }}
+      >
+        View Logs &amp; Signals →
+      </a>
+    </div>
+  );
 }
 
 export default function StrategyList() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastStatus, setLastStatus] = useState<number | null>(null);
-  const [rawPreview, setRawPreview] = useState<string | null>(null);
-  const [itemCount, setItemCount] = useState<number>(0);
-  const backoff = useRef(1000);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const isMounted = useRef(true);
-
-  // Determine API base at runtime to avoid "localhost" fallback in production when env isn't baked in
   const apiBase = resolveApiBase();
 
-  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 10000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      return res;
-    } finally {
-      clearTimeout(id);
-    }
-  };
-
-  const fetchStrategies = async (useCursor = false) => {
+  const fetchStrategies = async () => {
     try {
       setError(null);
-      const url = new URL(`${apiBase}/v1/strategies`);
-      if (useCursor && cursor) url.searchParams.set('cursor', cursor);
-      const res = await fetchWithTimeout(url.toString());
-      setLastStatus(res.status);
+      const res = await fetch(`${apiBase}/v1/strategies`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      setRawPreview(text ? text.slice(0, 500) : null);
-      let data: any;
-      try { data = text ? JSON.parse(text) : {}; } catch (e) {
-        throw new Error('Invalid JSON from API');
-      }
-      // support { items: [...], next_cursor } or plain array
-      const items = Array.isArray(data) ? data : data.items || [];
-      const next = data.next_cursor || null;
+      const data = await res.json();
+      const items: Strategy[] = Array.isArray(data) ? data : data.items || [];
       if (!isMounted.current) return;
-      setStrategies(items as Strategy[]);
-      setItemCount((items as any[]).length || 0);
-      setCursor(next);
+      setStrategies(items);
+      setLastRefresh(new Date());
       setLoading(false);
-      backoff.current = 1000;
     } catch (err: any) {
       if (!isMounted.current) return;
       setError(err.message || String(err));
       setLoading(false);
-      backoff.current = Math.min(30000, backoff.current * 2);
-      // schedule a retry after backoff
-      setTimeout(() => fetchStrategies(useCursor), backoff.current);
     }
   };
 
   useEffect(() => {
     isMounted.current = true;
     fetchStrategies();
-    const iv = setInterval(() => { if (autoRefresh) fetchStrategies(); }, 10000);
-    return () => {
-      isMounted.current = false;
-      clearInterval(iv);
-    };
-  }, [autoRefresh]);
+    const iv = setInterval(fetchStrategies, 15000);
+    return () => { isMounted.current = false; clearInterval(iv); };
+  }, []);
 
-  const isOnline = (s: Strategy) => {
-    const tsStr = (s as any).lastHeartbeat || (s as any).last_seen || s.lastHeartbeat;
-    if (!tsStr) return false;
-    const ts = Date.parse(tsStr);
-    if (isNaN(ts)) return false;
-    return (Date.now() - ts) / 1000 <= 120;
-  };
-
-  const getPnl = (s: Strategy) => {
-    return (s as any).pnl_realized ?? (s as any).pnl ?? (s as any).realizedPnL ?? null;
-  };
+  const totalPnl = strategies.reduce((acc, s) => {
+    const p = getPnl(s);
+    return p !== null ? acc + p : acc;
+  }, 0);
+  const liveCount = strategies.filter(isOnline).length;
 
   return (
-    <main style={{ padding: 20 }}>
-      <h1>Strategies</h1>
-      <div style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>API: {apiBase}</div>
-      <div style={{ marginBottom: 8 }}>
-        <label>
-          <input type="checkbox" checked={autoRefresh} onChange={(e)=>setAutoRefresh(e.target.checked)} /> Auto-refresh
-        </label>
-        <button style={{ marginLeft: 8 }} onClick={() => { setLoading(true); fetchStrategies(); }}>Refresh now</button>
+    <main style={{ padding: '32px 24px', maxWidth: 1100, margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes skeletonPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
+
+      {/* Page header */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: C.text, letterSpacing: '-0.02em' }}>
+              Strategy Monitor
+            </h1>
+            <p style={{ margin: '6px 0 0', fontSize: F.sm, color: C.muted }}>
+              Live status of all active trading strategies
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {lastRefresh && (
+              <span style={{ fontSize: F.xs, color: C.muted }}>
+                Updated {timeAgo(lastRefresh.toISOString())}
+              </span>
+            )}
+            <button
+              onClick={() => { setLoading(true); fetchStrategies(); }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: R.md,
+                border: `1px solid ${C.border}`,
+                background: C.surface,
+                color: C.text,
+                fontSize: F.sm,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              ↻ Refresh
+            </button>
+          </div>
+        </div>
       </div>
-      {error && (
-        <div style={{ background: '#fee', padding: 10, borderRadius: 6, marginBottom: 12 }}>
-          <strong>Error:</strong> {error} <button onClick={() => { setError(null); setLoading(true); fetchStrategies(); }}>Retry</button>
+
+      {/* Summary stats */}
+      {!loading && strategies.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 12,
+          marginBottom: 28,
+        }}>
+          {[
+            { label: 'Total Strategies', value: strategies.length.toString(), color: C.text },
+            { label: 'Live Now', value: `${liveCount} / ${strategies.length}`, color: liveCount > 0 ? C.bull : C.muted },
+            {
+              label: 'Combined PnL',
+              value: fmtUsd(totalPnl),
+              color: totalPnl >= 0 ? C.bull : C.bear,
+            },
+          ].map(stat => (
+            <div key={stat.label} style={{
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderRadius: R.lg,
+              padding: '14px 18px',
+            }}>
+              <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 4 }}>{stat.label}</div>
+              <div style={{ fontSize: F.xl, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            </div>
+          ))}
         </div>
       )}
-      <details style={{ marginBottom: 12 }}>
-        <summary>Debug</summary>
-        <div style={{ fontSize: 12, color: '#444' }}>
-          <div>Status: {lastStatus ?? '—'}</div>
-          <div>Items: {itemCount}</div>
-          <pre style={{ whiteSpace: 'pre-wrap', background: '#f7f7f7', padding: 8, borderRadius: 6 }}>{rawPreview ?? '—'}</pre>
+
+      {/* Error banner */}
+      {error && (
+        <div style={{
+          background: '#7f1d1d',
+          border: `1px solid #dc2626`,
+          borderRadius: R.md,
+          padding: '12px 16px',
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          color: '#fca5a5',
+          fontSize: F.sm,
+        }}>
+          <span>⚠ {error}</span>
+          <button
+            onClick={() => { setError(null); setLoading(true); fetchStrategies(); }}
+            style={{
+              padding: '4px 12px',
+              borderRadius: R.sm,
+              border: '1px solid #dc2626',
+              background: 'transparent',
+              color: '#fca5a5',
+              fontSize: F.xs,
+              cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
         </div>
-      </details>
-      {loading && <p>Loading…</p>}
-      {!loading && strategies.length === 0 && <p>No strategies found.</p>}
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {strategies.map((s) => (
-          <li key={s.id} style={{ marginBottom: 12, padding: 10, border: '1px solid #eee', borderRadius: 6 }}>
-            <a href={`/strategies/${encodeURIComponent(s.id)}`}>
-              <strong>{s.name || s.id}</strong>
-            </a>
-            <div style={{ marginTop: 6 }}>
-              <span style={{ padding: '4px 8px', borderRadius: 6, background: isOnline(s) ? '#4caf50' : '#ddd', color: isOnline(s) ? '#fff' : '#333' }}>
-                {isOnline(s) ? 'online' : 'offline'}
-              </span>
-              <span style={{ marginLeft: 12 }}>lastHeartbeat: {(s as any).lastHeartbeat || (s as any).last_seen || '—'}</span>
-              <span style={{ marginLeft: 12 }}>lastTrade: {(s as any).lastTradeAt || (s as any).last_trade_ts || '—'}</span>
-              <span style={{ marginLeft: 12 }}>
-                <strong>PnL:</strong> {getPnl(s) ?? '—'}
-              </span>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              {((s as any).open_position) ? (
-                <div style={{ background: '#fafafa', padding: 8, borderRadius: 6 }}>
-                  <div>Open: {(s as any).open_position.side} {(s as any).open_position.size}</div>
-                  <div>Avg entry: {(s as any).open_position.avg_entry}</div>
-                </div>
-              ) : (
-                <div style={{ color: '#666' }}>No open position</div>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div style={{ marginTop: 12 }}>
-        {cursor ? (
-          <button onClick={() => fetchStrategies(true)}>Next page</button>
-        ) : null}
-      </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+          {[0, 1, 2].map(i => <SkeletonCard key={i} />)}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && strategies.length === 0 && (
+        <div style={{
+          textAlign: 'center',
+          padding: '60px 20px',
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.lg,
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📡</div>
+          <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 6 }}>
+            No strategies found
+          </div>
+          <div style={{ fontSize: F.sm, color: C.muted }}>
+            Strategies appear here once the bot starts running.
+          </div>
+        </div>
+      )}
+
+      {/* Strategy grid */}
+      {!loading && strategies.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: 16,
+        }}>
+          {strategies.map((s, i) => (
+            <StrategyCard key={s.id} strategy={s} index={i} />
+          ))}
+        </div>
+      )}
     </main>
   );
 }

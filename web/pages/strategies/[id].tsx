@@ -1,7 +1,9 @@
-'use client';
-
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../../src/theme';
+import type { TradeRecord } from '../../src/types';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type LogEntry = {
   ts: string;
@@ -24,25 +26,26 @@ type StrategyCard = {
   status: string;
   lastEvaluated: string;
   latestSignal: LatestSignal | null;
-};
-
-type Summary = {
-  updatedAt?: number | null;
-  regime?: string;
-  status?: string;
-  errors?: number;
-  mostRecentTrade?: {
-    strategyId: string;
-    name: string;
-    market: string;
-    action: string;
-    price: number;
-    ts: string;
+  lastHeartbeat?: string;
+  last_seen?: string;
+  pnl_realized?: number;
+  pnl?: number;
+  open_position?: {
+    side?: string;
+    size?: number;
+    avg_entry?: number;
+    unrealized_pnl?: number;
   } | null;
 };
 
+type Tab = 'signals' | 'trades' | 'performance' | 'logs';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function resolveApiBase(): string {
-  const envVal = (process.env.NEXT_PUBLIC_API_URL as string | undefined) || (process.env.NEXT_PUBLIC_API_BASE_URL as string | undefined);
+  const envVal =
+    (process.env.NEXT_PUBLIC_API_URL as string | undefined) ||
+    (process.env.NEXT_PUBLIC_API_BASE_URL as string | undefined);
   if (envVal && envVal.trim().length > 0) return envVal;
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
@@ -53,223 +56,589 @@ function resolveApiBase(): string {
   return 'http://localhost:8000';
 }
 
+const fmt = (v: any, digits = 2) => {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+};
+
+function eventColor(event: string): string {
+  const e = event.toLowerCase();
+  if (e.includes('trade') || e.includes('fill') || e.includes('open') || e.includes('close')) return '#6366f1';
+  if (e.includes('signal') || e.includes('buy') || e.includes('long')) return '#16a34a';
+  if (e.includes('sell') || e.includes('short') || e.includes('exit')) return '#dc2626';
+  if (e.includes('error') || e.includes('fail')) return '#dc2626';
+  if (e.includes('warn')) return '#eab308';
+  return '#64748b';
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function KpiCard({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
+  return (
+    <div style={{
+      background: '#0f172a',
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '16px 18px',
+    }}>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: F.xl, fontWeight: 700, color: valueColor || C.text }}>{value}</div>
+      {sub && <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function SignalsTab({ card }: { card: StrategyCard | null }) {
+  if (!card?.latestSignal) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+        <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 4 }}>Awaiting first signal</div>
+        <div style={{ fontSize: F.sm }}>Signals appear once the strategy has run at least one evaluation cycle.</div>
+      </div>
+    );
+  }
+
+  const sig = card.latestSignal;
+  const score = sig.score || 0;
+  const scoreColor = score >= 70 ? C.bull : score >= 45 ? '#eab308' : C.bear;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Score hero */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '24px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+      }}>
+        <div style={{
+          width: 80,
+          height: 80,
+          borderRadius: '50%',
+          border: `4px solid ${scoreColor}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: scoreColor }}>{score}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xl, fontWeight: 700, color: C.text, marginBottom: 4 }}>{sig.label}</div>
+          <div style={{ fontSize: F.sm, color: C.muted }}>
+            {sig.market} · ${fmt(sig.price, 2)} · Last evaluated {card.lastEvaluated ? timeAgo(card.lastEvaluated) : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <KpiCard label="SMA 20" value={sig.trend.sma20} sub="20-period trend" valueColor={sig.trend.sma20 === 'Up' ? C.bull : C.bear} />
+        <KpiCard label="SMA 50" value={sig.trend.sma50} sub="50-period trend" valueColor={sig.trend.sma50 === 'Up' ? C.bull : C.bear} />
+        <KpiCard label="RSI 14" value={fmt(sig.trend.rsi14, 1)} sub={sig.trend.rsi14 > 70 ? 'Overbought' : sig.trend.rsi14 < 30 ? 'Oversold' : 'Neutral'} valueColor={sig.trend.rsi14 > 70 ? C.bear : sig.trend.rsi14 < 30 ? C.bull : C.text} />
+      </div>
+
+      {/* Zones */}
+      {sig.zones && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 18 }}>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 14 }}>Price Zones</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[
+              { label: 'Safe Distribution', value: sig.zones.safeDistrib, color: '#dc2626', note: 'Strong resistance — short bias' },
+              { label: 'Distribution', value: sig.zones.distrib, color: '#f97316', note: 'Minor resistance' },
+              { label: '▶ Current Price', value: sig.price, color: C.brand, note: 'Now', bold: true },
+              { label: 'Accumulation', value: sig.zones.accum, color: '#22c55e', note: 'Support zone' },
+              { label: 'Deep Accumulation', value: sig.zones.deepAccum, color: '#16a34a', note: 'Strong support — long bias' },
+            ].map(zone => (
+              <div key={zone.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${C.border}` }}>
+                <div>
+                  <span style={{ fontSize: F.sm, fontWeight: zone.bold ? 700 : 400, color: zone.color }}>{zone.label}</span>
+                  <span style={{ fontSize: F.xs, color: C.muted, marginLeft: 8 }}>{zone.note}</span>
+                </div>
+                <span style={{ fontSize: F.sm, fontWeight: 700, color: zone.color, fontFamily: 'JetBrains Mono, monospace' }}>
+                  ${fmt(zone.value, 2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TradesTab({ trades, loading }: { trades: TradeRecord[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} style={{ height: 44, background: C.surface, borderRadius: R.md, animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (!trades.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+        <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 4 }}>No trades yet</div>
+        <div style={{ fontSize: F.sm }}>Trade history appears once the strategy has executed at least one trade.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: F.sm }}>
+        <thead>
+          <tr style={{ background: '#0f172a' }}>
+            {['Symbol', 'Side', 'Entry', 'Exit', 'PnL', 'Result', 'Confidence', 'Duration', 'Close Reason'].map(h => (
+              <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: C.muted, fontWeight: 600, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((t, i) => {
+            const isWin = (t as any).outcome === 'WIN' || (t as any).pnl > 0;
+            const rowBg = isWin ? 'rgba(22,163,74,0.07)' : i % 2 === 0 ? C.surface : '#0f172a';
+            return (
+              <tr key={i} style={{ background: rowBg }}>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, fontWeight: 600, color: C.text }}>
+                  {(t as any).symbol || '—'}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    fontSize: F.xs,
+                    fontWeight: 700,
+                    background: (t as any).side === 'BUY' ? '#166534' : '#7f1d1d',
+                    color: (t as any).side === 'BUY' ? '#bbf7d0' : '#fca5a5',
+                  }}>
+                    {(t as any).side || '—'}
+                  </span>
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, color: C.text, fontFamily: 'monospace' }}>
+                  ${fmt((t as any).entry, 2)}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, color: C.text, fontFamily: 'monospace' }}>
+                  {(t as any).exit ? `$${fmt((t as any).exit, 2)}` : '—'}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, fontWeight: 700, color: (t as any).pnl >= 0 ? C.bull : C.bear }}>
+                  {(t as any).pnl !== undefined ? `${(t as any).pnl >= 0 ? '+' : ''}${fmtUsd((t as any).pnl)}` : '—'}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    fontSize: F.xs,
+                    fontWeight: 700,
+                    background: isWin ? '#166534' : '#7f1d1d',
+                    color: isWin ? '#bbf7d0' : '#fca5a5',
+                  }}>
+                    {isWin ? 'WIN' : 'LOSS'}
+                  </span>
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, color: C.muted }}>
+                  {(t as any).confidence ? `${Math.round((t as any).confidence)}%` : '—'}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, color: C.muted, whiteSpace: 'nowrap' }}>
+                  {(t as any).duration_h ? `${fmt((t as any).duration_h, 1)}h` : '—'}
+                </td>
+                <td style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: F.xs }}>
+                  {(t as any).close_reason || '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PerformanceTab({ trades }: { trades: TradeRecord[] }) {
+  if (!trades.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📈</div>
+        <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 4 }}>No data yet</div>
+        <div style={{ fontSize: F.sm }}>Performance stats will appear once trades are recorded.</div>
+      </div>
+    );
+  }
+
+  const wins = trades.filter(t => (t as any).outcome === 'WIN' || (t as any).pnl > 0);
+  const losses = trades.filter(t => (t as any).outcome !== 'WIN' && (t as any).pnl <= 0);
+  const winRate = trades.length > 0 ? (wins.length / trades.length) * 100 : 0;
+  const totalPnl = trades.reduce((a, t) => a + ((t as any).pnl || 0), 0);
+  const avgWin = wins.length > 0 ? wins.reduce((a, t) => a + (t as any).pnl, 0) / wins.length : 0;
+  const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((a, t) => a + (t as any).pnl, 0) / losses.length) : 0;
+  const profitFactor = avgLoss > 0 ? (wins.reduce((a, t) => a + (t as any).pnl, 0)) / Math.abs(losses.reduce((a, t) => a + (t as any).pnl, 0)) : null;
+
+  // Exit type counts
+  const exitTypes: Record<string, number> = {};
+  trades.forEach(t => {
+    const cr = (t as any).close_reason || 'UNKNOWN';
+    exitTypes[cr] = (exitTypes[cr] || 0) + 1;
+  });
+  const exitEntries = Object.entries(exitTypes).sort((a, b) => b[1] - a[1]);
+  const exitColors: Record<string, string> = { SL: C.bear, TP1: C.bull, TP2: '#16a34a', TRAILING_STOP: '#6366f1', UNKNOWN: C.muted };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* KPI grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <KpiCard label="Total Trades" value={trades.length.toString()} sub={`${wins.length}W / ${losses.length}L`} />
+        <KpiCard label="Win Rate" value={`${winRate.toFixed(1)}%`} valueColor={winRate >= 60 ? C.bull : winRate >= 45 ? '#eab308' : C.bear} />
+        <KpiCard label="Net PnL" value={fmtUsd(totalPnl)} valueColor={totalPnl >= 0 ? C.bull : C.bear} />
+        <KpiCard label="Avg Win" value={avgWin > 0 ? `+${fmtUsd(avgWin)}` : '—'} valueColor={C.bull} />
+        <KpiCard label="Avg Loss" value={avgLoss > 0 ? `-${fmtUsd(avgLoss)}` : '—'} valueColor={C.bear} />
+        <KpiCard label="Profit Factor" value={profitFactor !== null ? profitFactor.toFixed(2) + '×' : '—'} valueColor={profitFactor !== null && profitFactor >= 1.5 ? C.bull : C.muted} />
+      </div>
+
+      {/* Exit type breakdown */}
+      {exitEntries.length > 0 && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 18 }}>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 14 }}>Exit Type Breakdown</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {exitEntries.map(([type, count]) => {
+              const pct = (count / trades.length) * 100;
+              const color = exitColors[type] || C.muted;
+              return (
+                <div key={type}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: F.sm, color: C.text }}>{type}</span>
+                    <span style={{ fontSize: F.sm, color: C.muted }}>{count} ({pct.toFixed(0)}%)</span>
+                  </div>
+                  <div style={{ height: 8, background: C.border, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.5s' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LogsTab({ logs, loading, error }: { logs: LogEntry[]; loading: boolean; error: string | null }) {
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} style={{ height: 36, background: C.surface, borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '24px', color: '#fca5a5', background: '#7f1d1d', borderRadius: R.md, fontSize: F.sm }}>
+        ⚠ {error}
+      </div>
+    );
+  }
+
+  if (!logs.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
+        <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 4 }}>No logs yet</div>
+        <div style={{ fontSize: F.sm }}>Log entries appear once the strategy begins executing.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontFamily: 'JetBrains Mono, Consolas, monospace', fontSize: 12 }}>
+      {logs.map((log, idx) => {
+        const color = eventColor(log.event);
+        return (
+          <div
+            key={idx}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '160px 180px 1fr',
+              gap: 8,
+              padding: '6px 12px',
+              background: idx % 2 === 0 ? '#0f172a' : C.surface,
+              borderRadius: 3,
+              alignItems: 'flex-start',
+            }}
+          >
+            <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>
+              {new Date(log.ts).toLocaleTimeString()}
+            </span>
+            <span style={{ color, fontWeight: 600 }}>{log.event}</span>
+            <span style={{ color: C.text, opacity: 0.8, wordBreak: 'break-all' }}>
+              {log.details ? JSON.stringify(log.details) : ''}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function StrategyDetail() {
   const router = useRouter();
   const { id } = router.query;
+  const [activeTab, setActiveTab] = useState<Tab>('signals');
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logsError, setLogsError] = useState<string | null>(null);
   const [card, setCard] = useState<StrategyCard | null>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [trades, setTrades] = useState<TradeRecord[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
   const apiBase = resolveApiBase();
 
-  // Safe number formatter to avoid .toFixed on undefined/null
-  const fmt = (v: any, digits = 2) => {
-    const n = typeof v === 'number' ? v : Number.isFinite(Number(v)) ? Number(v) : NaN;
-    return Number.isFinite(n) ? n.toFixed(digits) : '—';
-  };
+  const online = (() => {
+    const ts = card?.lastHeartbeat || card?.last_seen;
+    if (!ts) return false;
+    return (Date.now() - Date.parse(ts)) / 1000 <= 120;
+  })();
+
+  const pnl = (card as any)?.pnl_realized ?? (card as any)?.pnl ?? null;
 
   useEffect(() => {
     if (!id) return;
 
-    const fetchLogs = async () => {
+    const fetchAll = async () => {
+      // Fetch card
       try {
-        setError(null);
-        const res = await fetch(`${apiBase}/v1/strategies/${id}/logs`, { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          // Handle both array response and { value: [], Count: N } response
-          const items = Array.isArray(data) ? data : data?.value || [];
-          setLogs(items);
+        const r = await fetch(`${apiBase}/v1/strategies/${id}`, { cache: 'no-store' });
+        if (r.ok) setCard(await r.json());
+      } catch (_) {}
+
+      // Fetch logs
+      try {
+        setLogsError(null);
+        const r = await fetch(`${apiBase}/v1/strategies/${id}/logs`, { cache: 'no-store' });
+        if (r.ok) {
+          const data = await r.json();
+          setLogs(Array.isArray(data) ? data : data?.value || []);
         } else {
-          console.warn('Logs fetch failed:', res.status);
-          setError(`Failed to load logs (HTTP ${res.status})`);
+          setLogsError(`HTTP ${r.status}`);
         }
-        setLoading(false);
       } catch (e: any) {
-        console.error('Logs fetch error:', e);
-        setError(e?.message || 'Failed to load logs');
-        setLoading(false);
+        setLogsError(e?.message || 'Failed to load logs');
+      } finally {
+        setLogsLoading(false);
       }
     };
 
-    const fetchCard = async () => {
-      try {
-        const res = await fetch(`${apiBase}/v1/strategies/${id}`, { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          setCard(data);
-        }
-      } catch (e) {
-        console.warn('Strategy card fetch failed', e);
-      }
-    };
-
-    const fetchSummary = async () => {
-      try {
-        const res = await fetch(`${apiBase}/v1/summary`, { cache: 'no-store' });
-        if (res.ok) {
-          setSummary(await res.json());
-        }
-      } catch (e) {}
-    };
-
-    fetchLogs();
-    fetchCard();
-    fetchSummary();
-    const interval = setInterval(() => { fetchLogs(); fetchCard(); fetchSummary(); }, 30000); // Poll every 30s for real-time logs
-    return () => clearInterval(interval);
+    fetchAll();
+    const iv = setInterval(fetchAll, 30000);
+    return () => clearInterval(iv);
   }, [id, apiBase]);
 
-  const formatTime = (isoString: string) => {
-    try {
-      return new Date(isoString).toLocaleString();
-    } catch {
-      return isoString;
-    }
-  };
+  // Load trades when that tab is selected
+  useEffect(() => {
+    if (activeTab !== 'trades' && activeTab !== 'performance') return;
+    if (trades.length > 0) return;
+    setTradesLoading(true);
+    fetch(`${apiBase}/v1/trades/history?limit=200`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.trades) {
+          // filter to this strategy's symbol if possible
+          const sym = card?.latestSignal?.market;
+          const filtered = sym
+            ? data.trades.filter((t: any) => t.symbol === sym)
+            : data.trades;
+          setTrades(filtered);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTradesLoading(false));
+  }, [activeTab, apiBase, card]);
 
-  if (loading) {
-    return <div style={{ padding: 20 }}>Loading strategy logs...</div>;
-  }
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'signals', label: 'Signals' },
+    { key: 'trades', label: 'Trades', count: trades.length || undefined },
+    { key: 'performance', label: 'Performance' },
+    { key: 'logs', label: 'Logs', count: logs.length || undefined },
+  ];
 
   return (
-    <div style={{ padding: '0 20px', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <button
-          onClick={() => router.push('/')}
-          style={{
-            padding: '8px 16px',
-            border: '1px solid #ddd',
-            borderRadius: 6,
-            background: '#f9f9f9',
-            cursor: 'pointer',
-            fontSize: 14,
-            marginBottom: 12,
-          }}
-        >
-          ← Back to Home
-        </button>
-        <h1 style={{ margin: 0, marginBottom: 8 }}>{card?.name || `Strategy ${id}`}</h1>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 14, color: '#666' }}>Status: {card?.status || 'Waiting'}</span>
-          <span style={{ fontSize: 12, color: '#999' }}>Last evaluated: {card?.lastEvaluated ? new Date(card.lastEvaluated).toLocaleTimeString() : '—'}</span>
-        </div>
+    <main style={{ padding: '32px 24px', maxWidth: 1100, margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <style>{`
+        @keyframes skeletonPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
-        {/* At-a-glance row */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 8,
-          background: '#fafafa',
-          border: '1px solid #eee',
-          borderRadius: 8,
-          padding: 12,
-          marginBottom: 12,
-          fontSize: 13,
-        }}>
-          <div>
-            <div style={{ color: '#999' }}>Label • Score</div>
-            <div><strong>{card?.latestSignal ? `${card.latestSignal.label} • ${card.latestSignal.score}/100` : 'Waiting for first evaluation'}</strong></div>
-          </div>
-          <div>
-            <div style={{ color: '#999' }}>Market • Price</div>
-            <div><strong>{card?.latestSignal ? `${card.latestSignal.market} • $${fmt(card.latestSignal.price, 2)}` : '—'}</strong></div>
-          </div>
-          <div>
-            <div style={{ color: '#999' }}>Trend</div>
-            <div><strong>{card?.latestSignal ? `SMA20 ${card.latestSignal.trend.sma20} • SMA50 ${card.latestSignal.trend.sma50} • RSI ${fmt(card.latestSignal.trend.rsi14, 1)}` : '—'}</strong></div>
-          </div>
-          <div>
-            <div style={{ color: '#999' }}>Zones</div>
-            <div><strong>{card?.latestSignal && card.latestSignal.zones ? `${fmt(card.latestSignal.zones.deepAccum, 2)} | ${fmt(card.latestSignal.zones.accum, 2)} | ${fmt(card.latestSignal.zones.distrib, 2)} | ${fmt(card.latestSignal.zones.safeDistrib, 2)}` : '—'}</strong></div>
-          </div>
-        </div>
+      {/* Back button */}
+      <button
+        onClick={() => router.push('/strategies')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '7px 14px',
+          border: `1px solid ${C.border}`,
+          borderRadius: R.md,
+          background: 'transparent',
+          color: C.muted,
+          fontSize: F.sm,
+          cursor: 'pointer',
+          marginBottom: 24,
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+        onMouseLeave={e => (e.currentTarget.style.color = C.muted)}
+      >
+        ← Back to Strategies
+      </button>
 
-        {/* Recent Trade */}
-        {summary?.mostRecentTrade && summary.mostRecentTrade.strategyId === (card?.id || id) && (
-          <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, background: '#fff', marginBottom: 12 }}>
-            <div style={{ fontSize: 13, color: '#666', marginBottom: 6 }}>Recent Trade</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>
-                  {summary.mostRecentTrade.action} • {summary.mostRecentTrade.market} • ${fmt(summary.mostRecentTrade.price, 2)}
-                </div>
-                <div style={{ fontSize: 12, color: '#999' }}>{new Date(summary.mostRecentTrade.ts).toLocaleString()}</div>
-              </div>
-              <a href={`/strategies/${id}`} style={{ fontSize: 13 }}>View more</a>
+      {/* Page header */}
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '24px',
+        marginBottom: 24,
+        animation: 'fadeInUp 0.3s ease',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: '-0.02em' }}>
+              {card?.name || `Strategy ${id}`}
+            </h1>
+            <div style={{ marginTop: 6, fontSize: F.sm, color: C.muted }}>
+              ID: {id} · Last evaluated: {card?.lastEvaluated ? timeAgo(card.lastEvaluated) : '—'}
             </div>
           </div>
-        )}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span style={{
+              padding: '5px 14px',
+              borderRadius: 20,
+              fontSize: F.xs,
+              fontWeight: 700,
+              background: online ? '#166534' : C.border,
+              color: online ? '#bbf7d0' : C.muted,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+            }}>
+              <span style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: online ? '#4ade80' : C.muted,
+                display: 'inline-block',
+                boxShadow: online ? '0 0 6px #4ade80' : 'none',
+              }} />
+              {online ? 'LIVE' : 'OFFLINE'}
+            </span>
+            {pnl !== null && (
+              <div style={{
+                padding: '5px 14px',
+                borderRadius: 20,
+                fontSize: F.sm,
+                fontWeight: 700,
+                background: '#0f172a',
+                border: `1px solid ${C.border}`,
+                color: pnl >= 0 ? C.bull : C.bear,
+              }}>
+                {pnl >= 0 ? '+' : ''}{fmtUsd(pnl)} PnL
+              </div>
+            )}
+          </div>
+        </div>
 
-        <div style={{ fontSize: 14, color: '#666' }}>Execution logs (last 50 entries)</div>
-        {error && (
-          <div style={{ fontSize: 13, color: '#f44336', marginTop: 8 }}>
-            {error}
+        {/* Open position */}
+        {card?.open_position && (
+          <div style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: `1px solid ${C.border}`,
+            display: 'flex',
+            gap: 24,
+            fontSize: F.sm,
+          }}>
+            <span style={{ color: C.muted }}>Open Position:</span>
+            <span style={{ fontWeight: 600, color: card.open_position.side === 'LONG' ? C.bull : C.bear }}>
+              {card.open_position.side}
+            </span>
+            <span style={{ color: C.text }}>{card.open_position.size} @ ${fmt(card.open_position.avg_entry, 2)}</span>
+            {card.open_position.unrealized_pnl !== undefined && (
+              <span style={{ fontWeight: 600, color: (card.open_position.unrealized_pnl || 0) >= 0 ? C.bull : C.bear }}>
+                Unrealized: {(card.open_position.unrealized_pnl || 0) >= 0 ? '+' : ''}{fmtUsd(card.open_position.unrealized_pnl || 0)}
+              </span>
+            )}
           </div>
         )}
       </div>
 
-      {logs.length === 0 && !error && (
-        <div style={{ fontSize: 14, color: '#999', padding: 16, background: '#f9f9f9', borderRadius: 8 }}>
-          No logs yet — strategy is waiting for first evaluation.
-        </div>
-      )}
-
-      {logs.length > 0 && (
-        <div style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f5f5f5' }}>
-              <tr>
-                <th style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #ddd' }}>Time</th>
-                <th style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #ddd' }}>Event</th>
-                <th style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #ddd' }}>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log, idx) => (
-                <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={{ padding: 12, borderBottom: '1px solid #eee', whiteSpace: 'nowrap' }}>
-                    {formatTime(log.ts)}
-                  </td>
-                  <td style={{ padding: 12, borderBottom: '1px solid #eee', fontWeight: 600 }}>{log.event}</td>
-                  <td style={{ padding: 12, borderBottom: '1px solid #eee', fontSize: 12, color: '#666' }}>
-                    {log.details ? (
-                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {JSON.stringify(log.details, null, 2)}
-                      </pre>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Footer disclaimer */}
-      <div
-        style={{
-          fontSize: 11,
-          color: '#999',
-          padding: '16px 0',
-          borderTop: '1px solid #eee',
-          textAlign: 'center',
-          marginTop: 24,
-        }}
-      >
-        <div style={{ marginBottom: 6 }}>
-          <strong>How to read:</strong> Score ranges 0–100. Higher means stronger alignment of trend (SMA20/50), volatility (ATR), RSI, and volume.
-        </div>
-        <div style={{ marginBottom: 6 }}>
-          <strong>Zones:</strong> Prices relative to SMA20 ± k·ATR define Accumulation/Distribution bands; k varies by asset risk.
-        </div>
-        <div>
-          <strong>Disclaimer:</strong> Informational only. Verify on-chain. Never DM-first. $MICO is independent and unaffiliated with Microsoft.
-        </div>
+      {/* Tab bar */}
+      <div style={{
+        display: 'flex',
+        gap: 0,
+        borderBottom: `1px solid ${C.border}`,
+        marginBottom: 24,
+      }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              borderBottom: activeTab === tab.key ? `2px solid ${C.brand}` : '2px solid transparent',
+              background: 'transparent',
+              color: activeTab === tab.key ? C.brand : C.muted,
+              fontSize: F.sm,
+              fontWeight: activeTab === tab.key ? 700 : 400,
+              cursor: 'pointer',
+              marginBottom: -1,
+              transition: 'color 0.15s, border-color 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span style={{
+                padding: '1px 7px',
+                borderRadius: 10,
+                fontSize: 11,
+                background: activeTab === tab.key ? C.brand : C.border,
+                color: activeTab === tab.key ? '#fff' : C.muted,
+              }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {/* Tab content */}
+      <div style={{ animation: 'fadeInUp 0.25s ease' }}>
+        {activeTab === 'signals' && <SignalsTab card={card} />}
+        {activeTab === 'trades' && <TradesTab trades={trades} loading={tradesLoading} />}
+        {activeTab === 'performance' && <PerformanceTab trades={trades} />}
+        {activeTab === 'logs' && <LogsTab logs={logs} loading={logsLoading} error={logsError} />}
+      </div>
+    </main>
   );
 }
