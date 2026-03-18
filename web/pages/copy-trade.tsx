@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { LlmDecision, LlmMarketView, ActivityEvent } from '../src/types';
+import type { LlmDecision, LlmMarketView, ActivityEvent, BacktestResult } from '../src/types';
+import { C, R, F, fmtUsd as themeFmtUsd } from '../src/theme';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -417,9 +418,153 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   );
 }
 
+// ─── Mode Banner ─────────────────────────────────────────────────────────────
+
+function ModeBanner({ mode }: { mode: string | null }) {
+  if (!mode) return null;
+  const isAdvisory = mode === 'ADVISORY' || mode === 'advisory';
+  return (
+    <div
+      style={{
+        padding: '10px 16px',
+        marginBottom: 20,
+        borderRadius: R.md,
+        background: isAdvisory ? C.info + '12' : C.bull + '12',
+        border: `1px solid ${isAdvisory ? C.info : C.bull}33`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        fontSize: F.sm,
+      }}
+    >
+      <span style={{ fontSize: 16 }}>{isAdvisory ? 'ℹ️' : '✅'}</span>
+      <span style={{ color: isAdvisory ? '#93c5fd' : '#86efac' }}>
+        Bot is in <strong>{mode}</strong> mode —{' '}
+        {isAdvisory
+          ? 'it analyses and logs decisions but does NOT execute trades. All signals here are advisory only.'
+          : 'the LLM has execution access. Signals shown reflect live AI decisions.'}
+      </span>
+    </div>
+  );
+}
+
+// ─── Risk Calculator ─────────────────────────────────────────────────────────
+
+function RiskCalculator({ entry, sl, symbol }: { entry: number; sl: number; symbol: string }) {
+  const [accountSize, setAccountSize] = useState('10000');
+  const [riskPct, setRiskPct] = useState('1');
+
+  const acct = parseFloat(accountSize) || 0;
+  const risk = parseFloat(riskPct) || 0;
+  const dollarRisk = (acct * risk) / 100;
+  const slDist = Math.abs(entry - sl);
+  const slDistPct = slDist / entry;
+  const positionSizeUsd = slDistPct > 0 ? dollarRisk / slDistPct : 0;
+  const qty = entry > 0 ? positionSizeUsd / entry : 0;
+  const lev = positionSizeUsd > acct ? positionSizeUsd / acct : 1;
+
+  const fmt2 = (n: number) => n.toFixed(2);
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 16,
+      }}
+    >
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+        Risk Calculator
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+        <div>
+          <label style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Account Size ($)</label>
+          <input
+            type="number"
+            value={accountSize}
+            onChange={(e) => setAccountSize(e.target.value)}
+            style={{ width: '100%', padding: '7px 10px', background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: R.sm, color: C.text, fontSize: F.sm, fontFamily: 'inherit' }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Risk per Trade (%)</label>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[0.5, 1, 2].map((v) => (
+              <button
+                key={v}
+                onClick={() => setRiskPct(String(v))}
+                style={{
+                  flex: 1,
+                  padding: '7px 4px',
+                  borderRadius: R.sm,
+                  border: `1px solid ${parseFloat(riskPct) === v ? C.brand : C.border}`,
+                  background: parseFloat(riskPct) === v ? C.brand : C.surfaceHover,
+                  color: parseFloat(riskPct) === v ? '#fff' : C.muted,
+                  fontSize: F.xs,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {v}%
+              </button>
+            ))}
+            <input
+              type="number"
+              value={riskPct}
+              onChange={(e) => setRiskPct(e.target.value)}
+              style={{ flex: 1, padding: '7px 8px', background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: R.sm, color: C.text, fontSize: F.sm, textAlign: 'center', fontFamily: 'inherit' }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {acct > 0 && slDistPct > 0 && (
+        <div
+          style={{
+            padding: '12px 14px',
+            background: C.surfaceHover,
+            borderRadius: R.md,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {[
+            { label: 'Max $ risk', value: `$${fmt2(dollarRisk)}`, color: C.bear, note: `${risk}% of $${acct.toLocaleString()}` },
+            { label: 'SL distance', value: `${(slDistPct * 100).toFixed(2)}%`, color: C.warn, note: `$${fmt2(slDist)}` },
+            { label: 'Position size', value: `$${Math.round(positionSizeUsd).toLocaleString()}`, color: C.text, note: `${qty < 1 ? qty.toFixed(4) : qty.toFixed(2)} ${symbol}` },
+            { label: 'Implied leverage', value: `${fmt2(lev)}×`, color: lev > 10 ? C.bear : lev > 5 ? C.warn : C.bull, note: lev > 10 ? '⚠ Very high' : lev > 5 ? 'Moderate' : 'Conservative' },
+          ].map(({ label, value, color, note }) => (
+            <div key={label}>
+              <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: F.md, fontWeight: 800, color }}>{value}</div>
+              <div style={{ fontSize: F.xs, color: C.muted }}>{note}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 10, fontSize: F.xs, color: C.muted, lineHeight: 1.5 }}>
+        Based on entry <strong style={{ color: C.text }}>{themeFmtUsd(entry, 4)}</strong> and SL <strong style={{ color: C.text }}>{themeFmtUsd(sl, 4)}</strong>.
+        If {symbol} drops to the SL, you lose <strong style={{ color: C.bear }}>${fmt2(dollarRisk)}</strong>.
+      </div>
+    </div>
+  );
+}
+
 // ─── Copy Trade Card ─────────────────────────────────────────────────────────
 
-function CopyTradeCard({ signal, llmDecision }: { signal: Signal; llmDecision: LlmDecision | null }) {
+function CopyTradeCard({
+  signal,
+  llmDecision,
+  backtestBySymbol,
+}: {
+  signal: Signal;
+  llmDecision: LlmDecision | null;
+  backtestBySymbol?: { trades: number; wins: number; pnl: number; win_rate: number } | null;
+}) {
   const info = getSignalStrength(signal);
   const trendUp = signal.sma20 > signal.sma50;
   const rsiVal = signal.rsi14 ?? 50;
@@ -488,6 +633,15 @@ function CopyTradeCard({ signal, llmDecision }: { signal: Signal; llmDecision: L
             <div style={{ fontSize: 11, color: '#9ca3af' }}>
               {signal.score >= 70 ? 'Strong signal' : signal.score >= 50 ? 'Moderate signal' : 'Weak signal'}
             </div>
+            {backtestBySymbol && (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #e5e7eb', fontSize: 10, color: '#6b7280' }}>
+                Backtest accuracy:{' '}
+                <strong style={{ color: backtestBySymbol.win_rate >= 0.65 ? '#16a34a' : '#d97706' }}>
+                  {(backtestBySymbol.win_rate * 100).toFixed(0)}%
+                </strong>{' '}
+                ({backtestBySymbol.wins}W/{backtestBySymbol.trades - backtestBySymbol.wins}L)
+              </div>
+            )}
           </div>
 
           {/* Trend */}
@@ -552,6 +706,14 @@ function CopyTradeCard({ signal, llmDecision }: { signal: Signal; llmDecision: L
           1H Chart
         </div>
         <TradingViewChart symbol={signal.symbol} />
+      </div>
+
+      {/* Risk Calculator */}
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', background: '#f8fafc' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Position Sizing Calculator
+        </div>
+        <RiskCalculator entry={signal.price} sl={info.direction.includes('BULLISH') ? signal.zones.deepAccum : signal.zones.safeDistrib} symbol={signal.symbol} />
       </div>
 
       {/* How to Trade This */}
@@ -718,16 +880,18 @@ export default function CopyTrade() {
   const [data, setData] = useState<SignalsPayload>({});
   const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(true);
   const apiBase = resolveApiBase();
 
   useEffect(() => {
     const fetcher = async () => {
       try {
-        const [signalsRes, llmRes, activityRes] = await Promise.allSettled([
+        const [signalsRes, llmRes, activityRes, btRes] = await Promise.allSettled([
           fetch(`${apiBase}/v1/signals`),
           fetch(`${apiBase}/v1/llm/market-view`),
           fetch(`${apiBase}/v1/activity/feed?limit=25`),
+          fetch(`${apiBase}/v1/backtest/results/latest`),
         ]);
 
         if (signalsRes.status === 'fulfilled' && signalsRes.value.ok) {
@@ -739,6 +903,9 @@ export default function CopyTrade() {
         if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
           const actData = await activityRes.value.json();
           setActivityEvents(actData?.items || []);
+        }
+        if (btRes.status === 'fulfilled' && btRes.value.ok) {
+          setBacktest(await btRes.value.json());
         }
       } catch (e) {
         console.error('Fetch error:', e);
@@ -754,6 +921,9 @@ export default function CopyTrade() {
   const signals = data.signals || {};
   const symbolOrder = ['BTC', 'SOL', 'HYPE'];
   const orderedSignals = symbolOrder.map((sym) => signals[sym]).filter(Boolean);
+  const llmMode = llmView?.per_symbol
+    ? Object.values(llmView.per_symbol)[0]?.mode || null
+    : null;
 
   return (
     <div>
@@ -770,6 +940,9 @@ export default function CopyTrade() {
           </div>
         )}
       </div>
+
+      {/* Mode Banner */}
+      <ModeBanner mode={llmMode} />
 
       {/* LLM Brain Banner */}
       <LlmBrainBanner view={llmView} />
@@ -819,6 +992,7 @@ export default function CopyTrade() {
             key={signal.symbol}
             signal={signal}
             llmDecision={llmView?.per_symbol?.[signal.symbol] ?? null}
+            backtestBySymbol={backtest?.by_symbol?.[signal.symbol] ?? null}
           />
         ))
       )}

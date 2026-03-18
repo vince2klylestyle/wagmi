@@ -1,0 +1,124 @@
+/**
+ * WAGMI Design System — shared tokens for all pages.
+ * Import C (colours), R (radii), S (shadows), F (font sizes).
+ */
+
+export const C = {
+  // Brand
+  brand: '#6366f1',
+  brandDark: '#4f46e5',
+  brandGlow: 'rgba(99,102,241,0.15)',
+
+  // Semantic
+  bull: '#16a34a',
+  bullLight: '#dcfce7',
+  bullMid: '#86efac',
+  bear: '#dc2626',
+  bearLight: '#fee2e2',
+  bearMid: '#fca5a5',
+  warn: '#d97706',
+  warnLight: '#fef3c7',
+  warnMid: '#fbbf24',
+  info: '#2563eb',
+  infoLight: '#dbeafe',
+  infoMid: '#93c5fd',
+  purple: '#7c3aed',
+  purpleLight: '#ede9fe',
+
+  // Dark surface scale (primary palette)
+  bg: '#0a0f1e',
+  surface: '#111827',
+  surfaceHover: '#1e293b',
+  card: '#1a2236',
+  border: '#2d3748',
+  borderBright: '#4a5568',
+
+  // Text on dark
+  text: '#f1f5f9',
+  textSub: '#cbd5e1',
+  muted: '#64748b',
+  faint: '#334155',
+
+  // Light surface scale (for cards / signal sections that need light bg)
+  bgLight: '#f8fafc',
+  surfaceLight: '#ffffff',
+  cardLight: '#f1f5f9',
+  borderLight: '#e2e8f0',
+  textLight: '#0f172a',
+  textSubLight: '#374151',
+  mutedLight: '#6b7280',
+
+  // Heatmap cells
+  heatBull3: '#166534',
+  heatBull2: '#15803d',
+  heatBull1: '#22c55e',
+  heatNeutral: '#374151',
+  heatBear1: '#ef4444',
+  heatBear2: '#b91c1c',
+  heatBear3: '#7f1d1d',
+};
+
+export const R = {
+  xs: 4,
+  sm: 6,
+  md: 10,
+  lg: 16,
+  xl: 20,
+  pill: 999,
+} as const;
+
+export const S = {
+  sm: '0 1px 3px rgba(0,0,0,.25)',
+  md: '0 4px 12px rgba(0,0,0,.3)',
+  lg: '0 8px 28px rgba(0,0,0,.4)',
+  glow: '0 0 20px rgba(99,102,241,.25)',
+} as const;
+
+export const F = {
+  xs: 11,
+  sm: 12,
+  base: 13,
+  md: 14,
+  lg: 16,
+  xl: 18,
+  '2xl': 22,
+  '3xl': 28,
+  '4xl': 36,
+} as const;
+
+/** Transition shorthand */
+export const T = 'transition: all 0.18s ease;';
+
+/** Format a number as USD */
+export function fmtUsd(n: number | null | undefined, decimals = 2): string {
+  if (n == null || isNaN(n)) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  }).format(n);
+}
+
+/** Format a percentage */
+export function fmtPct(n: number | null | undefined, decimals = 1): string {
+  if (n == null || isNaN(n)) return '—';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(decimals)}%`;
+}
+
+/** Format a relative timestamp */
+export function timeAgo(isoOrTs: string | number | null | undefined): string {
+  if (!isoOrTs) return '';
+  try {
+    const ts = typeof isoOrTs === 'number' ? isoOrTs * 1000 : new Date(isoOrTs).getTime();
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5) return 'just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  } catch {
+    return '';
+  }
+}
