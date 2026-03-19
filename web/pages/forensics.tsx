@@ -1037,9 +1037,11 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
   const data = BUCKETS.map((b) => ({ ...b, wins: 0, losses: 0 }));
 
   let hasDuration = false;
+  const allDurations: number[] = [];
   trades.forEach((t) => {
     if (t.duration_h == null) return;
     hasDuration = true;
+    allDurations.push(t.duration_h);
     const idx = data.findIndex((b) => t.duration_h! <= b.max);
     if (idx >= 0) {
       if (t.outcome === 'WIN') data[idx].wins++;
@@ -1049,12 +1051,42 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
 
   if (!hasDuration) return null;
 
+  // Compute mean and median duration in bucket-index space for vertical reference lines
+  const meanDuration = allDurations.reduce((a, b) => a + b, 0) / allDurations.length;
+  const sortedDurs = [...allDurations].sort((a, b) => a - b);
+  const medianDuration = sortedDurs.length % 2 === 0
+    ? (sortedDurs[sortedDurs.length / 2 - 1] + sortedDurs[sortedDurs.length / 2]) / 2
+    : sortedDurs[Math.floor(sortedDurs.length / 2)];
+
+  // Map a duration (hours) to a fractional bucket x position
+  const BUCKET_BOUNDS = [0, 1, 4, 12, 24, 72, Infinity];
+  function durationToFrac(dh: number): number {
+    for (let i = 0; i < BUCKET_BOUNDS.length - 1; i++) {
+      const lo = BUCKET_BOUNDS[i], hi = BUCKET_BOUNDS[i + 1];
+      if (dh <= hi) {
+        const hiClamped = hi === Infinity ? lo * 3 : hi;
+        return (i + (dh - lo) / (hiClamped - lo)) / (BUCKET_BOUNDS.length - 1);
+      }
+    }
+    return 1;
+  }
+
   const maxTotal = Math.max(...data.map((d) => d.wins + d.losses), 1);
   const W = 560, H = 140;
   const pad = { t: 20, r: 16, b: 36, l: 40 };
   const iW = W - pad.l - pad.r;
   const iH = H - pad.t - pad.b;
   const barW = iW / data.length - 4;
+
+  // Best performing bucket (highest win rate with at least 1 trade)
+  const bestBucketIdx = data.reduce((best, d, i) => {
+    const total = d.wins + d.losses;
+    if (total === 0) return best;
+    const wr = d.wins / total;
+    const bestTotal = data[best].wins + data[best].losses;
+    const bestWr = bestTotal > 0 ? data[best].wins / bestTotal : -1;
+    return wr > bestWr ? i : best;
+  }, 0);
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
