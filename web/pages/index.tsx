@@ -2151,7 +2151,15 @@ function TopOpportunityCard({
     ? sigList.reduce((best, [sym, sig]) => sig.score > best[1].score ? [sym, sig] : best, sigList[0])
     : null;
 
-  if (!loading && !best) {
+  if (loading) {
+    return (
+      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Skeleton h={18} w="40%" /><Skeleton h={32} w="30%" /><Skeleton h={60} /><Skeleton h={40} />
+      </div>
+    );
+  }
+
+  if (!best) {
     return (
       <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', color: C.muted, fontSize: F.sm }}>
         <div style={{ fontWeight: 700, color: C.textSub, marginBottom: 6 }}>Top Opportunity</div>
@@ -2160,8 +2168,8 @@ function TopOpportunityCard({
     );
   }
 
-  const symbol = best![0];
-  const sig = best![1];
+  const symbol = best[0];
+  const sig = best[1];
 
   // Derived display values
   const score = sig.score;
@@ -2202,25 +2210,6 @@ function TopOpportunityCard({
   const ringRadius = 24;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringProgress = ringCircumference * (1 - score / 100);
-
-  if (loading) {
-    return (
-      <div style={{
-        background: G.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: R.lg,
-        padding: '20px 24px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}>
-        <Skeleton h={18} w="40%" />
-        <Skeleton h={32} w="30%" />
-        <Skeleton h={60} />
-        <Skeleton h={40} />
-      </div>
-    );
-  }
 
   return (
     <div
