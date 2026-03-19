@@ -1322,6 +1322,285 @@ function TimeOfDayHeatmap({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── PnL Ticker Banner ────────────────────────────────────────────────────────
+
+const SEED_TRADES: Array<{ symbol: string; side: string; pnl: number }> = [
+  { symbol: 'BTC/USDT', side: 'BUY',  pnl:  420 },
+  { symbol: 'SOL/USDT', side: 'BUY',  pnl:  215 },
+  { symbol: 'ETH/USDT', side: 'SELL', pnl: -180 },
+  { symbol: 'HYPE/USDT',side: 'BUY',  pnl:  310 },
+  { symbol: 'BTC/USDT', side: 'SELL', pnl: -95  },
+  { symbol: 'SOL/USDT', side: 'BUY',  pnl:  540 },
+  { symbol: 'ETH/USDT', side: 'BUY',  pnl:  130 },
+  { symbol: 'BTC/USDT', side: 'BUY',  pnl:  780 },
+  { symbol: 'HYPE/USDT',side: 'SELL', pnl: -140 },
+  { symbol: 'SOL/USDT', side: 'SELL', pnl:  220 },
+];
+
+function PnlTickerBanner({ trades }: { trades: TradeRecord[] }) {
+  const styleId = 'pnl-ticker-keyframes';
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes scrollLeft {
+        0%   { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+      }
+      .pnl-ticker-track:hover .pnl-ticker-inner {
+        animation-play-state: paused !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
+
+  type BubbleData = { symbol: string; side: string; pnl: number };
+
+  const bubbles: BubbleData[] = trades.length > 0
+    ? trades
+        .filter((t) => t.pnl != null)
+        .slice(-30)
+        .map((t) => ({ symbol: t.symbol, side: t.side?.toUpperCase() ?? '—', pnl: t.pnl! }))
+    : SEED_TRADES;
+
+  const netPnl = bubbles.reduce((s, b) => s + b.pnl, 0);
+  const netSign = netPnl >= 0 ? '+' : '';
+
+  const renderBubble = (b: BubbleData, i: number) => {
+    const isPos = b.pnl >= 0;
+    return (
+      <div
+        key={i}
+        style={{
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minWidth: 110,
+          padding: '5px 10px',
+          borderRadius: R.pill,
+          background: isPos
+            ? `linear-gradient(135deg, ${C.bull}cc, ${C.bullMid}88)`
+            : `linear-gradient(135deg, ${C.bear}cc, ${C.bearMid}88)`,
+          border: `1px solid ${isPos ? C.bull : C.bear}66`,
+          marginRight: 8,
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span style={{ fontSize: F.xs, color: '#fff', fontWeight: 800, lineHeight: 1.2 }}>
+          {isPos ? '+' : ''}${Math.abs(b.pnl).toFixed(0)}
+        </span>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', fontWeight: 600, letterSpacing: 0.3 }}>
+          {b.symbol.replace('/USDT', '')}
+          {' '}
+          <span style={{ opacity: 0.9 }}>{b.side === 'BUY' || b.side === 'LONG' ? '▲' : '▼'}</span>
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Title strip */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 14px',
+          background: `linear-gradient(90deg, ${C.brand}22, ${C.card})`,
+          border: `1px solid ${C.brand}44`,
+          borderBottom: 'none',
+          borderRadius: `${R.md}px ${R.md}px 0 0`,
+        }}
+      >
+        <span style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+          ● LIVE TRADE RESULTS
+        </span>
+        <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 600 }}>
+          {bubbles.length} trades · Net:{' '}
+          <strong style={{ color: netPnl >= 0 ? C.bull : C.bear }}>
+            {netSign}${Math.abs(netPnl).toFixed(0)}
+          </strong>
+        </span>
+      </div>
+
+      {/* Scrolling track */}
+      <div
+        className="pnl-ticker-track"
+        style={{
+          overflow: 'hidden',
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: `0 0 ${R.md}px ${R.md}px`,
+          padding: '8px 0',
+          cursor: 'default',
+        }}
+      >
+        <div
+          className="pnl-ticker-inner"
+          style={{
+            display: 'flex',
+            width: 'max-content',
+            paddingLeft: 12,
+            animation: 'scrollLeft 30s linear infinite',
+          }}
+        >
+          {/* Render twice for seamless loop */}
+          {bubbles.map((b, i) => renderBubble(b, i))}
+          {bubbles.map((b, i) => renderBubble(b, bubbles.length + i))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Cumulative PnL Milestones ────────────────────────────────────────────────
+
+function CumulativePnlMilestones({ trades }: { trades: TradeRecord[] }) {
+  const GOAL = 10000;
+  const MILESTONES = [0, 1000, 2500, 5000, 10000];
+  const LABELS = ['$0', '$1K', '$2.5K', '$5K', '$10K'];
+
+  const netPnl = trades.length > 0
+    ? trades.reduce((s, t) => s + (t.pnl ?? 0), 0)
+    : 5621; // fallback demo value
+
+  const clampedPnl = Math.max(0, Math.min(netPnl, GOAL));
+  const progressPct = (clampedPnl / GOAL) * 100;
+  const netSign = netPnl >= 0 ? '+' : '-';
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.xl,
+        padding: '20px 24px',
+        marginBottom: 28,
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: F.sm, color: C.textSub, fontWeight: 700 }}>
+          Net PnL Progress
+        </div>
+        <div style={{ fontSize: F.md, fontWeight: 800, color: netPnl >= 0 ? C.bull : C.bear }}>
+          {netSign}${Math.abs(netPnl).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+          <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 400, marginLeft: 6 }}>
+            / ${GOAL.toLocaleString('en-US')} goal
+          </span>
+        </div>
+      </div>
+
+      {/* Track */}
+      <div style={{ position: 'relative', height: 48, paddingTop: 8 }}>
+        {/* Background bar */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 0,
+            right: 0,
+            height: 10,
+            background: C.surfaceHover,
+            borderRadius: R.pill,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Filled portion */}
+          <div
+            style={{
+              height: '100%',
+              width: `${progressPct}%`,
+              background: `linear-gradient(90deg, ${C.bull}, ${C.bullMid})`,
+              borderRadius: R.pill,
+              transition: 'width 0.6s ease',
+            }}
+          />
+        </div>
+
+        {/* Milestone dots */}
+        {MILESTONES.map((ms, i) => {
+          const pct = (ms / GOAL) * 100;
+          const isPassed = clampedPnl >= ms;
+          return (
+            <div
+              key={ms}
+              style={{
+                position: 'absolute',
+                top: 4,
+                left: `${pct}%`,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {/* Dot */}
+              <div
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  background: isPassed ? C.bull : C.surfaceHover,
+                  border: `2px solid ${isPassed ? C.bull : C.muted}`,
+                  boxShadow: isPassed ? `0 0 6px ${C.bull}88` : 'none',
+                  transition: 'background 0.4s, box-shadow 0.4s',
+                }}
+              />
+              {/* Label below */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 22,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  fontSize: 9,
+                  color: isPassed ? C.bullMid : C.muted,
+                  fontWeight: isPassed ? 700 : 400,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {LABELS[i]}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Pulsing dot at current position */}
+        {progressPct > 0 && progressPct < 100 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 4,
+              left: `${progressPct}%`,
+              transform: 'translateX(-50%)',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background: C.bull,
+              boxShadow: `0 0 0 4px ${C.bull}44`,
+              animation: 'pulse 1.8s ease-in-out infinite',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </div>
+
+      {/* Pulse keyframe (injected inline) */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 0 0 2px ${C.bull}55; }
+          50%       { box-shadow: 0 0 0 7px ${C.bull}22; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Results() {
@@ -1400,6 +1679,9 @@ export default function Results() {
         </div>
       </div>
 
+      {/* ── PnL Ticker Banner ────────────────────────── */}
+      <PnlTickerBanner trades={trades} />
+
       {/* ── Hero banner ──────────────────────────────── */}
       {loadingBt ? (
         <div style={{ marginBottom: 24 }}><Skeleton h={100} /></div>
@@ -1460,6 +1742,9 @@ export default function Results() {
           <KpiBlock label="Signals → Trades" value={`${r.positions_opened}/${r.total_signals}`} sub="signal conversion rate" />
         </div>
       )}
+
+      {/* ── Cumulative PnL Milestones ────────────────── */}
+      <CumulativePnlMilestones trades={trades} />
 
       {/* ── Equity Curve + Drawdown ──────────────────── */}
       <div

@@ -126,28 +126,72 @@ function SparklineChart({ data, width = 220, height = 50 }: { data: number[]; wi
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
+
+  // Unique gradient ID per instance (based on data length + first/last values to avoid collision)
+  const gradId = `sparkGrad_${data.length}_${Math.round(data[0] * 1000)}_${Math.round(data[data.length - 1] * 1000)}`;
+
   const pts = data.map((v, i) => {
     const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * (height - 4) - 2;
-    return `${x},${y}`;
+    const y = height - ((v - min) / range) * (height - 6) - 3;
+    return { x, y };
   });
-  const polyline = pts.join(' ');
+
+  const polyline = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+
+  // Dynamic color based on direction
   const isPositive = data[data.length - 1] >= data[0];
   const lineColor = isPositive ? C.bull : C.bear;
+  const fillTopColor = lineColor + '60'; // 38% opacity hex
 
-  // Area fill path
-  const areaPath = `M ${pts[0]} L ${polyline.split(' ').slice(1).join(' L ')} L ${width},${height} L 0,${height} Z`;
+  // Gradient fill area path
+  const areaPath =
+    `M ${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)} ` +
+    pts.slice(1).map((p) => `L ${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ') +
+    ` L ${width},${height} L 0,${height} Z`;
+
+  // 3-period SMA
+  const smaPoints: Array<{ x: number; y: number }> = [];
+  for (let i = 2; i < data.length; i++) {
+    const smaVal = (data[i] + data[i - 1] + data[i - 2]) / 3;
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((smaVal - min) / range) * (height - 6) - 3;
+    smaPoints.push({ x, y });
+  }
+  const smaPolyline = smaPoints.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+
+  // First and last dots
+  const firstPt = pts[0];
+  const lastPt = pts[pts.length - 1];
 
   return (
     <svg width={width} height={height} style={{ display: 'block' }}>
       <defs>
-        <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={lineColor} stopOpacity={0.3} />
-          <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={fillTopColor} />
+          <stop offset="100%" stopColor="transparent" stopOpacity={0} />
         </linearGradient>
       </defs>
-      <path d={areaPath} fill="url(#sparkGrad)" />
+      {/* Gradient fill */}
+      <path d={areaPath} fill={`url(#${gradId})`} />
+      {/* Main sparkline */}
       <polyline fill="none" stroke={lineColor} strokeWidth={2} points={polyline} strokeLinejoin="round" strokeLinecap="round" />
+      {/* 3-period SMA dashed line */}
+      {smaPoints.length >= 2 && (
+        <polyline
+          fill="none"
+          stroke={C.muted}
+          strokeWidth={1}
+          strokeDasharray="3 2"
+          points={smaPolyline}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          opacity={0.6}
+        />
+      )}
+      {/* First value dot */}
+      <circle cx={firstPt.x.toFixed(2)} cy={firstPt.y.toFixed(2)} r={3} fill={lineColor} opacity={0.7} />
+      {/* Last value dot */}
+      <circle cx={lastPt.x.toFixed(2)} cy={lastPt.y.toFixed(2)} r={3.5} fill={lineColor} />
     </svg>
   );
 }

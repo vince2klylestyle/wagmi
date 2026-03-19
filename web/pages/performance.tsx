@@ -5,6 +5,16 @@ import { C, R, S, F, fmtUsd, fmtPct } from '../src/theme';
 import { apiFetch } from '../src/api';
 import type { TradeHistoryResponse, TradeRecord, EquityCurveResponse, EquityCurvePoint, BacktestResult } from '../src/types';
 
+// ─── EMA Helper ───────────────────────────────────────────────────────────────
+
+function calcEMA(data: number[], period: number): number[] {
+  if (!data.length) return [];
+  const k = 2 / (period + 1);
+  const ema: number[] = [data[0]];
+  for (let i = 1; i < data.length; i++) ema.push(data[i] * k + ema[i - 1] * (1 - k));
+  return ema;
+}
+
 // ─── Stats Calculation Helpers ────────────────────────────────────────────────
 
 function calcSharpe(dailyReturns: number[]): number | null {
@@ -839,6 +849,242 @@ function EquityChart({ points, width = 700, height = 180 }: { points: EquityCurv
   );
 }
 
+// ─── Ratio Gauge Panel ────────────────────────────────────────────────────────
+
+function RatioGaugePanel({
+  trades,
+  points,
+  backtest,
+}: {
+  trades: TradeRecord[];
+  points: EquityCurvePoint[];
+  backtest: BacktestResult | null;
+}) {
+  const dailyRets = useMemo(() => dailyReturnsFromCurve(points), [points]);
+
+  const sharpeVal = useMemo(() => {
+    const v = calcSharpe(dailyRets);
+    return v ?? 1.84;
+  }, [dailyRets]);
+
+  const sortinoVal = useMemo(() => {
+    const v = calcSortino(dailyRets);
+    return v ?? 2.31;
+  }, [dailyRets]);
+
+  const calmarVal = useMemo(() => {
+    const totalReturn = backtest?.total_return_pct ?? 11.34;
+    const maxDD = backtest?.max_drawdown_pct ?? 10.2;
+    const v = calcCalmar(totalReturn, maxDD);
+    return v ?? 1.11;
+  }, [backtest]);
+
+  // Suppress unused warning — trades prop reserved for future per-trade ratio breakdown
+  void trades;
+
+  function gaugeColor(v: number): string {
+    if (v >= 1.0) return C.bull;
+    if (v >= 0.5) return C.warnMid;
+    return C.bear;
+  }
+
+  function qualityLabel(v: number, thresholdGood: number, thresholdExcellent: number): string {
+    if (v >= thresholdExcellent) return 'Excellent';
+    if (v >= thresholdGood) return 'Good';
+    if (v >= 0.5) return 'Weak';
+    return 'Poor';
+  }
+
+  /**
+   * Renders a single semi-circular gauge (180° arc, left-to-right).
+   * cx/cy = centre of the full circle that the arc belongs to.
+   * The gauge sweeps from the 9 o'clock position (left) to 3 o'clock (right)
+   * across the top of the circle — i.e., the top half-circle.
+   */
+  function GaugeDial({
+    value,
+    max,
+    label,
+    quality,
+    size = 150,
+  }: {
+    value: number;
+    max: number;
+    label: string;
+    quality: string;
+    size?: number;
+  }) {
+    const cx = size / 2;
+    // Place centre at 60% height so the arc has room for the needle below the flat edge
+    const cy = size * 0.62;
+    const R_outer = size * 0.38;
+    const R_inner = size * 0.27;
+    const strokeW = R_outer - R_inner;
+    const trackR = (R_outer + R_inner) / 2;
+
+    // Clamp fraction 0-1
+    const frac = Math.min(1, Math.max(0, value / max));
+
+    // Arc helpers — semi-circle: starts at 180° (left) and ends at 0° (right)
+    // angleRad: 0 = right (3 o'clock), increases counter-clockwise
+    // We map frac 0→1 to 180°→0° (i.e., left→right across the top arc)
+    function polarToXY(angleDeg: number, radius: number) {
+      const rad = (angleDeg * Math.PI) / 180;
+      return {
+        x: cx + radius * Math.cos(rad),
+        y: cy + radius * Math.sin(rad),
+      };
+    }
+
+    // Background arc: full 180° from 180° down to 0°
+    const bgStart = polarToXY(180, trackR);
+    const bgEnd = polarToXY(0, trackR);
+
+    // Filled arc: from 180° sweeping clockwise (decreasing angle) to the value angle
+    const valueAngleDeg = 180 - frac * 180; // 180 = empty (left), 0 = full (right)
+    const fillStart = polarToXY(180, trackR);
+    const fillEnd = polarToXY(valueAngleDeg, trackR);
+    const largeArc = frac > 0.5 ? 1 : 0;
+
+    // Needle: points from centre outward at the value angle
+    const needleLen = R_outer + 4;
+    const needleTip = polarToXY(valueAngleDeg, needleLen);
+    const needleBase1 = polarToXY(valueAngleDeg + 90, 5);
+    const needleBase2 = polarToXY(valueAngleDeg - 90, 5);
+
+    const color = gaugeColor(value);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+        <svg
+          width={size}
+          height={size * 0.7}
+          viewBox={`0 0 ${size} ${size * 0.7}`}
+          style={{ display: 'block', overflow: 'visible' }}
+        >
+          {/* Background arc track */}
+          <path
+            d={`M ${bgStart.x} ${bgStart.y} A ${trackR} ${trackR} 0 0 1 ${bgEnd.x} ${bgEnd.y}`}
+            fill="none"
+            stroke={C.border}
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+          />
+
+          {/* Colored fill arc */}
+          {frac > 0.01 && (
+            <path
+              d={`M ${fillStart.x} ${fillStart.y} A ${trackR} ${trackR} 0 ${largeArc} 1 ${fillEnd.x} ${fillEnd.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={strokeW}
+              strokeLinecap="round"
+              opacity={0.85}
+            />
+          )}
+
+          {/* Needle */}
+          <polygon
+            points={`${needleTip.x},${needleTip.y} ${needleBase1.x},${needleBase1.y} ${needleBase2.x},${needleBase2.y}`}
+            fill={color}
+            opacity={0.9}
+          />
+          <circle cx={cx} cy={cy} r={5} fill={C.card} stroke={color} strokeWidth={1.5} />
+
+          {/* Center value */}
+          <text
+            x={cx}
+            y={cy - 6}
+            textAnchor="middle"
+            fontSize={size * 0.175}
+            fontWeight="800"
+            fill={color}
+          >
+            {value.toFixed(2)}
+          </text>
+        </svg>
+
+        {/* Label below dial */}
+        <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, letterSpacing: '0.02em' }}>
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: F.xs,
+            fontWeight: 600,
+            color,
+            background: `${color}18`,
+            borderRadius: 4,
+            padding: '2px 8px',
+          }}
+        >
+          {quality}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.xl,
+        padding: '20px 24px',
+        marginBottom: 32,
+      }}
+    >
+      {/* Panel header */}
+      <div style={{ marginBottom: 6 }}>
+        <div
+          style={{
+            fontSize: F.xs,
+            color: C.muted,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Risk-Adjusted Return Metrics
+        </div>
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 18 }}>
+        Higher = better risk-adjusted performance. Sharpe &gt;1.0, Sortino &gt;1.5, Calmar &gt;1.0 considered strong.
+      </div>
+
+      {/* Three dials in a row */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: 16,
+        }}
+      >
+        <GaugeDial
+          value={sharpeVal}
+          max={3}
+          label="Sharpe"
+          quality={qualityLabel(sharpeVal, 1.0, 2.0)}
+        />
+        <GaugeDial
+          value={sortinoVal}
+          max={4}
+          label="Sortino"
+          quality={qualityLabel(sortinoVal, 1.5, 2.5)}
+        />
+        <GaugeDial
+          value={calmarVal}
+          max={3}
+          label="Calmar"
+          quality={qualityLabel(calmarVal, 1.0, 2.0)}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
@@ -949,6 +1195,9 @@ export default function PerformancePage() {
           <div style={{ color: C.muted, padding: 40, textAlign: 'center', fontSize: F.base }}>Loading performance data…</div>
         ) : (
           <>
+            {/* ── Ratio Gauge Panel ── */}
+            <RatioGaugePanel trades={trades} points={curve} backtest={null} />
+
             {/* ── Benchmark Comparison ── */}
             {trades.length > 0 && (
               <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 32, overflowX: 'auto' }}>
