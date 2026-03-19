@@ -2031,6 +2031,465 @@ function VolatilityRegimeBands() {
   );
 }
 
+// ─── Confidence History Chart ─────────────────────────────────────────────────
+
+function ConfidenceHistoryChart() {
+  const N = 24;
+
+  // Seeded pseudo-random helper — stable across renders
+  function s(n: number): number {
+    return Math.abs((Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1);
+  }
+
+  // BTC: centered 75–85
+  const btcValues: number[] = Array.from({ length: N }, (_, i) => {
+    return Math.min(100, Math.max(50, 75 + s(i * 3 + 1) * 10 + (s(i * 7 + 5) - 0.5) * 6));
+  });
+  // SOL: centered 70–80
+  const solValues: number[] = Array.from({ length: N }, (_, i) => {
+    return Math.min(100, Math.max(50, 70 + s(i * 5 + 2) * 10 + (s(i * 11 + 7) - 0.5) * 6));
+  });
+  // HYPE: centered 65–78
+  const hypeValues: number[] = Array.from({ length: N }, (_, i) => {
+    return Math.min(100, Math.max(50, 65 + s(i * 7 + 3) * 13 + (s(i * 13 + 9) - 0.5) * 6));
+  });
+
+  const SVG_W = 520;
+  const SVG_H = 100;
+  const PAD_L = 36;
+  const PAD_R = 12;
+  const PAD_T = 20;
+  const PAD_B = 18;
+
+  const chartW = SVG_W - PAD_L - PAD_R;
+  const chartH = SVG_H - PAD_T - PAD_B;
+
+  const Y_MIN = 50;
+  const Y_MAX = 100;
+
+  function xOf(i: number): number {
+    return PAD_L + (i / (N - 1)) * chartW;
+  }
+  function yOf(v: number): number {
+    return PAD_T + chartH - ((v - Y_MIN) / (Y_MAX - Y_MIN)) * chartH;
+  }
+
+  function buildPath(vals: number[]): string {
+    return vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(2)},${yOf(v).toFixed(2)}`).join(' ');
+  }
+
+  function buildArea(vals: number[]): string {
+    const line = buildPath(vals);
+    const baseY = yOf(Y_MIN).toFixed(2);
+    return `${line} L${xOf(N - 1).toFixed(2)},${baseY} L${xOf(0).toFixed(2)},${baseY} Z`;
+  }
+
+  const btcPath = buildPath(btcValues);
+  const solPath = buildPath(solValues);
+  const hypePath = buildPath(hypeValues);
+  const btcArea = buildArea(btcValues);
+  const solArea = buildArea(solValues);
+  const hypeArea = buildArea(hypeValues);
+
+  const yThreshold75 = yOf(75);
+  const yThreshold65 = yOf(65);
+
+  // X-axis: 8 ticks from 24h ago to Now
+  const xTicks = Array.from({ length: 8 }, (_, i) => i * Math.floor((N - 1) / 7));
+
+  const lines = [
+    { label: 'BTC', color: C.brand,  areaId: 'areabtc',  path: btcPath,  area: btcArea,  vals: btcValues  },
+    { label: 'SOL', color: C.bull,   areaId: 'areasol',  path: solPath,  area: solArea,  vals: solValues  },
+    { label: 'HYPE', color: C.warn,  areaId: 'areahype', path: hypePath, area: hypeArea, vals: hypeValues },
+  ];
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>
+          Signal Confidence — 24h History
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {lines.map((l) => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: F.xs, color: C.textSub }}>
+              <span style={{ width: 18, height: 3, background: l.color, display: 'inline-block', borderRadius: 2 }} />
+              <span style={{ fontWeight: 600 }}>{l.label}</span>
+              <span style={{ color: l.color, fontWeight: 700 }}>{l.vals[N - 1].toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ display: 'block', width: '100%', minWidth: 320, height: 'auto' }}
+          aria-label="Signal confidence 24h history chart"
+        >
+          <defs>
+            {lines.map((l) => (
+              <linearGradient key={l.areaId} id={l.areaId} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor={l.color} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={l.color} stopOpacity="0.01" />
+              </linearGradient>
+            ))}
+          </defs>
+
+          {/* Y-axis labels */}
+          {[50, 65, 75, 90, 100].map((v) => (
+            <text
+              key={v}
+              x={PAD_L - 4}
+              y={yOf(v) + 4}
+              textAnchor="end"
+              fontSize={8}
+              fill={C.muted}
+              fontFamily="inherit"
+            >
+              {v}
+            </text>
+          ))}
+
+          {/* Reference line: 75% trade threshold */}
+          <line
+            x1={PAD_L} y1={yThreshold75}
+            x2={PAD_L + chartW} y2={yThreshold75}
+            stroke={C.bear}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+          />
+          <text
+            x={PAD_L + chartW - 2}
+            y={yThreshold75 - 3}
+            textAnchor="end"
+            fontSize={8}
+            fill={C.bear}
+            fontFamily="inherit"
+          >
+            Trade threshold
+          </text>
+
+          {/* Reference line: 65% min signal */}
+          <line
+            x1={PAD_L} y1={yThreshold65}
+            x2={PAD_L + chartW} y2={yThreshold65}
+            stroke={C.muted}
+            strokeWidth={1}
+            strokeDasharray="3 3"
+          />
+          <text
+            x={PAD_L + chartW - 2}
+            y={yThreshold65 - 3}
+            textAnchor="end"
+            fontSize={8}
+            fill={C.muted}
+            fontFamily="inherit"
+          >
+            Min signal
+          </text>
+
+          {/* Gradient area fills */}
+          {lines.map((l) => (
+            <path
+              key={l.areaId + '-fill'}
+              d={l.area}
+              fill={`url(#${l.areaId})`}
+            />
+          ))}
+
+          {/* Lines */}
+          {lines.map((l) => (
+            <path
+              key={l.label + '-line'}
+              d={l.path}
+              fill="none"
+              stroke={l.color}
+              strokeWidth={1.8}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+
+          {/* End-of-line dots + labels */}
+          {lines.map((l) => {
+            const lastVal = l.vals[N - 1];
+            const cx = xOf(N - 1);
+            const cy = yOf(lastVal);
+            return (
+              <g key={l.label + '-dot'}>
+                <circle cx={cx} cy={cy} r={4} fill={l.color} stroke={C.card} strokeWidth={1.5} />
+                <text
+                  x={cx + 6}
+                  y={cy + 4}
+                  fontSize={8}
+                  fontWeight="700"
+                  fill={l.color}
+                  fontFamily="inherit"
+                >
+                  {lastVal.toFixed(0)}%
+                </text>
+              </g>
+            );
+          })}
+
+          {/* X-axis ticks */}
+          {xTicks.map((idx, ti) => {
+            const label = ti === 0 ? '24h ago' : ti === xTicks.length - 1 ? 'Now' : '';
+            return (
+              <text
+                key={idx}
+                x={xOf(idx).toFixed(1)}
+                y={PAD_T + chartH + 13}
+                textAnchor="middle"
+                fontSize={8}
+                fill={label ? C.textSub : C.muted}
+                fontWeight={label ? '600' : '400'}
+                fontFamily="inherit"
+              >
+                {label || `${Math.round((N - 1 - idx) / ((N - 1) / 24))}h`}
+              </text>
+            );
+          })}
+
+          {/* Chart border */}
+          <rect
+            x={PAD_L}
+            y={PAD_T}
+            width={chartW}
+            height={chartH}
+            fill="none"
+            stroke={C.border}
+            strokeWidth={1}
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─── Entry Zone Visual ────────────────────────────────────────────────────────
+
+function EntryZoneVisual() {
+  // Static BTC price data
+  const current    = 95400;
+  const deepAccum  = 93200;
+  const accum      = 94100;
+  const distrib    = 96800;
+  const safeDistrib = 97500;
+
+  const SVG_W = 520;
+  const SVG_H = 80;
+  const PAD_L = 10;
+  const PAD_R = 10;
+  const BAR_Y = 22;
+  const BAR_H = 20;
+  const PAD_T = 14;  // label row above bar
+
+  const chartW = SVG_W - PAD_L - PAD_R;
+
+  const priceMin = deepAccum;
+  const priceMax = safeDistrib;
+  const range = priceMax - priceMin;
+
+  function xOf(p: number): number {
+    return PAD_L + ((p - priceMin) / range) * chartW;
+  }
+
+  const deepAccumX = xOf(deepAccum);
+  const accumX     = xOf(accum);
+  const currentX   = xOf(current);
+  const distribX   = xOf(distrib);
+  const safeDistX  = xOf(safeDistrib);
+
+  // Zone segments: [x1, x2, color, label, textAnchor x]
+  type ZoneSeg = { x1: number; x2: number; fill: string; label: string; labelX: number };
+  const zoneSegs: ZoneSeg[] = [
+    { x1: deepAccumX, x2: accumX,    fill: '#166534', label: 'Deep Accum',  labelX: (deepAccumX + accumX) / 2 },
+    { x1: accumX,     x2: currentX,  fill: '#16a34a', label: 'Accum',       labelX: (accumX + currentX) / 2   },
+    { x1: currentX,   x2: distribX,  fill: C.border,  label: 'Neutral',     labelX: (currentX + distribX) / 2  },
+    { x1: distribX,   x2: safeDistX, fill: '#b91c1c', label: 'Distrib',     labelX: (distribX + safeDistX) / 2  },
+    { x1: safeDistX,  x2: safeDistX, fill: '#7f1d1d', label: '',            labelX: safeDistX  },
+  ];
+
+  // Percentage from current to each level
+  const pctTo = (p: number) => {
+    const d = ((p - current) / current) * 100;
+    return (d >= 0 ? '+' : '') + d.toFixed(1) + '%';
+  };
+
+  // SL ≈ deepAccum, TP1 ≈ distrib
+  const slPct  = pctTo(deepAccum);
+  const tp1Pct = pctTo(distrib);
+
+  // Price labels below bar: deep accum, accum, current, distrib, safeDistrib
+  const priceMarkers = [
+    { x: deepAccumX, price: deepAccum, color: '#16a34a' },
+    { x: accumX,     price: accum,     color: '#22c55e' },
+    { x: currentX,   price: current,   color: C.brand   },
+    { x: distribX,   price: distrib,   color: '#ef4444' },
+    { x: safeDistX,  price: safeDistrib, color: '#dc2626' },
+  ];
+
+  const inAccumZone = current >= accum && current < distrib;
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Entry Zone — BTC</div>
+        <div style={{ display: 'flex', gap: 10, fontSize: F.xs, color: C.muted }}>
+          <span>SL: <strong style={{ color: C.bear }}>{slPct}</strong></span>
+          <span>TP1: <strong style={{ color: C.bull }}>{tp1Pct}</strong></span>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ display: 'block', width: '100%', minWidth: 320, height: SVG_H }}
+          aria-label="BTC entry zone ruler"
+        >
+          {/* Zone bars */}
+          {zoneSegs.slice(0, -1).map((z, i) => (
+            <rect
+              key={i}
+              x={z.x1}
+              y={BAR_Y}
+              width={Math.max(0, z.x2 - z.x1)}
+              height={BAR_H}
+              fill={z.fill}
+              fillOpacity={0.75}
+            />
+          ))}
+
+          {/* Safe Distribution — thin sliver at right edge */}
+          <rect
+            x={safeDistX - 6}
+            y={BAR_Y}
+            width={Math.min(6, SVG_W - PAD_R - safeDistX + 6)}
+            height={BAR_H}
+            fill="#7f1d1d"
+            fillOpacity={0.85}
+          />
+
+          {/* Zone label above each segment */}
+          {zoneSegs.slice(0, 4).map((z, i) => (
+            <text
+              key={i + '-lbl'}
+              x={z.labelX}
+              y={BAR_Y - 5}
+              textAnchor="middle"
+              fontSize={8}
+              fontWeight="600"
+              fill={i < 2 ? '#86efac' : i === 2 ? C.muted : '#fca5a5'}
+              fontFamily="inherit"
+            >
+              {z.label}
+            </text>
+          ))}
+          <text
+            x={safeDistX - 3}
+            y={BAR_Y - 5}
+            textAnchor="end"
+            fontSize={8}
+            fontWeight="600"
+            fill="#fca5a5"
+            fontFamily="inherit"
+          >
+            Safe Dist
+          </text>
+
+          {/* Current price marker — white+brand circle */}
+          <circle cx={currentX} cy={BAR_Y + BAR_H / 2} r={7} fill="#ffffff" stroke={C.brand} strokeWidth={2.5} />
+          <text
+            x={currentX}
+            y={BAR_Y + BAR_H / 2 + 1}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={6}
+            fontWeight="800"
+            fill={C.brand}
+            fontFamily="inherit"
+          >
+            NOW
+          </text>
+
+          {/* Price labels below bar */}
+          {priceMarkers.map((m, i) => {
+            const anchor: React.SVGAttributes<SVGTextElement>['textAnchor'] =
+              i === 0 ? 'start' : i === priceMarkers.length - 1 ? 'end' : 'middle';
+            const fmt2 = (n: number) =>
+              new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+            return (
+              <text
+                key={i}
+                x={m.x}
+                y={BAR_Y + BAR_H + 11}
+                textAnchor={anchor}
+                fontSize={8}
+                fontWeight={m.price === current ? '700' : '500'}
+                fill={m.color}
+                fontFamily="inherit"
+              >
+                {fmt2(m.price)}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Badge */}
+      {inAccumZone && (
+        <div
+          style={{
+            marginTop: 10,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 12px',
+            borderRadius: R.pill,
+            background: C.bull + '18',
+            border: `1px solid ${C.bull}44`,
+            fontSize: F.xs,
+            fontWeight: 700,
+            color: C.bull,
+          }}
+        >
+          <span style={{ fontSize: 13 }}>✓</span>
+          Price in accumulation zone — favorable entry
+        </div>
+      )}
+
+      {/* SL / TP1 percentage callouts */}
+      <div style={{ marginTop: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: F.xs, color: C.muted }}>
+          <span style={{ marginRight: 4 }}>Stop Loss (Deep Accum):</span>
+          <strong style={{ color: C.bear }}>{slPct} from current</strong>
+        </div>
+        <div style={{ fontSize: F.xs, color: C.muted }}>
+          <span style={{ marginRight: 4 }}>TP1 (Distribution):</span>
+          <strong style={{ color: C.bull }}>{tp1Pct} from current</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CopyTrade() {
@@ -2113,6 +2572,9 @@ export default function CopyTrade() {
       {/* Volatility Regime Bands */}
       <VolatilityRegimeBands />
 
+      {/* Signal Confidence 24h History */}
+      <ConfidenceHistoryChart />
+
       {/* Quick Guide */}
       <div
         style={{
@@ -2149,6 +2611,9 @@ export default function CopyTrade() {
 
       {/* Signal Quality Matrix */}
       <TradeSetupQualityMatrix />
+
+      {/* Entry Zone Visual */}
+      <EntryZoneVisual />
 
       {/* Signal Cards */}
       {loading ? (

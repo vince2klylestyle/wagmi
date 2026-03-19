@@ -1575,6 +1575,207 @@ function BotHealthIndicator() {
   );
 }
 
+// ─── Funding Rate Bar ─────────────────────────────────────────────────────────
+
+type FundingEntry = { symbol: string; rate: number };
+
+const SEEDED_FUNDING: FundingEntry[] = [
+  { symbol: 'BTC',  rate:  0.000082 },
+  { symbol: 'SOL',  rate:  0.000031 },
+  { symbol: 'HYPE', rate: -0.000045 },
+];
+
+function FundingRateBar() {
+  return (
+    <div
+      style={{
+        flex: '1 1 0',
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '12px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        minWidth: 0,
+      }}
+    >
+      {/* Title */}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        Funding Rates (8h)
+      </div>
+
+      {/* Pills row */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {SEEDED_FUNDING.map(({ symbol, rate }) => {
+          const isPositive = rate > 0.00005;
+          const isNegative = rate < -0.00005;
+          const pctStr = (rate * 100).toFixed(4) + '%';
+          const displayStr = (rate >= 0 ? '+' : '') + pctStr;
+
+          const pillBg = isPositive ? C.bear + '22' : isNegative ? C.bull + '22' : C.border;
+          const pillColor = isPositive ? C.bear : isNegative ? C.bull : C.muted;
+          const icon = isPositive ? '↑' : isNegative ? '↓' : '→';
+          const crowded = rate > 0.0001;
+
+          return (
+            <div
+              key={symbol}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              title="Positive = longs pay shorts = market leaning long"
+            >
+              <span style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{symbol}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: R.pill,
+                  background: pillBg,
+                  color: pillColor,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>{icon}</span>
+                <span>{displayStr}</span>
+              </span>
+              {crowded && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: R.pill,
+                    background: C.warn + '33',
+                    color: C.warn,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  ⚠ Crowded
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Open Interest Gauge ──────────────────────────────────────────────────────
+
+type OiEntry = { symbol: string; series: number[]; changePct: number };
+
+// 7 seeded OI data points per symbol
+const SEEDED_OI: OiEntry[] = [
+  {
+    symbol: 'BTC',
+    series: [100, 103, 106, 109, 108, 111, 112],
+    changePct: 12,
+  },
+  {
+    symbol: 'SOL',
+    series: [100, 101, 100, 102, 101, 101, 100],
+    changePct: 0,
+  },
+  {
+    symbol: 'HYPE',
+    series: [100, 102, 104, 103, 105, 107, 108],
+    changePct: 8,
+  },
+];
+
+function OiSparkline({ series, color }: { series: number[]; color: string }) {
+  const W = 40, H = 20;
+  if (series.length < 2) return <div style={{ width: W, height: H, background: C.surfaceHover, borderRadius: R.xs }} />;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = max - min || 1;
+  const pts = series.map((v, i) => {
+    const x = (i / (series.length - 1)) * W;
+    const y = H - ((v - min) / range) * (H - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+      <polyline
+        points={pts.join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function OpenInterestGauge() {
+  return (
+    <div
+      style={{
+        flex: '1 1 0',
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '12px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        minWidth: 0,
+      }}
+    >
+      {/* Title */}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        Open Interest
+      </div>
+
+      {/* 3-column layout */}
+      <div style={{ display: 'flex', gap: 16 }}>
+        {SEEDED_OI.map(({ symbol, series, changePct }) => {
+          const isRising = changePct > 2;
+          const isFalling = changePct < -2;
+          const color = isRising ? C.bull : isFalling ? C.bear : C.muted;
+          const trendArrow = isRising ? '↑' : isFalling ? '↓' : '→';
+          const changeLbl = (changePct >= 0 ? '+' : '') + changePct.toFixed(1) + '%';
+
+          return (
+            <div key={symbol} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{symbol}</span>
+                <span style={{ fontSize: 12, color, fontWeight: 700 }}>{trendArrow}</span>
+              </div>
+              <OiSparkline series={series} color={color} />
+              <span style={{ fontSize: 10, fontWeight: 700, color }}>{changeLbl}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Market Microstructure Row ────────────────────────────────────────────────
+
+function MarketMicrostructureRow() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 14,
+        marginBottom: 28,
+        flexWrap: 'wrap',
+      }}
+    >
+      <FundingRateBar />
+      <OpenInterestGauge />
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -1949,6 +2150,9 @@ export default function Home() {
         </div>
         <MarketMomentumStrip signals={signals} regime={regime} />
       </div>
+
+      {/* ── Market Microstructure ─────────────────────── */}
+      <MarketMicrostructureRow />
 
       {/* ── Market Heatmap ────────────────────────────── */}
       <div style={{ marginBottom: 28, marginTop: 24 }}>
