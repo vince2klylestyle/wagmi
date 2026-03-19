@@ -311,53 +311,9 @@ function StrategyComparisonChart({ strategies }: { strategies: Strategy[] }) {
 // ─── LiveStatusTimeline ───────────────────────────────────────────────────────
 
 function LiveStatusTimeline({ strategies }: { strategies: Strategy[] }) {
-  // 24 hourly slots, rendered as a 6-column × 4-row grid
-  const SLOTS = 24;
-
-  // Build slot states deterministically using strategies as seed
-  // Slot 0 = oldest (23h ago), slot 23 = most recent (current hour)
-  const seed = strategies.length;
   const hasAnyActive = strategies.some(
     s => s.status === 'active' || s.lastHeartbeat || s.last_seen
   );
-
-  const slotStates: ('active' | 'error' | 'none')[] = Array.from({ length: SLOTS }, (_, i) => {
-    if (hasAnyActive) {
-      // Recent slots more likely to be active; use seed for determinism
-      const recency = i / (SLOTS - 1); // 0 = oldest, 1 = newest
-      const hash = ((seed * 37 + i * 13) % 100);
-      const errorHash = ((seed * 53 + i * 7 + 3) % 100);
-      if (recency > 0.85 && hash < 80) return 'active';
-      if (recency > 0.6 && hash < 65) return 'active';
-      if (recency > 0.3 && hash < 45) return 'active';
-      if (hash < 30) return 'active';
-      if (errorHash < 15) return 'error';
-      return 'none';
-    }
-    // No real data — fully deterministic placeholder
-    const hash = ((seed * 31 + i * 17) % 100);
-    if (hash < 55) return 'active';
-    if (hash < 65) return 'error';
-    return 'none';
-  });
-
-  const dotColor = (state: 'active' | 'error' | 'none') => {
-    if (state === 'active') return '#22c55e';
-    if (state === 'error') return '#ef4444';
-    return '#1e293b';
-  };
-
-  const dotBorder = (state: 'active' | 'error' | 'none') => {
-    if (state === 'active') return '#16a34a';
-    if (state === 'error') return '#b91c1c';
-    return '#334155';
-  };
-
-  const dotGlow = (state: 'active' | 'error' | 'none') => {
-    if (state === 'active') return '0 0 5px #22c55e88';
-    if (state === 'error') return '0 0 5px #ef444488';
-    return 'none';
-  };
 
   return (
     <div style={{
@@ -370,68 +326,13 @@ function LiveStatusTimeline({ strategies }: { strategies: Strategy[] }) {
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 12 }}>
         Activity Timeline (24h)
       </div>
-
-      {/* 4 rows × 6 columns grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(6, 1fr)',
-        gridTemplateRows: 'repeat(4, auto)',
-        gap: 8,
-        marginBottom: 12,
-      }}>
-        {slotStates.map((state, i) => {
-          const hoursAgo = SLOTS - 1 - i;
-          const title = hoursAgo === 0 ? 'Current hour' : `${hoursAgo}h ago`;
-          return (
-            <div
-              key={i}
-              title={`${title}: ${state}`}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 3,
-              }}
-            >
-              <div style={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: dotColor(state),
-                border: `1px solid ${dotBorder(state)}`,
-                boxShadow: dotGlow(state),
-              }} />
-              {/* Hour label on bottom row only (row 4, indices 18-23) */}
-              {i >= 18 && (
-                <span style={{ fontSize: 8, color: C.muted, fontFamily: 'monospace' }}>
-                  -{SLOTS - 1 - i}h
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-        {([
-          { state: 'active' as const, label: 'Active' },
-          { state: 'error' as const, label: 'Error' },
-          { state: 'none' as const, label: 'No data' },
-        ]).map(({ state, label }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: dotColor(state),
-              border: `1px solid ${dotBorder(state)}`,
-              flexShrink: 0,
-            }} />
-            <span style={{ fontSize: F.xs, color: C.muted }}>{label}</span>
-          </div>
-        ))}
-      </div>
+      {!hasAnyActive ? (
+        <AwaitingResults label="Awaiting activity data" sub="Timeline will populate as the bot runs" />
+      ) : (
+        <div style={{ color: C.muted, fontSize: F.sm, padding: '8px 0' }}>
+          Activity data available — timeline will display once hourly slots accumulate.
+        </div>
+      )}
     </div>
   );
 }
@@ -787,12 +688,25 @@ function StrategyPerformancePolarChart() {
   ];
   const N = axes.length;
 
-  const strategies = [
-    { name: 'Regime Trend', abbr: 'RGM', color: C.info, values: [82, 320, 90, 8, 85] },
-    { name: 'Monte Carlo', abbr: 'MCZ', color: C.brand, values: [75, 480, 70, 4, 78] },
-    { name: 'Conf. Scorer', abbr: 'CSC', color: C.bull, values: [70, 280, 60, 12, 72] },
-    { name: 'Multi-Tier', abbr: 'MTF', color: C.warn, values: [78, 350, 50, 10, 80] },
-  ];
+  const strategies: { name: string; abbr: string; color: string; values: number[] }[] = [];
+
+  if (strategies.length === 0) {
+    return (
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.xl,
+        padding: '20px 24px',
+        marginBottom: 28,
+        boxShadow: S.sm,
+      }}>
+        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 16 }}>
+          Strategy Capability Profile
+        </div>
+        <AwaitingResults label="Awaiting performance data" sub="Polar chart will appear once strategies have trade history" />
+      </div>
+    );
+  }
 
   // Convert polar angle + radius to cartesian, starting from top (−90°)
   function polar(angleIdx: number, fraction: number): { x: number; y: number } {

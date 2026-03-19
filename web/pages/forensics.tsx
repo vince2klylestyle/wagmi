@@ -3250,7 +3250,7 @@ export default function Forensics() {
         )}
       </div>
 
-      {/* Hour of Day Win Rate — entry_timestamp_ms based, with seeded fallback */}
+      {/* Hour of Day Win Rate — entry_timestamp_ms based */}
       <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
         <div style={{ marginBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.text }}>Hour-of-Day Win Rate</h3>
