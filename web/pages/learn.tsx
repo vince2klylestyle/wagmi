@@ -235,12 +235,15 @@ function PositionSizeCalc() {
   const [entry, setEntry] = useState(95000);
   const [stopLoss, setStopLoss] = useState(94200);
 
-  const riskDollars = (accountSize * riskPct) / 100;
-  const stopDist = Math.abs(entry - stopLoss);
-  const stopDistPct = entry > 0 ? (stopDist / entry) * 100 : 0;
+  const safeAccountSize = accountSize > 0 ? accountSize : 0;
+  const safeEntry = entry > 0 ? entry : 0;
+  const safeStopLoss = stopLoss > 0 ? stopLoss : 0;
+  const riskDollars = (safeAccountSize * riskPct) / 100;
+  const stopDist = Math.abs(safeEntry - safeStopLoss);
+  const stopDistPct = safeEntry > 0 ? (stopDist / safeEntry) * 100 : 0;
   const positionSize = stopDist > 0 ? riskDollars / stopDist : 0;
-  const notionalValue = positionSize * entry;
-  const leverage = accountSize > 0 ? notionalValue / accountSize : 0;
+  const notionalValue = positionSize * safeEntry;
+  const leverage = safeAccountSize > 0 ? notionalValue / safeAccountSize : 0;
 
   const inputStyle: React.CSSProperties = {
     padding: '8px 12px', background: C.surfaceHover, border: `1px solid ${C.border}`,

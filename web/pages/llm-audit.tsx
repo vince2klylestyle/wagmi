@@ -1590,11 +1590,21 @@ function ModelCostBreakdown({ decisions }: { decisions: LlmDecision[] }) {
 
   const donutArcPath = (startDeg: number, endDeg: number, outerR: number, innerR: number): string => {
     const toR = (deg: number) => (deg * Math.PI) / 180;
-    const s = toR(startDeg);
-    const e = toR(endDeg);
     const span = endDeg - startDeg;
     // Clamp tiny slivers
     if (span < 0.5) return '';
+    // Full-circle edge case: arc from a point to itself is degenerate — draw two semicircles
+    if (span >= 359.5) {
+      const s = toR(startDeg);
+      const mid = toR(startDeg + 180);
+      const ox1 = DONUT_CX + outerR * Math.cos(s), oy1 = DONUT_CY + outerR * Math.sin(s);
+      const ox2 = DONUT_CX + outerR * Math.cos(mid), oy2 = DONUT_CY + outerR * Math.sin(mid);
+      const ix1 = DONUT_CX + innerR * Math.cos(s), iy1 = DONUT_CY + innerR * Math.sin(s);
+      const ix2 = DONUT_CX + innerR * Math.cos(mid), iy2 = DONUT_CY + innerR * Math.sin(mid);
+      return `M ${ox1} ${oy1} A ${outerR} ${outerR} 0 1 1 ${ox2} ${oy2} A ${outerR} ${outerR} 0 1 1 ${ox1} ${oy1} M ${ix1} ${iy1} A ${innerR} ${innerR} 0 1 0 ${ix2} ${iy2} A ${innerR} ${innerR} 0 1 0 ${ix1} ${iy1} Z`;
+    }
+    const s = toR(startDeg);
+    const e = toR(endDeg);
     const large = span > 180 ? 1 : 0;
     const ox1 = DONUT_CX + outerR * Math.cos(s);
     const oy1 = DONUT_CY + outerR * Math.sin(s);
