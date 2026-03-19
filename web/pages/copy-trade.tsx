@@ -4211,85 +4211,46 @@ export default function CopyTrade() {
       {/* LLM Brain Banner */}
       <LlmBrainBanner view={llmView} />
 
-      {/* Activity Feed */}
-      <ActivityFeed events={activityEvents} />
-
-      {/* Risk Calculator */}
-      <StandaloneRiskCalc />
-
-      {/* Position Sizing Worksheet */}
-      <PositionSizingWorksheet />
-
-      {/* Slippage Calculator */}
-      <SlippageCalculator />
-
-      {/* Volatility Regime Bands */}
-      <VolatilityRegimeBands />
-
-      {/* Signal Confidence 24h History */}
-      <ConfidenceHistoryChart />
-
-      {/* Strategy Consensus Gauge */}
-      <StrategyConsensusGauge />
-
-      {/* Pre-Trade Checklist */}
-      <CopyTradeChecklist />
-
-      {/* Quick Guide */}
-      <div
-        style={{
-          background: C.info + '10',
-          border: `1px solid ${C.info}30`,
-          borderRadius: R.md,
-          padding: 20,
-          marginBottom: 28,
-        }}
-      >
-        <div style={{ fontSize: F.md, fontWeight: 600, marginBottom: 10, color: C.info }}>
-          How This Works
-        </div>
-        <div style={{ fontSize: F.sm, color: C.textSub, lineHeight: 1.7 }}>
-          <div style={{ marginBottom: 6 }}>
-            <strong>1.</strong> The bot scans BTC, SOL, and HYPE every 60 seconds using 9 different strategies.
-          </div>
-          <div style={{ marginBottom: 6 }}>
-            <strong>2.</strong> The <strong>LLM Brain</strong> (Claude AI) evaluates each setup in advisory mode — it logs what it would trade but does NOT execute.
-          </div>
-          <div style={{ marginBottom: 6 }}>
-            <strong>3.</strong> Each card shows both the technical signal and the AI&apos;s reasoning. Use both to form your own view.
-          </div>
-          <div>
-            <strong>4.</strong> Always use a stop loss. Start with small size. This is a tool, not a guarantee.
-          </div>
-        </div>
-
-        {/* Signal Lifecycle Timeline */}
-        <div style={{ marginTop: 20 }}>
-          <SignalTimeline />
-        </div>
-      </div>
-
-      {/* Multi-Timeframe Confluence */}
-      <MultiTimeframeConfluence />
-
-      {/* Signal Quality Matrix */}
-      <TradeSetupQualityMatrix />
-
-      {/* Entry Zone Visual */}
-      <EntryZoneVisual />
-
-      {/* BTC Mini Candle Chart */}
-      <MiniCandleChart />
-
-      {/* Order Book Depth Chart */}
-      <OrderBookDepthChart />
+      {/* ── Section 1: Live Signals ───────────────────────────────────────── */}
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        Live Signals
+      </h2>
+      <p style={{ fontSize: F.sm, color: C.muted, margin: '0 0 20px' }}>
+        Real-time per-asset signals from the bot. AI reasoning, price levels, and trade setup in one place.
+      </p>
 
       {/* Signal Cards */}
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>Loading signals...</div>
+        /* Loading skeleton */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginBottom: 32 }}>
+          {['BTC', 'SOL', 'HYPE'].map((sym) => (
+            <div key={sym} style={{ border: `1px solid ${C.border}`, borderRadius: R.lg, background: C.card, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: C.surfaceHover, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 64, height: 28, background: C.border, borderRadius: R.sm, animation: 'pulse 1.4s ease-in-out infinite' }} />
+                  <div style={{ width: 96, height: 20, background: C.border, borderRadius: R.sm, animation: 'pulse 1.4s ease-in-out infinite' }} />
+                </div>
+                <div style={{ width: 96, height: 28, background: C.border, borderRadius: 20, animation: 'pulse 1.4s ease-in-out infinite' }} />
+              </div>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ height: 60, background: C.border, borderRadius: R.md, animation: 'pulse 1.4s ease-in-out infinite' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} style={{ height: 72, background: C.border, borderRadius: R.md, animation: 'pulse 1.4s ease-in-out infinite' }} />
+                  ))}
+                </div>
+              </div>
+              <div style={{ padding: '12px 20px', background: C.surfaceHover, borderTop: `1px solid ${C.border}`, fontSize: F.xs, color: C.muted, textAlign: 'center' }}>
+                Fetching {sym} signal data...
+              </div>
+            </div>
+          ))}
+        </div>
       ) : orderedSignals.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-          No signals available yet. The bot needs ~60 seconds to generate the first scan.
+        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280', background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, marginBottom: 32 }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+          <div style={{ fontSize: F.lg, fontWeight: 700, color: C.text, marginBottom: 6 }}>No signals yet</div>
+          <div style={{ color: C.muted }}>The bot needs ~60 seconds to generate the first scan.</div>
         </div>
       ) : (
         orderedSignals.map((signal) => (
@@ -4323,6 +4284,101 @@ export default function CopyTrade() {
               <TradingViewChart symbol={sym} />
             </div>
           ))}
+
+      {/* ── Section 2: Activity Feed ──────────────────────────────────────── */}
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        Recent Bot Activity
+      </h2>
+      <ActivityFeed events={activityEvents} />
+
+      {/* ── Section 3: How to Copy Trade ─────────────────────────────────── */}
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        How to Copy Trade
+      </h2>
+      <div
+        style={{
+          background: C.info + '10',
+          border: `1px solid ${C.info}30`,
+          borderRadius: R.md,
+          padding: 20,
+          marginBottom: 28,
+        }}
+      >
+        <div style={{ fontSize: F.md, fontWeight: 600, marginBottom: 10, color: C.info }}>
+          How This Works
+        </div>
+        <div style={{ fontSize: F.sm, color: C.textSub, lineHeight: 1.7 }}>
+          <div style={{ marginBottom: 6 }}>
+            <strong>1.</strong> The bot scans BTC, SOL, and HYPE every 60 seconds using 9 different strategies.
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>2.</strong> The <strong>LLM Brain</strong> (Claude AI) evaluates each setup in advisory mode — it logs what it would trade but does NOT execute.
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>3.</strong> Each card shows both the technical signal and the AI&apos;s reasoning. Use both to form your own view.
+          </div>
+          <div>
+            <strong>4.</strong> Always use a stop loss. Start with small size. This is a tool, not a guarantee.
+          </div>
+        </div>
+
+        {/* Signal Lifecycle Timeline */}
+        <div style={{ marginTop: 20 }}>
+          <SignalTimeline />
+        </div>
+      </div>
+
+      {/* Pre-Trade Checklist */}
+      <CopyTradeChecklist />
+
+      {/* ── Section 4: Risk Calculator ───────────────────────────────────── */}
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        Risk &amp; Position Sizing
+      </h2>
+      <p style={{ fontSize: F.sm, color: C.muted, margin: '0 0 20px' }}>
+        Calculate exactly how much to risk and what size to use before entering any trade.
+      </p>
+
+      {/* Risk Calculator */}
+      <StandaloneRiskCalc />
+
+      {/* Position Sizing Worksheet */}
+      <PositionSizingWorksheet />
+
+      {/* Slippage Calculator */}
+      <SlippageCalculator />
+
+      {/* ── Section 5: Advanced Charts ───────────────────────────────────── */}
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        Advanced Analysis
+      </h2>
+      <p style={{ fontSize: F.sm, color: C.muted, margin: '0 0 20px' }}>
+        Deeper market context — volatility regime, consensus across strategies, and multi-timeframe alignment.
+      </p>
+
+      {/* Strategy Consensus Gauge */}
+      <StrategyConsensusGauge />
+
+      {/* Multi-Timeframe Confluence */}
+      <MultiTimeframeConfluence />
+
+      {/* Signal Quality Matrix */}
+      <TradeSetupQualityMatrix />
+
+      {/* Volatility Regime Bands */}
+      <VolatilityRegimeBands />
+
+      {/* Signal Confidence 24h History */}
+      <ConfidenceHistoryChart />
+
+      {/* Entry Zone Visual */}
+      <EntryZoneVisual />
+
+      {/* BTC Mini Candle Chart */}
+      <MiniCandleChart />
+
+      {/* Order Book Depth Chart */}
+      <OrderBookDepthChart />
 
       {/* Footer */}
       <div
