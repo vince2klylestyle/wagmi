@@ -21,10 +21,15 @@ export default function Document() {
         <meta property="og:description" content="Real-time signals, LLM brain analysis, copy-trade intelligence, and backtested proof." />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="WAGMI" />
+        <meta property="og:url" content="https://wagmi.trade" />
+        <meta property="og:image" content="https://wagmi.trade/og-image.png" />
         {/* Twitter Card */}
-        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="WAGMI — AI-Powered Crypto Trading Bot" />
         <meta name="twitter:description" content="Real-time signals, LLM brain analysis, copy-trade intelligence, and backtested proof." />
+        <meta name="twitter:image" content="https://wagmi.trade/og-image.png" />
+        {/* Robots / indexing */}
+        <meta name="robots" content="index, follow" />
         {/* Theme */}
         <meta name="theme-color" content="#0a0f1e" />
         {/* Global styles */}
@@ -38,6 +43,39 @@ export default function Document() {
           a { color: inherit; text-decoration: none; }
           button { font-family: inherit; cursor: pointer; }
           code, pre { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+          /* ── CSS custom properties (design system tokens) ─────────── */
+          :root {
+            /* Brand */
+            --color-brand: #6366f1;
+            --color-brand-dark: #4f46e5;
+            --color-brand-glow: rgba(99,102,241,0.15);
+
+            /* Semantic */
+            --color-bull: #16a34a;
+            --color-bear: #dc2626;
+            --color-warn: #d97706;
+            --color-info: #2563eb;
+
+            /* Dark surfaces */
+            --color-bg: #0a0f1e;
+            --color-surface: #111827;
+            --color-surface-hover: #1e293b;
+            --color-card: #1a2236;
+            --color-border: #2d3748;
+            --color-border-bright: #4a5568;
+
+            /* Text */
+            --color-text: #f1f5f9;
+            --color-text-sub: #cbd5e1;
+            --color-muted: #64748b;
+
+            /* Radii */
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --radius-pill: 9999px;
+          }
 
           /* Skip-to-content link (hidden until focused) */
           .skip-to-content {
