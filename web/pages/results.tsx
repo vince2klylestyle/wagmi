@@ -778,6 +778,154 @@ function WinLossHistogram({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Daily P&L Calendar ───────────────────────────────────────────────────────
+
+function DailyPnlCalendar({ trades }: { trades: TradeRecord[] }) {
+  if (!trades.length) return null;
+
+  // Build day → { pnl, wins, total } map
+  const dayMap: Record<string, { pnl: number; wins: number; total: number }> = {};
+  let hasTimestamps = false;
+  trades.forEach((t) => {
+    const ts = (t as any).entry_time ?? (t as any).timestamp ?? (t as any).created_at;
+    if (!ts) return;
+    const dt = new Date(ts);
+    if (isNaN(dt.getTime())) return;
+    hasTimestamps = true;
+    const key = dt.toISOString().slice(0, 10); // YYYY-MM-DD
+    if (!dayMap[key]) dayMap[key] = { pnl: 0, wins: 0, total: 0 };
+    dayMap[key].pnl += t.pnl ?? 0;
+    dayMap[key].total++;
+    if (t.outcome === 'WIN') dayMap[key].wins++;
+  });
+
+  if (!hasTimestamps || Object.keys(dayMap).length < 3) return null;
+
+  // Find date range
+  const sortedDays = Object.keys(dayMap).sort();
+  const first = new Date(sortedDays[0]);
+  const last = new Date(sortedDays[sortedDays.length - 1]);
+  // Generate full calendar from first Sunday before `first` to last Saturday after `last`
+  const startDate = new Date(first);
+  startDate.setUTCDate(startDate.getUTCDate() - startDate.getUTCDay()); // back to Sunday
+  const endDate = new Date(last);
+  endDate.setUTCDate(endDate.getUTCDate() + (6 - endDate.getUTCDay())); // forward to Saturday
+
+  const allDays: Date[] = [];
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    allDays.push(new Date(cur));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+
+  const maxAbsPnl = Math.max(...Object.values(dayMap).map((v) => Math.abs(v.pnl)), 1);
+
+  const cellColor = (key: string) => {
+    const d = dayMap[key];
+    if (!d) return C.surface;
+    const intensity = Math.min(Math.abs(d.pnl) / maxAbsPnl, 1);
+    if (d.pnl > 0) return `rgba(22,163,74,${0.15 + intensity * 0.7})`;
+    if (d.pnl < 0) return `rgba(220,38,38,${0.15 + intensity * 0.7})`;
+    return `rgba(100,116,139,0.2)`;
+  };
+
+  // Weeks = columns
+  const weeks: Date[][] = [];
+  for (let i = 0; i < allDays.length; i += 7) {
+    weeks.push(allDays.slice(i, i + 7));
+  }
+
+  const CELL = 16, GAP = 2, PAD_T = 22, PAD_L = 28;
+  const W = weeks.length * (CELL + GAP) + PAD_L + 10;
+  const H = 7 * (CELL + GAP) + PAD_T + 8;
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAYS_SHORT = ['S','M','T','W','T','F','S'];
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Daily P&L Calendar</h2>
+          <p style={{ margin: '4px 0 0', fontSize: F.xs, color: C.muted }}>Each square = one calendar day. Brighter = larger gain or loss.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 10, color: C.muted, alignItems: 'center' }}>
+          <span>Less</span>
+          {[0.15, 0.35, 0.6, 0.85].map((op) => (
+            <span key={op} style={{ width: 12, height: 12, borderRadius: 2, background: `rgba(22,163,74,${op})`, display: 'inline-block', border: `1px solid ${C.border}` }} />
+          ))}
+          <span>Profit</span>
+          <span style={{ margin: '0 4px', color: C.border }}>|</span>
+          {[0.15, 0.35, 0.6, 0.85].map((op) => (
+            <span key={op} style={{ width: 12, height: 12, borderRadius: 2, background: `rgba(220,38,38,${op})`, display: 'inline-block', border: `1px solid ${C.border}` }} />
+          ))}
+          <span>Loss</span>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} width={Math.min(W, 800)} height={H} style={{ display: 'block' }}>
+          {/* Day labels (S M T W T F S) */}
+          {DAYS_SHORT.map((d, i) => (
+            <text key={i} x={PAD_L - 6} y={PAD_T + i * (CELL + GAP) + CELL / 2 + 3}
+              textAnchor="end" fontSize={8} fill={C.muted}>{d}</text>
+          ))}
+
+          {/* Month labels */}
+          {weeks.map((week, wi) => {
+            const firstOfWeek = week[0];
+            if (firstOfWeek.getUTCDate() <= 7) {
+              return (
+                <text key={wi} x={PAD_L + wi * (CELL + GAP) + CELL / 2} y={PAD_T - 6}
+                  textAnchor="middle" fontSize={8} fill={C.muted}>
+                  {MONTHS[firstOfWeek.getUTCMonth()]}
+                </text>
+              );
+            }
+            return null;
+          })}
+
+          {/* Cells */}
+          {weeks.map((week, wi) =>
+            week.map((day, di) => {
+              const key = day.toISOString().slice(0, 10);
+              const d = dayMap[key];
+              const x = PAD_L + wi * (CELL + GAP);
+              const y = PAD_T + di * (CELL + GAP);
+              const bg = cellColor(key);
+              const tooltip = d
+                ? `${key}: ${d.pnl >= 0 ? '+' : ''}$${d.pnl.toFixed(0)} (${d.wins}W/${d.total} trades)`
+                : key;
+              return (
+                <rect key={key} x={x} y={y} width={CELL} height={CELL} rx={2}
+                  fill={bg} stroke={C.border} strokeWidth={0.5}>
+                  <title>{tooltip}</title>
+                </rect>
+              );
+            })
+          )}
+        </svg>
+      </div>
+
+      {/* Stats row */}
+      {(() => {
+        const profitDays = Object.values(dayMap).filter((v) => v.pnl > 0).length;
+        const lossDays = Object.values(dayMap).filter((v) => v.pnl < 0).length;
+        const bestDay = Object.entries(dayMap).sort((a, b) => b[1].pnl - a[1].pnl)[0];
+        const worstDay = Object.entries(dayMap).sort((a, b) => a[1].pnl - b[1].pnl)[0];
+        return (
+          <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap', fontSize: F.xs, color: C.muted }}>
+            <span>Profit days: <strong style={{ color: C.bull }}>{profitDays}</strong></span>
+            <span>Loss days: <strong style={{ color: C.bear }}>{lossDays}</strong></span>
+            {bestDay && <span>Best: <strong style={{ color: C.bull }}>{bestDay[0]} +${bestDay[1].pnl.toFixed(0)}</strong></span>}
+            {worstDay && <span>Worst: <strong style={{ color: C.bear }}>{worstDay[0]} ${worstDay[1].pnl.toFixed(0)}</strong></span>}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ─── Time-of-Day Win Rate Heatmap ─────────────────────────────────────────────
 
 function TimeOfDayHeatmap({ trades }: { trades: TradeRecord[] }) {
@@ -1060,6 +1208,9 @@ export default function Results() {
 
       {/* ── P&L Distribution Histogram ───────────────── */}
       <WinLossHistogram trades={trades} />
+
+      {/* ── Daily P&L Calendar ───────────────────────── */}
+      <DailyPnlCalendar trades={trades} />
 
       {/* ── Time-of-Day Heatmap ───────────────────────── */}
       <TimeOfDayHeatmap trades={trades} />
