@@ -3553,16 +3553,43 @@ export default function SignalsPage() {
         <SignalScoreRanking signals={signalsData?.signals ?? {}} />
       )}
 
+      {/* Symbol selector — controls the radar chart below */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: F.xs, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Radar for:
+        </span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {SYMBOLS.map(sym => (
+            <button
+              key={sym}
+              onClick={() => setSelectedSymbol(sym)}
+              style={{
+                padding: '4px 14px',
+                borderRadius: R.pill,
+                border: `1px solid ${selectedSymbol === sym ? C.brand : C.border}`,
+                background: selectedSymbol === sym ? C.brand + '22' : 'transparent',
+                color: selectedSymbol === sym ? C.brand : C.muted,
+                fontSize: F.sm,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {sym}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <SignalRadarChart signals={signalsData?.signals ?? null} symbol={selectedSymbol ?? 'BTC'} />
 
       {/* ── Market Heatmap ───────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Market Heatmap
       </h2>
       <MarketHeatmapSection payload={signalsData} loading={loading} />
 
       {/* ── Signal Quality ───────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Signal Quality
       </h2>
       <SignalFreshnessStrip signals={signalsData?.signals ?? null} />
@@ -3571,7 +3598,7 @@ export default function SignalsPage() {
       <SignalQualityTrendChart signals={signalsData?.signals ?? null} />
 
       {/* ── Market Structure ─────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Market Structure
       </h2>
       <SymbolDominanceChart signals={signalsData?.signals ?? null} />
@@ -3587,7 +3614,7 @@ export default function SignalsPage() {
       <VolatilityRankingBars signals={signalsData?.signals ?? null} />
 
       {/* ── Decision Pipeline ────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Decision Pipeline
       </h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20, marginBottom: 28 }}>
@@ -3608,7 +3635,7 @@ export default function SignalsPage() {
       </div>
 
       {/* ── Signal Timeline ──────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Signal Timeline
       </h2>
       <div>
@@ -3689,7 +3716,7 @@ export default function SignalsPage() {
       </div>
 
       {/* ── Per-Symbol Mini Charts ───────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '8px 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         Per-Symbol Mini Charts
       </h2>
       <div style={{ marginBottom: 28 }}>
@@ -3719,6 +3746,9 @@ export default function SignalsPage() {
       </div>
 
       {/* ── 48-Hour Signal + Regime Timeline ─────────────────────────────── */}
+      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
+        48-Hour Overview
+      </h2>
       <SignalTimelineWithRegime />
 
       {/* ── Market Structure Grid ─────────────────────────────────────────── */}

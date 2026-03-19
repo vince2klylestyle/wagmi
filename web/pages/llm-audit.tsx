@@ -203,7 +203,7 @@ function ConfCalibration({ decisions }: { decisions: LlmDecision[] }) {
               return (
                 <g key={i}>
                   {bars.map((bar, bi) => {
-                    const x = cx - (barW + gap) * 1.5 + bi * (barW + gap);
+                    const x = cx - (3 * barW + 2 * gap) / 2 + bi * (barW + gap);
                     const barH = (bar.pct / 100) * chartH;
                     const y = padTop + chartH - barH;
                     return (

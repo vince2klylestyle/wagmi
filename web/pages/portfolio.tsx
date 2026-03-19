@@ -940,7 +940,8 @@ function PositionBubbleChart({ positions }: { positions: Strategy[] }) {
           const jitter = seededJitter(b.symbol) * (xStep * 0.4);
           const cx = PAD.l + (i + 1) * xStep + jitter;
           const sizeClamp = Math.min(Math.abs(b.sizeUsd), MAX_SIZE_USD);
-          const cy = PAD.t + H - (sizeClamp / MAX_SIZE_USD) * H;
+          // Clamp cy so the bubble (radius up to MAX_R) never renders above PAD.t.
+          const cy = Math.max(PAD.t + MAX_R, PAD.t + H - (sizeClamp / MAX_SIZE_USD) * H);
           const fillColor = b.side === 'LONG' ? C.bull : C.bear;
           const abbrev = b.symbol.length > 4 ? b.symbol.slice(0, 4) : b.symbol;
 

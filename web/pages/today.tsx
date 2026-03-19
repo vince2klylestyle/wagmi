@@ -50,7 +50,7 @@ function WatchlistScoreChart({ items }: { items: WatchItem[] }) {
         })}
         {items.map((item, i) => {
           const y = 14 + i * (barH + gap);
-          const barW = (item.quality / 100) * chartW;
+          const barW = (Math.min(100, Math.max(0, item.quality)) / 100) * chartW;
           const col = item.quality >= 75 ? C.bull : item.quality >= 60 ? C.warn : C.muted;
           return (
             <g key={i}>
@@ -788,7 +788,11 @@ function MarketSessionClock() {
         borderRadius: R.pill, padding: '2px 7px', letterSpacing: '0.08em',
         display: 'flex', alignItems: 'center', gap: 4,
       }}>
-        <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.bull, display: 'inline-block' }} />
+        <span style={{
+          width: 5, height: 5, borderRadius: '50%',
+          background: C.bull, display: 'inline-block',
+          animation: 'wagmiPulse 1.4s ease-in-out infinite',
+        }} />
         LIVE
       </div>
 
@@ -1765,7 +1769,9 @@ function TodayPnlByHour() {
     return (chartW / 24) * 0.7;
   }
   function barH(pnl: number): number {
-    return (Math.abs(pnl) / maxAbs) * (chartH * 0.85);
+    // Clamp to half chart height minus 2px margin so bars never exceed the
+    // zero-line boundary and clip outside the viewBox.
+    return (Math.abs(pnl) / maxAbs) * (chartH / 2 - 2);
   }
 
   // Y-axis labels
@@ -2258,7 +2264,9 @@ export default function TodayPage() {
             <span style={{ fontSize: 20 }}>🤖</span>
             <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Live AI Assessment</span>
             <span style={{ fontSize: F.xs, padding: '2px 8px', borderRadius: R.pill, background: C.surface, color: C.muted }}>Advisory mode · signals only</span>
-            <span style={{ marginLeft: 'auto', fontSize: F.xs, color: C.muted }}>Updated {timeAgo(llmView?.last_updated)}</span>
+            <span style={{ marginLeft: 'auto', fontSize: F.xs, color: C.muted }}>
+              {llmView?.last_updated ? `Updated ${timeAgo(llmView.last_updated)}` : 'Not yet updated'}
+            </span>
           </div>
 
           {/* Per-symbol stances */}

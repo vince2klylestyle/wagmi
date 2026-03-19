@@ -1661,7 +1661,7 @@ function SignalTimeline() {
 // ─── Risk Calculator ─────────────────────────────────────────────────────────
 
 function StandaloneRiskCalc({ defaultEntry, defaultSl }: { defaultEntry?: number; defaultSl?: number }) {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(true);
   const [accountSize, setAccountSize] = useState(10000);
   const [riskPct, setRiskPct] = useState(1.5);
   const [entry, setEntry] = useState(defaultEntry || 95000);
@@ -4212,10 +4212,26 @@ export default function CopyTrade() {
       <LlmBrainBanner view={llmView} />
 
       {/* ── Section 1: Live Signals ───────────────────────────────────────── */}
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        Live Signals
-      </h2>
-      <p style={{ fontSize: F.sm, color: C.muted, margin: '0 0 20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '32px 0 0', borderBottom: `1px solid ${C.border}`, paddingBottom: 12, flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: 0, letterSpacing: '-0.02em' }}>
+          Live Signals
+        </h2>
+        <a
+          href="https://app.hyperliquid.xyz"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 18px', borderRadius: R.md,
+            background: C.brand, color: '#fff',
+            fontSize: F.sm, fontWeight: 700, textDecoration: 'none',
+            flexShrink: 0,
+          }}
+        >
+          Trade on Hyperliquid →
+        </a>
+      </div>
+      <p style={{ fontSize: F.sm, color: C.muted, margin: '12px 0 20px' }}>
         Real-time per-asset signals from the bot. AI reasoning, price levels, and trade setup in one place.
       </p>
 
@@ -4286,13 +4302,27 @@ export default function CopyTrade() {
           ))}
 
       {/* ── Section 2: Activity Feed ──────────────────────────────────────── */}
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        Recent Bot Activity
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '40px 0 16px', borderBottom: `1px solid ${C.border}`, paddingBottom: 12, flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: 0, letterSpacing: '-0.02em' }}>
+          Recent Bot Activity
+        </h2>
+        <a
+          href="/signals"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: R.md,
+            background: 'transparent', border: `1px solid ${C.border}`,
+            color: C.textSub, fontSize: F.xs, fontWeight: 600, textDecoration: 'none',
+            flexShrink: 0,
+          }}
+        >
+          Full signal history →
+        </a>
+      </div>
       <ActivityFeed events={activityEvents} />
 
       {/* ── Section 3: How to Copy Trade ─────────────────────────────────── */}
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }} id="how-to">
         How to Copy Trade
       </h2>
       <div
@@ -4331,8 +4361,23 @@ export default function CopyTrade() {
       {/* Pre-Trade Checklist */}
       <CopyTradeChecklist />
 
+      {/* CTA: jump to risk calculator */}
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <a
+          href="#risk"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '10px 22px', borderRadius: R.md,
+            background: C.warn + '18', border: `1px solid ${C.warn}44`,
+            color: C.warn, fontSize: F.sm, fontWeight: 700, textDecoration: 'none',
+          }}
+        >
+          Calculate your position size →
+        </a>
+      </div>
+
       {/* ── Section 4: Risk Calculator ───────────────────────────────────── */}
-      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+      <h2 id="risk" style={{ fontSize: 20, fontWeight: 800, color: C.text, margin: '40px 0 16px', letterSpacing: '-0.02em', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
         Risk &amp; Position Sizing
       </h2>
       <p style={{ fontSize: F.sm, color: C.muted, margin: '0 0 20px' }}>

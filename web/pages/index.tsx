@@ -2689,15 +2689,38 @@ export default function Home() {
       )}
 
       {/* ── Page header ───────────────────────────────── */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
-              The Trading Brain Running 24/7
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: F.sm, color: C.muted }}>
-              Seven AI models analyze every major crypto pair, every 15 minutes. You see the verdict — and exactly why.
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
+                WAGMI Dashboard
+              </h1>
+              {/* Mode indicator */}
+              <span style={{
+                fontSize: F.xs,
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: R.pill,
+                background: C.bull + '22',
+                color: C.bull,
+                border: `1px solid ${C.bull}44`,
+                letterSpacing: 0.5,
+                textTransform: 'uppercase',
+              }}>
+                ● Paper Mode
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <p style={{ margin: 0, fontSize: F.sm, color: C.muted }}>
+                Seven AI models analyze every major crypto pair, every 15 minutes. You see the verdict — and exactly why.
+              </p>
+              {signalsData.last_updated && (
+                <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>
+                  Updated {timeAgo(signalsData.last_updated)}
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '6px 14px', borderRadius: R.md }}>
