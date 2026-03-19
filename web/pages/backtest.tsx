@@ -679,6 +679,238 @@ function ComparisonDelta({ a, b, labelA, labelB }: { a: BacktestResult; b: Backt
   );
 }
 
+// ─── Monte Carlo Forecast ─────────────────────────────────────────────────────
+
+function MonteCarloForecast({ result }: { result: BacktestResult }) {
+  const r = result.results;
+
+  // Extract stats with fallbacks
+  const winRate  = (r.win_rate  != null && isFinite(r.win_rate))  ? r.win_rate  : 0.77;
+  const avgWin   = (r.avg_win   != null && isFinite(r.avg_win)  && r.avg_win  > 0) ? r.avg_win   : 420;
+  const avgLoss  = (r.avg_loss  != null && isFinite(r.avg_loss) && r.avg_loss  < 0)
+    ? Math.abs(r.avg_loss)
+    : (r.avg_loss != null && isFinite(r.avg_loss) && r.avg_loss > 0) ? r.avg_loss : 180;
+
+  const startEquity = (result.config?.starting_equity ?? 50000);
+  const NUM_SIMS    = 50;
+  const NUM_TRADES  = 30;
+
+  // Seeded pseudo-random
+  function mcRand(seed: number): number {
+    const x = Math.sin(seed * 9301 + 49297) * 233280;
+    return x - Math.floor(x);
+  }
+
+  // Build all sim paths (array of equity-at-each-step, length NUM_TRADES+1)
+  const allPaths: number[][] = Array.from({ length: NUM_SIMS }, (_, i) => {
+    const path: number[] = [startEquity];
+    let eq = startEquity;
+    for (let t = 0; t < NUM_TRADES; t++) {
+      const rng = mcRand(i * 1000 + t);
+      eq += rng < winRate ? avgWin : -avgLoss;
+      path.push(eq);
+    }
+    return path;
+  });
+
+  // Final equities for each sim
+  const finals = allPaths.map(p => p[NUM_TRADES]);
+  const sortedFinals = [...finals].sort((a, b) => a - b);
+
+  // Percentile helper on sorted array
+  function percentileVal(sorted: number[], pct: number): number {
+    const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor((pct / 100) * sorted.length)));
+    return sorted[idx];
+  }
+
+  const medianFinal  = percentileVal(sortedFinals, 50);
+  const p25Final     = percentileVal(sortedFinals, 25);
+  const p75Final     = percentileVal(sortedFinals, 75);
+  const bestFinal    = sortedFinals[sortedFinals.length - 1];
+  const worstFinal   = sortedFinals[0];
+
+  // Build percentile band path (p25 and p75 at each step)
+  const p25Path: number[] = Array.from({ length: NUM_TRADES + 1 }, (_, step) => {
+    const vals = allPaths.map(p => p[step]).sort((a, b) => a - b);
+    return percentileVal(vals, 25);
+  });
+  const p75Path: number[] = Array.from({ length: NUM_TRADES + 1 }, (_, step) => {
+    const vals = allPaths.map(p => p[step]).sort((a, b) => a - b);
+    return percentileVal(vals, 75);
+  });
+
+  // Median path: pick the sim whose final equity is closest to median
+  const medianSimIdx = finals.reduce((best, v, i) =>
+    Math.abs(v - medianFinal) < Math.abs(finals[best] - medianFinal) ? i : best, 0);
+  const medianPath = allPaths[medianSimIdx];
+
+  // SVG dimensions
+  const W = 520, H = 180;
+  const pad = { t: 28, r: 120, b: 28, l: 54 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  // Y range: dynamic with headroom
+  const allEquities = allPaths.flat();
+  const rawMin = Math.min(...allEquities);
+  const rawMax = Math.max(...allEquities);
+  const margin = (rawMax - rawMin) * 0.08 || 1000;
+  const yMin = rawMin - margin;
+  const yMax = rawMax + margin;
+  const yRange = yMax - yMin;
+
+  const toX = (t: number) => pad.l + (t / NUM_TRADES) * iW;
+  const toY = (eq: number) => pad.t + iH - ((eq - yMin) / yRange) * iH;
+
+  // Build polyline points string for a path
+  function pathPts(path: number[]): string {
+    return path.map((eq, t) => `${toX(t).toFixed(1)},${toY(eq).toFixed(1)}`).join(' ');
+  }
+
+  // Build SVG polygon points for shaded band (p75 forward then p25 backward)
+  const bandPts = [
+    ...p75Path.map((eq, t) => `${toX(t).toFixed(1)},${toY(eq).toFixed(1)}`),
+    ...[...p25Path].reverse().map((eq, t) => `${toX(NUM_TRADES - t).toFixed(1)},${toY(eq).toFixed(1)}`),
+  ].join(' ');
+
+  // Annotation values
+  const medPct   = ((medianFinal  - startEquity) / startEquity) * 100;
+  const bestPct  = ((bestFinal    - startEquity) / startEquity) * 100;
+  const worstPct = ((worstFinal   - startEquity) / startEquity) * 100;
+
+  // Y-axis ticks (3 evenly spaced)
+  const yTickCount = 3;
+  const yTicks = Array.from({ length: yTickCount }, (_, i) => {
+    const eq = yMin + (i / (yTickCount - 1)) * yRange;
+    return { y: toY(eq), label: '$' + (Math.abs(eq) >= 1000 ? (eq / 1000).toFixed(0) + 'k' : eq.toFixed(0)) };
+  });
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: F.md, fontWeight: 700, color: C.text }}>
+        30-Trade Monte Carlo Forecast (50 simulations)
+      </h3>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>
+        Based on current win rate &amp; avg win/loss — for illustration only
+      </div>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px', overflowX: 'auto' }}>
+        <svg
+          width="100%"
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ display: 'block', overflow: 'visible', minWidth: W }}
+        >
+          {/* Y grid + labels */}
+          {yTicks.map((tick, i) => (
+            <g key={i}>
+              <line
+                x1={pad.l} y1={tick.y}
+                x2={pad.l + iW} y2={tick.y}
+                stroke={C.border} strokeWidth={0.5} strokeDasharray="3 4"
+              />
+              <text
+                x={pad.l - 6} y={tick.y}
+                textAnchor="end" dominantBaseline="middle"
+                fontSize={9} fill={C.muted}
+              >
+                {tick.label}
+              </text>
+            </g>
+          ))}
+
+          {/* X-axis labels */}
+          <text x={toX(0)} y={pad.t + iH + 14} textAnchor="middle" fontSize={9} fill={C.muted}>Trade 0</text>
+          <text x={toX(NUM_TRADES)} y={pad.t + iH + 14} textAnchor="middle" fontSize={9} fill={C.muted}>Trade {NUM_TRADES}</text>
+          <text x={toX(NUM_TRADES / 2)} y={pad.t + iH + 14} textAnchor="middle" fontSize={9} fill={C.muted}>Trade {NUM_TRADES / 2}</text>
+
+          {/* Start-equity reference line */}
+          <line
+            x1={pad.l} y1={toY(startEquity)}
+            x2={pad.l + iW} y2={toY(startEquity)}
+            stroke={C.borderBright} strokeWidth={0.8} strokeDasharray="4 5"
+          />
+
+          {/* Sim paths */}
+          {allPaths.map((path, i) => {
+            const isProfitable = path[NUM_TRADES] >= startEquity;
+            return (
+              <polyline
+                key={i}
+                fill="none"
+                stroke={isProfitable ? C.bull : C.bear}
+                strokeWidth={0.7}
+                opacity={0.15}
+                points={pathPts(path)}
+                strokeLinejoin="round"
+              />
+            );
+          })}
+
+          {/* Percentile band (25th–75th) */}
+          <polygon
+            points={bandPts}
+            fill={C.brand}
+            fillOpacity={0.08}
+            stroke="none"
+          />
+
+          {/* Median path */}
+          <polyline
+            fill="none"
+            stroke={C.brand}
+            strokeWidth={2.5}
+            opacity={1}
+            points={pathPts(medianPath)}
+            strokeLinejoin="round"
+            style={{ filter: `drop-shadow(0 0 3px ${C.brand}88)` }}
+          />
+
+          {/* End dot on median path */}
+          <circle
+            cx={toX(NUM_TRADES)}
+            cy={toY(medianPath[NUM_TRADES])}
+            r={4}
+            fill={C.brand}
+            style={{ filter: `drop-shadow(0 0 4px ${C.brand})` }}
+          />
+
+          {/* Annotations panel on right */}
+          {/* Median label */}
+          <text
+            x={pad.l + iW + 8} y={toY(medianPath[NUM_TRADES])}
+            dominantBaseline="middle" fontSize={10} fontWeight={700}
+            fill={C.brand}
+          >
+            Median: {medPct >= 0 ? '+' : ''}{medPct.toFixed(1)}%
+          </text>
+
+          {/* Best case label */}
+          <text
+            x={pad.l + iW + 8} y={pad.t + 10}
+            dominantBaseline="middle" fontSize={9}
+            fill={C.bull}
+          >
+            Best: +{bestPct.toFixed(1)}%
+          </text>
+
+          {/* Worst case label */}
+          <text
+            x={pad.l + iW + 8} y={pad.t + iH - 4}
+            dominantBaseline="middle" fontSize={9}
+            fill={C.bear}
+          >
+            Worst: {worstPct.toFixed(1)}%
+          </text>
+        </svg>
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+        Shaded band = 25th–75th percentile · Thick line = median path · Thin lines = individual simulations
+      </div>
+    </div>
+  );
+}
+
+// ─── Run Detail Panel ─────────────────────────────────────────────────────────
+
 function RunDetail({ result }: { result: BacktestResult }) {
   const r = result.results;
   const cfg = result.config;
@@ -728,6 +960,9 @@ function RunDetail({ result }: { result: BacktestResult }) {
           </div>
         </div>
       )}
+
+      {/* Monte Carlo Forecast */}
+      <MonteCarloForecast result={result} />
 
       {/* By symbol + Exit types side-by-side */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 24, marginBottom: 20, alignItems: 'start' }}>
