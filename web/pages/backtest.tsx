@@ -3200,11 +3200,11 @@ export default function Backtest() {
       </div>
 
       {/* ── Responsive fix ─── */}
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @media (max-width: 900px) {
           div[style*="300px 1fr"] { grid-template-columns: 1fr !important; }
         }
-      `}</style>
+      ` }} />
     </div>
   );
 }
