@@ -865,9 +865,51 @@ export default function Home() {
   const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
   const [activeChart, setActiveChart] = useState('BTC');
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('1h');
+  const [heatTab, setHeatTab] = useState<'market' | 'scores' | 'correlation' | 'regime'>('market');
+  const [correlations, setCorrelations] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const apiBase = resolveApiBase();
+
+  // Compute correlation matrix from recent OHLCV (30 daily candles)
+  useEffect(() => {
+    const pearson = (a: number[], b: number[]) => {
+      const n = Math.min(a.length, b.length);
+      if (n < 5) return 0;
+      const meanA = a.slice(0, n).reduce((s, x) => s + x, 0) / n;
+      const meanB = b.slice(0, n).reduce((s, x) => s + x, 0) / n;
+      const num = a.slice(0, n).reduce((s, x, i) => s + (x - meanA) * (b[i] - meanB), 0);
+      const denA = Math.sqrt(a.slice(0, n).reduce((s, x) => s + (x - meanA) ** 2, 0));
+      const denB = Math.sqrt(b.slice(0, n).reduce((s, x) => s + (x - meanB) ** 2, 0));
+      return denA * denB === 0 ? 0 : num / (denA * denB);
+    };
+
+    const fetchAll = async () => {
+      try {
+        const results = await Promise.all(
+          SYMBOLS.map((sym) =>
+            fetch(`${apiBase}/v1/ohlcv?symbol=${sym}&timeframe=1d&limit=30`)
+              .then((r) => r.json())
+              .then((d: any[]) => Array.isArray(d) ? d.map((c) => c.close as number) : [])
+              .catch(() => [] as number[])
+          )
+        );
+        const [btcC, solC, hypeC] = results;
+        const corrs: Record<string, number> = {
+          'BTC-SOL': pearson(btcC, solC),
+          'BTC-HYPE': pearson(btcC, hypeC),
+          'SOL-HYPE': pearson(solC, hypeC),
+          'SOL-BTC': pearson(solC, btcC),
+          'HYPE-BTC': pearson(hypeC, btcC),
+          'HYPE-SOL': pearson(hypeC, solC),
+          'BTC-BTC': 1, 'SOL-SOL': 1, 'HYPE-HYPE': 1,
+        };
+        setCorrelations(corrs);
+      } catch {}
+    };
+
+    fetchAll();
+  }, [apiBase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -1106,27 +1148,12 @@ export default function Home() {
       {/* ── Activity ticker ───────────────────────────── */}
       <ActivityTicker events={activity} />
 
-      {/* ── Market Heatmap ────────────────────────────── */}
-      <div style={{ marginBottom: 28, marginTop: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Market Signals</h2>
-          <div style={{ fontSize: F.xs, color: C.muted }}>
-            Regime: <strong style={{ color: C.textSub }}>{regime}</strong>
-            {signalsData.last_updated && (
-              <> · Updated {timeAgo(signalsData.last_updated)}</>
-            )}
-          </div>
-        </div>
-        <MarketHeatmap signals={signals} llmView={llmView} loading={loading} onSelect={setActiveChart} activeChart={activeChart} />
-      </div>
-
-      {/* ── Chart + Signal Panel ─────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
+      {/* ── Full-width Chart ──────────────────────────── */}
+      <div style={{ marginBottom: 16 }}>
         {/* Controls row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Chart</h2>
 
-          {/* Symbol tabs */}
           <div style={{ display: 'flex', gap: 5, marginLeft: 6 }}>
             {SYMBOLS.map((sym) => (
               <button key={sym} onClick={() => setActiveChart(sym)} style={{
@@ -1141,10 +1168,8 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Divider */}
           <div style={{ width: 1, height: 20, background: C.border, margin: '0 4px' }} />
 
-          {/* Timeframe tabs */}
           <div style={{ display: 'flex', gap: 4 }}>
             {CHART_TIMEFRAMES.map((tf) => (
               <button key={tf} onClick={() => setActiveTimeframe(tf)} style={{
@@ -1159,31 +1184,298 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Zone legend */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: F.xs, color: C.muted, flexWrap: 'wrap' }}>
-            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#22c55e', verticalAlign: 'middle', marginRight: 4 }} />Buy zones</span>
-            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#ef4444', verticalAlign: 'middle', marginRight: 4, borderTop: '1px dashed #ef4444' }} />Sell zones</span>
-            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#f59e0b', verticalAlign: 'middle', marginRight: 4 }} />Signal levels</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: F.xs, color: C.muted }}>
+            <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#22c55e', verticalAlign: 'middle', marginRight: 4 }} />Buy zones</span>
+            <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#ef4444', verticalAlign: 'middle', marginRight: 4 }} />Sell zones</span>
           </div>
         </div>
 
-        {/* Two-column: chart (large) + signal panel */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 14, alignItems: 'stretch' }}>
-          <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card, minHeight: 620 }}>
-            <CandleChart
-              symbol={activeChart}
-              apiBase={apiBase}
-              zones={signals[activeChart]?.zones ?? null}
-              signalLevels={null}
-              timeframe={activeTimeframe}
-            />
-          </div>
-          <SignalPanel
+        {/* Full-width chart */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card }}>
+          <CandleChart
             symbol={activeChart}
-            signal={signals[activeChart] ?? null}
-            llmDec={llmView?.per_symbol?.[activeChart] ?? null}
-            regime={regime}
+            apiBase={apiBase}
+            zones={signals[activeChart]?.zones ?? null}
+            signalLevels={null}
+            timeframe={activeTimeframe}
           />
+        </div>
+      </div>
+
+      {/* ── Below-chart 3-column panel ────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
+
+        {/* LEFT — Tabbed heatmap section */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+          {/* Tab strip */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, background: '#0f172a' }}>
+            {(['market', 'scores', 'correlation', 'regime'] as const).map((tab) => {
+              const labels: Record<string, string> = { market: 'Market Signals', scores: 'Strategy Scores', correlation: 'Correlation', regime: 'Regime History' };
+              return (
+                <button key={tab} onClick={() => setHeatTab(tab)} style={{
+                  flex: 1, padding: '10px 4px', background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: F.xs, fontWeight: 600, transition: 'all 0.15s',
+                  color: heatTab === tab ? C.brand : C.muted,
+                  borderBottom: heatTab === tab ? `2px solid ${C.brand}` : '2px solid transparent',
+                }}>
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab content */}
+          <div>
+            {heatTab === 'market' && (
+              <MarketHeatmap signals={signals} llmView={llmView} loading={loading} onSelect={(sym) => { setActiveChart(sym); }} activeChart={activeChart} />
+            )}
+
+            {heatTab === 'scores' && (
+              <div>
+                {/* Strategy-style score matrix: treat each indicator as a "strategy" */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr style={{ background: '#0f172a' }}>
+                        <th style={{ padding: '10px 14px', fontSize: F.xs, color: C.muted, fontWeight: 600, textAlign: 'left', borderRight: `1px solid ${C.border}` }}>Component</th>
+                        {SYMBOLS.map((sym) => (
+                          <th key={sym} onClick={() => setActiveChart(sym)} style={{ padding: '10px 14px', fontSize: F.sm, fontWeight: 800, color: sym === activeChart ? '#fff' : C.brand, cursor: 'pointer', textAlign: 'center', borderRight: `1px solid ${C.border}`, background: sym === activeChart ? C.brand + '33' : 'transparent' }}>{sym}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: 'Overall Score', getValue: (s: Signal) => ({ v: s.score, txt: `${s.score}`, lo: 0, hi: 100 }) },
+                        { label: 'RSI Momentum', getValue: (s: Signal) => { const r = s.rsi14 ?? 50; return { v: r, txt: r.toFixed(1), lo: 20, hi: 80 }; } },
+                        { label: 'Trend (SMA)', getValue: (s: Signal) => ({ v: s.sma20 > s.sma50 ? 80 : 20, txt: s.sma20 > s.sma50 ? '↑ Bull' : '↓ Bear', lo: 0, hi: 100 }) },
+                        { label: 'Zone Position', getValue: (s: Signal) => {
+                          const p = s.price; const { deepAccum, accum, distrib, safeDistrib } = s.zones;
+                          const score = p <= deepAccum ? 95 : p <= accum ? 70 : p >= safeDistrib ? 5 : p >= distrib ? 25 : 50;
+                          const txt = p <= deepAccum ? 'Deep Buy' : p <= accum ? 'Buy Zone' : p >= safeDistrib ? 'Safe Sell' : p >= distrib ? 'Sell Zone' : 'Neutral';
+                          return { v: score, txt, lo: 0, hi: 100 };
+                        }},
+                        { label: 'ATR Volatility', getValue: (s: Signal) => ({ v: Math.min(s.atr_pct ?? 0, 10), txt: s.atr_pct != null ? s.atr_pct.toFixed(2) + '%' : '—', lo: 0, hi: 10, inv: true }) },
+                        { label: 'Vol Spike', getValue: (s: Signal) => ({ v: s.vol_spike ? 80 : 20, txt: s.vol_spike ? '⚡ Yes' : '— No', lo: 0, hi: 100 }) },
+                      ].map((row) => (
+                        <tr key={row.label} style={{ borderTop: `1px solid ${C.border}` }}>
+                          <td style={{ padding: '10px 14px', fontSize: F.xs, color: C.muted, fontWeight: 600, borderRight: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{row.label}</td>
+                          {SYMBOLS.map((sym) => {
+                            const s = signals[sym];
+                            if (!s) return <td key={sym} style={{ padding: '10px 14px', background: C.heatNeutral, borderRight: `1px solid ${C.border}` }} />;
+                            const { v, txt, lo, hi, inv } = row.getValue(s) as any;
+                            return <HeatCell key={sym} value={v} label={txt} low={lo} high={hi} invertBull={!!inv} />;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '8px 14px', background: C.surface, fontSize: F.xs, color: C.muted, borderTop: `1px solid ${C.border}` }}>
+                  Each row = one signal component. Green = bullish signal, red = bearish.
+                </div>
+              </div>
+            )}
+
+            {heatTab === 'correlation' && (
+              <div style={{ padding: 16 }}>
+                <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>30-day daily return correlation (Pearson)</div>
+                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '8px 10px', fontSize: F.xs, color: C.muted, textAlign: 'left' }}></th>
+                      {SYMBOLS.map((sym) => (
+                        <th key={sym} style={{ padding: '8px 14px', fontSize: F.sm, fontWeight: 800, color: C.brand, textAlign: 'center' }}>{sym}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SYMBOLS.map((rowSym) => (
+                      <tr key={rowSym}>
+                        <td style={{ padding: '8px 10px', fontSize: F.sm, fontWeight: 800, color: C.brand }}>{rowSym}</td>
+                        {SYMBOLS.map((colSym) => {
+                          const key = `${rowSym}-${colSym}`;
+                          const val = correlations[key];
+                          const isDiag = rowSym === colSym;
+                          const pct = val != null ? val : null;
+                          const bg = isDiag ? C.brand + '22' :
+                            pct == null ? C.heatNeutral :
+                            pct > 0.7 ? C.heatBull2 :
+                            pct > 0.4 ? C.heatBull1 + '55' :
+                            pct < -0.4 ? C.heatBear2 :
+                            C.heatNeutral;
+                          return (
+                            <td key={colSym} style={{ padding: '12px 14px', background: bg, textAlign: 'center', fontSize: F.sm, fontWeight: 700, color: C.text, border: `1px solid ${C.border}` }}>
+                              {isDiag ? '1.00' : pct != null ? pct.toFixed(2) : '…'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ marginTop: 12, display: 'flex', gap: 14, fontSize: F.xs, color: C.muted, flexWrap: 'wrap' }}>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatBull2, marginRight: 4 }} />{'>'}0.7 highly correlated</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatNeutral, marginRight: 4 }} />Neutral</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatBear2, marginRight: 4 }} />Inverse</span>
+                </div>
+              </div>
+            )}
+
+            {heatTab === 'regime' && (
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 10 }}>Recent regime & signal events</div>
+                {activity.length === 0 ? (
+                  <div style={{ color: C.muted, fontSize: F.xs, textAlign: 'center', padding: 16 }}>No activity yet</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {activity.slice(0, 10).map((ev, i) => {
+                      const REGIME_COLOR: Record<string, string> = {
+                        trend: C.bull, range: '#60a5fa', panic: C.bear, high_volatility: '#fbbf24',
+                        low_liquidity: '#64748b', news_dislocation: '#7c3aed',
+                      };
+                      const dotColor = ev.badge_color || C.brand;
+                      return (
+                        <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderBottom: i < activity.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: 4 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: R.xs, background: dotColor + '22', color: dotColor }}>{ev.badge}</span>
+                              {ev.symbol && <span style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{ev.symbol}</span>}
+                              <span style={{ fontSize: 10, color: C.muted }}>{timeAgo(ev.ts_iso || ev.ts)}</span>
+                            </div>
+                            <div style={{ fontSize: F.xs, color: C.textSub, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+                              {ev.title}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CENTER — Compact AI stance cards */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14 }}>🤖</span>
+            <span style={{ fontSize: F.xs, fontWeight: 700, color: C.text }}>AI Stance</span>
+            <Link href="/signals" style={{ marginLeft: 'auto', fontSize: 10, color: C.brand, fontWeight: 600, textDecoration: 'none' }}>Feed →</Link>
+          </div>
+          <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {SYMBOLS.map((sym) => {
+              const dec = llmView?.per_symbol?.[sym];
+              const action = (dec?.action || 'skip').toLowerCase();
+              const isGo = action === 'proceed' || action === 'go';
+              const isVeto = dec?.is_veto;
+              const conf = dec?.confidence ?? null;
+              const stanceColor = isVeto ? C.bear : isGo ? C.bull : C.muted;
+              const label = isVeto ? 'VETO' : isGo ? 'GO' : 'SKIP';
+              return (
+                <div key={sym} onClick={() => setActiveChart(sym)} style={{
+                  background: '#0f172a', borderRadius: R.md, padding: '10px 12px', cursor: 'pointer',
+                  border: `1px solid ${sym === activeChart ? stanceColor + '55' : C.border}`,
+                  transition: 'border-color 0.15s',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: F.sm, fontWeight: 800, color: C.text }}>{sym}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: R.pill, background: stanceColor + '22', color: stanceColor }}>{label}</span>
+                  </div>
+                  {conf != null && (
+                    <>
+                      <div style={{ height: 3, background: C.border, borderRadius: 2, marginBottom: 4, overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.round(conf * 100)}%`, height: '100%', background: stanceColor, borderRadius: 2, transition: 'width 0.4s' }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{Math.round(conf * 100)}% confidence</div>
+                    </>
+                  )}
+                  {dec?.notes && (
+                    <div style={{ fontSize: 10, color: C.textSub, marginTop: 5, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+                      {dec.notes}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Global regime */}
+            <div style={{ marginTop: 4, padding: '8px 10px', background: C.brand + '15', borderRadius: R.sm, border: `1px solid ${C.brand}33` }}>
+              <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>MARKET REGIME</div>
+              <div style={{ fontSize: F.sm, fontWeight: 800, color: C.brand }}>{regime.toUpperCase()}</div>
+              {llmView?.decision_counts && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 10, flexWrap: 'wrap' }}>
+                  <span style={{ color: C.bull }}>✓ {llmView.decision_counts.proceed}</span>
+                  <span style={{ color: C.muted }}>— {llmView.decision_counts.flat}</span>
+                  <span style={{ color: '#a78bfa' }}>↔ {llmView.decision_counts.flip}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — Signal levels for active chart */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14 }}>📍</span>
+            <span style={{ fontSize: F.xs, fontWeight: 700, color: C.text }}>{activeChart} Signal</span>
+          </div>
+          {(() => {
+            const sig = signals[activeChart];
+            if (!sig) return (
+              <div style={{ padding: 16, fontSize: F.xs, color: C.muted, textAlign: 'center' }}>No signal data</div>
+            );
+            const levels = [
+              { label: 'Safe Sell', price: sig.zones.safeDistrib, color: '#b91c1c', icon: '▲' },
+              { label: 'Sell Zone', price: sig.zones.distrib,     color: '#ef4444', icon: '▲' },
+              { label: 'Price',     price: sig.price,             color: '#f59e0b', icon: '◆' },
+              { label: 'Buy Zone',  price: sig.zones.accum,       color: '#22c55e', icon: '▼' },
+              { label: 'Deep Buy',  price: sig.zones.deepAccum,   color: '#16a34a', icon: '▼' },
+            ].filter((l) => l.price && l.price > 0);
+            const highP = Math.max(...levels.map((l) => l.price));
+            const lowP  = Math.min(...levels.map((l) => l.price));
+            const rng   = highP - lowP || 1;
+            return (
+              <div style={{ padding: '14px 14px' }}>
+                {/* Visual price ladder */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                  {levels.sort((a, b) => b.price - a.price).map((lv) => {
+                    const pct = ((lv.price - lowP) / rng) * 100;
+                    return (
+                      <div key={lv.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 9, color: lv.color, width: 10, textAlign: 'center' }}>{lv.icon}</span>
+                        <span style={{ fontSize: 10, color: C.muted, width: 52 }}>{lv.label}</span>
+                        <div style={{ flex: 1, height: lv.label === 'Price' ? 4 : 2, background: C.border, borderRadius: 2 }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: lv.color + '88', borderRadius: 2 }} />
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: lv.color, minWidth: 56, textAlign: 'right' }}>
+                          {fmtUsd(lv.price, lv.price > 100 ? 1 : 4)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Mini stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {[
+                    { label: 'Score', value: `${sig.score}`, color: sig.score > 60 ? C.bull : C.warn },
+                    { label: 'RSI', value: sig.rsi14 != null ? sig.rsi14.toFixed(1) : '—', color: sig.rsi14 != null && sig.rsi14 < 35 ? C.bull : sig.rsi14 != null && sig.rsi14 > 65 ? C.bear : C.muted },
+                    { label: 'ATR%', value: sig.atr_pct != null ? sig.atr_pct.toFixed(2) + '%' : '—', color: C.muted },
+                    { label: 'Spike', value: sig.vol_spike ? '⚡Yes' : 'No', color: sig.vol_spike ? C.warn : C.muted },
+                  ].map((m) => (
+                    <div key={m.label} style={{ background: '#0f172a', borderRadius: R.sm, padding: '7px 8px' }}>
+                      <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>{m.label}</div>
+                      <div style={{ fontSize: F.xs, fontWeight: 700, color: m.color }}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, textAlign: 'center', fontSize: F.xs, fontWeight: 600, color: C.brand, padding: '5px 8px', background: C.brand + '15', borderRadius: R.sm }}>
+                  {sig.label ?? 'Observation'}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
