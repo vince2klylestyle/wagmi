@@ -408,6 +408,168 @@ function FeatureTable({ annual }: { annual: boolean }) {
   );
 }
 
+// ─── MonthlyReturnHeatmap ─────────────────────────────────────────────────────
+
+function MonthlyReturnHeatmap() {
+  const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const ROWS = [
+    { label: 'Observer', rate: 0.00, color: C.muted },
+    { label: 'Pro',      rate: 0.015, color: C.bull },
+    { label: 'Elite',    rate: 0.022, color: C.bull },
+  ];
+
+  // Build cumulative returns: month index 0 = after month 1
+  // cumReturn[m] = (1 + rate)^(m+1) - 1
+  const getCumReturn = (rate: number, monthIdx: number) =>
+    Math.pow(1 + rate, monthIdx + 1) - 1;
+
+  // Max possible cumulative return for color scaling (Elite, month 11)
+  const maxReturn = getCumReturn(0.022, 11); // ~29.7%
+
+  // Green intensity: 0 → transparent, 1 → C.bull
+  // Observer row stays gray
+  const cellBg = (tierIdx: number, monthIdx: number): string => {
+    const rate = ROWS[tierIdx].rate;
+    if (rate === 0) return C.faint; // Observer: flat gray
+    const cum = getCumReturn(rate, monthIdx);
+    // Map 0..maxReturn to 0..1 intensity
+    const intensity = Math.min(cum / maxReturn, 1);
+    // Interpolate: low → heatBull1 (#22c55e), high → heatBull3 (#166534)
+    // Use opacity on a dark green to keep text readable
+    const alpha = Math.round(30 + intensity * 180); // 30–210 hex
+    const alphaHex = alpha.toString(16).padStart(2, '0');
+    return `${C.bull}${alphaHex}`;
+  };
+
+  const cellTextColor = (tierIdx: number, monthIdx: number): string => {
+    const rate = ROWS[tierIdx].rate;
+    if (rate === 0) return C.muted;
+    const cum = getCumReturn(rate, monthIdx);
+    const intensity = Math.min(cum / maxReturn, 1);
+    // Light text at high intensity, muted-green at low
+    return intensity > 0.5 ? '#dcfce7' : C.bullLight;
+  };
+
+  const fmtCum = (rate: number, monthIdx: number): string => {
+    if (rate === 0) return '—';
+    const cum = getCumReturn(rate, monthIdx);
+    return `+${(cum * 100).toFixed(1)}%`;
+  };
+
+  // SVG layout
+  const COL_COUNT = 12;
+  const ROW_COUNT = 3;
+  const LABEL_W = 64;
+  const CELL_W = 56;
+  const CELL_H = 40;
+  const HEADER_H = 24;
+  const GAP = 3;
+  const PAD = 16;
+
+  const totalW = PAD + LABEL_W + GAP + COL_COUNT * (CELL_W + GAP) + PAD;
+  const totalH = PAD + HEADER_H + GAP + ROW_COUNT * (CELL_H + GAP) + PAD;
+
+  const colX = (colIdx: number) => PAD + LABEL_W + GAP + colIdx * (CELL_W + GAP);
+  const rowY = (rowIdx: number) => PAD + HEADER_H + GAP + rowIdx * (CELL_H + GAP);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 16px' }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>
+          Projected Cumulative Returns (monthly compounding)
+        </div>
+        <div style={{ fontSize: F.xs, color: C.muted }}>
+          Each cell shows expected cumulative gain at end of that month · Observer has no alpha edge
+        </div>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${totalW} ${totalH}`}
+        style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+      >
+        {/* Column header: month labels */}
+        {MONTH_LABELS.map((mo, ci) => (
+          <text
+            key={mo}
+            x={colX(ci) + CELL_W / 2}
+            y={PAD + HEADER_H - 6}
+            textAnchor="middle"
+            fontSize={9}
+            fill={C.muted}
+            fontWeight={600}
+          >{mo}</text>
+        ))}
+
+        {/* Rows */}
+        {ROWS.map((row, ri) => (
+          <g key={row.label}>
+            {/* Row label */}
+            <text
+              x={PAD + LABEL_W - 8}
+              y={rowY(ri) + CELL_H / 2 + 4}
+              textAnchor="end"
+              fontSize={10}
+              fill={row.color}
+              fontWeight={700}
+            >{row.label}</text>
+
+            {/* Cells */}
+            {MONTH_LABELS.map((_mo, ci) => {
+              const isLast = ci === 11;
+              const bg = cellBg(ri, ci);
+              const textCol = cellTextColor(ri, ci);
+              const label = fmtCum(row.rate, ci);
+              return (
+                <g key={ci}>
+                  <rect
+                    x={colX(ci)}
+                    y={rowY(ri)}
+                    width={CELL_W}
+                    height={CELL_H}
+                    rx={R.xs}
+                    fill={bg}
+                    stroke={isLast && row.rate > 0 ? row.color : 'none'}
+                    strokeWidth={isLast && row.rate > 0 ? 1.5 : 0}
+                  />
+                  <text
+                    x={colX(ci) + CELL_W / 2}
+                    y={rowY(ri) + CELL_H / 2 + 4}
+                    textAnchor="middle"
+                    fontSize={row.rate === 0 ? 9 : 9}
+                    fill={row.rate === 0 ? C.faint : textCol}
+                    fontWeight={isLast && row.rate > 0 ? 700 : 500}
+                  >{label}</text>
+                </g>
+              );
+            })}
+          </g>
+        ))}
+
+        {/* Final column "Year-end" callout labels */}
+        {ROWS.filter((r) => r.rate > 0).map((row, idx) => {
+          const ri = idx + 1; // Observer is ri=0, skip
+          const cum = getCumReturn(row.rate, 11);
+          const yr = `+${(cum * 100).toFixed(1)}%`;
+          return (
+            <text
+              key={row.label}
+              x={colX(11) + CELL_W + 6}
+              y={rowY(ri) + CELL_H / 2 + 4}
+              fontSize={9}
+              fill={row.color}
+              fontWeight={700}
+            >{yr}</text>
+          );
+        })}
+      </svg>
+
+      <div style={{ fontSize: 10, color: C.faint, marginTop: 8, textAlign: 'center', lineHeight: 1.5 }}>
+        Illustrative only. Assumes constant monthly rate. Past performance does not guarantee future results.
+      </div>
+    </div>
+  );
+}
+
 // ─── FAQ ──────────────────────────────────────────────────────────────────────
 
 function PFAQ({ q, a }: { q: string; a: string }) {
@@ -526,6 +688,11 @@ export default function PricingPage() {
         <div style={{ background: `${C.brand}10`, border: `1px solid ${C.brand}30`, borderRadius: R.xl, padding: '24px 28px', marginBottom: 48, textAlign: 'center' }}>
           <div style={{ fontSize: F.xl, fontWeight: 700, color: C.text, marginBottom: 8 }}>7-day money back guarantee</div>
           <div style={{ fontSize: F.sm, color: C.muted }}>Try Pro or Elite for 7 days. If it's not for you, we'll refund without questions.</div>
+        </div>
+
+        {/* ── Monthly Return Heatmap ── */}
+        <div style={{ marginBottom: 52 }}>
+          <MonthlyReturnHeatmap />
         </div>
 
         {/* ── FAQ ── */}
