@@ -3287,8 +3287,17 @@ export default function Results() {
         </div>
       </div>
 
-      {/* ── PnL Ticker Banner ────────────────────────── */}
-      <PnlTickerBanner trades={trades} />
+      {/* ── PnL Ticker Banner — sticky-style top strip ── */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, marginBottom: 28 }}>
+        <PnlTickerBanner trades={trades} />
+      </div>
+
+      {/* ════════════════════════════════════════════════
+          SECTION: Overview
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 0, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        Overview
+      </h2>
 
       {/* ── Hero banner ──────────────────────────────── */}
       {loadingBt ? (
@@ -3351,22 +3360,21 @@ export default function Results() {
         </div>
       )}
 
-      {/* ── Performance Attribution ──────────────────── */}
-      <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
-        Performance Attribution
-      </h2>
-
-      {/* ── Profit Attribution Chart ─────────────────── */}
-      <ProfitAttributionChart trades={trades} backtest={backtest} />
-
       {/* ── Cumulative PnL Milestones ────────────────── */}
       <CumulativePnlMilestones trades={trades} />
+
+      {/* ════════════════════════════════════════════════
+          SECTION: Trade History
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        Trade History
+      </h2>
 
       {/* ── Equity Curve + Drawdown ──────────────────── */}
       <div
         style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}
       >
-        <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Equity Curve</h2>
+        <h3 style={{ margin: '0 0 16px', fontSize: F.md, fontWeight: 700, color: C.text }}>Equity Curve</h3>
         <EquityCurveChart points={equityCurve} height={200} />
         {equityCurve.length >= 2 && (
           <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
@@ -3380,7 +3388,36 @@ export default function Results() {
         <BotVsBuyHold points={equityCurve} startEquity={backtest?.config?.starting_equity ?? 50000} />
       )}
 
-      {/* ── P&L Distribution Histogram ───────────────── */}
+      {/* ════════════════════════════════════════════════
+          SECTION: Performance Attribution
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        Performance Attribution
+      </h2>
+
+      {/* ── Profit Attribution Chart ─────────────────── */}
+      <ProfitAttributionChart trades={trades} backtest={backtest} />
+
+      {/* ── Max Adverse Excursion ─────────────────────── */}
+      <MaxAdverseExcursion trades={trades} />
+
+      {/* ════════════════════════════════════════════════
+          SECTION: Trade Dynamics
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        Trade Dynamics
+      </h2>
+
+      {/* ── Daily Equity Waterfall ────────────────────── */}
+      <DailyEquityWaterfall trades={trades} />
+
+      {/* ── Consecutive Trade PnL Chart ───────────────── */}
+      <ConsecutiveTradePnlChart trades={trades} />
+
+      {/* ── P&L Distribution Histogram ────────────────── */}
+      <PnlDistributionHistogram trades={trades} />
+
+      {/* ── P&L Win/Loss Histogram ────────────────────── */}
       <WinLossHistogram trades={trades} />
 
       {/* ── Daily P&L Calendar ───────────────────────── */}
@@ -3389,10 +3426,17 @@ export default function Results() {
       {/* ── Time-of-Day Heatmap ───────────────────────── */}
       <TimeOfDayHeatmap trades={trades} />
 
+      {/* ════════════════════════════════════════════════
+          SECTION: By Strategy / Symbol
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        By Strategy / Symbol
+      </h2>
+
       {/* ── By-Strategy + Regime Win Rate ──────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>By Strategy</h2>
+          <h3 style={{ margin: '0 0 16px', fontSize: F.md, fontWeight: 700, color: C.text }}>By Strategy</h3>
           {backtest?.by_strategy && Object.keys(backtest.by_strategy).length > 0 ? (
             <ByStrategyBars byStrategy={backtest.by_strategy} />
           ) : (
@@ -3404,7 +3448,7 @@ export default function Results() {
           )}
         </div>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
-          <h2 style={{ margin: '0 0 4px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Win Rate by Regime</h2>
+          <h3 style={{ margin: '0 0 4px', fontSize: F.md, fontWeight: 700, color: C.text }}>Win Rate by Regime</h3>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14 }}>Computed from live trade history</div>
           <RegimeWinRate trades={trades} />
         </div>
@@ -3416,7 +3460,7 @@ export default function Results() {
       {/* ── By-Symbol + Exit Type ──────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>By Symbol</h2>
+          <h3 style={{ margin: '0 0 16px', fontSize: F.md, fontWeight: 700, color: C.text }}>By Symbol</h3>
           {backtest?.by_symbol ? (
             <BySymbolBars bySymbol={backtest.by_symbol} />
           ) : (
@@ -3429,7 +3473,7 @@ export default function Results() {
         </div>
 
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Exit Types</h2>
+          <h3 style={{ margin: '0 0 16px', fontSize: F.md, fontWeight: 700, color: C.text }}>Exit Types</h3>
           {r?.by_action ? (
             <ExitDonut byAction={r.by_action} />
           ) : (
@@ -3456,27 +3500,15 @@ export default function Results() {
       {/* ── By-Symbol Accordion ───────────────────────── */}
       <BySymbolAccordion bySymbol={backtest?.by_symbol} />
 
-      {/* ── Trade Dynamics ───────────────────────────── */}
-      <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
-        Trade Dynamics
+      {/* ════════════════════════════════════════════════
+          SECTION: Trade Log
+          ════════════════════════════════════════════════ */}
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        Trade Log
       </h2>
 
-      {/* ── Daily Equity Waterfall ────────────────────── */}
-      <DailyEquityWaterfall trades={trades} />
-
-      {/* ── Consecutive Trade PnL Chart ───────────────── */}
-      <ConsecutiveTradePnlChart trades={trades} />
-
-      {/* ── Max Adverse Excursion ─────────────────────── */}
-      <MaxAdverseExcursion trades={trades} />
-
-      {/* ── P&L Distribution Histogram ────────────────── */}
-      <PnlDistributionHistogram trades={trades} />
-
-      {/* ── Trade history table ───────────────────────── */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Trade History</h2>
           <span style={{ fontSize: F.xs, color: C.muted }}>{trades.length} trades · click column headers to sort</span>
         </div>
         <TradeTable trades={trades} loading={loadingTrades} />

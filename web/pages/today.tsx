@@ -417,7 +417,7 @@ function IntradayActivityHeatmap({ activity }: { activity: ActivityEvent[] }) {
   ];
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '18px 20px', marginBottom: 28 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '18px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Bot Activity by Hour (UTC)</div>
@@ -1155,13 +1155,6 @@ function AlertsPanel() {
         })}
       </div>
 
-      {/* Keyframe styles injected inline via a <style> tag — avoids a CSS module dep */}
-      <style>{`
-        @keyframes wagmiPulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.4; transform: scale(0.75); }
-        }
-      `}</style>
     </div>
   );
 }

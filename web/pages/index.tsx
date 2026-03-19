@@ -572,7 +572,7 @@ function ActivityTicker({ events }: { events: ActivityEvent[] }) {
         border: `1px solid ${C.border}`,
         borderRadius: R.md,
         padding: '8px 0',
-        marginTop: 16,
+        marginBottom: 16,
       }}
     >
       <div
@@ -1314,7 +1314,6 @@ function ActivityCalendarHeatmap() {
         border: `1px solid ${C.border}`,
         borderRadius: R.lg,
         padding: '20px 24px',
-        marginBottom: 24,
       }}
     >
       {/* Title row */}
@@ -1750,16 +1749,20 @@ function OpenInterestGauge() {
 
 function MarketMicrostructureRow() {
   return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 14,
-        marginBottom: 28,
-        flexWrap: 'wrap',
-      }}
-    >
-      <FundingRateBar />
-      <OpenInterestGauge />
+    <div style={{ marginBottom: 40 }}>
+      <h2 style={{ margin: '0 0 12px', fontSize: F.lg, fontWeight: 700, color: C.text }}>
+        Market Microstructure
+      </h2>
+      <div
+        style={{
+          display: 'flex',
+          gap: 14,
+          flexWrap: 'wrap',
+        }}
+      >
+        <FundingRateBar />
+        <OpenInterestGauge />
+      </div>
     </div>
   );
 }
@@ -1989,7 +1992,6 @@ function RegimeConfidenceHistory({
         border: `1px solid ${C.border}`,
         borderRadius: R.lg,
         padding: '16px 20px',
-        marginBottom: 16,
       }}
     >
       {/* Title row */}
@@ -2688,8 +2690,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Page header ───────────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
+      {/* ── 1. Page header ────────────────────────────── */}
+      <div style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -2733,87 +2735,8 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Always Watching Intelligence Bar ──────────── */}
-      {llmView && (
-        <div style={{
-          background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
-          border: `1px solid ${C.border}`,
-          borderRadius: R.lg,
-          padding: '14px 20px',
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0,
-          flexWrap: 'wrap',
-        }}>
-          {/* Live pulse */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 20, flexShrink: 0 }}>
-            <div style={{ position: 'relative', width: 10, height: 10 }}>
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, opacity: 0.8 }} />
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, animation: 'ripplePulse 2s ease-out infinite' }} />
-            </div>
-            <span style={{ fontSize: F.xs, fontWeight: 700, color: C.bull, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Always On
-            </span>
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: 1, height: 28, background: C.border, marginRight: 20 }} />
-
-          {/* Regime */}
-          <div style={{ marginRight: 24 }}>
-            <span style={{ fontSize: F.xs, color: C.muted }}>Regime </span>
-            <span style={{
-              fontSize: F.sm,
-              fontWeight: 700,
-              color: regime.toLowerCase() === 'trend' ? C.bull :
-                     regime.toLowerCase() === 'panic' ? C.bear :
-                     regime.toLowerCase() === 'range' ? '#60a5fa' :
-                     regime.toLowerCase() === 'high_volatility' ? '#fbbf24' : C.text,
-            }}>
-              {regime.toUpperCase()}
-            </span>
-          </div>
-
-          {/* Decision counts */}
-          {llmView.decision_counts && (
-            <div style={{ display: 'flex', gap: 16, marginRight: 24, fontSize: F.xs }}>
-              <span style={{ color: C.bull, fontWeight: 700 }}>✓ {llmView.decision_counts.proceed} trade</span>
-              <span style={{ color: C.muted }}>— {llmView.decision_counts.flat} skip</span>
-              <span style={{ color: '#a78bfa' }}>↔ {llmView.decision_counts.flip} flip</span>
-            </div>
-          )}
-
-          {/* Spacer */}
-          <div style={{ flex: 1 }} />
-
-          {/* CTA */}
-          <Link href="/signals" style={{
-            fontSize: F.xs,
-            fontWeight: 700,
-            color: C.brand,
-            textDecoration: 'none',
-            padding: '5px 12px',
-            border: `1px solid ${C.brand}44`,
-            borderRadius: R.pill,
-            flexShrink: 0,
-          }}>
-            See Live Analysis →
-          </Link>
-        </div>
-      )}
-      <style>{`@keyframes ripplePulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }`}</style>
-
-      {/* ── Top Opportunity Card ──────────────────────── */}
-      <div style={{ marginBottom: 24 }}>
-        <TopOpportunityCard signals={signals} regime={regime} loading={loading} />
-      </div>
-
-      {/* ── Market Breadth Bar ────────────────────────── */}
-      <MarketBreadthBar signals={signals} />
-
-      {/* ── KPI Hero Row ──────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      {/* ── 2. KPI Hero Row ───────────────────────────── */}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 40, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
@@ -2870,45 +2793,100 @@ export default function Home() {
             </>
           )}
         </div>
-        {/* Bot Health Indicator — top-right of hero section */}
+        {/* Bot Health Indicator — rightmost KPI column */}
         <BotHealthIndicator />
       </div>
 
-      {/* ── Market Snapshot ───────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>
-            Market Snapshot <span style={{ color: C.muted, fontWeight: 400, fontSize: F.sm }}>— Live Signal Metrics</span>
-          </h2>
-          {signalsData.last_updated && (
-            <span style={{ fontSize: F.xs, color: C.muted }}>
-              Updated {timeAgo(signalsData.last_updated)}
+      {/* ── 3. Regime + AI Intelligence Bar ──────────── */}
+      {llmView && (
+        <div style={{
+          background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
+          border: `1px solid ${C.border}`,
+          borderRadius: R.lg,
+          padding: '14px 20px',
+          marginBottom: 40,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}>
+          {/* Live pulse */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{ position: 'relative', width: 10, height: 10 }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, opacity: 0.8 }} />
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, animation: 'ripplePulse 2s ease-out infinite' }} />
+            </div>
+            <span style={{ fontSize: F.xs, fontWeight: 700, color: C.bull, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Always On
             </span>
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
+
+          {/* Regime */}
+          <div>
+            <span style={{ fontSize: F.xs, color: C.muted }}>Regime </span>
+            <span style={{
+              fontSize: F.sm,
+              fontWeight: 700,
+              color: regime.toLowerCase() === 'trend' ? C.bull :
+                     regime.toLowerCase() === 'panic' ? C.bear :
+                     regime.toLowerCase() === 'range' ? '#60a5fa' :
+                     regime.toLowerCase() === 'high_volatility' ? '#fbbf24' : C.text,
+            }}>
+              {regime.toUpperCase()}
+            </span>
+          </div>
+
+          {/* Decision counts */}
+          {llmView.decision_counts && (
+            <div style={{ display: 'flex', gap: 16, fontSize: F.xs }}>
+              <span style={{ color: C.bull, fontWeight: 700 }}>✓ {llmView.decision_counts.proceed} trade</span>
+              <span style={{ color: C.muted }}>— {llmView.decision_counts.flat} skip</span>
+              <span style={{ color: '#a78bfa' }}>↔ {llmView.decision_counts.flip} flip</span>
+            </div>
           )}
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* CTA */}
+          <Link href="/signals" style={{
+            fontSize: F.xs,
+            fontWeight: 700,
+            color: C.brand,
+            textDecoration: 'none',
+            padding: '5px 12px',
+            border: `1px solid ${C.brand}44`,
+            borderRadius: R.pill,
+            flexShrink: 0,
+          }}>
+            See Live Analysis →
+          </Link>
         </div>
-        <MarketSnapshot signals={signals} loading={loading} onSelect={setActiveChart} />
+      )}
+      <style>{`@keyframes ripplePulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }`}</style>
+
+      {/* ── 4. Top Opportunity + Regime History ───────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 40, alignItems: 'start' }}>
+        <TopOpportunityCard signals={signals} regime={regime} loading={loading} />
+        <RegimeConfidenceHistory regime={regime} llmView={llmView} />
       </div>
 
-      {/* ── Live Activity ─────────────────────────────── */}
-      <h2 style={{ margin: '0 0 12px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Live Activity</h2>
-      <ActivityTicker events={activity} />
-
-      {recentTrades.length > 0 && <RecentTradeStrip trades={recentTrades} />}
-
-      <ActivityCalendarHeatmap />
-
-      {/* ── Signal Health Gauge + Market Sentiment + Key Stats ──────── */}
-      <div style={{ marginBottom: 28, marginTop: 24 }}>
-        <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Signal Health</h2>
+      {/* ── 5. Signal Health + Market Breadth ────────── */}
+      <div style={{ marginBottom: 40 }}>
+        <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Signal Health &amp; Market Breadth</h2>
+        <MarketBreadthBar signals={signals} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20, alignItems: 'start' }}>
-          {/* Left: bot health gauge */}
+          {/* Bot health gauge */}
           <SignalHealthGauge
             signals={signals}
             backtestWinRate={btRes?.win_rate}
           />
-          {/* Center: market sentiment gauge */}
+          {/* Market sentiment gauge */}
           <MarketSentimentGauge signals={signals} regime={regime} />
-          {/* Right: key stats */}
+          {/* Signal overview stats */}
           <div style={{
             background: C.card,
             border: `1px solid ${C.border}`,
@@ -2917,7 +2895,6 @@ export default function Home() {
             display: 'flex',
             flexDirection: 'column',
             gap: 18,
-            height: '100%',
             boxSizing: 'border-box',
           }}>
             <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
@@ -2960,8 +2937,37 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Market Momentum ───────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
+      {/* ── 6. Live Signal Cards ──────────────────────── */}
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>
+            Live Signal Cards <span style={{ color: C.muted, fontWeight: 400, fontSize: F.sm }}>— per symbol</span>
+          </h2>
+          {signalsData.last_updated && (
+            <span style={{ fontSize: F.xs, color: C.muted }}>
+              Updated {timeAgo(signalsData.last_updated)}
+            </span>
+          )}
+        </div>
+        <MarketSnapshot signals={signals} loading={loading} onSelect={setActiveChart} />
+      </div>
+
+      {/* ── 7. Market Heatmap ─────────────────────────── */}
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Market Heatmap</h2>
+          <div style={{ fontSize: F.xs, color: C.muted }}>
+            Regime: <strong style={{ color: C.textSub }}>{regime}</strong>
+            {signalsData.last_updated && (
+              <> · Updated {timeAgo(signalsData.last_updated)}</>
+            )}
+          </div>
+        </div>
+        <MarketHeatmap signals={signals} loading={loading} onSelect={setActiveChart} />
+      </div>
+
+      {/* ── 8. Market Momentum + Microstructure ──────── */}
+      <div style={{ marginBottom: 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>
             Market Momentum
@@ -2976,32 +2982,17 @@ export default function Home() {
             textTransform: 'uppercase',
             letterSpacing: 0.8,
           }}>
-            LIVE SIGNALS
+            LIVE
           </span>
         </div>
         <MarketMomentumStrip signals={signals} regime={regime} />
       </div>
 
-      {/* ── Market Microstructure ─────────────────────── */}
+      {/* ── 9. Market Microstructure ──────────────────── */}
       <MarketMicrostructureRow />
 
-      {/* ── Market Heatmap ────────────────────────────── */}
-      <div style={{ marginBottom: 28, marginTop: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Market Signals</h2>
-          <div style={{ fontSize: F.xs, color: C.muted }}>
-            Regime: <strong style={{ color: C.textSub }}>{regime}</strong>
-            {signalsData.last_updated && (
-              <> · Updated {timeAgo(signalsData.last_updated)}</>
-            )}
-          </div>
-        </div>
-        <RegimeConfidenceHistory regime={regime} llmView={llmView} />
-        <MarketHeatmap signals={signals} loading={loading} onSelect={setActiveChart} />
-      </div>
-
-      {/* ── Chart ────────────────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
+      {/* ── 10. TradingView Chart ─────────────────────── */}
+      <div style={{ marginBottom: 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Chart (1H)</h2>
           <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
@@ -3031,7 +3022,15 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── LLM Brain Summary ─────────────────────────── */}
+      {/* ── 11. Activity Feed + Recent Trades ─────────── */}
+      <div style={{ marginBottom: 40 }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Activity Feed</h2>
+        <ActivityTicker events={activity} />
+        {recentTrades.length > 0 && <RecentTradeStrip trades={recentTrades} />}
+        <ActivityCalendarHeatmap />
+      </div>
+
+      {/* ── 12. LLM Brain Summary ─────────────────────── */}
       {llmView?.has_data && (
         <div
           className="fade-in"
@@ -3040,7 +3039,7 @@ export default function Home() {
             border: `1px solid ${C.border}`,
             borderRadius: R.lg,
             padding: '20px 24px',
-            marginBottom: 28,
+            marginBottom: 40,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -3067,6 +3066,7 @@ export default function Home() {
                 return (
                   <div key={sym} style={{
                     flex: '1 1 120px',
+                    minWidth: 120,
                     background: '#0f172a',
                     border: `1px solid ${stanceColor}33`,
                     borderRadius: R.md,
@@ -3106,8 +3106,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Strategies ───────────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
+      {/* ── 13. Strategies ────────────────────────────── */}
+      <div style={{ marginBottom: 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Strategies</h2>
           <Link href="/strategies" style={{ fontSize: F.sm, color: C.brand, textDecoration: 'none', fontWeight: 600 }}>
@@ -3131,7 +3131,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* ── Proof teaser ─────────────────────────────── */}
+      {/* ── 14. Proof teaser ──────────────────────────── */}
       {btRes && (
         <div
           style={{
@@ -3139,7 +3139,7 @@ export default function Home() {
             border: `1px solid ${C.brand}40`,
             borderRadius: R.xl,
             padding: '24px 28px',
-            marginBottom: 28,
+            marginBottom: 40,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',

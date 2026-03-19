@@ -2664,11 +2664,21 @@ export default function PerformancePage() {
           </div>
         )}
 
+        {/* ── Date Range Selector ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
+          <DateRangeTabs value={dateRange} onChange={setDateRange} />
+          {filteredTrades.length !== trades.length && (
+            <span style={{ fontSize: F.xs, color: C.muted }}>
+              Showing {filteredTrades.length} of {trades.length} trades
+            </span>
+          )}
+        </div>
+
         {loading ? (
           <div>
             {/* KPI skeleton row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 36 }}>
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px' }}>
                   <Skeleton h={11} w="55%" />
                   <div style={{ marginTop: 10 }}><Skeleton h={32} w="75%" /></div>
@@ -2686,80 +2696,94 @@ export default function PerformancePage() {
           </div>
         ) : (
           <>
-            {/* ── Ratio Gauge Panel ── */}
-            <RatioGaugePanel trades={trades} points={curve} backtest={null} />
-
-            {/* ── Benchmark Comparison ── */}
-            {trades.length > 0 && (
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 32, overflowX: 'auto' }}>
-                <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-                  Performance vs. Benchmarks
-                </div>
-                <BenchmarkComparison trades={trades} backtest={null} />
-                <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8 }}>
-                  Horizontal bars show bot metrics vs. excellence thresholds. Green = above benchmark, red = below. Values shown: bot / target.
-                </div>
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 1 — EQUITY & RETURNS
+                Top KPI row + equity curve + monthly PnL bars
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Equity & Returns">
+              {/* Must-have KPI cards: Total Return, Max Drawdown, Sharpe, Win Rate */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+                <KpiCard
+                  label="Total Return"
+                  value={totalReturnPct != null ? fmtPct(totalReturnPct) : '—'}
+                  sub="Equity curve, live"
+                  color={totalReturnPct != null && totalReturnPct >= 0 ? C.bull : C.bear}
+                />
+                <KpiCard
+                  label="Max Drawdown"
+                  value={maxDrawdownPct != null ? fmtPct(maxDrawdownPct) : '—'}
+                  sub="Worst peak-to-trough"
+                  color={C.bear}
+                />
+                <KpiCard
+                  label="Sharpe Ratio"
+                  value={sharpe != null ? sharpe.toFixed(2) : '—'}
+                  sub="Annualised (rf = 0%)"
+                  color={ratioColor(sharpe)}
+                />
+                <KpiCard
+                  label="Win Rate"
+                  value={winRate != null ? fmtPct(winRate, 1) : '—'}
+                  sub={`${wins}W / ${losses}L`}
+                  color={winRate != null && winRate >= 50 ? C.bull : C.bear}
+                />
               </div>
-            )}
 
-            {/* ── Fee Drag Analysis ── */}
-            {trades.length > 0 && (
-              <FeeDragAnalysis trades={trades} />
-            )}
-
-            {/* ── Risk-Adjusted Return KPIs + Radar ── */}
-            <Section title="Risk-Adjusted Returns">
-              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                {/* KPI cards column */}
-                <div style={{ flex: '1 1 420px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 8 }}>
-                    <KpiCard
-                      label="Sharpe Ratio"
-                      value={sharpe != null ? sharpe.toFixed(2) : '—'}
-                      sub="Annualised (risk-free = 0%)"
-                      color={ratioColor(sharpe)}
-                    />
-                    <KpiCard
-                      label="Sortino Ratio"
-                      value={sortino != null ? sortino.toFixed(2) : '—'}
-                      sub="Downside deviation only"
-                      color={ratioColor(sortino)}
-                    />
-                    <KpiCard
-                      label="Calmar Ratio"
-                      value={calmar != null ? calmar.toFixed(2) : '—'}
-                      sub="Return ÷ max drawdown"
-                      color={ratioColor(calmar)}
-                    />
-                    <KpiCard
-                      label="Total Return"
-                      value={totalReturnPct != null ? fmtPct(totalReturnPct) : '—'}
-                      sub="Equity curve, live"
-                      color={totalReturnPct != null && totalReturnPct >= 0 ? C.bull : C.bear}
-                    />
-                    <KpiCard
-                      label="Max Drawdown"
-                      value={maxDrawdownPct != null ? fmtPct(maxDrawdownPct) : '—'}
-                      sub="Worst peak-to-trough"
-                      color={C.bear}
-                    />
-                    <KpiCard
-                      label="Win Rate"
-                      value={winRate != null ? fmtPct(winRate, 1) : '—'}
-                      sub={`${wins}W / ${losses}L`}
-                      color={winRate != null && winRate >= 50 ? C.bull : C.bear}
-                    />
+              {/* Equity curve with EMA overlays */}
+              {filteredCurve.length > 1 && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto', marginBottom: 16 }}>
+                  <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                    Equity Curve with EMA-9 / EMA-21
                   </div>
+                  <EquityChart points={filteredCurve} trades={filteredTrades} width={860} height={200} />
+                </div>
+              )}
 
-                  {/* ── Profit Factor Gauge (5th KPI visual) ── */}
-                  <div style={{ marginTop: 16 }}>
-                    <ProfitFactorGauge trades={trades} />
+              {/* Monthly PnL bars */}
+              {filteredTrades.length >= 5 && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
+                  <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                    P&L by Period (every 5 trades)
                   </div>
-                  <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8 }}>
-                    Sharpe &gt; 1.0 = good · &gt; 2.0 = excellent · Calmar &gt; 1.0 = acceptable · &gt; 3.0 = strong
+                  <MonthlyPnlChart trades={filteredTrades} />
+                  <div style={{ fontSize: F.xs, color: C.muted, marginTop: 10 }}>
+                    Green = net positive period, red = net negative. Dashed line = cumulative PnL.
                   </div>
                 </div>
-                {/* Radar chart column */}
+              )}
+            </Section>
+
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 2 — RISK METRICS
+                Sharpe/Sortino/Calmar gauges, profit factor gauge, radar
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Risk Metrics">
+              {/* Ratio gauge dials */}
+              <RatioGaugePanel trades={filteredTrades} points={filteredCurve} backtest={null} />
+
+              {/* KPI cards: Sortino, Calmar, + supporting metrics */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
+                <KpiCard
+                  label="Sortino Ratio"
+                  value={sortino != null ? sortino.toFixed(2) : '—'}
+                  sub="Downside deviation only"
+                  color={ratioColor(sortino)}
+                />
+                <KpiCard
+                  label="Calmar Ratio"
+                  value={calmar != null ? calmar.toFixed(2) : '—'}
+                  sub="Return ÷ max drawdown"
+                  color={ratioColor(calmar)}
+                />
+                <KpiCard label="Max Consec. Losses" value={String(maxConsecLoss)} sub="Worst losing streak" color={maxConsecLoss >= 5 ? C.bear : C.warnMid} />
+                <KpiCard label="Total Fee Drag" value={feeDrag > 0 ? fmtUsd(-feeDrag) : '—'} sub="Cumulative fees paid" color={C.bear} />
+              </div>
+
+              {/* Profit factor gauge + radar side by side */}
+              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ flex: '0 0 auto' }}>
+                  <ProfitFactorGauge trades={filteredTrades} />
+                </div>
                 <div style={{
                   flex: '0 0 260px', background: C.card, border: `1px solid ${C.border}`,
                   borderRadius: R.lg, padding: '16px 8px', boxShadow: S.sm,
@@ -2779,109 +2803,117 @@ export default function PerformancePage() {
                   </div>
                 </div>
               </div>
-            </Section>
-
-            {/* ── Trade Quality KPIs ── */}
-            <Section title="Trade Quality">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
-                <KpiCard label="Max Consec. Losses" value={String(maxConsecLoss)} sub="Worst losing streak" color={maxConsecLoss >= 5 ? C.bear : C.warnMid} />
-                <KpiCard label="Avg Win Duration" value={fmtHours(avgWinDuration)} sub="How long wins are held" />
-                <KpiCard label="Avg Loss Duration" value={fmtHours(avgLossDuration)} sub="How long losses are held" color={avgLossDuration != null && avgWinDuration != null && avgLossDuration > avgWinDuration ? C.bear : undefined} />
-                <KpiCard label="Total Fee Drag" value={feeDrag > 0 ? fmtUsd(-feeDrag) : '—'} sub="Cumulative fees paid" color={C.bear} />
-                <KpiCard label="Total Trades" value={String(trades.length)} sub={`${wins} wins · ${losses} losses`} />
+              <div style={{ fontSize: F.xs, color: C.muted, marginTop: 10 }}>
+                Sharpe &gt; 1.0 = good · &gt; 2.0 = excellent · Calmar &gt; 1.0 = acceptable · &gt; 3.0 = strong
               </div>
             </Section>
 
-            {/* ── Equity Curve + Drawdown Timeline ── */}
-            {curve.length > 1 && (
-              <Section title="Equity Curve">
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
-                  <EquityChart points={curve} trades={trades} width={860} height={200} />
-                </div>
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 3 — DRAWDOWN ANALYSIS
+                Drawdown timeline + streak analysis
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Drawdown Analysis">
+              {filteredCurve.length > 1 && (
                 <div style={{
                   background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
-                  padding: '16px 20px', overflowX: 'auto', marginTop: 12,
+                  padding: '16px 20px', overflowX: 'auto', marginBottom: 16,
                 }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                     Drawdown Depth Timeline
                   </div>
-                  <DrawdownTimeline points={curve} />
+                  <DrawdownTimeline points={filteredCurve} />
                 </div>
-              </Section>
-            )}
+              )}
 
-            {/* ── P&L Timeline ── */}
-            {trades.length >= 5 && (
-              <Section title="P&L Timeline">
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
-                  <MonthlyPnlChart trades={trades} />
-                  <div style={{ fontSize: F.xs, color: C.muted, marginTop: 10 }}>
-                    Each period = 5 consecutive trades. Green = net positive, red = net negative. Useful for spotting hot/cold streaks.
-                  </div>
-                </div>
-              </Section>
-            )}
-
-            {/* ── Trade Quality Matrix ── */}
-            <Section title="Trade Quality Matrix">
-              <TradeQualityMatrix trades={trades} />
+              <StreakAnalysisChart trades={filteredTrades} />
             </Section>
 
-            {/* ── Rolling Metrics (dual-panel: WR + Avg P&L) ── */}
-            {trades.length >= 12 && (
-              <Section title="Rolling 10-Trade Metrics">
-                <RollingMetrics trades={trades} />
-                <StreakAnalysisChart trades={trades} />
-              </Section>
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 4 — BENCHMARKS
+                Benchmark comparison + fee drag analysis
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Benchmarks">
+              {/* ── Benchmark Comparison ── */}
+              {filteredTrades.length > 0 && (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20, overflowX: 'auto' }}>
+                <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                  Performance vs. Benchmarks
+                </div>
+                <BenchmarkComparison trades={filteredTrades} backtest={null} />
+                <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8 }}>
+                  Horizontal bars show bot metrics vs. excellence thresholds. Green = above benchmark, red = below. Values shown: bot / target.
+                </div>
+              </div>
             )}
 
-            {/* ── Streak Analysis (shown even with fewer trades) ── */}
-            {trades.length > 0 && trades.length < 12 && (
-              <Section title="Win/Loss Streak History">
-                <StreakAnalysisChart trades={trades} />
-              </Section>
-            )}
-
-            {/* ── Streak Analysis (seeded, no data) ── */}
-            {trades.length === 0 && (
-              <Section title="Win/Loss Streak History">
-                <StreakAnalysisChart trades={trades} />
-              </Section>
-            )}
-
-            {/* ── Alpha Decay Chart ── */}
-            <Section title="Alpha Decay Analysis">
-              <AlphaDecayChart />
+              {/* ── Fee Drag Analysis ── */}
+              {filteredTrades.length > 0 && (
+                <FeeDragAnalysis trades={filteredTrades} />
+              )}
             </Section>
 
-            {/* ── Rolling Win Rate ── */}
-            <Section title="Rolling Win Rate (10-trade window)">
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 5 — TRADE QUALITY
+                Win rate chart, quality matrix, alpha decay, R:R histogram
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Trade Quality">
+              {/* Supporting KPIs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 20 }}>
+                <KpiCard label="Avg Win Duration" value={fmtHours(avgWinDuration)} sub="How long wins are held" />
+                <KpiCard label="Avg Loss Duration" value={fmtHours(avgLossDuration)} sub="How long losses are held" color={avgLossDuration != null && avgWinDuration != null && avgLossDuration > avgWinDuration ? C.bear : undefined} />
+                <KpiCard label="Total Trades" value={String(filteredTrades.length)} sub={`${wins} wins · ${losses} losses`} />
+                <KpiCard label="Max Consec. Losses" value={String(maxConsecLoss)} sub="Worst losing streak" color={maxConsecLoss >= 5 ? C.bear : C.warnMid} />
+              </div>
+
+              {/* Rolling win rate chart */}
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto', marginBottom: 16 }}>
+                <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                  Rolling Win Rate (10-trade window)
+                </div>
                 <RollingWinRateChart data={rollingWR} width={860} height={130} />
               </div>
-            </Section>
 
-            {/* ── R:R Achieved Histogram ── */}
-            <Section title="R:R Achieved Distribution">
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20 }}>
+              {/* Trade Quality Matrix */}
+              <div style={{ marginBottom: 16 }}>
+                <TradeQualityMatrix trades={filteredTrades} />
+              </div>
+
+              {/* Alpha Decay */}
+              <AlphaDecayChart />
+
+              {/* Rolling 10-trade metrics */}
+              {filteredTrades.length >= 12 && (
+                <RollingMetrics trades={filteredTrades} />
+              )}
+
+              {/* R:R Histogram */}
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, marginBottom: 16 }}>
+                <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                  R:R Achieved Distribution
+                </div>
                 <RRHistogram data={rrHisto} />
                 <div style={{ fontSize: F.xs, color: C.muted, marginTop: 12 }}>
-                  Shows the distribution of actual risk-reward ratios achieved at close. A good system clusters in the 1–3 bucket.
+                  Distribution of actual risk-reward ratios at close. A strong system clusters in the 1–3 bucket.
                 </div>
               </div>
             </Section>
 
-            {/* ── By Strategy ── */}
-            {Object.keys(byStrategy).length > 0 && (
-              <Section title="PnL by Strategy">
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20 }}>
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 6 — ATTRIBUTION
+                PnL by strategy, performance attribution treemap
+            ══════════════════════════════════════════════════════════════ */}
+            <Section title="Attribution">
+              {/* By Strategy bars */}
+              {Object.keys(byStrategy).length > 0 && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                    PnL by Strategy
+                  </div>
                   <StrategyBars data={byStrategy} />
                 </div>
-              </Section>
-            )}
+              )}
 
-            {/* ── Performance Attribution Treemap ── */}
-            <Section title="Performance Attribution">
+              {/* Performance Attribution Treemap */}
               <PerformanceAttributionTreemap />
             </Section>
 
