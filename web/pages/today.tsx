@@ -2256,7 +2256,7 @@ export default function TodayPage() {
               <p style={{ margin: 0, fontSize: F.sm, color: C.muted }}>
                 Updated every 60s &nbsp;·&nbsp; <span style={{ fontWeight: 600, color: C.textSub }}>{now.toISOString().slice(11, 16)} UTC</span>
               </p>
-            </p>
+            </div>
             {/* Pulsing live indicator */}
             {/* Live pulse */}
             <span style={{
