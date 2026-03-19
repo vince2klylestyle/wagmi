@@ -464,9 +464,6 @@ function BotVsBuyHold({ points, startEquity = 50000 }: { points: EquityCurvePoin
 
       <div style={{ fontSize: 10, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
         Past results do not guarantee future returns.
-        {outperformance > 0 && (
-          <strong style={{ color: C.bull }}> WAGMI outperformed BTC buy-hold by {isFinite(outperformance) ? outperformance.toFixed(1) : '0.0'} percentage points.</strong>
-        )}
       </div>
     </div>
   );
