@@ -99,16 +99,16 @@ function RunCard({ run, selected, onClick }: { run: BacktestRunMeta; selected: b
 // ─── Equity Curve Chart ───────────────────────────────────────────────────────
 
 function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pnl?: number | null }>; startEquity?: number }) {
-  if (!trades || trades.length === 0) {
-    // Generate synthetic curve from return %
-    return null;
-  }
-  const W = 600, H = 160;
-  const pad = { t: 16, r: 16, b: 28, l: 64 };
+  if (!trades || trades.length === 0) return null;
+
+  const W = 600, H = 200;
+  // Extra bottom space for volume bars (20px) + labels (20px)
+  const pad = { t: 24, r: 16, b: 48, l: 64 };
   const iW = W - pad.l - pad.r;
   const iH = H - pad.t - pad.b;
+  const VOL_H = 20; // height reserved for volume-style bars at bottom of SVG
 
-  // Build equity curve
+  // ── Build equity curve ──────────────────────────────────────────────────────
   let equity = startEquity;
   const points: { i: number; eq: number }[] = [{ i: 0, eq: equity }];
   trades.forEach((t, idx) => {
@@ -116,19 +116,72 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
     points.push({ i: idx + 1, eq: equity });
   });
 
-  const minEq = Math.min(...points.map(p => p.eq));
-  const maxEq = Math.max(...points.map(p => p.eq));
+  const eqValues = points.map(p => p.eq);
+  const minEq = Math.min(...eqValues);
+  const maxEq = Math.max(...eqValues);
   const range = maxEq - minEq || 1;
   const n = points.length;
 
-  const toX = (i: number) => pad.l + (i / (n - 1)) * iW;
+  const toX = (i: number) => pad.l + (i / Math.max(n - 1, 1)) * iW;
   const toY = (eq: number) => pad.t + iH - ((eq - minEq) / range) * iH;
 
-  // Peak tracking for drawdown shading
+  // ── Y-axis gridlines (4 lines) ──────────────────────────────────────────────
+  const yGridCount = 4;
+  const yGridLines = Array.from({ length: yGridCount }, (_, i) => {
+    const v = minEq + (i / (yGridCount - 1)) * range;
+    return {
+      y: toY(v),
+      label: '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0)),
+    };
+  });
+
+  // ── Bollinger Bands (20-period SMA ± 2σ) ────────────────────────────────────
+  const BB_PERIOD = 20;
+  const bbPoints: Array<{ i: number; mid: number; upper: number; lower: number }> = [];
+  for (let i = BB_PERIOD - 1; i < n; i++) {
+    const slice = eqValues.slice(i - BB_PERIOD + 1, i + 1);
+    const sma = slice.reduce((s, v) => s + v, 0) / BB_PERIOD;
+    const variance = slice.reduce((s, v) => s + (v - sma) ** 2, 0) / BB_PERIOD;
+    const sd = Math.sqrt(variance);
+    bbPoints.push({ i, mid: sma, upper: sma + 2 * sd, lower: sma - 2 * sd });
+  }
+
+  // BB fill polygon: upper forward, lower backward
+  const bbFillPts = bbPoints.length > 0
+    ? [
+        ...bbPoints.map(b => `${toX(b.i).toFixed(1)},${toY(b.upper).toFixed(1)}`),
+        ...[...bbPoints].reverse().map(b => `${toX(b.i).toFixed(1)},${toY(b.lower).toFixed(1)}`),
+      ].join(' ')
+    : '';
+
+  const bbUpperPts = bbPoints.map(b => `${toX(b.i).toFixed(1)},${toY(b.upper).toFixed(1)}`).join(' ');
+  const bbLowerPts = bbPoints.map(b => `${toX(b.i).toFixed(1)},${toY(b.lower).toFixed(1)}`).join(' ');
+  const bbMidPts   = bbPoints.map(b => `${toX(b.i).toFixed(1)},${toY(b.mid).toFixed(1)}`).join(' ');
+
+  // ── Trade markers: green dot if equity ↑ >0.3%, red dot if ↓ ──────────────
+  const tradeMarkers: Array<{ x: number; y: number; color: string }> = [];
+  for (let i = 1; i < n; i++) {
+    const prev = points[i - 1].eq;
+    const curr = points[i].eq;
+    const chg = prev > 0 ? (curr - prev) / prev : 0;
+    if (chg > 0.003) {
+      tradeMarkers.push({ x: toX(i), y: toY(curr), color: C.bull });
+    } else if (chg < 0) {
+      tradeMarkers.push({ x: toX(i), y: toY(curr), color: C.bear });
+    }
+  }
+
+  // ── Main equity path ────────────────────────────────────────────────────────
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(p.eq).toFixed(1)}`).join(' ');
+  const areaD = `${pathD} L ${toX(n - 1)} ${pad.t + iH} L ${pad.l} ${pad.t + iH} Z`;
+
+  const isPos = points[n - 1].eq >= startEquity;
+  const lineColor = isPos ? C.bull : C.bear;
+
+  // ── Drawdown shading ─────────────────────────────────────────────────────────
   let peak = startEquity;
   const ddRegions: Array<{ x1: number; x2: number; yPeak: number; yTrough: number }> = [];
   let ddStart: number | null = null;
-
   points.forEach((p, i) => {
     if (p.eq > peak) {
       if (ddStart !== null) {
@@ -144,23 +197,36 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
     ddRegions.push({ x1: toX(ddStart), x2: toX(n - 1), yPeak: toY(peak), yTrough: toY(Math.min(...points.slice(ddStart).map(q => q.eq))) });
   }
 
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(p.eq).toFixed(1)}`).join(' ');
-  const areaD = `${pathD} L ${toX(n - 1)} ${pad.t + iH} L ${pad.l} ${pad.t + iH} Z`;
+  // ── Regime bands (3 sections) ────────────────────────────────────────────────
+  const third = iW / 3;
+  const regimeBands = [
+    { x: pad.l,               w: third,  color: C.bull + '08',  label: 'Early'  },
+    { x: pad.l + third,       w: third,  color: C.brand + '08', label: 'Growth' },
+    { x: pad.l + 2 * third,   w: third,  color: C.info + '08',  label: 'Now'    },
+  ];
 
-  const isPos = points[points.length - 1].eq >= startEquity;
-  const lineColor = isPos ? C.bull : C.bear;
-
-  // Y-axis labels
-  const yTicks = [minEq, (minEq + maxEq) / 2, maxEq].map(v => ({
-    y: toY(v),
-    label: '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0)),
+  // ── Volume-style bars (10 buckets of trade activity) ─────────────────────────
+  const BUCKETS = 10;
+  const bucketCounts = Array(BUCKETS).fill(0);
+  for (let i = 1; i < n; i++) {
+    const bucket = Math.min(BUCKETS - 1, Math.floor(((i - 1) / (n - 1)) * BUCKETS));
+    bucketCounts[bucket]++;
+  }
+  const maxBucket = Math.max(...bucketCounts, 1);
+  const bucketW = iW / BUCKETS;
+  const volBars = bucketCounts.map((cnt, bi) => ({
+    x: pad.l + bi * bucketW,
+    w: bucketW - 1,
+    h: (cnt / maxBucket) * VOL_H,
   }));
+  // vol bars sit at: (H - pad.b + 4) to (H - pad.b + 4 + VOL_H)
+  const volY = H - pad.b + 4;
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
       <defs>
         <linearGradient id="eqArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={lineColor} stopOpacity="0.3" />
+          <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
           <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
         </linearGradient>
         <clipPath id="eqClip">
@@ -168,33 +234,198 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
         </clipPath>
       </defs>
 
-      {/* Y grid lines */}
-      {yTicks.map((t, i) => (
+      {/* ── Regime background bands ── */}
+      {regimeBands.map((rb, i) => (
         <g key={i}>
-          <line x1={pad.l} y1={t.y} x2={pad.l + iW} y2={t.y} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 4" />
-          <text x={pad.l - 6} y={t.y} textAnchor="end" dominantBaseline="middle" fontSize={9} fill={C.muted}>{t.label}</text>
+          <rect x={rb.x} y={pad.t} width={rb.w} height={iH} fill={rb.color} />
+          <text x={rb.x + rb.w / 2} y={pad.t + 9} textAnchor="middle" fontSize={8} fill={C.muted} opacity={0.7}>{rb.label}</text>
         </g>
       ))}
 
-      {/* Drawdown shading */}
-      {ddRegions.map((r, i) => (
-        <rect key={i} x={r.x1} y={r.yPeak} width={r.x2 - r.x1} height={Math.abs(r.yTrough - r.yPeak)} fill="rgba(220,38,38,0.12)" clipPath="url(#eqClip)" />
+      {/* ── Y-axis gridlines (4) ── */}
+      {yGridLines.map((g, i) => (
+        <g key={i}>
+          <line x1={pad.l} y1={g.y} x2={pad.l + iW} y2={g.y} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 4" />
+          <text x={pad.l - 6} y={g.y} textAnchor="end" dominantBaseline="middle" fontSize={9} fill={C.muted}>{g.label}</text>
+        </g>
       ))}
 
-      {/* Area fill */}
+      {/* ── Drawdown shading ── */}
+      {ddRegions.map((r, i) => (
+        <rect key={i} x={r.x1} y={r.yPeak} width={r.x2 - r.x1} height={Math.max(0, Math.abs(r.yTrough - r.yPeak))} fill="rgba(220,38,38,0.12)" clipPath="url(#eqClip)" />
+      ))}
+
+      {/* ── Bollinger Band fill ── */}
+      {bbFillPts && (
+        <polygon points={bbFillPts} fill={C.brand + '10'} stroke="none" clipPath="url(#eqClip)" />
+      )}
+
+      {/* ── BB upper / lower dashed lines ── */}
+      {bbPoints.length > 1 && (
+        <>
+          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbUpperPts} clipPath="url(#eqClip)" />
+          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbLowerPts} clipPath="url(#eqClip)" />
+        </>
+      )}
+
+      {/* ── BB middle (SMA20) solid ── */}
+      {bbPoints.length > 1 && (
+        <polyline fill="none" stroke={C.brand + '70'} strokeWidth={1.2} points={bbMidPts} clipPath="url(#eqClip)" />
+      )}
+
+      {/* ── Area fill under equity curve ── */}
       <path d={areaD} fill="url(#eqArea)" clipPath="url(#eqClip)" />
 
-      {/* Line */}
+      {/* ── Equity line ── */}
       <path d={pathD} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" clipPath="url(#eqClip)" />
 
-      {/* Start dot */}
+      {/* ── Trade markers ── */}
+      {tradeMarkers.map((m, i) => (
+        <circle key={i} cx={m.x} cy={m.y} r={2.5} fill={m.color} opacity={0.75} clipPath="url(#eqClip)" />
+      ))}
+
+      {/* ── Start / end dots ── */}
       <circle cx={toX(0)} cy={toY(points[0].eq)} r={3} fill={C.muted} />
-      {/* End dot */}
       <circle cx={toX(n - 1)} cy={toY(points[n - 1].eq)} r={4} fill={lineColor} style={{ filter: `drop-shadow(0 0 4px ${lineColor})` }} />
 
-      {/* Start/end labels */}
-      <text x={pad.l} y={pad.t + iH + 16} fontSize={9} fill={C.muted} textAnchor="start">Trade 1</text>
-      <text x={pad.l + iW} y={pad.t + iH + 16} fontSize={9} fill={C.muted} textAnchor="end">Trade {n - 1}</text>
+      {/* ── Volume-style bars ── */}
+      {volBars.map((b, i) => (
+        <rect key={i} x={b.x} y={volY + (VOL_H - b.h)} width={b.w} height={b.h} fill={C.brand + '50'} rx={1} />
+      ))}
+
+      {/* ── X-axis labels ── */}
+      <text x={pad.l} y={volY + VOL_H + 10} fontSize={9} fill={C.muted} textAnchor="start">Trade 1</text>
+      <text x={pad.l + iW} y={volY + VOL_H + 10} fontSize={9} fill={C.muted} textAnchor="end">Trade {n - 1}</text>
+
+      {/* ── Legend box (top-right) ── */}
+      <rect x={pad.l + iW - 118} y={pad.t + 2} width={116} height={46} rx={4} fill={C.card} fillOpacity={0.85} stroke={C.border} strokeWidth={0.7} />
+      {/* Equity line */}
+      <line x1={pad.l + iW - 112} y1={pad.t + 13} x2={pad.l + iW - 98} y2={pad.t + 13} stroke={lineColor} strokeWidth={2} />
+      <text x={pad.l + iW - 94} y={pad.t + 13} dominantBaseline="middle" fontSize={8} fill={C.textSub}>Equity</text>
+      {/* BB fill swatch */}
+      <rect x={pad.l + iW - 112} y={pad.t + 22} width={14} height={6} rx={1} fill={C.brand + '30'} stroke={C.brand + '40'} strokeWidth={0.8} strokeDasharray="3 2" />
+      <text x={pad.l + iW - 94} y={pad.t + 25} dominantBaseline="middle" fontSize={8} fill={C.textSub}>BB Upper/Lower</text>
+      {/* SMA20 line */}
+      <line x1={pad.l + iW - 112} y1={pad.t + 37} x2={pad.l + iW - 98} y2={pad.t + 37} stroke={C.brand + '70'} strokeWidth={1.5} />
+      <text x={pad.l + iW - 94} y={pad.t + 37} dominantBaseline="middle" fontSize={8} fill={C.textSub}>SMA20</text>
+    </svg>
+  );
+}
+
+// ─── RSI Subplot ──────────────────────────────────────────────────────────────
+
+function RSISubplot({ values, width, height }: { values: number[]; width: number; height: number }) {
+  if (!values || values.length < 16) return null;
+
+  const RSI_PERIOD = 14;
+  const pad = { t: 6, r: 16, b: 14, l: 64 };
+  const iW = width - pad.l - pad.r;
+  const iH = height - pad.t - pad.b;
+
+  // ── Compute daily returns ────────────────────────────────────────────────────
+  const returns: number[] = [];
+  for (let i = 1; i < values.length; i++) {
+    returns.push(values[i] - values[i - 1]);
+  }
+
+  // ── Compute RSI using Wilder's smoothing ─────────────────────────────────────
+  const rsiValues: Array<{ i: number; rsi: number }> = [];
+
+  if (returns.length >= RSI_PERIOD) {
+    // Seed with simple average over first RSI_PERIOD returns
+    let avgGain = 0, avgLoss = 0;
+    for (let j = 0; j < RSI_PERIOD; j++) {
+      if (returns[j] > 0) avgGain += returns[j];
+      else avgLoss += Math.abs(returns[j]);
+    }
+    avgGain /= RSI_PERIOD;
+    avgLoss /= RSI_PERIOD;
+
+    const calcRsi = (g: number, l: number) => l === 0 ? 100 : 100 - (100 / (1 + g / l));
+    rsiValues.push({ i: RSI_PERIOD, rsi: calcRsi(avgGain, avgLoss) });
+
+    for (let j = RSI_PERIOD; j < returns.length; j++) {
+      const gain = returns[j] > 0 ? returns[j] : 0;
+      const loss = returns[j] < 0 ? Math.abs(returns[j]) : 0;
+      avgGain = (avgGain * (RSI_PERIOD - 1) + gain) / RSI_PERIOD;
+      avgLoss = (avgLoss * (RSI_PERIOD - 1) + loss) / RSI_PERIOD;
+      rsiValues.push({ i: j + 1, rsi: calcRsi(avgGain, avgLoss) });
+    }
+  }
+
+  if (rsiValues.length < 2) return null;
+
+  const nRsi = rsiValues.length;
+  const firstI = rsiValues[0].i;
+  const lastI  = rsiValues[nRsi - 1].i;
+  const totalSpan = lastI - firstI || 1;
+
+  const toX = (idx: number) => pad.l + ((idx - firstI) / totalSpan) * iW;
+  const toY = (rsi: number) => pad.t + iH - ((rsi - 0) / 100) * iH;
+
+  const toY30 = toY(30);
+  const toY50 = toY(50);
+  const toY70 = toY(70);
+
+  // ── Overbought / oversold fill regions ──────────────────────────────────────
+  // Build polygon for overbought (RSI > 70): clamp line at 70
+  const obPts: string[] = [];
+  const osPts: string[] = [];
+
+  rsiValues.forEach((rv, idx) => {
+    obPts.push(`${toX(rv.i).toFixed(1)},${Math.min(toY(rv.rsi), toY70).toFixed(1)}`);
+    osPts.push(`${toX(rv.i).toFixed(1)},${Math.max(toY(rv.rsi), toY30).toFixed(1)}`);
+  });
+  // Close overbought: along the 70 line back
+  const obFill = [
+    ...obPts,
+    `${toX(lastI).toFixed(1)},${toY70.toFixed(1)}`,
+    `${toX(firstI).toFixed(1)},${toY70.toFixed(1)}`,
+  ].join(' ');
+  // Close oversold: along the 30 line back
+  const osFill = [
+    ...osPts,
+    `${toX(lastI).toFixed(1)},${toY30.toFixed(1)}`,
+    `${toX(firstI).toFixed(1)},${toY30.toFixed(1)}`,
+  ].join(' ');
+
+  // ── RSI line ─────────────────────────────────────────────────────────────────
+  const rsiLinePts = rsiValues.map(rv => `${toX(rv.i).toFixed(1)},${toY(rv.rsi).toFixed(1)}`).join(' ');
+
+  const lastRsi = rsiValues[nRsi - 1];
+  const currentRsiVal = lastRsi.rsi;
+  const rsiDotColor = currentRsiVal > 70 ? C.bear : currentRsiVal < 30 ? C.bull : C.brand;
+
+  return (
+    <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
+      <clipPath id="rsiClip">
+        <rect x={pad.l} y={pad.t} width={iW} height={iH} />
+      </clipPath>
+
+      {/* ── Overbought zone fill (RSI > 70) ── */}
+      <polygon points={obFill} fill={C.bear} fillOpacity={0.10} clipPath="url(#rsiClip)" />
+      {/* ── Oversold zone fill (RSI < 30) ── */}
+      <polygon points={osFill} fill={C.bull} fillOpacity={0.10} clipPath="url(#rsiClip)" />
+
+      {/* ── Reference lines at 30, 50, 70 ── */}
+      <line x1={pad.l} y1={toY70} x2={pad.l + iW} y2={toY70} stroke={C.bear} strokeWidth={0.7} strokeDasharray="3 3" opacity={0.6} />
+      <line x1={pad.l} y1={toY50} x2={pad.l + iW} y2={toY50} stroke={C.border} strokeWidth={0.6} strokeDasharray="2 4" opacity={0.5} />
+      <line x1={pad.l} y1={toY30} x2={pad.l + iW} y2={toY30} stroke={C.bull} strokeWidth={0.7} strokeDasharray="3 3" opacity={0.6} />
+
+      {/* ── Reference labels on left ── */}
+      <text x={pad.l - 4} y={toY70} textAnchor="end" dominantBaseline="middle" fontSize={8} fill={C.bear} opacity={0.8}>70</text>
+      <text x={pad.l - 4} y={toY30} textAnchor="end" dominantBaseline="middle" fontSize={8} fill={C.bull} opacity={0.8}>30</text>
+
+      {/* ── RSI line ── */}
+      <polyline fill="none" stroke={C.brand} strokeWidth={1.5} strokeLinejoin="round" points={rsiLinePts} clipPath="url(#rsiClip)" />
+
+      {/* ── Current RSI dot ── */}
+      <circle cx={toX(lastRsi.i)} cy={toY(lastRsi.rsi)} r={3} fill={rsiDotColor} style={{ filter: `drop-shadow(0 0 3px ${rsiDotColor})` }} />
+
+      {/* ── "RSI(14)" label top-left ── */}
+      <text x={pad.l + 3} y={pad.t + 9} fontSize={8} fill={C.brand} fontWeight={700}>RSI(14)</text>
+      {/* ── Current value label next to dot ── */}
+      <text x={toX(lastRsi.i) + 5} y={toY(lastRsi.rsi)} dominantBaseline="middle" fontSize={8} fill={rsiDotColor} fontWeight={700}>{currentRsiVal.toFixed(0)}</text>
     </svg>
   );
 }
@@ -948,18 +1179,25 @@ function RunDetail({ result }: { result: BacktestResult }) {
         ))}
       </div>
 
-      {/* Equity Curve Chart */}
-      {result.trades && result.trades.length > 1 && (
-        <div style={{ marginBottom: 20 }}>
-          <h3 style={{ margin: '0 0 12px', fontSize: F.md, fontWeight: 700, color: C.text }}>Equity Curve</h3>
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px', overflowX: 'auto' }}>
-            <EquityCurveChart trades={result.trades} startEquity={cfg.starting_equity ?? 50000} />
+      {/* Equity Curve Chart + RSI Subplot */}
+      {result.trades && result.trades.length > 1 && (() => {
+        const startEq = cfg.starting_equity ?? 50000;
+        let eq = startEq;
+        const equityValues: number[] = [eq];
+        result.trades.forEach((t) => { eq += t.pnl ?? 0; equityValues.push(eq); });
+        return (
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: F.md, fontWeight: 700, color: C.text }}>Equity Curve</h3>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px', overflowX: 'auto' }}>
+              <EquityCurveChart trades={result.trades} startEquity={startEq} />
+              <RSISubplot values={equityValues} width={580} height={60} />
+            </div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+              Red shading = drawdown zones · BB bands = 20-period Bollinger · RSI(14) below
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
-            Red shading = drawdown zones · End dot = final equity · Dashed lines = reference levels
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Monte Carlo Forecast */}
       <MonteCarloForecast result={result} />

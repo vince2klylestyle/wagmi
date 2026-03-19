@@ -149,20 +149,69 @@ function RollingWinRateChart({ data, width = 700, height = 120 }: { data: { idx:
   const maxI = data[data.length - 1].idx;
   const x = (i: number) => pad.l + (i / Math.max(1, maxI)) * W;
   const y = (v: number) => pad.t + H - ((v - 0) / 100) * H;
-  const pts = data.map((d) => `${x(d.idx)},${y(d.wr)}`).join(' ');
+
+  // Split the area fill: above 50% = bull, below 50% = bear
+  // Build two separate filled polylines clipped at y(50)
+  const y50 = y(50);
+  const abovePts = [
+    `${x(data[0].idx)},${y50}`,
+    ...data.map((d) => `${x(d.idx)},${Math.min(y(d.wr), y50)}`),
+    `${x(data[data.length - 1].idx)},${y50}`,
+  ].join(' ');
+  const belowPts = [
+    `${x(data[0].idx)},${y50}`,
+    ...data.map((d) => `${x(d.idx)},${Math.max(y(d.wr), y50)}`),
+    `${x(data[data.length - 1].idx)},${y50}`,
+  ].join(' ');
+
+  // Linear regression trend line
+  const n = data.length;
+  const sumX = data.reduce((s, d) => s + d.idx, 0);
+  const sumY = data.reduce((s, d) => s + d.wr, 0);
+  const sumXY = data.reduce((s, d) => s + d.idx * d.wr, 0);
+  const sumX2 = data.reduce((s, d) => s + d.idx * d.idx, 0);
+  const denom = n * sumX2 - sumX * sumX;
+  const trendSlope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+  const trendIntercept = (sumY - trendSlope * sumX) / n;
+  const trendStart = trendSlope * data[0].idx + trendIntercept;
+  const trendEnd = trendSlope * data[data.length - 1].idx + trendIntercept;
+
+  const lastVal = data[data.length - 1].wr;
+  const lastX = x(data[data.length - 1].idx);
+  const lastY = y(lastVal);
+
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-      {/* 50% reference line */}
-      <line x1={pad.l} y1={y(50)} x2={pad.l + W} y2={y(50)} stroke={C.border} strokeWidth={1} strokeDasharray="4,4" />
-      <text x={pad.l - 4} y={y(50) + 4} fill={C.muted} fontSize={9} textAnchor="end">50%</text>
+      {/* Area fill — above 50% = bull, below 50% = bear */}
+      <polyline points={abovePts} fill={C.bull + '20'} stroke="none" />
+      <polyline points={belowPts} fill={C.bear + '20'} stroke="none" />
+
+      {/* 75% target line */}
+      <line x1={pad.l} y1={y(75)} x2={pad.l + W} y2={y(75)} stroke={C.bull} strokeWidth={1} strokeDasharray="5,3" opacity={0.6} />
+      <text x={pad.l - 4} y={y(75) + 4} fill={C.bull} fontSize={8} textAnchor="end" opacity={0.7}>75%</text>
+
+      {/* 50% reference line — bold dashed */}
+      <line x1={pad.l} y1={y50} x2={pad.l + W} y2={y50} stroke={C.border} strokeWidth={1.5} strokeDasharray="4,4" />
+      <text x={pad.l - 4} y={y50 + 4} fill={C.muted} fontSize={9} textAnchor="end">50%</text>
       <text x={pad.l - 4} y={y(100) + 4} fill={C.muted} fontSize={9} textAnchor="end">100%</text>
       <text x={pad.l - 4} y={y(0) + 4} fill={C.muted} fontSize={9} textAnchor="end">0%</text>
-      {/* Area fill */}
-      <polyline
-        points={[`${x(data[0].idx)},${y(0)}`, ...data.map((d) => `${x(d.idx)},${y(d.wr)}`), `${x(data[data.length - 1].idx)},${y(0)}`].join(' ')}
-        fill={C.brandGlow} stroke="none"
+
+      {/* Trend line */}
+      <line
+        x1={x(data[0].idx)} y1={y(trendStart)}
+        x2={x(data[data.length - 1].idx)} y2={y(trendEnd)}
+        stroke={C.brand} strokeWidth={1} opacity={0.65}
       />
-      <polyline points={pts} fill="none" stroke={C.brand} strokeWidth={2} strokeLinejoin="round" />
+
+      {/* Win rate line */}
+      <polyline points={data.map((d) => `${x(d.idx)},${y(d.wr)}`).join(' ')} fill="none" stroke={C.brand} strokeWidth={2} strokeLinejoin="round" />
+
+      {/* Current value highlight */}
+      <circle cx={lastX} cy={lastY} r={5} fill={C.brand} stroke={C.card} strokeWidth={1.5} />
+      <text x={Math.min(lastX + 6, pad.l + W - 60)} y={lastY - 6} fill={C.brand} fontSize={8} fontWeight="700">
+        Current: {lastVal.toFixed(1)}%
+      </text>
+
       <text x={pad.l + W / 2} y={height - 4} fill={C.muted} fontSize={9} textAnchor="middle">Trades (chronological)</text>
     </svg>
   );
