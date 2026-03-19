@@ -453,6 +453,246 @@ function HourlyWinRate({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Regime Performance Matrix ────────────────────────────────────────────────
+
+function RegimePerformanceMatrix({ trades }: { trades: TradeRecord[] }) {
+  const REGIMES = ['trend', 'range', 'high_volatility', 'panic', 'low_liquidity', 'unknown'];
+  const REGIME_LABELS: Record<string, string> = {
+    trend: '📈 Trend', range: '↔ Range', high_volatility: '⚡ Hi-Vol',
+    panic: '🚨 Panic', low_liquidity: '🌊 Low Liq', unknown: '❓ Unknown',
+  };
+
+  const stats: Record<string, { wins: number; total: number; pnl: number }> = {};
+  REGIMES.forEach((r) => { stats[r] = { wins: 0, total: 0, pnl: 0 }; });
+
+  trades.forEach((t) => {
+    const regime = (t.llm_regime ?? 'unknown').toLowerCase().replace(/ /g, '_');
+    const key = REGIMES.find((r) => regime.includes(r.replace('_', ''))) ?? 'unknown';
+    stats[key].total++;
+    if (t.outcome === 'WIN') stats[key].wins++;
+    stats[key].pnl += t.pnl ?? 0;
+  });
+
+  const hasData = Object.values(stats).some((s) => s.total > 0);
+  if (!hasData) return null;
+
+  const CLOSE_COLORS: Record<string, string> = {
+    TP1: '#16a34a', TP2: '#22c55e', TRAILING_STOP: '#2563eb', SL: '#dc2626',
+    EARLY_EXIT: '#d97706', CIRCUIT_BREAKER: '#7c3aed', BACKTEST_END: '#64748b',
+  };
+
+  // Also build exit breakdown per regime
+  const exitBreakdown: Record<string, Record<string, number>> = {};
+  REGIMES.forEach((r) => { exitBreakdown[r] = {}; });
+  trades.forEach((t) => {
+    const regime = (t.llm_regime ?? 'unknown').toLowerCase().replace(/ /g, '_');
+    const key = REGIMES.find((r) => regime.includes(r.replace('_', ''))) ?? 'unknown';
+    const exit = t.close_reason || 'unknown';
+    exitBreakdown[key][exit] = (exitBreakdown[key][exit] || 0) + 1;
+  });
+
+  const activeRegimes = REGIMES.filter((r) => stats[r].total > 0);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Performance by Regime</div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How the bot performs in each market regime — hover cells for detail</div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420 }}>
+          <thead>
+            <tr>
+              {['Regime', 'Trades', 'Win Rate', 'Net P&L', 'Avg P&L', 'Top Exit'].map((h, i) => (
+                <th key={h} style={{
+                  padding: '6px 12px', fontSize: F.xs, color: C.muted, fontWeight: 600,
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                  textAlign: i === 0 ? 'left' : 'center',
+                  borderBottom: `1px solid ${C.border}`,
+                }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {activeRegimes.map((regime) => {
+              const s = stats[regime];
+              const wr = s.total > 0 ? s.wins / s.total : 0;
+              const avgPnl = s.total > 0 ? s.pnl / s.total : 0;
+              const wrColor = wr >= 0.65 ? C.bull : wr >= 0.45 ? '#d97706' : C.bear;
+              const pnlColor = s.pnl >= 0 ? C.bull : C.bear;
+
+              const exits = Object.entries(exitBreakdown[regime]).sort((a, b) => b[1] - a[1]);
+              const topExit = exits[0];
+
+              return (
+                <tr key={regime} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td style={{ padding: '10px 12px' }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '3px 10px', borderRadius: R.pill,
+                      background: wrColor + '18', color: wrColor,
+                      fontSize: F.xs, fontWeight: 700,
+                    }}>
+                      {REGIME_LABELS[regime]}
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: C.text }}>{s.total}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                      <div style={{ width: 48, height: 5, background: C.surface, borderRadius: R.pill, overflow: 'hidden' }}>
+                        <div style={{ width: `${wr * 100}%`, height: '100%', background: wrColor, borderRadius: R.pill }} />
+                      </div>
+                      <span style={{ fontSize: F.xs, fontWeight: 700, color: wrColor }}>{Math.round(wr * 100)}%</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: pnlColor }}>
+                    {s.pnl >= 0 ? '+' : ''}{s.pnl.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: F.xs, color: avgPnl >= 0 ? C.bull : C.bear }}>
+                    {avgPnl >= 0 ? '+' : ''}{avgPnl.toFixed(2)}/trade
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    {topExit ? (
+                      <span style={{
+                        fontSize: 10, padding: '2px 7px', borderRadius: R.pill,
+                        background: (CLOSE_COLORS[topExit[0]] ?? C.muted) + '22',
+                        color: CLOSE_COLORS[topExit[0]] ?? C.muted, fontWeight: 700,
+                      }}>
+                        {topExit[0]} ×{topExit[1]}
+                      </span>
+                    ) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trade Duration Histogram ─────────────────────────────────────────────────
+
+function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
+  // Group trade durations into buckets (in hours)
+  const BUCKETS = [
+    { label: '<1h', max: 1 }, { label: '1–4h', max: 4 },
+    { label: '4–12h', max: 12 }, { label: '12–24h', max: 24 },
+    { label: '1–3d', max: 72 }, { label: '>3d', max: Infinity },
+  ];
+
+  const data = BUCKETS.map((b) => ({ ...b, wins: 0, losses: 0 }));
+
+  let hasDuration = false;
+  trades.forEach((t) => {
+    if (t.duration_h == null) return;
+    hasDuration = true;
+    const idx = data.findIndex((b) => t.duration_h! <= b.max);
+    if (idx >= 0) {
+      if (t.outcome === 'WIN') data[idx].wins++;
+      else data[idx].losses++;
+    }
+  });
+
+  if (!hasDuration) return null;
+
+  const maxTotal = Math.max(...data.map((d) => d.wins + d.losses), 1);
+  const W = 560, H = 140;
+  const pad = { t: 20, r: 16, b: 36, l: 40 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+  const barW = iW / data.length - 4;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Trade Duration Distribution</div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How long trades are held — stacked by win (green) / loss (red)</div>
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="durationWin" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C.bull} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={C.bull} stopOpacity="0.5" />
+          </linearGradient>
+          <linearGradient id="durationLoss" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C.bear} stopOpacity="0.9" />
+            <stop offset="100%" stopColor={C.bear} stopOpacity="0.5" />
+          </linearGradient>
+        </defs>
+
+        {/* Y grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+          const y = pad.t + iH * (1 - frac);
+          const count = Math.round(frac * maxTotal);
+          return (
+            <g key={frac}>
+              <line x1={pad.l} y1={y} x2={pad.l + iW} y2={y} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 4" />
+              <text x={pad.l - 4} y={y + 3} textAnchor="end" fontSize={8} fill={C.muted}>{count}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {data.map((d, i) => {
+          const total = d.wins + d.losses;
+          const winH = total > 0 ? (d.wins / maxTotal) * iH : 0;
+          const lossH = total > 0 ? (d.losses / maxTotal) * iH : 0;
+          const x = pad.l + i * (iW / data.length) + 2;
+          const wr = total > 0 ? Math.round((d.wins / total) * 100) : null;
+
+          return (
+            <g key={d.label}>
+              {/* Loss bar (bottom) */}
+              {lossH > 0 && (
+                <rect x={x} y={pad.t + iH - lossH} width={barW} height={lossH}
+                  fill="url(#durationLoss)" rx={2} />
+              )}
+              {/* Win bar (stacked on top) */}
+              {winH > 0 && (
+                <rect x={x} y={pad.t + iH - lossH - winH} width={barW} height={winH}
+                  fill="url(#durationWin)" rx={2} />
+              )}
+              {/* Total count label */}
+              {total > 0 && (
+                <text x={x + barW / 2} y={pad.t + iH - lossH - winH - 4}
+                  textAnchor="middle" fontSize={8} fill={C.muted}>{total}</text>
+              )}
+              {/* WR label inside if tall enough */}
+              {wr != null && winH + lossH > 20 && (
+                <text x={x + barW / 2} y={pad.t + iH - lossH - winH / 2 + 4}
+                  textAnchor="middle" fontSize={8} fontWeight="700" fill="#fff" fillOpacity="0.9">{wr}%</text>
+              )}
+              {/* X label */}
+              <text x={x + barW / 2} y={pad.t + iH + 14}
+                textAnchor="middle" fontSize={9} fill={C.muted}>{d.label}</text>
+            </g>
+          );
+        })}
+
+        {/* Axis */}
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + iH} stroke={C.border} strokeWidth={0.5} />
+        <line x1={pad.l} y1={pad.t + iH} x2={pad.l + iW} y2={pad.t + iH} stroke={C.border} strokeWidth={0.5} />
+      </svg>
+
+      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: C.muted, marginTop: 8 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 10, height: 10, background: C.bull, borderRadius: 2, display: 'inline-block' }} /> Win
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 10, height: 10, background: C.bear, borderRadius: 2, display: 'inline-block' }} /> Loss
+        </span>
+        <span>Number inside bar = win rate for that duration bucket</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Trade Card ───────────────────────────────────────────────────────────────
 
 function TradeCard({ trade }: { trade: TradeRecord }) {
@@ -824,6 +1064,12 @@ export default function Forensics() {
           <HourlyWinRate trades={filtered} />
         )}
       </div>
+
+      {/* ── Regime Performance Matrix ── */}
+      <RegimePerformanceMatrix trades={filtered} />
+
+      {/* ── Trade Duration Histogram ── */}
+      <TradeDurationHistogram trades={filtered} />
 
       {/* Filters */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
