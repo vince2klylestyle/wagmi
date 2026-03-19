@@ -2869,6 +2869,9 @@ export default function CopyTrade() {
       {/* Risk Calculator */}
       <StandaloneRiskCalc />
 
+      {/* Slippage Calculator */}
+      <SlippageCalculator />
+
       {/* Volatility Regime Bands */}
       <VolatilityRegimeBands />
 

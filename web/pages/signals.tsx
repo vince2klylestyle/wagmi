@@ -1995,6 +1995,372 @@ function SignalQualityTrendChart({ signals }: { signals: Record<string, Signal> 
   );
 }
 
+// ─── Momentum Indicator Panel ─────────────────────────────────────────────────
+
+const MOMENTUM_DATA = {
+  BTC:  { rsi: 62, macd: +0.8, atrPct: 1.2, price: 95333 },
+  SOL:  { rsi: 48, macd: +1.2, atrPct: 2.4, price: 152   },
+  HYPE: { rsi: 71, macd: -0.3, atrPct: 3.1, price: 18     },
+} as const;
+
+type MomentumSymbol = keyof typeof MOMENTUM_DATA;
+
+function rsiIndicatorColor(rsi: number): string {
+  if (rsi < 40)  return C.bull;
+  if (rsi > 70)  return C.bear;
+  return C.muted;
+}
+
+function macdIndicatorColor(macd: number): string {
+  return macd >= 0 ? C.bull : C.bear;
+}
+
+function atrIndicatorColor(atrPct: number): string {
+  if (atrPct < 1.5) return C.bull;
+  if (atrPct < 3)   return C.warn;
+  return C.bear;
+}
+
+function MomentumIndicatorPanel() {
+  const SYMBOLS: MomentumSymbol[] = ['BTC', 'SOL', 'HYPE'];
+
+  const ROWS: Array<{
+    label: string;
+    render: (sym: MomentumSymbol) => { value: string; color: string; arrow: string };
+  }> = [
+    {
+      label: 'RSI',
+      render: (sym) => {
+        const { rsi } = MOMENTUM_DATA[sym];
+        const color = rsiIndicatorColor(rsi);
+        const arrow = rsi > 55 ? '▲' : rsi < 45 ? '▼' : '▶';
+        return { value: String(rsi), color, arrow };
+      },
+    },
+    {
+      label: 'MACD Signal',
+      render: (sym) => {
+        const { macd } = MOMENTUM_DATA[sym];
+        const color = macdIndicatorColor(macd);
+        const arrow = macd >= 0 ? '▲' : '▼';
+        return { value: (macd >= 0 ? '+' : '') + macd.toFixed(1), color, arrow };
+      },
+    },
+    {
+      label: 'ATR %',
+      render: (sym) => {
+        const { atrPct } = MOMENTUM_DATA[sym];
+        const color = atrIndicatorColor(atrPct);
+        const arrow = atrPct >= 3 ? '▲' : atrPct < 1.5 ? '▼' : '▶';
+        return { value: atrPct.toFixed(1) + '%', color, arrow };
+      },
+    },
+  ];
+
+  const COL_W = 88;
+  const LABEL_W = 90;
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      marginBottom: 28,
+      overflowX: 'auto',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Momentum Indicators</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Key momentum readings per symbol — green = favorable, red = caution
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, fontSize: F.xs, color: C.muted, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.bull, display: 'inline-block' }} />
+            Bullish
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.warn, display: 'inline-block' }} />
+            Caution
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.bear, display: 'inline-block' }} />
+            Bearish
+          </span>
+        </div>
+      </div>
+
+      {/* Grid table */}
+      <table style={{ borderCollapse: 'separate', borderSpacing: 4, minWidth: LABEL_W + SYMBOLS.length * (COL_W + 4) }}>
+        <thead>
+          <tr>
+            <th style={{ width: LABEL_W, minWidth: LABEL_W }} />
+            {SYMBOLS.map(sym => (
+              <th
+                key={sym}
+                style={{
+                  width: COL_W,
+                  minWidth: COL_W,
+                  fontSize: F.sm,
+                  fontWeight: 800,
+                  color: C.text,
+                  textAlign: 'center',
+                  paddingBottom: 10,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {sym}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {ROWS.map(row => (
+            <tr key={row.label}>
+              {/* Row label */}
+              <td style={{
+                fontSize: F.xs,
+                fontWeight: 600,
+                color: C.muted,
+                paddingRight: 12,
+                paddingTop: 2,
+                paddingBottom: 2,
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}>
+                {row.label}
+              </td>
+
+              {/* Data cells */}
+              {SYMBOLS.map(sym => {
+                const cell = row.render(sym);
+                // Build a subtle background from the cell color
+                const bg = cell.color === C.bull
+                  ? 'rgba(22,163,74,0.12)'
+                  : cell.color === C.bear
+                    ? 'rgba(220,38,38,0.12)'
+                    : cell.color === C.warn
+                      ? 'rgba(217,119,6,0.12)'
+                      : C.heatNeutral;
+
+                return (
+                  <td key={sym} style={{ padding: 2 }}>
+                    <div style={{
+                      height: 54,
+                      width: COL_W,
+                      background: bg,
+                      border: `1px solid ${cell.color}30`,
+                      borderRadius: R.sm,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 3,
+                      transition: 'opacity 0.2s',
+                    }}>
+                      <span style={{
+                        fontSize: F.sm,
+                        fontWeight: 700,
+                        color: cell.color,
+                        lineHeight: 1,
+                      }}>
+                        {cell.value}
+                      </span>
+                      <span style={{
+                        fontSize: 11,
+                        color: cell.color,
+                        opacity: 0.75,
+                        lineHeight: 1,
+                      }}>
+                        {cell.arrow}
+                      </span>
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Row annotation */}
+      <div style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: `1px solid ${C.border}`,
+        display: 'flex',
+        gap: 20,
+        flexWrap: 'wrap',
+        fontSize: F.xs,
+        color: C.muted,
+        lineHeight: 1.6,
+      }}>
+        <span><span style={{ color: C.text, fontWeight: 600 }}>RSI:</span> &lt;40 oversold (green), &gt;70 overbought (red), else neutral</span>
+        <span><span style={{ color: C.text, fontWeight: 600 }}>MACD:</span> positive = bullish momentum, negative = bearish</span>
+        <span><span style={{ color: C.text, fontWeight: 600 }}>ATR%:</span> &lt;1.5% low vol, 1.5–3% normal, &gt;3% high vol</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Volatility Ranking Bars ──────────────────────────────────────────────────
+
+const VOLATILITY_DATA: Array<{ symbol: string; atrPct: number; price: number }> = [
+  { symbol: 'HYPE', atrPct: 3.1, price: 18     },
+  { symbol: 'SOL',  atrPct: 2.4, price: 152    },
+  { symbol: 'BTC',  atrPct: 1.2, price: 95333  },
+];
+
+function volBarColor(atrPct: number): { bar: string; bg: string; border: string } {
+  if (atrPct >= 3)   return { bar: C.bear,  bg: 'rgba(220,38,38,0.10)',  border: 'rgba(220,38,38,0.30)'  };
+  if (atrPct >= 1.5) return { bar: C.info,  bg: 'rgba(37,99,235,0.10)',  border: 'rgba(37,99,235,0.28)'  };
+  return               { bar: C.bull,  bg: 'rgba(22,163,74,0.10)',   border: 'rgba(22,163,74,0.28)'  };
+}
+
+function volTierLabel(atrPct: number): string {
+  if (atrPct >= 3)   return 'High';
+  if (atrPct >= 1.5) return 'Normal';
+  return 'Low';
+}
+
+function VolatilityRankingBars({ signals: _signals }: { signals: Record<string, Signal> | null }) {
+  // Use seeded data; in a future iteration real atrPct could be injected from signals
+  const sorted = VOLATILITY_DATA; // already sorted highest → lowest
+  const maxAtr = sorted[0].atrPct;
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      marginBottom: 28,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Volatility Ranking (Current ATR%)</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Higher ATR = wider stops needed = smaller position size
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 10, fontSize: F.xs, color: C.muted, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {[
+            { dot: C.bull,  label: '<1.5% Low'   },
+            { dot: C.info,  label: '1.5–3% Normal' },
+            { dot: C.bear,  label: '>3% High'    },
+          ].map(({ dot, label }) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: dot, display: 'inline-block', flexShrink: 0 }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Bar rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {sorted.map((entry, idx) => {
+          const rank = idx + 1;
+          const total = sorted.length;
+          const { bar, bg, border } = volBarColor(entry.atrPct);
+          const barWidthPct = (entry.atrPct / (maxAtr * 1.1)) * 100;
+          const dollarAtr = (entry.atrPct / 100) * entry.price;
+
+          return (
+            <div key={entry.symbol}>
+              {/* Symbol row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                {/* Left: symbol + tier label */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: F.sm, fontWeight: 800, color: C.text, minWidth: 40 }}>
+                    {entry.symbol}
+                  </span>
+                  <span style={{
+                    padding: '2px 8px',
+                    borderRadius: R.pill,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: bg,
+                    border: `1px solid ${border}`,
+                    color: bar,
+                  }}>
+                    {volTierLabel(entry.atrPct)}
+                  </span>
+                </div>
+
+                {/* Right: rank badge + ATR value */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: F.xs, color: C.muted }}>
+                    {entry.atrPct.toFixed(1)}% ATR
+                  </span>
+                  <span style={{
+                    padding: '3px 9px',
+                    borderRadius: R.pill,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    color: C.textSub,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    Vol Rank: #{rank} / {total}
+                  </span>
+                </div>
+              </div>
+
+              {/* Horizontal bar */}
+              <div style={{
+                position: 'relative',
+                height: 20,
+                background: C.surface,
+                borderRadius: R.pill,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: `${barWidthPct}%`,
+                  background: `linear-gradient(90deg, ${bar}55 0%, ${bar} 100%)`,
+                  borderRadius: R.pill,
+                  transition: 'width 0.7s ease',
+                }} />
+              </div>
+
+              {/* Sub-label */}
+              <div style={{ marginTop: 5, fontSize: F.xs, color: C.muted }}>
+                {entry.atrPct.toFixed(1)}% ATR · ${dollarAtr.toLocaleString('en-US', { maximumFractionDigits: dollarAtr >= 10 ? 0 : 2 })} per {entry.symbol}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer note */}
+      <div style={{
+        marginTop: 16,
+        paddingTop: 12,
+        borderTop: `1px solid ${C.border}`,
+        fontSize: F.xs,
+        color: C.muted,
+        lineHeight: 1.6,
+      }}>
+        <span style={{ color: C.text, fontWeight: 600 }}>Position sizing note:</span>{' '}
+        High-ATR assets require wider stops. The bot automatically reduces position size when ATR% is elevated to keep dollar risk constant.
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
@@ -2176,6 +2542,12 @@ export default function SignalsPage() {
           <CorrelationMatrix signals={signalsData.signals} />
         </>
       )}
+
+      {/* ── Momentum Indicators ──────────────────────────────────────────── */}
+      <MomentumIndicatorPanel />
+
+      {/* ── Volatility Ranking ───────────────────────────────────────────── */}
+      <VolatilityRankingBars signals={signalsData?.signals ?? null} />
 
       {/* ── Two-column layout ────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 28 }}>
