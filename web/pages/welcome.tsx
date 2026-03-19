@@ -448,6 +448,56 @@ const HOW_STEPS = [
   { icon: '⚡', title: 'You Get the Signal', desc: 'See the exact entry, stop, and target — with the full reasoning behind it.' },
 ];
 
+// ─── Learning Path Visual ─────────────────────────────────────────────────────
+
+function LearningPathVisual() {
+  const modules = [
+    { n: '01', title: 'Foundation', icon: '🧱', color: C.muted, desc: 'How the bot works' },
+    { n: '02', title: 'Signals', icon: '📊', color: C.info, desc: 'Score 0-100, zones' },
+    { n: '03', title: 'AI Brain', icon: '🤖', color: C.brand, desc: '7 agents pipeline' },
+    { n: '04', title: 'Risk', icon: '🛡️', color: C.warn, desc: 'Gates, circuit breakers' },
+    { n: '05', title: 'Trade Flow', icon: '⚡', color: C.bull, desc: 'Signal → execution' },
+    { n: '06', title: 'Calculators', icon: '🧮', color: C.brand, desc: 'Position sizing' },
+    { n: '07', title: 'Copy Trade', icon: '📋', color: C.bull, desc: 'Step-by-step guide' },
+    { n: '08', title: 'Glossary', icon: '📚', color: C.textSub, desc: '40+ terms defined' },
+  ];
+  return (
+    <div style={{ marginTop: 28, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, minWidth: 640, position: 'relative', paddingBottom: 8 }}>
+        {/* Connecting line */}
+        <div style={{
+          position: 'absolute', top: 24, left: 24, right: 24, height: 2,
+          background: `linear-gradient(to right, ${C.muted}40, ${C.brand}80, ${C.bull}80)`,
+          zIndex: 0,
+        }} />
+        {modules.map((m, i) => (
+          <div key={m.n} style={{ flex: 1, textAlign: 'center', position: 'relative', zIndex: 1, minWidth: 72 }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: '50%',
+              background: C.card,
+              border: `2px solid ${m.color}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 8px',
+              fontSize: 18,
+              boxShadow: `0 0 8px ${m.color}40`,
+            }}>
+              {m.icon}
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: m.color, marginBottom: 2 }}>{m.n}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, marginBottom: 2 }}>{m.title}</div>
+            <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.3 }}>{m.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 12 }}>
+        <Link href="/learn" style={{ fontSize: F.xs, color: C.brand, fontWeight: 600, textDecoration: 'none' }}>
+          Open the full course with interactive calculators →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WelcomePage() {
@@ -719,6 +769,7 @@ export default function WelcomePage() {
               <Link href="/learn" style={{ marginTop: 8, fontSize: F.sm, color: C.muted, textDecoration: 'none' }}>+ 3 more sections with interactive calculators →</Link>
             </div>
           </div>
+          <LearningPathVisual />
         </section>
 
         {/* ── Pricing Teaser ── */}
