@@ -2129,23 +2129,27 @@ export default function TodayPage() {
           )}
         </div>
 
-        {/* ── Today's Equity + Alerts Row ── */}
+        {/* ── Portfolio Overview ── */}
+        <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+          Portfolio Overview
+        </h2>
         <div style={{ display: 'flex', gap: 20, marginBottom: 24, flexWrap: 'wrap' }}>
           <TodayEquityMini />
           <AlertsPanel />
         </div>
 
-        {/* ── Today P&L by Hour ── */}
         <div style={{ marginBottom: 24 }}>
           <TodayPnlByHour />
         </div>
 
-        {/* ── Bot Schedule Timeline ── */}
         <div style={{ marginBottom: 24 }}>
           <BotScheduleTimeline />
         </div>
 
-        {/* ── Regime Dial + Streak Bar ── */}
+        {/* ── Regime Analysis ── */}
+        <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+          Regime Analysis
+        </h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
           <RegimeDial regime={regime} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2176,7 +2180,10 @@ export default function TodayPage() {
           </div>
         </div>
 
-        {/* ── 3-Column Quick Stats ── */}
+        {/* ── Activity Summary ── */}
+        <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+          Activity Summary
+        </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 28 }}>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
             <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Recent Activity</div>
@@ -2207,7 +2214,10 @@ export default function TodayPage() {
           </div>
         </div>
 
-        {/* ── Risk Gates + Hourly Trade Timeline ── */}
+        {/* ── Risk & Gate Analysis ── */}
+        <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+          Risk &amp; Gate Analysis
+        </h2>
         <div style={{ display: 'flex', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 320px' }}>
             <RiskGatesPanel />
@@ -2232,6 +2242,9 @@ export default function TodayPage() {
         <IntradayActivityHeatmap activity={activity} />
 
         {/* ── AI Market Commentary ── */}
+        <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+          AI Assessment
+        </h2>
         <div style={{ background: C.card, border: `1px solid ${C.brand}40`, borderRadius: R.xl, padding: '22px 26px', marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <span style={{ fontSize: 20 }}>🤖</span>
