@@ -1469,51 +1469,63 @@ export default function LlmAudit() {
         </div>
       )}
 
-      {/* Model Routing */}
-      {decisions.length > 0 && (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: C.text }}>Model Routing</h2>
-          <ModelRoutingChart decisions={decisions} />
-          <div style={{ marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-            <TokenUsageBar decisions={decisions} />
-          </div>
-          <DecisionActivityMap decisions={decisions} />
+      {/* Main content + Right sidebar layout */}
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        {/* Main column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Model Routing */}
+          {decisions.length > 0 && (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
+              <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: C.text }}>Model Routing</h2>
+              <ModelRoutingChart decisions={decisions} />
+              <div style={{ marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                <TokenUsageBar decisions={decisions} />
+              </div>
+              <DecisionActivityMap decisions={decisions} />
+            </div>
+          )}
+
+          {/* Confidence Calibration */}
+          {decisions.length > 0 && (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
+              <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: C.text }}>Confidence Calibration</h2>
+              <ConfCalibration decisions={decisions} />
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+                <ConfidenceHistogram decisions={decisions} />
+              </div>
+            </div>
+          )}
+
+          {/* Action Rate Timeline */}
+          {decisions.length >= 6 && <ActionRateTimeline decisions={decisions} />}
+
+          {/* Per-Symbol Decision Grid */}
+          {decisions.length > 0 && <SymbolDecisionGrid decisions={decisions} />}
+
+          {/* Trigger Breakdown */}
+          {decisions.length > 0 && <TriggerBreakdownChart decisions={decisions} />}
+
+          {/* Veto Analysis */}
+          {decisions.some((d) => d.is_veto) && (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: C.text }}>Veto Analysis</h2>
+              <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
+                {decisions.filter((d) => d.is_veto).length} vetoes out of {decisions.length} decisions
+              </div>
+              <VetoAnalysis decisions={decisions} />
+            </div>
+          )}
+
+          {/* Veto Frequency Bars */}
+          {decisions.length > 0 && <VetoFrequencyBars decisions={decisions} />}
         </div>
-      )}
 
-      {/* Confidence Calibration */}
-      {decisions.length > 0 && (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: C.text }}>Confidence Calibration</h2>
-          <ConfCalibration decisions={decisions} />
-          <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
-            <ConfidenceHistogram decisions={decisions} />
-          </div>
+        {/* Right sidebar */}
+        <div style={{ width: 280, flexShrink: 0 }}>
+          {/* Agent Accuracy Matrix */}
+          {decisions.length > 0 && <AgentAccuracyMatrix decisions={decisions} />}
         </div>
-      )}
-
-      {/* Action Rate Timeline */}
-      {decisions.length >= 6 && <ActionRateTimeline decisions={decisions} />}
-
-      {/* Per-Symbol Decision Grid */}
-      {decisions.length > 0 && <SymbolDecisionGrid decisions={decisions} />}
-
-      {/* Trigger Breakdown */}
-      {decisions.length > 0 && <TriggerBreakdownChart decisions={decisions} />}
-
-      {/* Veto Analysis */}
-      {decisions.some((d) => d.is_veto) && (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
-          <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: C.text }}>Veto Analysis</h2>
-          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
-            {decisions.filter((d) => d.is_veto).length} vetoes out of {decisions.length} decisions
-          </div>
-          <VetoAnalysis decisions={decisions} />
-        </div>
-      )}
-
-      {/* Veto Frequency Bars */}
-      {decisions.length > 0 && <VetoFrequencyBars decisions={decisions} />}
+      </div>
 
       {/* Filters */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 20px', marginBottom: 16 }}>
