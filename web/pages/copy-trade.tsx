@@ -3661,6 +3661,490 @@ function MiniCandleChart() {
   );
 }
 
+// ─── Strategy Consensus Gauge ─────────────────────────────────────────────────
+
+function StrategyConsensusGauge() {
+  const [selectedSymbol, setSelectedSymbol] = useState<'BTC' | 'SOL' | 'HYPE'>('BTC');
+
+  // Seeded data per symbol
+  const symbolData: Record<string, {
+    votes: number;
+    strategies: { short: string; name: string; vote: 'BUY' | 'SELL' | 'WAIT' }[];
+    confidence: number;
+  }> = {
+    BTC: {
+      votes: 3,
+      confidence: 81,
+      strategies: [
+        { short: 'RGM', name: 'Regime', vote: 'BUY' },
+        { short: 'MCZ', name: 'MonteCarlo', vote: 'BUY' },
+        { short: 'CSC', name: 'ConfScore', vote: 'BUY' },
+        { short: 'MTF', name: 'MTF Quality', vote: 'WAIT' },
+      ],
+    },
+    SOL: {
+      votes: 2,
+      confidence: 62,
+      strategies: [
+        { short: 'RGM', name: 'Regime', vote: 'BUY' },
+        { short: 'MCZ', name: 'MonteCarlo', vote: 'WAIT' },
+        { short: 'CSC', name: 'ConfScore', vote: 'BUY' },
+        { short: 'MTF', name: 'MTF Quality', vote: 'WAIT' },
+      ],
+    },
+    HYPE: {
+      votes: 1,
+      confidence: 44,
+      strategies: [
+        { short: 'RGM', name: 'Regime', vote: 'SELL' },
+        { short: 'MCZ', name: 'MonteCarlo', vote: 'WAIT' },
+        { short: 'CSC', name: 'ConfScore', vote: 'WAIT' },
+        { short: 'MTF', name: 'MTF Quality', vote: 'WAIT' },
+      ],
+    },
+  };
+
+  const current = symbolData[selectedSymbol];
+  const votes = current.votes;
+
+  // 5 positions: 0=strong sell, 1=weak sell, 2=neutral, 3=weak buy, 4=strong buy
+  const POSITIONS = [
+    { label: 'SELL\n0/4', x: 28,  color: '#dc2626' },
+    { label: 'SELL\n1/4', x: 84,  color: '#ef4444' },
+    { label: 'NEUTRAL\n2/4', x: 140, color: '#6b7280' },
+    { label: 'BUY\n3/4',  x: 196, color: '#22c55e' },
+    { label: 'BUY\n4/4',  x: 252, color: '#16a34a' },
+  ];
+
+  // Map vote count → position index
+  // We treat: 0 buys → position 0 (strong sell direction is also possible,
+  // but here we only have BUY votes so: 0→idx0, 1→idx1, 2→idx2, 3→idx3, 4→idx4
+  const posIdx = Math.min(4, Math.max(0, votes));
+  const activePos = POSITIONS[posIdx];
+
+  const GAUGE_W = 280;
+  const GAUGE_H = 140;
+  const TRACK_Y = 68;
+  const TRACK_H = 12;
+  const TRACK_X = 14;
+  const TRACK_W = GAUGE_W - 28;
+
+  // Track gradient goes red → gray → green
+  const voteText = votes === 4
+    ? 'STRONG BUY'
+    : votes === 3
+    ? 'WEAK BUY'
+    : votes === 2
+    ? 'NEUTRAL'
+    : votes === 1
+    ? 'WEAK SELL'
+    : 'STRONG SELL';
+
+  const mainColor = votes >= 3 ? '#16a34a' : votes >= 2 ? '#6b7280' : '#dc2626';
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>
+          Strategy Consensus ({selectedSymbol})
+        </div>
+        {/* Symbol selector pills */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['BTC', 'SOL', 'HYPE'] as const).map((sym) => (
+            <button
+              key={sym}
+              onClick={() => setSelectedSymbol(sym)}
+              style={{
+                padding: '3px 12px',
+                borderRadius: R.pill,
+                border: `1px solid ${selectedSymbol === sym ? C.brand : C.border}`,
+                background: selectedSymbol === sym ? C.brand : C.surfaceHover,
+                color: selectedSymbol === sym ? '#fff' : C.muted,
+                fontSize: F.xs,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {sym}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* SVG gauge */}
+      <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+        <svg
+          viewBox={`0 0 ${GAUGE_W} ${GAUGE_H}`}
+          style={{ display: 'block', width: '100%', maxWidth: GAUGE_W, height: GAUGE_H, margin: '0 auto' }}
+          aria-label={`Strategy consensus vote meter for ${selectedSymbol}`}
+        >
+          <defs>
+            <linearGradient id="gaugeTrackGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%"   stopColor="#dc2626" stopOpacity="0.7" />
+              <stop offset="40%"  stopColor="#dc2626" stopOpacity="0.2" />
+              <stop offset="50%"  stopColor="#6b7280" stopOpacity="0.35" />
+              <stop offset="60%"  stopColor="#16a34a" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#16a34a" stopOpacity="0.7" />
+            </linearGradient>
+            <filter id="glowFilter">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Track background */}
+          <rect
+            x={TRACK_X}
+            y={TRACK_Y}
+            width={TRACK_W}
+            height={TRACK_H}
+            rx={6}
+            fill="url(#gaugeTrackGrad)"
+          />
+          <rect
+            x={TRACK_X}
+            y={TRACK_Y}
+            width={TRACK_W}
+            height={TRACK_H}
+            rx={6}
+            fill="none"
+            stroke={C.border}
+            strokeWidth={1}
+          />
+
+          {/* Tick marks at each position */}
+          {POSITIONS.map((pos) => (
+            <line
+              key={pos.x}
+              x1={pos.x}
+              y1={TRACK_Y - 4}
+              x2={pos.x}
+              y2={TRACK_Y + TRACK_H + 4}
+              stroke={pos.x === activePos.x ? pos.color : C.border}
+              strokeWidth={pos.x === activePos.x ? 2 : 1}
+            />
+          ))}
+
+          {/* Glow ring behind active marker */}
+          <circle
+            cx={activePos.x}
+            cy={TRACK_Y + TRACK_H / 2}
+            r={16}
+            fill={mainColor}
+            fillOpacity={0.18}
+            filter="url(#glowFilter)"
+          />
+
+          {/* Active position circle */}
+          <circle
+            cx={activePos.x}
+            cy={TRACK_Y + TRACK_H / 2}
+            r={10}
+            fill={mainColor}
+            stroke={C.card}
+            strokeWidth={2.5}
+          />
+
+          {/* Vote count in circle */}
+          <text
+            x={activePos.x}
+            y={TRACK_Y + TRACK_H / 2 + 1}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={8}
+            fontWeight="800"
+            fill="#fff"
+            fontFamily="inherit"
+          >
+            {votes}
+          </text>
+
+          {/* Endpoint labels: SELL 0/4 ... BUY 4/4 */}
+          {POSITIONS.map((pos, i) => {
+            const parts = pos.label.split('\n');
+            const isActive = i === posIdx;
+            return (
+              <g key={pos.x}>
+                <text
+                  x={pos.x}
+                  y={TRACK_Y - 14}
+                  textAnchor="middle"
+                  fontSize={isActive ? 9 : 8}
+                  fontWeight={isActive ? '800' : '500'}
+                  fill={isActive ? pos.color : C.muted}
+                  fontFamily="inherit"
+                >
+                  {parts[0]}
+                </text>
+                <text
+                  x={pos.x}
+                  y={TRACK_Y + TRACK_H + 18}
+                  textAnchor="middle"
+                  fontSize={8}
+                  fontWeight={isActive ? '700' : '400'}
+                  fill={isActive ? pos.color : C.faint}
+                  fontFamily="inherit"
+                >
+                  {parts[1]}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Current verdict label below circle */}
+          <text
+            x={activePos.x}
+            y={TRACK_Y + TRACK_H + 34}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight="700"
+            fill={mainColor}
+            fontFamily="inherit"
+          >
+            {voteText}
+          </text>
+        </svg>
+      </div>
+
+      {/* Vote summary line */}
+      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: F.md, fontWeight: 700, color: mainColor }}>
+          {votes}/4 strategies: {votes >= 3 ? 'BUY' : votes <= 1 ? 'SELL' : 'NEUTRAL'}
+        </span>
+      </div>
+
+      {/* Strategy vote pills */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        {current.strategies.map((s) => {
+          const isBuy = s.vote === 'BUY';
+          const isSell = s.vote === 'SELL';
+          const pillColor = isBuy ? '#16a34a' : isSell ? '#dc2626' : '#6b7280';
+          const pillBg   = isBuy ? '#dcfce7' : isSell ? '#fee2e2' : '#f3f4f6';
+          const voteIcon = isBuy ? '▲' : isSell ? '▼' : '—';
+          return (
+            <div
+              key={s.short}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 10px',
+                borderRadius: R.pill,
+                background: pillBg,
+                border: `1px solid ${pillColor}44`,
+                fontSize: F.xs,
+                fontWeight: 700,
+                color: pillColor,
+              }}
+            >
+              <span style={{ fontSize: 10 }}>{voteIcon}</span>
+              <span style={{ color: C.textSubLight, fontWeight: 600 }}>{s.short}:</span>
+              <span>{s.vote}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Confidence score */}
+      <div style={{ textAlign: 'center', fontSize: F.xs, color: C.muted }}>
+        Signal confidence:{' '}
+        <strong style={{ color: current.confidence >= 75 ? '#16a34a' : current.confidence >= 50 ? '#d97706' : '#dc2626', fontSize: F.sm }}>
+          {current.confidence}%
+        </strong>
+      </div>
+    </div>
+  );
+}
+
+// ─── Copy Trade Checklist ─────────────────────────────────────────────────────
+
+function CopyTradeChecklist() {
+  type CheckStatus = 'pass' | 'caution' | 'fail';
+
+  const items: {
+    label: string;
+    statusText: string;
+    status: CheckStatus;
+  }[] = [
+    { label: 'Signal score ≥ 75%',           statusText: '82% — PASS',                     status: 'pass' },
+    { label: 'Regime = TREND',                statusText: 'Trend confirmed — PASS',          status: 'pass' },
+    { label: 'Price in accumulation zone',    statusText: 'PASS',                            status: 'pass' },
+    { label: 'Circuit breakers clear',        statusText: 'No active limits — PASS',         status: 'pass' },
+    { label: 'Position size calculated',      statusText: '$950 (1.5% risk) — PASS',         status: 'pass' },
+    { label: 'Funding rate neutral',          statusText: '+0.0082% — CAUTION',              status: 'caution' },
+    { label: 'Stop loss set',                 statusText: '$94,800 (-0.63%) — PASS',         status: 'pass' },
+    { label: 'Take profits set',              statusText: 'TP1: $96,680 (+1.34%)',           status: 'pass' },
+  ];
+
+  const passCount = items.filter((i) => i.status === 'pass').length;
+  const totalCount = items.length;
+
+  const statusDot: Record<CheckStatus, string> = {
+    pass:    '#16a34a',
+    caution: '#d97706',
+    fail:    '#dc2626',
+  };
+  const statusIcon: Record<CheckStatus, string> = {
+    pass:    '✅',
+    caution: '⚠',
+    fail:    '✗',
+  };
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        Pre-Trade Checklist
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
+        Verify these conditions before copying a trade. Green = clear, yellow = informational only.
+      </div>
+
+      {/* Checklist rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+        {items.map((item, i) => {
+          const dotColor = statusDot[item.status];
+          const icon = statusIcon[item.status];
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '9px 12px',
+                borderRadius: R.md,
+                background: item.status === 'pass'
+                  ? C.surfaceHover
+                  : item.status === 'caution'
+                  ? '#d97706' + '12'
+                  : '#dc2626' + '12',
+                border: `1px solid ${
+                  item.status === 'pass'
+                    ? C.border
+                    : item.status === 'caution'
+                    ? '#d97706' + '44'
+                    : '#dc262644'
+                }`,
+              }}
+            >
+              {/* Status icon */}
+              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
+
+              {/* Colored dot */}
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: dotColor,
+                  flexShrink: 0,
+                  boxShadow: item.status !== 'pass' ? `0 0 6px ${dotColor}88` : 'none',
+                }}
+              />
+
+              {/* Label */}
+              <span style={{ flex: 1, fontSize: F.xs, fontWeight: 600, color: C.textSub }}>
+                {item.label}
+              </span>
+
+              {/* Status text */}
+              <span
+                style={{
+                  fontSize: F.xs,
+                  fontWeight: 700,
+                  color: dotColor,
+                  textAlign: 'right',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.statusText}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Summary badge */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '7px 16px',
+            borderRadius: R.pill,
+            background: passCount >= totalCount - 1 ? '#dcfce7' : passCount >= totalCount - 2 ? '#fef3c7' : '#fee2e2',
+            border: `1px solid ${passCount >= totalCount - 1 ? '#16a34a44' : passCount >= totalCount - 2 ? '#d9770644' : '#dc262644'}`,
+          }}
+        >
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: passCount >= totalCount - 1 ? '#16a34a' : passCount >= totalCount - 2 ? '#d97706' : '#dc2626',
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontSize: F.sm,
+              fontWeight: 800,
+              color: passCount >= totalCount - 1 ? '#16a34a' : passCount >= totalCount - 2 ? '#d97706' : '#dc2626',
+            }}
+          >
+            Ready to trade: {passCount}/{totalCount} checks passed
+          </span>
+        </div>
+      </div>
+
+      {/* Educational note */}
+      <div
+        style={{
+          padding: '8px 12px',
+          background: C.warn + '12',
+          border: `1px solid ${C.warn}30`,
+          borderRadius: R.sm,
+          fontSize: F.xs,
+          color: C.textSub,
+          lineHeight: 1.6,
+        }}
+      >
+        <strong style={{ color: C.warnMid }}>Note:</strong> Yellow items are informational — they do not block the trade, but should be reviewed before sizing up.
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CopyTrade() {
@@ -3751,6 +4235,12 @@ export default function CopyTrade() {
 
       {/* Signal Confidence 24h History */}
       <ConfidenceHistoryChart />
+
+      {/* Strategy Consensus Gauge */}
+      <StrategyConsensusGauge />
+
+      {/* Pre-Trade Checklist */}
+      <CopyTradeChecklist />
 
       {/* Quick Guide */}
       <div

@@ -1554,6 +1554,12 @@ function RunDetail({ result }: { result: BacktestResult }) {
       {/* Walk-Forward Validation */}
       <WalkForwardChart />
 
+      {/* Symbol Rotation Timeline */}
+      <SymbolRotationChart result={result} />
+
+      {/* Backtest Report Card */}
+      <BacktestSummaryScorecard result={result} />
+
       {/* By symbol + Exit types side-by-side */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 24, marginBottom: 20, alignItems: 'start' }}>
         {result.by_symbol && Object.keys(result.by_symbol).length > 0 && (
@@ -1840,6 +1846,484 @@ function JobProgress({ jobId, apiBase, onDone }: { jobId: string; apiBase: strin
           Error: {job.error || 'Unknown error'}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Symbol Rotation Timeline ─────────────────────────────────────────────────
+
+function SymbolRotationChart({ result }: { result: BacktestResult }) {
+  const trades = (result as BacktestResult & { trades?: Array<{ symbol?: string; outcome?: string; duration_h?: number | null; pnl?: number | null }> }).trades;
+  if (!trades || trades.length === 0) return null;
+
+  const SVG_W = 480;
+  const SVG_H = 140;
+  const TRACK_H = 16;
+  const TRACK_GAP = 8;
+  const LABEL_W = 44;
+  const PAD_T = 28;
+  const PAD_B = 18;
+  const PAD_R = 8;
+
+  const SYMBOLS = ['BTC', 'SOL', 'HYPE'];
+
+  // Count trades per symbol (from by_symbol or from trades array)
+  const symCounts: Record<string, number> = {};
+  SYMBOLS.forEach((s) => { symCounts[s] = 0; });
+
+  trades.forEach((t) => {
+    const sym = (t.symbol ?? '').replace('-USD', '').replace('/USD', '').toUpperCase();
+    const matched = SYMBOLS.find((s) => sym.startsWith(s));
+    if (matched) symCounts[matched]++;
+  });
+
+  // Fall back to by_symbol counts if trades don't have symbol
+  if (Object.values(symCounts).every((v) => v === 0) && result.by_symbol) {
+    SYMBOLS.forEach((s) => {
+      symCounts[s] = result.by_symbol?.[s]?.trades ?? 0;
+    });
+  }
+
+  // Chart inner width
+  const iW = SVG_W - LABEL_W - PAD_R;
+  const totalTrades = trades.length;
+
+  // Track Y positions (BTC top, SOL middle, HYPE bottom)
+  const trackY = (idx: number) => PAD_T + idx * (TRACK_H + TRACK_GAP);
+
+  // Date marker every ~10 trades
+  const MARKER_EVERY = Math.max(1, Math.floor(totalTrades / 6));
+
+  // Assign each trade to a symbol track
+  const segments: Array<{
+    symIdx: number;
+    x: number;
+    w: number;
+    color: string;
+  }> = [];
+
+  trades.forEach((t, i) => {
+    const sym = (t.symbol ?? '').replace('-USD', '').replace('/USD', '').toUpperCase();
+    const matched = SYMBOLS.findIndex((s) => sym.startsWith(s));
+    const symIdx = matched >= 0 ? matched : i % SYMBOLS.length; // fallback: cycle
+
+    const x = LABEL_W + (i / totalTrades) * iW;
+    const nextX = LABEL_W + ((i + 1) / totalTrades) * iW;
+    const rawW = nextX - x;
+    const segW = Math.max(2, rawW - 1); // 1px gap between segments
+
+    const isWin = t.pnl != null ? t.pnl > 0 : (t.outcome ?? '').toUpperCase() === 'WIN';
+    const color = isWin ? C.bull : C.bear;
+
+    segments.push({ symIdx, x, w: segW, color });
+  });
+
+  // Date markers
+  const markers: number[] = [];
+  for (let i = MARKER_EVERY; i < totalTrades; i += MARKER_EVERY) {
+    markers.push(i);
+  }
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: F.md, fontWeight: 700, color: C.text }}>
+        Symbol Rotation Timeline
+      </h3>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 4 }}>
+        {SYMBOLS.map((s) => `${s}: ${symCounts[s]}`).join(' · ')} trades
+      </div>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '12px 16px', overflowX: 'auto' }}>
+        <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{ display: 'block', minWidth: SVG_W }}>
+
+          {/* Track backgrounds */}
+          {SYMBOLS.map((sym, idx) => (
+            <g key={sym}>
+              <rect
+                x={LABEL_W}
+                y={trackY(idx)}
+                width={iW}
+                height={TRACK_H}
+                fill={C.surfaceHover}
+                rx={3}
+              />
+              {/* Track label */}
+              <text
+                x={LABEL_W - 6}
+                y={trackY(idx) + TRACK_H / 2}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fontSize={9}
+                fontWeight={700}
+                fill={C.textSub}
+              >
+                {sym}
+              </text>
+            </g>
+          ))}
+
+          {/* Trade segments */}
+          {segments.map((seg, i) => (
+            <rect
+              key={i}
+              x={seg.x}
+              y={trackY(seg.symIdx)}
+              width={seg.w}
+              height={TRACK_H}
+              fill={seg.color}
+              rx={2}
+              opacity={0.8}
+            />
+          ))}
+
+          {/* Date / index markers */}
+          {markers.map((mi) => {
+            const mx = LABEL_W + (mi / totalTrades) * iW;
+            const bottomY = trackY(SYMBOLS.length - 1) + TRACK_H;
+            return (
+              <g key={mi}>
+                <line
+                  x1={mx} y1={PAD_T}
+                  x2={mx} y2={bottomY}
+                  stroke={C.border}
+                  strokeWidth={0.6}
+                  strokeDasharray="3 3"
+                  opacity={0.5}
+                />
+                <text
+                  x={mx}
+                  y={bottomY + 10}
+                  textAnchor="middle"
+                  fontSize={7.5}
+                  fill={C.muted}
+                >
+                  #{mi}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* X-axis boundary labels */}
+          <text x={LABEL_W} y={SVG_H - 4} fontSize={8} fill={C.muted} textAnchor="start">Trade 1</text>
+          <text x={SVG_W - PAD_R} y={SVG_H - 4} fontSize={8} fill={C.muted} textAnchor="end">Trade {totalTrades}</text>
+
+          {/* Legend */}
+          <rect x={LABEL_W} y={PAD_T - 16} width={8} height={6} fill={C.bull} rx={1} opacity={0.85} />
+          <text x={LABEL_W + 11} y={PAD_T - 13} dominantBaseline="middle" fontSize={7.5} fill={C.textSub}>Win</text>
+          <rect x={LABEL_W + 38} y={PAD_T - 16} width={8} height={6} fill={C.bear} rx={1} opacity={0.85} />
+          <text x={LABEL_W + 49} y={PAD_T - 13} dominantBaseline="middle" fontSize={7.5} fill={C.textSub}>Loss</text>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─── Backtest Report Card ──────────────────────────────────────────────────────
+
+function BacktestSummaryScorecard({ result }: { result: BacktestResult }) {
+  const r = result.results;
+
+  type Grade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';
+
+  // Grade point values for averaging
+  const GRADE_POINTS: Record<Grade, number> = {
+    'A+': 4.3, 'A': 4.0, 'A-': 3.7,
+    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+    'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+    'D': 1.0, 'F': 0.0,
+  };
+
+  function gradeColor(g: Grade): string {
+    if (g === 'A+' || g === 'A' || g === 'A-') return C.bull;
+    if (g === 'B+' || g === 'B' || g === 'B-') return C.info;
+    if (g === 'C+' || g === 'C' || g === 'C-') return C.warn;
+    return C.bear;
+  }
+
+  function pointsToGrade(pts: number): Grade {
+    if (pts >= 4.15) return 'A+';
+    if (pts >= 3.85) return 'A';
+    if (pts >= 3.5)  return 'A-';
+    if (pts >= 3.15) return 'B+';
+    if (pts >= 2.85) return 'B';
+    if (pts >= 2.5)  return 'B-';
+    if (pts >= 2.15) return 'C+';
+    if (pts >= 1.85) return 'C';
+    if (pts >= 1.5)  return 'C-';
+    if (pts >= 0.5)  return 'D';
+    return 'F';
+  }
+
+  // Grade each metric
+  function gradeReturn(pct: number): Grade {
+    if (pct >= 20)   return 'A+';
+    if (pct >= 15)   return 'A';
+    if (pct >= 10)   return 'A-';
+    if (pct >= 7)    return 'B+';
+    if (pct >= 5)    return 'B';
+    if (pct >= 3)    return 'B-';
+    if (pct >= 1)    return 'C';
+    if (pct >= 0)    return 'D';
+    return 'F';
+  }
+
+  function gradeWinRate(wr: number): Grade {
+    // wr is 0–1
+    const pct = wr * 100;
+    if (pct >= 80)   return 'A+';
+    if (pct >= 75)   return 'A';
+    if (pct >= 70)   return 'A-';
+    if (pct >= 65)   return 'B+';
+    if (pct >= 60)   return 'B';
+    if (pct >= 55)   return 'B-';
+    if (pct >= 50)   return 'C';
+    if (pct >= 45)   return 'D';
+    return 'F';
+  }
+
+  function gradeProfitFactor(pf: number): Grade {
+    if (pf >= 4)     return 'A+';
+    if (pf >= 3)     return 'A';
+    if (pf >= 2.5)   return 'A-';
+    if (pf >= 2)     return 'B+';
+    if (pf >= 1.75)  return 'B';
+    if (pf >= 1.5)   return 'B-';
+    if (pf >= 1.25)  return 'C';
+    if (pf >= 1)     return 'D';
+    return 'F';
+  }
+
+  function gradeDrawdown(ddPct: number): Grade {
+    // ddPct is already positive abs value
+    if (ddPct <= 3)   return 'A+';
+    if (ddPct <= 5)   return 'A';
+    if (ddPct <= 8)   return 'A-';
+    if (ddPct <= 12)  return 'B+';
+    if (ddPct <= 15)  return 'B';
+    if (ddPct <= 20)  return 'B-';
+    if (ddPct <= 25)  return 'C';
+    if (ddPct <= 35)  return 'D';
+    return 'F';
+  }
+
+  function gradeSharpe(sharpe: number): Grade {
+    if (sharpe >= 3)     return 'A+';
+    if (sharpe >= 2.5)   return 'A';
+    if (sharpe >= 2)     return 'A-';
+    if (sharpe >= 1.5)   return 'B+';
+    if (sharpe >= 1.2)   return 'B';
+    if (sharpe >= 1)     return 'B-';
+    if (sharpe >= 0.7)   return 'C';
+    if (sharpe >= 0.3)   return 'D';
+    return 'F';
+  }
+
+  function gradeTradeCount(n: number): Grade {
+    if (n >= 100)  return 'A+';
+    if (n >= 60)   return 'A';
+    if (n >= 40)   return 'A-';
+    if (n >= 25)   return 'B+';
+    if (n >= 15)   return 'B';
+    if (n >= 10)   return 'B-';
+    if (n >= 6)    return 'C';
+    if (n >= 3)    return 'D';
+    return 'F';
+  }
+
+  // Estimate Sharpe from return and drawdown (rough proxy)
+  const returnPct   = r.total_return_pct ?? 0;
+  const winRate     = r.win_rate ?? 0;
+  const profitFactor = r.profit_factor ?? 1;
+  const ddAbs       = Math.abs(r.max_drawdown_pct ?? 0);
+  const tradeCount  = r.total_trades ?? 0;
+  const estimatedSharpe = ddAbs > 0 ? Math.min(5, (returnPct / ddAbs) * 1.2) : 0;
+
+  const metrics: Array<{ label: string; value: string; grade: Grade; weight: number }> = [
+    {
+      label: 'Return',
+      value: `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`,
+      grade: gradeReturn(returnPct),
+      weight: 2,
+    },
+    {
+      label: 'Win Rate',
+      value: `${(winRate * 100).toFixed(1)}%`,
+      grade: gradeWinRate(winRate),
+      weight: 2,
+    },
+    {
+      label: 'Profit Factor',
+      value: `${profitFactor.toFixed(2)}×`,
+      grade: gradeProfitFactor(profitFactor),
+      weight: 2,
+    },
+    {
+      label: 'Max Drawdown',
+      value: `-${ddAbs.toFixed(1)}%`,
+      grade: gradeDrawdown(ddAbs),
+      weight: 1.5,
+    },
+    {
+      label: 'Sharpe (est.)',
+      value: `~${estimatedSharpe.toFixed(1)}`,
+      grade: gradeSharpe(estimatedSharpe),
+      weight: 1.5,
+    },
+    {
+      label: 'Trade Count',
+      value: `${tradeCount}`,
+      grade: gradeTradeCount(tradeCount),
+      weight: 1,
+    },
+  ];
+
+  // Weighted average grade points
+  const totalWeight = metrics.reduce((s, m) => s + m.weight, 0);
+  const weightedPts = metrics.reduce((s, m) => s + GRADE_POINTS[m.grade] * m.weight, 0);
+  const avgPts = totalWeight > 0 ? weightedPts / totalWeight : 0;
+  const overallGrade = pointsToGrade(avgPts);
+  const overallColor = gradeColor(overallGrade);
+
+  // Percentile label: rough mapping of grade pts to percentile
+  function percentileLabel(pts: number): string {
+    if (pts >= 4.1)  return 'Top 5% of backtests';
+    if (pts >= 3.7)  return 'Top 10% of backtests';
+    if (pts >= 3.3)  return 'Top 20% of backtests';
+    if (pts >= 3.0)  return 'Top 35% of backtests';
+    if (pts >= 2.5)  return 'Top 50% of backtests';
+    if (pts >= 2.0)  return 'Top 65% of backtests';
+    return 'Bottom 35% of backtests';
+  }
+
+  // Progress bar width (0-100) based on grade pts out of 4.3
+  const progressPct = Math.min(100, Math.max(0, (avgPts / 4.3) * 100));
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: F.md, fontWeight: 700, color: C.text }}>
+        Backtest Report Card
+      </h3>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>
+        Letter grades for key performance metrics — weighted overall score
+      </div>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+
+        {/* Metric grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+          {metrics.map(({ label, value, grade }) => {
+            const color = gradeColor(grade);
+            return (
+              <div
+                key={label}
+                style={{
+                  background: C.surfaceHover,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: R.md,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                {/* Grade circle */}
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: color + '22',
+                    border: `2px solid ${color}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    fontSize: grade.length > 1 ? F.xs : F.sm,
+                    fontWeight: 900,
+                    color,
+                    letterSpacing: -0.5,
+                  }}
+                >
+                  {grade}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 1 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: F.sm, fontWeight: 800, color: C.text, fontVariantNumeric: 'tabular-nums' }}>
+                    {value}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: C.border, marginBottom: 16, opacity: 0.5 }} />
+
+        {/* Overall grade row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+          {/* Big grade circle */}
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: overallColor + '20',
+              border: `3px solid ${overallColor}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              fontSize: overallGrade.length > 1 ? F.md : F.lg,
+              fontWeight: 900,
+              color: overallColor,
+              letterSpacing: -1,
+              boxShadow: `0 0 12px ${overallColor}44`,
+            }}
+          >
+            {overallGrade}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: F.md, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+              OVERALL:&nbsp;
+              <span style={{ color: overallColor }}>{overallGrade}</span>
+              <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 400, marginLeft: 8 }}>
+                {avgPts.toFixed(2)} / 4.30 pts
+              </span>
+            </div>
+
+            {/* Percentile label */}
+            <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 6 }}>
+              {percentileLabel(avgPts)}
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 6, background: C.surfaceHover, borderRadius: R.pill, overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${progressPct}%`,
+                  background: overallColor,
+                  borderRadius: R.pill,
+                  transition: 'width 0.4s ease',
+                  boxShadow: `0 0 6px ${overallColor}66`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Grade scale legend */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          {([['A+/A', C.bull], ['B', C.info], ['C', C.warn], ['D/F', C.bear]] as [string, string][]).map(([lbl, col]) => (
+            <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: col }} />
+              <span style={{ fontSize: F.xs, color: C.muted }}>{lbl}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
