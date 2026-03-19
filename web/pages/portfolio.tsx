@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Head from 'next/head';
 import Layout from '../components/Layout';
-import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { C, R, S, F, G, fmtUsd, fmtPct, timeAgo } from '../src/theme';
 import { seededRand as mkSeededRand } from '../lib/fmt';
 import { apiFetch } from '../src/api';
 import type { Strategy, TradeHistoryResponse, TradeRecord } from '../src/types';
@@ -30,7 +30,7 @@ function StrategyPnlLadder({ strategies }: { strategies: Strategy[] }) {
   const total = items.reduce((a, s) => a + s.pnl, 0);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
+    <div className="fade-in" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Strategy P&L Contribution</span>
         <span style={{ fontSize: F.xs, fontWeight: 700, color: pnlColor(total) }}>Total: {fmtUsd(total)}</span>
@@ -169,7 +169,7 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
 
   return (
     <div style={{
-      background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
+      background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
       padding: '18px 20px', boxShadow: S.sm,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -269,7 +269,7 @@ function AllocationDonut({ positions }: { positions: Array<{ symbol: string; val
   });
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Allocation</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         <svg width={W} height={W} style={{ flexShrink: 0 }}>
@@ -368,7 +368,7 @@ function PortfolioHealthScore({ trades }: { trades: TradeRecord[] }) {
 
   if (relevant.length === 0) {
     return (
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Portfolio Health Score</div>
         <div style={{ color: C.muted, fontSize: F.sm }}>No trade data yet.</div>
       </div>
@@ -408,7 +408,7 @@ function PortfolioHealthScore({ trades }: { trades: TradeRecord[] }) {
   const dashOffset = circumference * (1 - score / 100);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Health Score</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         {/* Circular score ring */}
@@ -512,7 +512,7 @@ function CorrelationWarning({ symbols }: { symbols?: string[] }) {
   const gridH = LABEL_W + SYMBOLS.length * (CELL + PAD) + PAD;
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>Asset Correlation Heatmap</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         Pairwise correlation between open position symbols. High correlation means positions may not provide true diversification.
@@ -711,7 +711,7 @@ function PortfolioSunburst() {
   const outerArcs = buildArcs(symbols,    R2_INNER, R2_OUTER);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 300 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 300 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Allocation Sunburst</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
         {/* SVG Sunburst */}
@@ -784,7 +784,7 @@ function RiskBudgetMeter() {
   const barColor = usedPct > 80 ? C.bear : usedPct > 55 ? C.warn : C.bull;
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 260 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 260 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Risk Budget Used</div>
 
       {/* Main bar */}
@@ -1040,7 +1040,7 @@ function ThesisValidityBars({ positions }: { positions: Strategy[] }) {
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 padding: '2px 9px', borderRadius: R.pill,
-                background: C.card, border: `1px solid ${C.border}`,
+                background: G.card, border: `1px solid ${C.border}`,
                 fontSize: F.xs, fontWeight: 700, color: C.text,
                 minWidth: 44, flexShrink: 0, textAlign: 'center',
               }}>
@@ -1116,7 +1116,7 @@ function CorrelationNetwork() {
   const highCorrEdges = edges.filter((e) => e.corr > 0.8);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>Portfolio Correlation Network</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         Force-directed graph of pairwise correlations. Line thickness = |correlation|. Green = positive, red = negative.
@@ -1318,7 +1318,7 @@ function DrawdownRecoveryChart() {
   }));
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginBottom: 20 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Drawdown &amp; Recovery Analysis</div>
         {/* Key metrics */}
@@ -1512,7 +1512,7 @@ function EfficiencyFrontierChart() {
   const xTicks = [0, 5, 10, 15, 20, 25, 30];
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 320 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 320 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Risk-Return Efficiency Frontier</div>
 
       <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{ display: 'block', overflow: 'visible' }}>
@@ -1663,7 +1663,7 @@ function PositionPnlWaterfall({ positions }: { positions: Strategy[] }) {
 
   if (!hasPosData && rows.every((r) => r.pnl === 0)) {
     return (
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 8 }}>Open Position P&amp;L</div>
         <div style={{ color: C.muted, fontSize: F.sm, textAlign: 'center', padding: '20px 0' }}>
           No open positions — bot is flat
@@ -1673,7 +1673,7 @@ function PositionPnlWaterfall({ positions }: { positions: Strategy[] }) {
   }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Open Position P&amp;L</span>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: pnlColor(totalPnl) }}>
@@ -1836,8 +1836,10 @@ export default function PortfolioPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>Portfolio</h1>
-            <p style={{ margin: '6px 0 0', color: C.muted, fontSize: F.base }}>
+            <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 900, color: C.text, letterSpacing: -0.5 }}>
+              <span className="gradient-text">Portfolio</span>
+            </h1>
+            <p style={{ margin: '6px 0 0', color: C.muted, fontSize: F.sm }}>
               Live positions across all strategies · refreshes every 20s
             </p>
           </div>
@@ -1857,8 +1859,8 @@ export default function PortfolioPage() {
         </div>
 
         {fetchError && !loading && (
-          <div style={{ marginBottom: 20, padding: '12px 16px', background: '#3d1a1a', border: '1px solid #7f1d1d', borderRadius: 8, color: '#fca5a5', fontSize: 14 }}>
-            Failed to load portfolio data. The API may be offline — data shown may be stale or empty.
+          <div style={{ marginBottom: 20, padding: '12px 16px', background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.25)', borderRadius: R.md, color: C.bearMid, fontSize: F.sm, display: 'flex', alignItems: 'center', gap: 8 }}>
+            ⚠ Failed to load portfolio data — API may be offline. Data shown may be stale.
           </div>
         )}
 
@@ -1867,7 +1869,7 @@ export default function PortfolioPage() {
             {/* KPI skeleton row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+                <div key={i} style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
                   <Skeleton h={12} w="60%" />
                   <div style={{ marginTop: 10 }}><Skeleton h={28} w="80%" /></div>
                   <div style={{ marginTop: 8 }}><Skeleton h={10} w="50%" /></div>
@@ -1884,28 +1886,19 @@ export default function PortfolioPage() {
           <>
             {/* ── Summary KPIs ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', boxShadow: S.sm }}>
-                <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>UNREALIZED P&L</div>
-                <div style={{ fontSize: F['2xl'], fontWeight: 700, color: pnlColor(totalUnrealPnl) }}>{fmtUsd(totalUnrealPnl)}</div>
-                <div style={{ fontSize: F.xs, color: C.muted }}>{openPositions.length} open position{openPositions.length !== 1 ? 's' : ''}</div>
-              </div>
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', boxShadow: S.sm }}>
-                <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>REALIZED P&L</div>
-                <div style={{ fontSize: F['2xl'], fontWeight: 700, color: pnlColor(totalRealizedPnl) }}>{fmtUsd(totalRealizedPnl)}</div>
-                <div style={{ fontSize: F.xs, color: C.muted }}>All-time closed trades</div>
-              </div>
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', boxShadow: S.sm }}>
-                <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>RECENT 10 TRADES</div>
-                <div style={{ fontSize: F['2xl'], fontWeight: 700, color: pnlColor(recentClosedPnl) }}>{fmtUsd(recentClosedPnl)}</div>
-                <div style={{ fontSize: F.xs, color: C.muted }}>Last 10 closed</div>
-              </div>
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', boxShadow: S.sm }}>
-                <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>ACTIVE STRATEGIES</div>
-                <div style={{ fontSize: F['2xl'], fontWeight: 700, color: C.text }}>{strategies.length}</div>
-                <div style={{ fontSize: F.xs, color: C.muted }}>
-                  {strategies.filter((s) => s.lastHeartbeat && (Date.now() - new Date(s.lastHeartbeat).getTime()) < 300_000).length} live
+              {[
+                { label: 'UNREALIZED P&L', value: fmtUsd(totalUnrealPnl), sub: `${openPositions.length} open position${openPositions.length !== 1 ? 's' : ''}`, color: pnlColor(totalUnrealPnl) },
+                { label: 'REALIZED P&L', value: fmtUsd(totalRealizedPnl), sub: 'All-time closed trades', color: pnlColor(totalRealizedPnl) },
+                { label: 'RECENT 10 TRADES', value: fmtUsd(recentClosedPnl), sub: 'Last 10 closed', color: pnlColor(recentClosedPnl) },
+                { label: 'ACTIVE STRATEGIES', value: String(strategies.length), sub: `${strategies.filter((s) => s.lastHeartbeat && (Date.now() - new Date(s.lastHeartbeat).getTime()) < 300_000).length} live`, color: C.brand },
+              ].map(({ label, value, sub, color }) => (
+                <div key={label} className="card-hover fade-in" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.5 }} />
+                  <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{label}</div>
+                  <div className="num" style={{ fontSize: F['2xl'], fontWeight: 800, color, lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
+                  <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>
                 </div>
-              </div>
+              ))}
             </div>
 
             {/* ── Allocation & Risk Overview ── */}
@@ -1943,7 +1936,7 @@ export default function PortfolioPage() {
 
             {/* ── Exposure gauge ── */}
             {totalExposure > 0 && (
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '4px 20px 16px', marginBottom: 24, boxShadow: S.sm }}>
+              <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '4px 20px 16px', marginBottom: 24, boxShadow: S.sm }}>
                 <ExposureGauge used={totalExposure} total={50000} />
               </div>
             )}
@@ -1990,7 +1983,7 @@ export default function PortfolioPage() {
 
               {openPositions.length === 0 ? (
                 <div style={{
-                  background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
+                  background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
                   padding: 32, textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 8 }}>💤</div>
@@ -2020,7 +2013,7 @@ export default function PortfolioPage() {
               <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
                 All Strategies ({strategies.length})
               </h2>
-              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+              <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: F.sm }}>
                   <thead>
                     <tr style={{ background: C.surface }}>
@@ -2078,7 +2071,7 @@ export default function PortfolioPage() {
                 <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
                   Recent Closed Trades
                 </h2>
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
+                <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
                   <DailyWaterfall trades={[...recentTrades].reverse()} />
                   <div style={{ marginTop: 16, overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: F.sm, minWidth: 600 }}>
