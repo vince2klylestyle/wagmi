@@ -2790,6 +2790,474 @@ function SlippageCalculator() {
   );
 }
 
+// ─── Order Book Depth Chart ───────────────────────────────────────────────────
+
+function OrderBookDepthChart() {
+  const CURRENT_PRICE = 95400;
+  const SPREAD = 2.40;
+  const SPREAD_PCT = 0.003;
+
+  // Seeded pseudo-random for stable values
+  function s(n: number): number {
+    return Math.abs((Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1);
+  }
+
+  // 8 bid levels (below current price) — deeper bids (bullish bias)
+  // Each level: { price offset from center, cumulative volume }
+  const bidLevels = Array.from({ length: 8 }, (_, i) => {
+    const pricePct = ((i + 1) * 0.5) / 8; // 0–0.5% below center
+    const price = CURRENT_PRICE * (1 - pricePct);
+    // Bullish market: bids have more volume than asks
+    const base = 1.8 + s(i * 3 + 10) * 2.2;
+    const cumVol = base * (i + 1) * 0.9;
+    return { price, cumVol, isBigWall: false };
+  });
+
+  // 8 ask levels (above current price) — shallower asks
+  const askLevels = Array.from({ length: 8 }, (_, i) => {
+    const pricePct = ((i + 1) * 0.5) / 8;
+    const price = CURRENT_PRICE * (1 + pricePct);
+    const base = 1.2 + s(i * 5 + 20) * 1.6;
+    const cumVol = base * (i + 1) * 0.75;
+    return { price, cumVol, isBigWall: false };
+  });
+
+  // Mark biggest walls
+  const maxBidVol = Math.max(...bidLevels.map((l) => l.cumVol));
+  const maxAskVol = Math.max(...askLevels.map((l) => l.cumVol));
+  bidLevels.forEach((l) => { if (l.cumVol === maxBidVol) l.isBigWall = true; });
+  askLevels.forEach((l) => { if (l.cumVol === maxAskVol) l.isBigWall = true; });
+
+  const SVG_W = 480;
+  const SVG_H = 160;
+  const CENTER_X = SVG_W / 2;
+  const BAR_AREA_W = CENTER_X - 30; // width available for each side
+  const BAR_TOP = 28;               // top of bar area (below title row)
+  const BAR_BOTTOM = SVG_H - 24;   // bottom of bar area (above x-axis labels)
+  const BAR_AREA_H = BAR_BOTTOM - BAR_TOP;
+  const BAR_MAX_VOL = Math.max(maxBidVol, maxAskVol) * 1.05;
+  const BAR_H = (BAR_AREA_H / 8) - 3; // height per bar
+
+  // X scale: maps cumulative volume to pixel width
+  function volToW(vol: number): number {
+    return (vol / BAR_MAX_VOL) * BAR_AREA_W;
+  }
+
+  // Y position for bar i (0 = closest to center price)
+  function barY(i: number): number {
+    return BAR_TOP + i * (BAR_H + 3);
+  }
+
+  // Price label helpers
+  const fmtPrice = (p: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(p);
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Market Depth (BTC)</div>
+        <div style={{ fontSize: F.xs, color: C.muted }}>
+          Spread:{' '}
+          <strong style={{ color: C.textSub }}>${SPREAD.toFixed(2)}</strong>
+          <span style={{ color: C.faint }}> ({SPREAD_PCT.toFixed(3)}%)</span>
+        </div>
+      </div>
+
+      {/* Legend row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+        {[
+          { color: C.bull, label: 'Bids (buy orders)' },
+          { color: C.bear, label: 'Asks (sell orders)' },
+          { color: C.warn, label: 'Large wall' },
+        ].map(({ color, label }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: F.xs, color: C.muted }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: color, display: 'inline-block', opacity: 0.85 }} />
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {/* SVG depth chart */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ display: 'block', width: '100%', minWidth: 320, height: SVG_H }}
+          aria-label="BTC order book depth chart"
+        >
+          <defs>
+            <linearGradient id="bidGrad" x1="1" x2="0" y1="0" y2="0">
+              <stop offset="0%" stopColor={C.bull} stopOpacity="0.8" />
+              <stop offset="100%" stopColor={C.bull} stopOpacity="0.25" />
+            </linearGradient>
+            <linearGradient id="askGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor={C.bear} stopOpacity="0.8" />
+              <stop offset="100%" stopColor={C.bear} stopOpacity="0.25" />
+            </linearGradient>
+            <linearGradient id="bidWallGrad" x1="1" x2="0" y1="0" y2="0">
+              <stop offset="0%" stopColor={C.warn} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={C.warn} stopOpacity="0.3" />
+            </linearGradient>
+            <linearGradient id="askWallGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor={C.warn} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={C.warn} stopOpacity="0.3" />
+            </linearGradient>
+          </defs>
+
+          {/* Bid bars — extend LEFT from center */}
+          {bidLevels.map((level, i) => {
+            const w = volToW(level.cumVol);
+            const y = barY(i);
+            const fill = level.isBigWall ? 'url(#bidWallGrad)' : 'url(#bidGrad)';
+            return (
+              <g key={`bid-${i}`}>
+                <rect
+                  x={CENTER_X - w}
+                  y={y}
+                  width={w}
+                  height={BAR_H}
+                  fill={fill}
+                  rx={2}
+                />
+                {level.isBigWall && (
+                  <text
+                    x={CENTER_X - w - 3}
+                    y={y + BAR_H / 2 + 1}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    fontSize={8}
+                    fontWeight="700"
+                    fill={C.warn}
+                    fontFamily="inherit"
+                  >
+                    WALL
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Ask bars — extend RIGHT from center */}
+          {askLevels.map((level, i) => {
+            const w = volToW(level.cumVol);
+            const y = barY(i);
+            const fill = level.isBigWall ? 'url(#askWallGrad)' : 'url(#askGrad)';
+            return (
+              <g key={`ask-${i}`}>
+                <rect
+                  x={CENTER_X}
+                  y={y}
+                  width={w}
+                  height={BAR_H}
+                  fill={fill}
+                  rx={2}
+                />
+                {level.isBigWall && (
+                  <text
+                    x={CENTER_X + w + 3}
+                    y={y + BAR_H / 2 + 1}
+                    textAnchor="start"
+                    dominantBaseline="middle"
+                    fontSize={8}
+                    fontWeight="700"
+                    fill={C.warn}
+                    fontFamily="inherit"
+                  >
+                    WALL
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Center price vertical line */}
+          <line
+            x1={CENTER_X} y1={BAR_TOP - 4}
+            x2={CENTER_X} y2={BAR_BOTTOM + 4}
+            stroke={C.brand}
+            strokeWidth={1.5}
+            strokeDasharray="4 2"
+          />
+
+          {/* Current price label */}
+          <rect
+            x={CENTER_X - 28} y={BAR_TOP - 18}
+            width={56} height={14}
+            rx={4}
+            fill={C.brand}
+            fillOpacity={0.15}
+            stroke={C.brand}
+            strokeOpacity={0.5}
+            strokeWidth={1}
+          />
+          <text
+            x={CENTER_X}
+            y={BAR_TOP - 8}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={8}
+            fontWeight="700"
+            fill={C.brand}
+            fontFamily="inherit"
+          >
+            {fmtPrice(CURRENT_PRICE)}
+          </text>
+
+          {/* X-axis price labels — bids side */}
+          {[bidLevels[0], bidLevels[3], bidLevels[7]].map((level, i) => (
+            <text
+              key={`bid-lbl-${i}`}
+              x={CENTER_X - volToW(level.cumVol) / 2}
+              y={BAR_BOTTOM + 14}
+              textAnchor="middle"
+              fontSize={7}
+              fill={C.muted}
+              fontFamily="inherit"
+            >
+              {fmtPrice(level.price)}
+            </text>
+          ))}
+
+          {/* X-axis price labels — asks side */}
+          {[askLevels[0], askLevels[3], askLevels[7]].map((level, i) => (
+            <text
+              key={`ask-lbl-${i}`}
+              x={CENTER_X + volToW(level.cumVol) / 2}
+              y={BAR_BOTTOM + 14}
+              textAnchor="middle"
+              fontSize={7}
+              fill={C.muted}
+              fontFamily="inherit"
+            >
+              {fmtPrice(level.price)}
+            </text>
+          ))}
+
+          {/* Side labels */}
+          <text x={CENTER_X - BAR_AREA_W + 4} y={BAR_TOP + 8} fontSize={9} fontWeight="700" fill={C.bull} fillOpacity={0.8} fontFamily="inherit">
+            BIDS
+          </text>
+          <text x={CENTER_X + BAR_AREA_W - 4} y={BAR_TOP + 8} textAnchor="end" fontSize={9} fontWeight="700" fill={C.bear} fillOpacity={0.8} fontFamily="inherit">
+            ASKS
+          </text>
+        </svg>
+      </div>
+
+      {/* Summary */}
+      <div style={{ marginTop: 8, fontSize: F.xs, color: C.muted, lineHeight: 1.5 }}>
+        Bids (green) extend left from{' '}
+        <strong style={{ color: C.textSub }}>${CURRENT_PRICE.toLocaleString()}</strong>; asks (red) extend right.
+        Deeper bids than asks indicates bullish market depth bias.
+        Large walls highlighted in <strong style={{ color: C.warn }}>amber</strong>.
+      </div>
+    </div>
+  );
+}
+
+// ─── Position Sizing Worksheet ────────────────────────────────────────────────
+
+function PositionSizingWorksheet() {
+  const [accountInput, setAccountInput] = useState('10000');
+
+  const account = Math.max(0, parseFloat(accountInput) || 0);
+  const RISK_PCT = 1.5;
+  const STOP_PCT = 0.6;
+  const PRICE = 95400;
+  const LEVERAGE = 3;
+
+  const maxRisk = (account * RISK_PCT) / 100;
+  const stopDistanceDollar = PRICE * (STOP_PCT / 100);
+  const positionNotional = stopDistanceDollar > 0 ? maxRisk / (STOP_PCT / 100) : 0;
+  const positionBtc = PRICE > 0 ? positionNotional / PRICE : 0;
+  const marginNeeded = LEVERAGE > 0 ? positionNotional / LEVERAGE : positionNotional;
+
+  const fmtDollar = (n: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+  type StepCardProps = {
+    step: number;
+    label: string;
+    formula: string;
+    result: string;
+    borderColor: string;
+    sublabel?: string;
+  };
+
+  const StepCard = ({ step, label, formula, result, borderColor, sublabel }: StepCardProps) => (
+    <div
+      style={{
+        background: C.surfaceHover,
+        border: `1px solid ${C.border}`,
+        borderLeft: `4px solid ${borderColor}`,
+        borderRadius: R.md,
+        padding: '12px 16px',
+        position: 'relative',
+      }}
+    >
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 2 }}>
+        Step {step} — {label}
+      </div>
+      <div style={{ fontSize: F.xs, color: C.faint, marginBottom: 6, fontStyle: 'italic' }}>{formula}</div>
+      <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text }}>{result}</div>
+      {sublabel && (
+        <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>{sublabel}</div>
+      )}
+    </div>
+  );
+
+  const Arrow = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2px 0' }}>
+      <svg width="16" height="20" viewBox="0 0 16 20" style={{ display: 'block' }}>
+        <line x1="8" y1="0" x2="8" y2="14" stroke={C.border} strokeWidth="2" />
+        <polygon points="4,11 8,18 12,11" fill={C.muted} />
+      </svg>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      {/* Header */}
+      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        Position Sizing Worksheet
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
+        Step-by-step WAGMI formula for correct position sizing. Edit your account size to update all values.
+      </div>
+
+      {/* Account size input */}
+      <div style={{ marginBottom: 16, maxWidth: 260 }}>
+        <label style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>
+          Account Size ($)
+        </label>
+        <input
+          type="number"
+          value={accountInput}
+          min="0"
+          onChange={(e) => setAccountInput(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: C.surfaceHover,
+            border: `1px solid ${C.brand}66`,
+            borderRadius: R.sm,
+            color: C.text,
+            fontSize: F.md,
+            fontWeight: 700,
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        />
+      </div>
+
+      {/* Step flow */}
+      <div style={{ maxWidth: 400 }}>
+        <StepCard
+          step={1}
+          label="Account Balance"
+          formula="Your starting capital"
+          result={fmtDollar(account)}
+          borderColor={C.brand}
+        />
+        <Arrow />
+        <StepCard
+          step={2}
+          label="Max Risk"
+          formula={`Account × ${RISK_PCT}% risk per trade`}
+          result={fmtDollar(maxRisk)}
+          borderColor={C.warn}
+          sublabel={`${RISK_PCT}% of ${fmtDollar(account)}`}
+        />
+        <Arrow />
+        <StepCard
+          step={3}
+          label="Stop Distance"
+          formula={`${STOP_PCT}% of entry price ($${PRICE.toLocaleString()})`}
+          result={`${STOP_PCT}% (${fmtDollar(stopDistanceDollar)})`}
+          borderColor={C.bear}
+          sublabel="Price moves this far → your trade idea is invalid"
+        />
+        <Arrow />
+        <StepCard
+          step={4}
+          label="Position Size"
+          formula="Max Risk ÷ Stop Distance"
+          result={`${fmtDollar(positionNotional)} notional`}
+          borderColor={C.bull}
+          sublabel={`= ${positionBtc.toFixed(4)} BTC`}
+        />
+        <Arrow />
+        <StepCard
+          step={5}
+          label="Units"
+          formula={`Notional ÷ Price ($${PRICE.toLocaleString()})`}
+          result={`${positionBtc.toFixed(4)} BTC`}
+          borderColor={C.info}
+          sublabel="Number of coins to buy"
+        />
+      </div>
+
+      {/* Leverage badge */}
+      {positionNotional > 0 && (
+        <div
+          style={{
+            marginTop: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 16px',
+            borderRadius: R.pill,
+            background: C.purple + '18',
+            border: `1px solid ${C.purple}44`,
+            fontSize: F.xs,
+            fontWeight: 700,
+            color: C.purpleLight,
+          }}
+        >
+          <span style={{ fontSize: 14 }}>⚡</span>
+          At {LEVERAGE}× leverage: Need{' '}
+          <strong style={{ color: C.warn, marginLeft: 2 }}>{fmtDollar(marginNeeded)} margin</strong>
+        </div>
+      )}
+
+      {/* Formula summary */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: '10px 14px',
+          background: C.surfaceHover,
+          borderRadius: R.sm,
+          fontSize: F.xs,
+          color: C.muted,
+          lineHeight: 1.7,
+        }}
+      >
+        <strong style={{ color: C.textSub }}>WAGMI Formula:</strong>{' '}
+        Position Size = (Account × Risk%) ÷ Stop Distance%{' '}
+        <span style={{ color: C.faint }}>
+          = ({fmtDollar(account)} × {RISK_PCT}%) ÷ {STOP_PCT}% = {fmtDollar(positionNotional)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CopyTrade() {
@@ -2869,6 +3337,9 @@ export default function CopyTrade() {
       {/* Risk Calculator */}
       <StandaloneRiskCalc />
 
+      {/* Position Sizing Worksheet */}
+      <PositionSizingWorksheet />
+
       {/* Slippage Calculator */}
       <SlippageCalculator />
 
@@ -2920,6 +3391,9 @@ export default function CopyTrade() {
 
       {/* Entry Zone Visual */}
       <EntryZoneVisual />
+
+      {/* Order Book Depth Chart */}
+      <OrderBookDepthChart />
 
       {/* Signal Cards */}
       {loading ? (
