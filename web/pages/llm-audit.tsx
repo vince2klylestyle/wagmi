@@ -1846,11 +1846,6 @@ export default function LlmAudit() {
           {/* Model Cost Breakdown */}
           {decisions.length > 0 && <ModelCostBreakdown decisions={decisions} />}
 
-          {/* Model Routing (placeholder closing) */}
-          {decisions.length > 0 && false && (
-            </div>
-          )}
-
           {/* Confidence Calibration */}
           {decisions.length > 0 && (
             <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
@@ -1888,6 +1883,9 @@ export default function LlmAudit() {
 
         {/* Right sidebar */}
         <div style={{ width: 280, flexShrink: 0 }}>
+          {/* Decision Speedometer */}
+          <DecisionSpeedometer />
+
           {/* Agent Accuracy Matrix */}
           {decisions.length > 0 && <AgentAccuracyMatrix decisions={decisions} />}
         </div>

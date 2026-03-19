@@ -1153,6 +1153,438 @@ function AlertsPanel() {
   );
 }
 
+// ─── Circuit Breaker Dashboard ────────────────────────────────────────────────
+
+type CbStatus = 'OK' | 'WARNING' | 'TRIGGERED';
+
+type CircuitBreaker = {
+  title: string;
+  limit: number | string;
+  current: number | string;
+  limitNum: number;
+  currentNum: number;
+  status: CbStatus;
+  kind: 'ring' | 'dots' | 'bar' | 'slots';
+  unit?: string;
+};
+
+function cbColor(status: CbStatus): string {
+  if (status === 'TRIGGERED') return C.bear;
+  if (status === 'WARNING') return C.warn;
+  return C.bull;
+}
+
+function cbStatusLabel(status: CbStatus): string {
+  if (status === 'TRIGGERED') return '✕ TRIGGERED';
+  if (status === 'WARNING') return '⚠ WARNING';
+  return '✓ OK';
+}
+
+/** Circular progress ring for daily loss limit */
+function CbRing({ limitNum, currentNum, status, label, sub }: { limitNum: number; currentNum: number; status: CbStatus; label: string; sub: string }) {
+  const cx = 36, cy = 36, r = 28;
+  const circumference = 2 * Math.PI * r;
+  const pct = Math.min(currentNum / limitNum, 1);
+  const dashOffset = circumference * (1 - pct);
+  const col = cbColor(status);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <svg width={72} height={72} viewBox="0 0 72 72">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.surface} strokeWidth={6} />
+        <circle
+          cx={cx} cy={cy} r={r}
+          fill="none"
+          stroke={col}
+          strokeWidth={6}
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          transform="rotate(-90 36 36)"
+          style={{ filter: `drop-shadow(0 0 4px ${col})` }}
+        />
+        <text x={cx} y={cy - 4} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={800} fill={col}>{label}</text>
+        <text x={cx} y={cy + 9} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill={C.muted}>{sub}</text>
+      </svg>
+    </div>
+  );
+}
+
+/** Dot streak display for consecutive losses */
+function CbDots({ limitNum, currentNum, status }: { limitNum: number; currentNum: number; status: CbStatus }) {
+  const col = cbColor(status);
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' as const, padding: '6px 0' }}>
+      {Array.from({ length: limitNum }, (_, i) => {
+        const filled = i < currentNum;
+        return (
+          <div
+            key={i}
+            style={{
+              width: 16, height: 16, borderRadius: '50%',
+              background: filled ? col : C.surface,
+              border: `2px solid ${filled ? col : C.border}`,
+              boxShadow: filled ? `0 0 6px ${col}` : 'none',
+              transition: 'all 0.2s',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Horizontal bar for drawdown limit */
+function CbBar({ limitNum, currentNum, status }: { limitNum: number; currentNum: number; status: CbStatus }) {
+  const pct = Math.min((currentNum / limitNum) * 100, 100);
+  const col = cbColor(status);
+  return (
+    <div style={{ padding: '8px 0' }}>
+      <div style={{ height: 10, background: C.surface, borderRadius: R.pill, overflow: 'hidden', position: 'relative' }}>
+        <div style={{
+          width: `${pct}%`, height: '100%', background: col,
+          borderRadius: R.pill, transition: 'width 0.4s',
+          boxShadow: `0 0 6px ${col}80`,
+        }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9, color: C.muted }}>
+        <span>0%</span>
+        <span style={{ color: col, fontWeight: 700 }}>{currentNum}% used</span>
+        <span>{limitNum}%</span>
+      </div>
+    </div>
+  );
+}
+
+/** Slot indicator for position limit */
+function CbSlots({ limitNum, currentNum, status }: { limitNum: number; currentNum: number; status: CbStatus }) {
+  const col = cbColor(status);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', padding: '6px 0' }}>
+      {Array.from({ length: limitNum }, (_, i) => {
+        const occupied = i < currentNum;
+        return (
+          <div
+            key={i}
+            style={{
+              width: 28, height: 20, borderRadius: R.xs,
+              background: occupied ? col + '30' : C.surface,
+              border: `1.5px solid ${occupied ? col : C.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 8, fontWeight: 700, color: occupied ? col : C.faint,
+              transition: 'all 0.2s',
+            }}
+          >
+            {occupied ? '●' : '○'}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CircuitBreakerStatus() {
+  const breakers: CircuitBreaker[] = [
+    { title: 'Daily Loss Limit', limit: '$500', current: '$0', limitNum: 500, currentNum: 0, status: 'OK', kind: 'ring', unit: '$' },
+    { title: 'Consecutive Losses', limit: '3 streak', current: '0 streak', limitNum: 3, currentNum: 0, status: 'OK', kind: 'dots' },
+    { title: 'Drawdown Limit', limit: '20%', current: '0.8%', limitNum: 20, currentNum: 0.8, status: 'OK', kind: 'bar', unit: '%' },
+    { title: 'Position Limit', limit: '3 open', current: '1 open', limitNum: 3, currentNum: 1, status: 'OK', kind: 'slots' },
+  ];
+
+  // Determine overall system status
+  const hasTriggered = breakers.some(b => b.status === 'TRIGGERED');
+  const hasWarning = breakers.some(b => b.status === 'WARNING');
+  const overallStatus: CbStatus = hasTriggered ? 'TRIGGERED' : hasWarning ? 'WARNING' : 'OK';
+  const overallColor = cbColor(overallStatus);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '18px 20px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Circuit Breaker Dashboard</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Circuit breakers automatically pause trading when limits are hit
+          </div>
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 800,
+          padding: '4px 12px', borderRadius: R.pill,
+          background: overallColor + '18', border: `1px solid ${overallColor}50`,
+          color: overallColor,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: overallColor, display: 'inline-block' }} />
+          {overallStatus === 'OK' ? '🛡 All Circuit Breakers: Normal' : overallStatus === 'WARNING' ? '⚠ Warning State' : '✕ Breaker Triggered'}
+        </span>
+      </div>
+
+      {/* 2×2 grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {breakers.map((b) => {
+          const col = cbColor(b.status);
+          const statusLabel = cbStatusLabel(b.status);
+          return (
+            <div
+              key={b.title}
+              style={{
+                background: C.surface,
+                border: `1px solid ${b.status !== 'OK' ? col + '60' : C.border}`,
+                borderRadius: R.lg,
+                padding: '14px 16px',
+              }}
+            >
+              {/* Card header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{b.title}</div>
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  padding: '1px 6px', borderRadius: R.pill,
+                  background: col + '20', color: col,
+                  border: `1px solid ${col}40`,
+                  whiteSpace: 'nowrap' as const,
+                }}>
+                  {statusLabel}
+                </span>
+              </div>
+
+              {/* Visual indicator */}
+              {b.kind === 'ring' && (
+                <CbRing
+                  limitNum={b.limitNum}
+                  currentNum={b.currentNum}
+                  status={b.status}
+                  label={b.current as string}
+                  sub={`limit ${b.limit}`}
+                />
+              )}
+              {b.kind === 'dots' && (
+                <CbDots limitNum={b.limitNum} currentNum={b.currentNum} status={b.status} />
+              )}
+              {b.kind === 'bar' && (
+                <CbBar limitNum={b.limitNum} currentNum={b.currentNum} status={b.status} />
+              )}
+              {b.kind === 'slots' && (
+                <CbSlots limitNum={b.limitNum} currentNum={b.currentNum} status={b.status} />
+              )}
+
+              {/* Limit / current footer */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 10 }}>
+                <span style={{ color: C.muted }}>Current: <span style={{ color: col, fontWeight: 700 }}>{b.current}</span></span>
+                <span style={{ color: C.faint }}>Limit: {b.limit}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bot Schedule Timeline ─────────────────────────────────────────────────────
+
+type ScheduleEvent = {
+  hour: number;
+  minute: number;
+  kind: 'regime' | 'signal' | 'trade' | 'veto' | 'future-regime' | 'future-signal';
+  label: string;
+  warning?: boolean;
+};
+
+function BotScheduleTimeline() {
+  const now = new Date();
+  const currentHour = now.getUTCHours();
+  const currentMinute = now.getUTCMinutes();
+  const nowDecimal = currentHour + currentMinute / 60;
+
+  const W = 480, H = 80;
+  const padL = 20, padR = 20, padT = 14, padB = 22;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const axisY = padT + chartH; // y of the main axis line
+
+  // Convert hour decimal to SVG x
+  function toX(h: number): number {
+    return padL + (h / 24) * chartW;
+  }
+
+  // Seeded schedule events
+  const pastEvents: ScheduleEvent[] = [
+    { hour: 6, minute: 0, kind: 'regime', label: 'regime check' },
+    { hour: 9, minute: 14, kind: 'signal', label: 'signal check' },
+    { hour: 10, minute: 32, kind: 'trade', label: 'TRADE BTC long' },
+    { hour: 12, minute: 15, kind: 'signal', label: 'signal check', warning: true },
+    { hour: 13, minute: 8, kind: 'veto', label: 'VETO HYPE' },
+  ];
+
+  // Future events relative to current time
+  const future1Decimal = nowDecimal + 1;
+  const future3Decimal = nowDecimal + 3;
+  const futureEvents: ScheduleEvent[] = [
+    { hour: Math.floor(future1Decimal) % 24, minute: Math.round((future1Decimal % 1) * 60), kind: 'future-regime', label: 'regime check' },
+    { hour: Math.floor(future3Decimal) % 24, minute: Math.round((future3Decimal % 1) * 60), kind: 'future-signal', label: 'signal check' },
+  ];
+
+  // Session background bands
+  const bands = [
+    { start: 0, end: 8,  color: '#2563eb', label: 'Asia',   labelPos: 4 },
+    { start: 7, end: 16, color: '#7c3aed', label: 'Europe', labelPos: 11 },
+    { start: 13, end: 22, color: '#16a34a', label: 'US',    labelPos: 17 },
+  ];
+
+  function eventColor(kind: ScheduleEvent['kind'], warning?: boolean): string {
+    if (warning) return C.warn;
+    if (kind === 'trade') return C.bull;
+    if (kind === 'veto') return C.bear;
+    if (kind === 'regime') return C.info;
+    if (kind === 'signal') return C.muted;
+    if (kind === 'future-regime') return C.info;
+    if (kind === 'future-signal') return C.muted;
+    return C.muted;
+  }
+
+  function eventSymbol(kind: ScheduleEvent['kind']): string {
+    if (kind === 'trade') return '▲';
+    if (kind === 'veto') return '✕';
+    return '●';
+  }
+
+  const nowX = toX(nowDecimal);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px' }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>Today's Bot Activity Timeline</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>UTC — past events left of NOW, upcoming right</div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        {/* Session bands */}
+        {bands.map((b) => (
+          <rect
+            key={b.label}
+            x={toX(b.start)}
+            y={padT}
+            width={toX(b.end) - toX(b.start)}
+            height={chartH}
+            fill={b.color}
+            fillOpacity={0.08}
+            rx={2}
+          />
+        ))}
+
+        {/* Session band labels */}
+        {bands.map((b) => (
+          <text
+            key={b.label + '_lbl'}
+            x={toX(b.labelPos)}
+            y={padT + 8}
+            fontSize={7}
+            fill={b.color}
+            fillOpacity={0.55}
+            fontWeight={600}
+          >
+            {b.label}
+          </text>
+        ))}
+
+        {/* Axis line */}
+        <line x1={padL} y1={axisY} x2={W - padR} y2={axisY} stroke={C.border} strokeWidth={1} />
+
+        {/* Hour ticks at 0,4,8,12,16,20 */}
+        {[0, 4, 8, 12, 16, 20, 24].map(h => (
+          <g key={h}>
+            <line x1={toX(h)} y1={axisY} x2={toX(h)} y2={axisY + 4} stroke={C.border} strokeWidth={0.75} />
+            {h < 24 && (
+              <text x={toX(h)} y={axisY + 12} textAnchor="middle" fontSize={7} fill={C.faint}>
+                {String(h).padStart(2, '0')}
+              </text>
+            )}
+          </g>
+        ))}
+
+        {/* Past events */}
+        {pastEvents.map((ev, i) => {
+          const x = toX(ev.hour + ev.minute / 60);
+          const col = eventColor(ev.kind, ev.warning);
+          const sym = eventSymbol(ev.kind);
+          const dotR = ev.kind === 'trade' ? 5 : 4;
+          return (
+            <g key={i}>
+              {/* Vertical stem */}
+              <line x1={x} y1={padT + 6} x2={x} y2={axisY} stroke={col} strokeWidth={1} strokeOpacity={0.5} />
+              {/* Symbol */}
+              <text x={x} y={padT + 4} textAnchor="middle" dominantBaseline="middle" fontSize={ev.kind === 'trade' ? 10 : 8} fill={col} fontWeight={800}>
+                {sym}
+              </text>
+              {/* Dot on axis */}
+              <circle cx={x} cy={axisY} r={dotR} fill={col} style={{ filter: `drop-shadow(0 0 3px ${col})` }} />
+              {/* Label below axis */}
+              <text
+                x={x}
+                y={axisY + 16}
+                textAnchor="middle"
+                fontSize={6.5}
+                fill={col}
+                fontWeight={ev.kind === 'trade' || ev.kind === 'veto' ? 700 : 500}
+              >
+                {String(ev.hour).padStart(2,'0')}:{String(ev.minute).padStart(2,'0')}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Future events — dotted */}
+        {futureEvents.map((ev, i) => {
+          const x = toX(ev.hour + ev.minute / 60);
+          const col = eventColor(ev.kind);
+          return (
+            <g key={'f' + i}>
+              <line x1={x} y1={padT + 10} x2={x} y2={axisY} stroke={col} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.45} />
+              {/* Open circle */}
+              <circle cx={x} cy={padT + 8} r={4} fill="none" stroke={col} strokeWidth={1.5} strokeOpacity={0.6} />
+              <circle cx={x} cy={axisY} r={3.5} fill="none" stroke={col} strokeWidth={1.2} strokeDasharray="2 2" strokeOpacity={0.55} />
+              <text x={x} y={axisY + 16} textAnchor="middle" fontSize={6.5} fill={C.muted}>
+                +{i === 0 ? '1h' : '3h'}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* NOW line */}
+        <line
+          x1={nowX} y1={padT - 4}
+          x2={nowX} y2={axisY + 4}
+          stroke={C.text}
+          strokeWidth={2}
+          style={{ filter: `drop-shadow(0 0 3px ${C.brand})` }}
+        />
+        {/* NOW label */}
+        <rect x={nowX - 14} y={padT - 13} width={28} height={10} rx={2} fill={C.brand} />
+        <text x={nowX} y={padT - 7} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontWeight={800} fill="#fff">
+          NOW
+        </text>
+      </svg>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: 9, color: C.muted, flexWrap: 'wrap' as const }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.info, display: 'inline-block' }} /> Regime check
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.muted, display: 'inline-block' }} /> Signal check
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.bull, display: 'inline-block' }} /> Trade
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.bear, display: 'inline-block' }} /> Veto
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'none', border: `1.5px dashed ${C.muted}`, display: 'inline-block' }} /> Upcoming
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -1248,6 +1680,11 @@ export default function TodayPage() {
           <AlertsPanel />
         </div>
 
+        {/* ── Bot Schedule Timeline ── */}
+        <div style={{ marginBottom: 24 }}>
+          <BotScheduleTimeline />
+        </div>
+
         {/* ── Regime Dial + Streak Bar ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
           <RegimeDial regime={regime} />
@@ -1318,6 +1755,12 @@ export default function TodayPage() {
           <div style={{ flex: '1 1 320px' }}>
             <HourlyTradeTimeline />
           </div>
+        </div>
+
+        {/* ── Safety: Circuit Breaker Dashboard ── */}
+        <div style={{ marginBottom: 28 }}>
+          <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Safety</h2>
+          <CircuitBreakerStatus />
         </div>
 
         {/* ── Intraday Activity Heatmap ── */}
