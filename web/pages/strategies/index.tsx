@@ -695,6 +695,338 @@ function StrategyCard({ strategy, index }: { strategy: Strategy; index: number }
   );
 }
 
+// ─── StrategyDNAStrip ─────────────────────────────────────────────────────────
+
+function StrategyDNAStrip() {
+  const nodes = [
+    { abbr: 'RGM', label: 'Regime Trend', desc: 'Trend + regime classification', color: C.info },
+    { abbr: 'MCZ', label: 'Monte Carlo Zones', desc: 'S/R zone detection', color: C.brand },
+    { abbr: 'CSC', label: 'Confidence Scorer', desc: 'Multi-factor scoring', color: C.bull },
+    { abbr: 'MTF', label: 'Multi-Tier Quality', desc: 'Multi-TF alignment', color: C.warn },
+  ];
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '20px 24px',
+      marginBottom: 28,
+      boxShadow: S.sm,
+    }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 20 }}>
+        Strategy Pipeline
+      </div>
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 0,
+        overflowX: 'auto',
+        paddingBottom: 4,
+      }}>
+        {nodes.map((node, i) => (
+          <React.Fragment key={node.abbr}>
+            {/* Node */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              flexShrink: 0,
+              minWidth: 100,
+            }}>
+              <div style={{
+                width: 52,
+                height: 52,
+                borderRadius: '50%',
+                background: node.color + '22',
+                border: `2px solid ${node.color}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: F.xs,
+                fontWeight: 800,
+                color: node.color,
+                letterSpacing: '0.04em',
+                boxShadow: `0 0 12px ${node.color}33`,
+              }}>
+                {node.abbr}
+              </div>
+              <div style={{ marginTop: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub, whiteSpace: 'nowrap' }}>
+                  {node.label}
+                </div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 2, whiteSpace: 'nowrap' }}>
+                  {node.desc}
+                </div>
+              </div>
+            </div>
+
+            {/* Arrow connector */}
+            {i < nodes.length - 1 && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                paddingTop: 14,
+                flexShrink: 0,
+                minWidth: 64,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                  <div style={{ width: 28, height: 1, background: C.borderBright }} />
+                  <span style={{ color: C.borderBright, fontSize: 12, lineHeight: 1 }}>▶</span>
+                </div>
+                <div style={{ fontSize: 9, color: C.faint, marginTop: 4, whiteSpace: 'nowrap' }}>
+                  feeds into
+                </div>
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+
+        {/* Final arrow to ensemble */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          paddingTop: 14,
+          flexShrink: 0,
+          minWidth: 64,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <div style={{ width: 28, height: 1, background: C.borderBright }} />
+            <span style={{ color: C.borderBright, fontSize: 12, lineHeight: 1 }}>▶</span>
+          </div>
+          <div style={{ fontSize: 9, color: C.faint, marginTop: 4, whiteSpace: 'nowrap' }}>
+            feeds into
+          </div>
+        </div>
+
+        {/* Ensemble node */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          flexShrink: 0,
+          minWidth: 110,
+        }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${C.brand}44 0%, ${C.purple}44 100%)`,
+            border: `2px solid ${C.brand}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: `0 0 18px ${C.brand}44`,
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: C.brand, letterSpacing: '0.06em', lineHeight: 1.2 }}>
+              VOTE
+            </div>
+            <div style={{ fontSize: 8, color: C.textSub, fontWeight: 600, letterSpacing: '0.03em', lineHeight: 1.2 }}>
+              ENSEMBLE
+            </div>
+          </div>
+          <div style={{ marginTop: 8, textAlign: 'center' }}>
+            <div style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub, whiteSpace: 'nowrap' }}>
+              Ensemble
+            </div>
+            <div style={{
+              marginTop: 5,
+              display: 'inline-block',
+              padding: '2px 8px',
+              borderRadius: R.pill,
+              background: C.brand + '22',
+              border: `1px solid ${C.brand}66`,
+              fontSize: 9,
+              fontWeight: 700,
+              color: C.brand,
+              whiteSpace: 'nowrap',
+              letterSpacing: '0.04em',
+            }}>
+              Weighted Veto Mode
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StrategyPerformancePolarChart ────────────────────────────────────────────
+
+function StrategyPerformancePolarChart() {
+  const CX = 150;
+  const CY = 150;
+  const R_OUTER = 110;
+  const LEVELS = 5;
+
+  const axes = [
+    { label: 'Win Rate', unit: '%', max: 100 },
+    { label: 'Avg Return', unit: '$', max: 500 },
+    { label: 'Regime Cov.', unit: '%', max: 100 },
+    { label: 'Sig. Freq.', unit: '/mo', max: 15 },
+    { label: 'Reliability', unit: '%', max: 100 },
+  ];
+  const N = axes.length;
+
+  const strategies = [
+    { name: 'Regime Trend', abbr: 'RGM', color: C.info, values: [82, 320, 90, 8, 85] },
+    { name: 'Monte Carlo', abbr: 'MCZ', color: C.brand, values: [75, 480, 70, 4, 78] },
+    { name: 'Conf. Scorer', abbr: 'CSC', color: C.bull, values: [70, 280, 60, 12, 72] },
+    { name: 'Multi-Tier', abbr: 'MTF', color: C.warn, values: [78, 350, 50, 10, 80] },
+  ];
+
+  // Convert polar angle + radius to cartesian, starting from top (−90°)
+  function polar(angleIdx: number, fraction: number): { x: number; y: number } {
+    const angle = (Math.PI * 2 * angleIdx) / N - Math.PI / 2;
+    return {
+      x: CX + R_OUTER * fraction * Math.cos(angle),
+      y: CY + R_OUTER * fraction * Math.sin(angle),
+    };
+  }
+
+  function pointsStr(fractions: number[]): string {
+    return fractions.map((f, i) => {
+      const p = polar(i, f);
+      return `${p.x},${p.y}`;
+    }).join(' ');
+  }
+
+  // Grid pentagon at each level
+  const gridLevels = Array.from({ length: LEVELS }, (_, li) => {
+    const fraction = (li + 1) / LEVELS;
+    const pts = Array.from({ length: N }, (_, i) => polar(i, fraction));
+    return pts.map(p => `${p.x},${p.y}`).join(' ');
+  });
+
+  // Axis tip positions for labels
+  const axisTips = Array.from({ length: N }, (_, i) => polar(i, 1.18));
+
+  // Label alignment by position
+  function labelAnchor(x: number): string {
+    if (x < CX - 10) return 'end';
+    if (x > CX + 10) return 'start';
+    return 'middle';
+  }
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '20px 24px',
+      marginBottom: 28,
+      boxShadow: S.sm,
+    }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 16 }}>
+        Strategy Capability Profile
+      </div>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* Chart */}
+        <svg
+          viewBox="0 0 300 300"
+          width={300}
+          height={300}
+          style={{ flexShrink: 0, display: 'block', overflow: 'visible' }}
+          aria-label="Strategy capability polar radar chart"
+        >
+          {/* Grid pentagons */}
+          {gridLevels.map((pts, li) => (
+            <polygon
+              key={li}
+              points={pts}
+              fill="none"
+              stroke={C.border}
+              strokeWidth="1"
+              opacity={0.7}
+            />
+          ))}
+
+          {/* Axis lines from center to tip */}
+          {Array.from({ length: N }, (_, i) => {
+            const tip = polar(i, 1);
+            return (
+              <line
+                key={i}
+                x1={CX}
+                y1={CY}
+                x2={tip.x}
+                y2={tip.y}
+                stroke={C.faint}
+                strokeWidth="1"
+              />
+            );
+          })}
+
+          {/* Strategy polygons */}
+          {strategies.map(strat => {
+            const fractions = strat.values.map((v, i) => v / axes[i].max);
+            return (
+              <polygon
+                key={strat.abbr}
+                points={pointsStr(fractions)}
+                fill={strat.color + '20'}
+                stroke={strat.color}
+                strokeWidth="1.5"
+                strokeOpacity={0.8}
+              />
+            );
+          })}
+
+          {/* Axis labels */}
+          {axisTips.map((tip, i) => (
+            <text
+              key={i}
+              x={tip.x}
+              y={tip.y + (tip.y < CY ? -2 : 4)}
+              textAnchor={labelAnchor(tip.x)}
+              fontSize="9"
+              fill={C.textSub}
+              fontFamily="Inter, sans-serif"
+              fontWeight="600"
+            >
+              {axes[i].label}
+            </text>
+          ))}
+        </svg>
+
+        {/* Legend */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
+          {strategies.map(strat => (
+            <div key={strat.abbr} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 12,
+                height: 12,
+                background: strat.color,
+                borderRadius: 2,
+                flexShrink: 0,
+                opacity: 0.85,
+              }} />
+              <div>
+                <span style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{strat.name}</span>
+                <span style={{ fontSize: 10, color: C.muted, marginLeft: 5 }}>({strat.abbr})</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
+              <div>Win Rate: % of profitable trades</div>
+              <div>Avg Return: per-trade P&L ($)</div>
+              <div>Regime Cov.: market conditions covered</div>
+              <div>Sig. Freq.: signals per month</div>
+              <div>Reliability: consistency score</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyList() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -783,6 +1115,9 @@ export default function StrategyList() {
         </div>
       </div>
 
+      {/* Strategy DNA Strip */}
+      {!loading && <StrategyDNAStrip />}
+
       {/* Summary stats */}
       {!loading && strategies.length > 0 && (
         <div style={{
@@ -812,6 +1147,9 @@ export default function StrategyList() {
           ))}
         </div>
       )}
+
+      {/* Strategy Capability Polar Chart */}
+      {!loading && <StrategyPerformancePolarChart />}
 
       {/* Regime-Strategy Compatibility Matrix */}
       {!loading && <RegimeStrategyMatrix />}
