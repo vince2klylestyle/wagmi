@@ -1027,6 +1027,389 @@ function StrategyPerformancePolarChart() {
   );
 }
 
+// ─── StrategyWeightHistory ────────────────────────────────────────────────────
+
+function StrategyWeightHistory() {
+  const VW = 520;
+  const VH = 120;
+  const MARGIN = { top: 12, right: 12, bottom: 32, left: 32 };
+
+  const chartW = VW - MARGIN.left - MARGIN.right;
+  const chartH = VH - MARGIN.top - MARGIN.bottom;
+
+  // 10 weight-update periods (index 0 = oldest, 9 = current)
+  const weightData: number[][] = [
+    [35, 30, 20, 15],
+    [36, 29, 20, 15],
+    [37, 28, 20, 15],
+    [38, 27, 21, 14],
+    [40, 26, 20, 14],
+    [40, 25, 21, 14],
+    [39, 26, 21, 14],
+    [39, 27, 20, 14],
+    [38, 28, 20, 14],
+    [38, 28, 20, 14], // current
+  ];
+
+  const PERIODS = weightData.length;
+  const strategies = [
+    { abbr: 'RGM', color: C.info },
+    { abbr: 'MCZ', color: C.brand },
+    { abbr: 'CSC', color: C.bull },
+    { abbr: 'MTF', color: C.warn },
+  ];
+
+  // Build stacked cumulative values per period
+  // stackedData[stratIdx][periodIdx] = cumulative % up to that strat
+  const cumData: number[][] = weightData.map(period => {
+    const cum: number[] = [];
+    let running = 0;
+    for (let s = 0; s < strategies.length; s++) {
+      running += period[s];
+      cum.push(running);
+    }
+    return cum;
+  });
+
+  // x position for a period index
+  const xAt = (i: number) => MARGIN.left + (i / (PERIODS - 1)) * chartW;
+
+  // y position for a percentage value (0-100 → bottom-to-top)
+  const yAt = (pct: number) => MARGIN.top + chartH * (1 - pct / 100);
+
+  // Build SVG polygon points for a stacked area band [stratIdx]
+  // Band from cumData[period][stratIdx-1] (bottom) to cumData[period][stratIdx] (top)
+  function bandPoints(stratIdx: number): string {
+    const topPts = weightData.map((_, pi) => `${xAt(pi)},${yAt(cumData[pi][stratIdx])}`);
+    const bottomPts = weightData.map((_, pi) => {
+      const bot = stratIdx === 0 ? 0 : cumData[pi][stratIdx - 1];
+      return `${xAt(pi)},${yAt(bot)}`;
+    }).reverse();
+    return [...topPts, ...bottomPts].join(' ');
+  }
+
+  // Build SVG polyline points for top edge of a band
+  function linePoints(stratIdx: number): string {
+    return weightData.map((_, pi) => `${xAt(pi)},${yAt(cumData[pi][stratIdx])}`).join(' ');
+  }
+
+  const currentWeights = weightData[PERIODS - 1];
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '20px 24px',
+      marginBottom: 28,
+      boxShadow: S.sm,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Strategy Weight Evolution</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Weights auto-adjust based on recent performance
+          </div>
+        </div>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${VW} ${VH}`}
+        style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+        aria-label="Strategy weight evolution stacked area chart"
+      >
+        {/* Y-axis grid lines at 25, 50, 75, 100% */}
+        {[25, 50, 75, 100].map(pct => {
+          const y = yAt(pct);
+          return (
+            <g key={pct}>
+              <line
+                x1={MARGIN.left}
+                y1={y}
+                x2={VW - MARGIN.right}
+                y2={y}
+                stroke={C.border}
+                strokeWidth="1"
+                strokeDasharray="3 3"
+              />
+              <text
+                x={MARGIN.left - 4}
+                y={y + 3}
+                textAnchor="end"
+                fontSize="8"
+                fill={C.muted}
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {pct}%
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Stacked area bands (bottom to top = MTF, CSC, MCZ, RGM) */}
+        {[3, 2, 1, 0].map(si => (
+          <polygon
+            key={si}
+            points={bandPoints(si)}
+            fill={strategies[si].color + '30'}
+            stroke="none"
+          />
+        ))}
+
+        {/* Top-edge strokes */}
+        {[3, 2, 1, 0].map(si => (
+          <polyline
+            key={si}
+            points={linePoints(si)}
+            fill="none"
+            stroke={strategies[si].color}
+            strokeWidth="1.5"
+            strokeOpacity={1}
+          />
+        ))}
+
+        {/* X-axis period labels */}
+        {weightData.map((_, pi) => (
+          <text
+            key={pi}
+            x={xAt(pi)}
+            y={VH - 4}
+            textAnchor="middle"
+            fontSize="8"
+            fill={pi === PERIODS - 1 ? C.textSub : C.muted}
+            fontFamily="JetBrains Mono, monospace"
+            fontWeight={pi === PERIODS - 1 ? '700' : '400'}
+          >
+            {pi === PERIODS - 1 ? 'Now' : `T-${PERIODS - 1 - pi}`}
+          </text>
+        ))}
+      </svg>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 8 }}>
+        {strategies.map((s, si) => (
+          <div key={s.abbr} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{
+              width: 10,
+              height: 10,
+              background: s.color,
+              borderRadius: 2,
+              flexShrink: 0,
+            }} />
+            <span style={{ fontSize: F.xs, color: C.textSub, fontWeight: 600 }}>{s.abbr}</span>
+            <span style={{ fontSize: F.xs, color: C.muted }}>{currentWeights[si]}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── LiveSignalMatrix ─────────────────────────────────────────────────────────
+
+type SignalCell = { dir: 'BUY' | 'SELL' | 'WAIT'; conf?: number };
+
+function LiveSignalMatrix() {
+  const symbols = ['BTC', 'SOL', 'HYPE'];
+  const stratRows: { abbr: string; label: string }[] = [
+    { abbr: 'RGM', label: 'Regime Trend' },
+    { abbr: 'MCZ', label: 'Monte Carlo' },
+    { abbr: 'CSC', label: 'Confidence' },
+    { abbr: 'MTF', label: 'Multi-TF' },
+  ];
+
+  // Seeded signal data [stratIdx][symbolIdx]
+  const matrixData: SignalCell[][] = [
+    // RGM: BTC=BUY 87%, SOL=BUY 78%, HYPE=WAIT
+    [{ dir: 'BUY', conf: 87 }, { dir: 'BUY', conf: 78 }, { dir: 'WAIT' }],
+    // MCZ: BTC=BUY 74%, SOL=BUY 81%, HYPE=BUY 68%
+    [{ dir: 'BUY', conf: 74 }, { dir: 'BUY', conf: 81 }, { dir: 'BUY', conf: 68 }],
+    // CSC: BTC=BUY 82%, SOL=WAIT, HYPE=SELL 62%
+    [{ dir: 'BUY', conf: 82 }, { dir: 'WAIT' }, { dir: 'SELL', conf: 62 }],
+    // MTF: BTC=BUY 76%, SOL=BUY 72%, HYPE=WAIT
+    [{ dir: 'BUY', conf: 76 }, { dir: 'BUY', conf: 72 }, { dir: 'WAIT' }],
+  ];
+
+  // Consensus per symbol: count of BUY votes
+  const consensus = symbols.map((_, si) => {
+    const buys = matrixData.filter(row => row[si].dir === 'BUY').length;
+    return buys;
+  });
+
+  function cellBg(cell: SignalCell): string {
+    if (cell.dir === 'BUY') {
+      const alpha = cell.conf ? 0.05 + (cell.conf / 100) * 0.12 : 0.06;
+      return `rgba(22,163,74,${alpha.toFixed(2)})`;
+    }
+    if (cell.dir === 'SELL') {
+      const alpha = cell.conf ? 0.05 + (cell.conf / 100) * 0.12 : 0.06;
+      return `rgba(220,38,38,${alpha.toFixed(2)})`;
+    }
+    return 'rgba(45,55,72,0.3)';
+  }
+
+  function cellTextColor(cell: SignalCell): string {
+    if (cell.dir === 'BUY') return '#4ade80';
+    if (cell.dir === 'SELL') return '#f87171';
+    return C.muted;
+  }
+
+  function dirIcon(dir: 'BUY' | 'SELL' | 'WAIT'): string {
+    if (dir === 'BUY') return '↑';
+    if (dir === 'SELL') return '↓';
+    return '—';
+  }
+
+  function consensusColor(buyCount: number): string {
+    if (buyCount >= 3) return '#4ade80';
+    if (buyCount === 2) return '#fbbf24';
+    return '#f87171';
+  }
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '20px 24px',
+      marginBottom: 28,
+      boxShadow: S.md,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Live Signal Matrix</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Current signal direction and confidence per strategy × symbol
+          </div>
+        </div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          padding: '4px 10px',
+          borderRadius: R.pill,
+          background: '#166534',
+          border: '1px solid #16a34a',
+          fontSize: F.xs,
+          fontWeight: 700,
+          color: '#4ade80',
+          letterSpacing: '0.04em',
+          flexShrink: 0,
+        }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#4ade80',
+            display: 'inline-block',
+            boxShadow: '0 0 5px #4ade80',
+          }} />
+          LIVE
+        </div>
+      </div>
+
+      {/* Matrix table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 3, width: '100%', minWidth: 380 }}>
+          <thead>
+            <tr>
+              <th style={{ padding: '4px 8px', textAlign: 'left', minWidth: 110 }} />
+              {symbols.map(sym => (
+                <th key={sym} style={{
+                  padding: '4px 8px',
+                  fontSize: F.xs,
+                  fontWeight: 700,
+                  color: C.textSub,
+                  textAlign: 'center',
+                  minWidth: 88,
+                  letterSpacing: '0.05em',
+                }}>
+                  {sym}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stratRows.map((strat, si) => (
+              <tr key={strat.abbr}>
+                <td style={{ padding: '2px 8px 2px 4px' }}>
+                  <div style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub }}>{strat.abbr}</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>{strat.label}</div>
+                </td>
+                {symbols.map((_, ci) => {
+                  const cell = matrixData[si][ci];
+                  return (
+                    <td key={ci} style={{ padding: '2px' }}>
+                      <div style={{
+                        background: cellBg(cell),
+                        borderRadius: R.sm,
+                        padding: '7px 6px',
+                        textAlign: 'center',
+                        border: `1px solid ${cell.dir === 'WAIT' ? C.border : (cell.dir === 'BUY' ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.25)')}`,
+                      }}>
+                        <div style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: cellTextColor(cell),
+                          lineHeight: 1,
+                        }}>
+                          {dirIcon(cell.dir)}
+                        </div>
+                        {cell.conf !== undefined ? (
+                          <div style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: cellTextColor(cell),
+                            marginTop: 2,
+                            opacity: 0.85,
+                          }}>
+                            {cell.conf}%
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>wait</div>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+
+            {/* Consensus row */}
+            <tr>
+              <td style={{ padding: '6px 8px 2px 4px' }}>
+                <div style={{ fontSize: F.xs, fontWeight: 800, color: C.textSub, letterSpacing: '0.03em' }}>
+                  CONSENSUS
+                </div>
+              </td>
+              {consensus.map((buyCount, ci) => (
+                <td key={ci} style={{ padding: '2px' }}>
+                  <div style={{
+                    background: `${consensusColor(buyCount)}18`,
+                    borderRadius: R.sm,
+                    padding: '6px 6px',
+                    textAlign: 'center',
+                    border: `1px solid ${consensusColor(buyCount)}44`,
+                  }}>
+                    <div style={{
+                      fontSize: F.xs,
+                      fontWeight: 700,
+                      color: consensusColor(buyCount),
+                    }}>
+                      {buyCount}/4 BUY
+                    </div>
+                  </div>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyList() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1115,6 +1498,9 @@ export default function StrategyList() {
         </div>
       </div>
 
+      {/* Live Signal Matrix — hero section (most important info first) */}
+      {!loading && <LiveSignalMatrix />}
+
       {/* Strategy DNA Strip */}
       {!loading && <StrategyDNAStrip />}
 
@@ -1153,6 +1539,9 @@ export default function StrategyList() {
 
       {/* Regime-Strategy Compatibility Matrix */}
       {!loading && <RegimeStrategyMatrix />}
+
+      {/* Strategy Weight Evolution — performance section */}
+      {!loading && <StrategyWeightHistory />}
 
       {/* Strategy PnL Comparison Chart — shown when strategies are loaded */}
       {!loading && strategies.length > 0 && (
