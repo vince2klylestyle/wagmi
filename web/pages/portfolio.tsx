@@ -9,6 +9,52 @@ import type { Strategy, TradeHistoryResponse, TradeRecord } from '../src/types';
 
 type StrategiesResponse = Strategy[];
 
+// ─── Strategy P&L Ladder ──────────────────────────────────────────────────────
+
+function StrategyPnlLadder({ strategies }: { strategies: Strategy[] }) {
+  const items = strategies
+    .map((s) => ({ id: s.id, pnl: s.pnl_realized ?? 0 }))
+    .filter((s) => s.pnl !== 0)
+    .sort((a, b) => b.pnl - a.pnl);
+
+  if (!items.length) return null;
+
+  const maxAbs = Math.max(...items.map((s) => Math.abs(s.pnl)), 1);
+  const total = items.reduce((a, s) => a + s.pnl, 0);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Strategy P&L Contribution</span>
+        <span style={{ fontSize: F.xs, fontWeight: 700, color: pnlColor(total) }}>Total: {fmtUsd(total)}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((s) => {
+          const isProfit = s.pnl >= 0;
+          const barW = Math.abs(s.pnl) / maxAbs * 100;
+          const color = isProfit ? C.bull : C.bear;
+          return (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 120, fontSize: F.xs, color: C.textSub, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{s.id}</span>
+              {/* Diverging bar - center at 50% */}
+              <div style={{ flex: 1, height: 14, position: 'relative', background: C.surface, borderRadius: R.pill, overflow: 'hidden' }}>
+                {isProfit ? (
+                  <div style={{ position: 'absolute', left: '50%', top: 0, height: '100%', width: `${barW / 2}%`, background: color, opacity: 0.8, borderRadius: '0 4px 4px 0' }} />
+                ) : (
+                  <div style={{ position: 'absolute', right: `${50}%`, top: 0, height: '100%', width: `${barW / 2}%`, background: color, opacity: 0.8, borderRadius: '4px 0 0 4px' }} />
+                )}
+                <div style={{ position: 'absolute', left: '50%', top: 0, height: '100%', width: 1, background: C.border }} />
+              </div>
+              <span style={{ width: 68, fontSize: F.xs, fontWeight: 700, color, textAlign: 'right', flexShrink: 0 }}>{fmtUsd(s.pnl)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 10, color: C.muted, textAlign: 'center' }}>← losses · center = $0 · profits →</div>
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function pnlColor(v: number | null | undefined): string {
@@ -580,6 +626,9 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Strategy P&L Ladder ── */}
+            {strategies.length > 0 && <StrategyPnlLadder strategies={strategies} />}
 
             {/* ── All Strategies Status ── */}
             <div style={{ marginBottom: 32 }}>
