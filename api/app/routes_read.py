@@ -248,6 +248,62 @@ def post_heartbeat(strategy_id: str, payload: dict = Body(...), db: Session = De
     return {"ok": True, "strategy_id": strategy_id, "last_seen": last_seen.isoformat()}
 
 
+@router.get("/ohlcv")
+async def get_ohlcv(symbol: str = "BTC", timeframe: str = "1h", limit: int = 200):
+    """
+    GET /v1/ohlcv?symbol=BTC&timeframe=1h&limit=200
+    Proxies Binance/Bybit public klines — no auth required.
+    Returns [{time, open, high, low, close, volume}] sorted oldest-first.
+    """
+    import httpx
+
+    # Map symbols to exchange-specific ticker and source
+    EXCHANGE_MAP = {
+        "BTC":  {"url": "https://api.binance.com/api/v3/klines", "sym": "BTCUSDT",  "source": "binance"},
+        "ETH":  {"url": "https://api.binance.com/api/v3/klines", "sym": "ETHUSDT",  "source": "binance"},
+        "SOL":  {"url": "https://api.binance.com/api/v3/klines", "sym": "SOLUSDT",  "source": "binance"},
+        "HYPE": {"url": "https://api.bybit.com/v5/market/kline", "sym": "HYPEUSDT", "source": "bybit"},
+    }
+    TF_MAP_BINANCE = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
+    TF_MAP_BYBIT   = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}
+
+    sym = symbol.upper()
+    cfg = EXCHANGE_MAP.get(sym)
+    if cfg is None:
+        raise HTTPException(status_code=400, detail=f"Unknown symbol: {sym}. Supported: {list(EXCHANGE_MAP)}")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if cfg["source"] == "binance":
+                interval = TF_MAP_BINANCE.get(timeframe, "1h")
+                resp = await client.get(cfg["url"], params={"symbol": cfg["sym"], "interval": interval, "limit": min(limit, 1000)})
+                resp.raise_for_status()
+                raw = resp.json()
+                candles = [
+                    {"time": int(row[0]) // 1000, "open": float(row[1]), "high": float(row[2]),
+                     "low": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+                    for row in raw
+                ]
+            else:  # bybit
+                interval = TF_MAP_BYBIT.get(timeframe, "60")
+                resp = await client.get(cfg["url"], params={"category": "linear", "symbol": cfg["sym"], "interval": interval, "limit": min(limit, 1000)})
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data.get("result", {}).get("list", [])
+                # Bybit returns newest-first: [startTime, open, high, low, close, volume, turnover]
+                candles = sorted([
+                    {"time": int(row[0]) // 1000, "open": float(row[1]), "high": float(row[2]),
+                     "low": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+                    for row in raw
+                ], key=lambda x: x["time"])
+
+        return candles
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Upstream fetch failed: {exc}")
+
+
 @router.get("/debug/fail")
 def debug_fail(request: Request, fail: Optional[int] = None):
     """Return 500 when ?fail=1 or header X-Debug-Fail: 1 is present. Used for alert testing."""

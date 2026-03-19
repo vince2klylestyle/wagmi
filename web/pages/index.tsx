@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
 import type { BacktestResult, ActivityEvent, LlmMarketView } from '../src/types';
+import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from 'lightweight-charts';
 
 // ─── API helper ───────────────────────────────────────────────────────────────
 
@@ -192,31 +193,44 @@ function HeatCell({ value, label, low, high, invertBull = false }: {
   );
 }
 
-function MarketHeatmap({ signals, loading, onSelect }: {
+function MarketHeatmap({ signals, llmView, loading, onSelect, activeChart }: {
   signals: Record<string, Signal>;
+  llmView: LlmMarketView | null;
   loading: boolean;
   onSelect: (sym: string) => void;
+  activeChart: string;
 }) {
-  const rows = [
+  const rows: Array<{
+    label: string;
+    group?: string;
+    render: (s: Signal) => { value: number; label: string; low: number; high: number; invertBull?: boolean };
+  }> = [
     {
       label: 'Score',
-      render: (s: Signal) => ({
-        value: s.score,
-        label: `${s.score}`,
-        low: 0, high: 100,
-      }),
+      group: 'Signal',
+      render: (s) => ({ value: s.score, label: `${s.score}`, low: 0, high: 100 }),
     },
     {
-      label: 'RSI',
-      render: (s: Signal) => ({
+      label: 'RSI(14)',
+      group: 'Signal',
+      render: (s) => ({
         value: s.rsi14 ?? 50,
         label: s.rsi14 != null ? s.rsi14.toFixed(1) : '—',
         low: 20, high: 80,
       }),
     },
     {
-      label: 'ATR %',
-      render: (s: Signal) => ({
+      label: 'Trend',
+      group: 'Signal',
+      render: (s) => {
+        const up = s.sma20 > s.sma50;
+        return { value: up ? 1 : 0, label: up ? '↑ Bull' : '↓ Bear', low: 0, high: 1 };
+      },
+    },
+    {
+      label: 'ATR%',
+      group: 'Volatility',
+      render: (s) => ({
         value: s.atr_pct ?? 0,
         label: s.atr_pct != null ? s.atr_pct.toFixed(2) + '%' : '—',
         low: 0, high: 5,
@@ -224,34 +238,53 @@ function MarketHeatmap({ signals, loading, onSelect }: {
       }),
     },
     {
-      label: 'Trend',
-      render: (s: Signal) => {
-        const up = s.sma20 > s.sma50;
-        return { value: up ? 1 : 0, label: up ? '↑ Up' : '↓ Down', low: 0, high: 1 };
-      },
+      label: 'Vol Spike',
+      group: 'Volatility',
+      render: (s) => ({
+        value: s.vol_spike ? 1 : 0,
+        label: s.vol_spike ? '⚡ Yes' : '— No',
+        low: 0, high: 1,
+      }),
     },
     {
       label: 'Zone',
-      render: (s: Signal) => {
+      group: 'Structure',
+      render: (s) => {
         const p = s.price;
         const { deepAccum, accum, distrib, safeDistrib } = s.zones;
-        let zone = 'Neutral';
-        let score = 0.5;
-        if (p <= deepAccum) { zone = 'Deep Accum'; score = 0.95; }
-        else if (p <= accum) { zone = 'Accum'; score = 0.7; }
-        else if (p >= safeDistrib) { zone = 'Safe Distrib'; score = 0.05; }
-        else if (p >= distrib) { zone = 'Distrib'; score = 0.25; }
+        let zone = 'Neutral'; let score = 0.5;
+        if (p <= deepAccum)      { zone = 'Deep Buy'; score = 0.95; }
+        else if (p <= accum)     { zone = 'Buy Zone'; score = 0.72; }
+        else if (p >= safeDistrib) { zone = 'Safe Sell'; score = 0.05; }
+        else if (p >= distrib)   { zone = 'Sell Zone'; score = 0.28; }
         return { value: score, label: zone, low: 0, high: 1 };
+      },
+    },
+    {
+      label: 'SMA Dist%',
+      group: 'Structure',
+      render: (s) => {
+        const dist = s.sma20 > 0 ? ((s.price - s.sma20) / s.sma20) * 100 : 0;
+        const clamped = Math.max(-10, Math.min(10, dist));
+        return {
+          value: clamped + 10, // shift to 0-20 scale
+          label: (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%',
+          low: 0, high: 20,
+        };
       },
     },
   ];
 
+  const STANCE_COLOR: Record<string, string> = {
+    proceed: C.bull, go: C.bull, skip: C.muted, flat: C.muted, flip: '#a78bfa', veto: C.bear,
+  };
+
   return (
     <div style={{ overflowX: 'auto', borderRadius: R.md, border: `1px solid ${C.border}` }}>
-      <table style={{ borderCollapse: 'collapse', minWidth: 420, width: '100%' }}>
+      <table style={{ borderCollapse: 'collapse', minWidth: 460, width: '100%' }}>
         <thead>
           <tr style={{ background: C.surface }}>
-            <th style={{ padding: '10px 14px', fontSize: F.xs, color: C.muted, fontWeight: 600, textAlign: 'left', borderRight: `1px solid ${C.border}` }}>
+            <th style={{ padding: '12px 16px', fontSize: F.xs, color: C.muted, fontWeight: 600, textAlign: 'left', borderRight: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
               Indicator
             </th>
             {SYMBOLS.map((sym) => (
@@ -259,14 +292,13 @@ function MarketHeatmap({ signals, loading, onSelect }: {
                 key={sym}
                 onClick={() => onSelect(sym)}
                 style={{
-                  padding: '10px 14px',
-                  fontSize: F.sm,
-                  fontWeight: 700,
-                  color: C.brand,
-                  cursor: 'pointer',
-                  textAlign: 'center',
+                  padding: '12px 16px',
+                  fontSize: F.md, fontWeight: 800,
+                  color: sym === activeChart ? '#fff' : C.brand,
+                  background: sym === activeChart ? C.brand + '33' : 'transparent',
+                  cursor: 'pointer', textAlign: 'center',
                   borderRight: `1px solid ${C.border}`,
-                  userSelect: 'none',
+                  userSelect: 'none', transition: 'background 0.15s',
                 }}
                 title={`Click to view ${sym} chart`}
               >
@@ -277,29 +309,54 @@ function MarketHeatmap({ signals, loading, onSelect }: {
         </thead>
         <tbody>
           {/* Price row */}
-          <tr style={{ borderTop: `1px solid ${C.border}` }}>
-            <td style={{ padding: '10px 14px', fontSize: F.xs, color: C.muted, fontWeight: 600, borderRight: `1px solid ${C.border}` }}>
+          <tr style={{ borderTop: `1px solid ${C.border}`, background: '#0f172a' }}>
+            <td style={{ padding: '12px 16px', fontSize: F.xs, color: C.muted, fontWeight: 700, borderRight: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
               Price
             </td>
             {SYMBOLS.map((sym) => {
               const s = signals[sym];
               return (
-                <td key={sym} style={{ padding: '10px 14px', textAlign: 'center', fontSize: F.sm, fontWeight: 600, color: C.text, borderRight: `1px solid ${C.border}` }}>
-                  {loading ? <Skeleton h={14} /> : s ? fmtUsd(s.price, s.price > 100 ? 2 : 4) : <span style={{ color: C.muted }}>—</span>}
+                <td key={sym} style={{ padding: '12px 16px', textAlign: 'center', fontSize: F.md, fontWeight: 700, color: C.text, borderRight: `1px solid ${C.border}` }}>
+                  {loading ? <Skeleton h={16} /> : s ? fmtUsd(s.price, s.price > 100 ? 2 : 4) : <span style={{ color: C.muted }}>—</span>}
                 </td>
               );
             })}
           </tr>
 
+          {/* AI Stance row */}
+          {llmView?.per_symbol && (
+            <tr style={{ borderTop: `1px solid ${C.border}` }}>
+              <td style={{ padding: '12px 16px', fontSize: F.xs, color: C.muted, fontWeight: 700, borderRight: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                🤖 AI Stance
+              </td>
+              {SYMBOLS.map((sym) => {
+                const dec = llmView.per_symbol[sym];
+                if (!dec) return <td key={sym} style={{ padding: '12px 16px', background: C.heatNeutral, borderRight: `1px solid ${C.border}` }} />;
+                const action = (dec.action || 'skip').toLowerCase();
+                const label  = dec.is_veto ? 'VETO' : action === 'proceed' || action === 'go' ? 'GO' : action === 'flip' ? 'FLIP' : 'SKIP';
+                const color  = STANCE_COLOR[dec.is_veto ? 'veto' : action] || C.muted;
+                const confPct = dec.confidence != null ? Math.round(dec.confidence * 100) : null;
+                return (
+                  <td key={sym} style={{ padding: '10px 16px', textAlign: 'center', borderRight: `1px solid ${C.border}`, background: color + '11' }}>
+                    <span style={{ fontSize: F.xs, fontWeight: 800, color, display: 'block' }}>{label}</span>
+                    {confPct != null && <span style={{ fontSize: 10, color: C.muted }}>{confPct}%</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+
+          {/* Signal rows */}
           {rows.map((row) => (
             <tr key={row.label} style={{ borderTop: `1px solid ${C.border}` }}>
-              <td style={{ padding: '10px 14px', fontSize: F.xs, color: C.muted, fontWeight: 600, borderRight: `1px solid ${C.border}` }}>
+              <td style={{ padding: '11px 16px', fontSize: F.xs, color: C.muted, fontWeight: 600, borderRight: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 9, color: C.faint, textTransform: 'uppercase', display: 'block', marginBottom: 1 }}>{row.group}</span>
                 {row.label}
               </td>
               {SYMBOLS.map((sym) => {
                 const s = signals[sym];
-                if (!s) return <td key={sym} style={{ padding: '10px 14px', background: C.heatNeutral, borderRight: `1px solid ${C.border}` }} />;
-                if (loading) return <td key={sym} style={{ padding: '10px 14px', borderRight: `1px solid ${C.border}` }}><Skeleton h={14} /></td>;
+                if (!s) return <td key={sym} style={{ padding: '11px 16px', background: C.heatNeutral, borderRight: `1px solid ${C.border}` }} />;
+                if (loading) return <td key={sym} style={{ padding: '11px 16px', borderRight: `1px solid ${C.border}` }}><Skeleton h={14} /></td>;
                 const { value, label, low, high, invertBull } = row.render(s) as any;
                 return <HeatCell key={sym} value={value} label={label} low={low} high={high} invertBull={invertBull} />;
               })}
@@ -307,12 +364,22 @@ function MarketHeatmap({ signals, loading, onSelect }: {
           ))}
         </tbody>
       </table>
+
       {/* Legend */}
-      <div style={{ padding: '8px 14px', background: C.surface, display: 'flex', gap: 16, fontSize: F.xs, color: C.muted, borderTop: `1px solid ${C.border}` }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatBull2, marginRight: 4 }} />Strong bull</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatNeutral, marginRight: 4 }} />Neutral</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.heatBear2, marginRight: 4 }} />Strong bear</span>
-        <span style={{ marginLeft: 'auto' }}>Click symbol header to view chart</span>
+      <div style={{ padding: '10px 16px', background: C.surface, display: 'flex', gap: 16, fontSize: F.xs, color: C.muted, borderTop: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+        {[
+          { color: C.heatBull2, label: 'Strong bull' },
+          { color: C.heatBull1 + '88', label: 'Mild bull' },
+          { color: C.heatNeutral, label: 'Neutral' },
+          { color: C.heatBear1 + '88', label: 'Mild bear' },
+          { color: C.heatBear2, label: 'Strong bear' },
+        ].map(({ color, label }) => (
+          <span key={label}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: color, marginRight: 5, verticalAlign: 'middle' }} />
+            {label}
+          </span>
+        ))}
+        <span style={{ marginLeft: 'auto' }}>Click symbol header to switch chart</span>
       </div>
     </div>
   );
@@ -361,42 +428,344 @@ function ActivityTicker({ events }: { events: ActivityEvent[] }) {
   );
 }
 
-// ─── TradingView Chart ────────────────────────────────────────────────────────
+// ─── Candle Chart with Bot Overlays (lightweight-charts v5) ──────────────────
 
-function TradingViewChart({ symbol }: { symbol: string }) {
+type Candle = { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number };
+
+const CHART_TIMEFRAMES = ['15m', '1h', '4h', '1d'] as const;
+type Timeframe = typeof CHART_TIMEFRAMES[number];
+
+function CandleChart({
+  symbol,
+  apiBase,
+  zones,
+  signalLevels,
+  timeframe,
+}: {
+  symbol: string;
+  apiBase: string;
+  zones?: Signal['zones'] | null;
+  signalLevels?: { entry?: number; sl?: number; tp1?: number; tp2?: number; side?: string } | null;
+  timeframe: Timeframe;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const tvSymbol = TV_SYMBOLS[symbol] || `BINANCE:${symbol}USDT`;
+  const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const priceLinesRef = useRef<IPriceLine[]>([]);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
 
+  // Initialize chart once on mount (browser only)
   useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = '';
-    const widgetDiv = document.createElement('div');
-    widgetDiv.className = 'tradingview-widget-container__widget';
-    widgetDiv.style.cssText = 'height:100%;width:100%';
-    containerRef.current.appendChild(widgetDiv);
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-    script.async = true;
-    script.textContent = JSON.stringify({
-      autosize: true,
-      symbol: tvSymbol,
-      interval: '60',
-      timezone: 'Etc/UTC',
-      theme: 'dark',
-      style: '1',
-      locale: 'en',
-      hide_top_toolbar: false,
-      hide_legend: false,
-      allow_symbol_change: false,
-      save_image: false,
-      hide_volume: false,
-      support_host: 'https://www.tradingview.com',
-    });
-    containerRef.current.appendChild(script);
-  }, [tvSymbol]);
+    if (typeof window === 'undefined' || !containerRef.current) return;
 
-  return <div className="tradingview-widget-container" ref={containerRef} style={{ height: 400, width: '100%' }} />;
+    let chart: IChartApi;
+    let destroyed = false;
+
+    (async () => {
+      const lc = await import('lightweight-charts');
+      if (destroyed || !containerRef.current) return;
+
+      containerRef.current.innerHTML = '';
+      chart = lc.createChart(containerRef.current, {
+        layout: { background: { color: C.card }, textColor: C.textSub },
+        grid: { vertLines: { color: C.border }, horzLines: { color: C.border } },
+        crosshair: { mode: lc.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: C.border },
+        timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false },
+        handleScroll: true,
+        handleScale: true,
+      });
+      chartRef.current = chart;
+
+      // Volume histogram (in a separate pane)
+      const volSeries = chart.addSeries(lc.HistogramSeries, {
+        color: C.brand + '55',
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'vol',
+      });
+      chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+      volumeSeriesRef.current = volSeries;
+
+      // Candlestick series
+      const candleSeries = chart.addSeries(lc.CandlestickSeries, {
+        upColor: C.bull,
+        downColor: C.bear,
+        borderUpColor: C.bull,
+        borderDownColor: C.bear,
+        wickUpColor: C.bull,
+        wickDownColor: C.bear,
+      });
+      candleSeriesRef.current = candleSeries;
+
+      // Auto-resize via ResizeObserver
+      const ro = new ResizeObserver(() => {
+        if (containerRef.current && !destroyed) {
+          chart.applyOptions({ width: containerRef.current.clientWidth });
+        }
+      });
+      ro.observe(containerRef.current);
+      roRef.current = ro;
+    })();
+
+    return () => {
+      destroyed = true;
+      roRef.current?.disconnect();
+      chartRef.current?.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      priceLinesRef.current = [];
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch + render candles when symbol/timeframe changes
+  useEffect(() => {
+    if (!candleSeriesRef.current) return;
+    setStatus('loading');
+
+    fetch(`${apiBase}/v1/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=300`)
+      .then((r) => r.json())
+      .then((raw: any[]) => {
+        if (!Array.isArray(raw) || raw.length === 0) { setStatus('error'); return; }
+        const candles: Candle[] = raw.map((c) => ({ ...c, time: c.time as UTCTimestamp }));
+        const sorted = [...candles].sort((a, b) => a.time - b.time);
+        if (candleSeriesRef.current) {
+          candleSeriesRef.current.setData(sorted);
+          volumeSeriesRef.current?.setData(
+            sorted.map((c) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? C.bull + '66' : C.bear + '66' }))
+          );
+          chartRef.current?.timeScale().fitContent();
+        }
+        setStatus('ok');
+      })
+      .catch(() => setStatus('error'));
+  }, [symbol, timeframe, apiBase]);
+
+  // Apply zone bands + signal price lines whenever they change
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    // Clear previous price lines
+    priceLinesRef.current.forEach((pl) => { try { series.removePriceLine(pl); } catch {} });
+    priceLinesRef.current = [];
+
+    const lines: IPriceLine[] = [];
+
+    (async () => {
+      const { LineStyle } = await import('lightweight-charts');
+
+      // Zone dashed lines
+      if (zones) {
+        const zoneLines = [
+          { price: zones.deepAccum,   color: '#16a34acc', title: '▶ Deep Buy' },
+          { price: zones.accum,       color: '#22c55ecc', title: '▶ Buy Zone' },
+          { price: zones.distrib,     color: '#ef4444cc', title: '◀ Sell Zone' },
+          { price: zones.safeDistrib, color: '#b91c1ccc', title: '◀ Safe Sell' },
+        ];
+        for (const z of zoneLines) {
+          if (!z.price || z.price === 0) continue;
+          lines.push(series.createPriceLine({ price: z.price, color: z.color, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: z.title }));
+        }
+      }
+
+      // Signal entry/SL/TP solid lines
+      if (signalLevels) {
+        const sigLines = [
+          { price: signalLevels.sl,    color: '#ef4444', title: 'SL',    width: 2 },
+          { price: signalLevels.entry, color: '#f59e0b', title: 'Entry', width: 2 },
+          { price: signalLevels.tp1,   color: '#34d399', title: 'TP1',   width: 2 },
+          { price: signalLevels.tp2,   color: '#16a34a', title: 'TP2',   width: 1 },
+        ];
+        for (const l of sigLines) {
+          if (!l.price || l.price === 0) continue;
+          lines.push(series.createPriceLine({ price: l.price!, color: l.color, lineWidth: l.width as any, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: l.title }));
+        }
+      }
+
+      priceLinesRef.current = lines;
+    })();
+  }, [zones, signalLevels]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', height: 620, background: C.card, borderRadius: R.md }} />
+      {status === 'loading' && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
+          Loading candles…
+        </div>
+      )}
+      {status === 'error' && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
+          Chart unavailable
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Signal Panel (manual trading reference) ──────────────────────────────────
+
+function SignalPanel({
+  symbol,
+  signal,
+  llmDec,
+  regime,
+}: {
+  symbol: string;
+  signal?: Signal | null;
+  llmDec?: any | null;
+  regime: string;
+}) {
+  const action = (llmDec?.action || 'skip').toLowerCase();
+  const isGo   = action === 'proceed' || action === 'go';
+  const isVeto = llmDec?.is_veto;
+  const conf   = llmDec?.confidence ?? null;
+  const confPct = conf != null ? Math.round(conf * 100) : null;
+  const stanceColor = isVeto ? C.bear : isGo ? C.bull : C.muted;
+  const stanceLabel = isVeto ? 'VETO' : isGo ? 'GO' : 'SKIP';
+
+  const REGIME_COLOR: Record<string, string> = {
+    trend: C.bull, range: '#60a5fa', panic: C.bear,
+    high_volatility: '#fbbf24', low_liquidity: '#64748b',
+    news_dislocation: '#7c3aed', unknown: C.muted, neutral: C.muted,
+  };
+  const regimeKey = regime.toLowerCase().replace(' ', '_');
+  const regimeColor = REGIME_COLOR[regimeKey] || C.muted;
+
+  // Price ladder entries (sorted by price for visual)
+  const levels = signal ? [
+    { label: 'TP2',   price: signal.zones?.safeDistrib, color: '#16a34a', icon: '⬆' },
+    { label: 'TP1',   price: signal.zones?.distrib,     color: '#34d399', icon: '⬆' },
+    { label: 'Entry', price: signal.price,              color: '#f59e0b', icon: '◆' },
+    { label: 'SL',    price: signal.zones?.deepAccum,   color: C.bear,    icon: '⬇' },
+  ].filter(l => l.price && l.price > 0) : [];
+
+  const highP = levels.length ? Math.max(...levels.map(l => l.price!)) : 0;
+  const lowP  = levels.length ? Math.min(...levels.map(l => l.price!)) : 0;
+  const range = highP - lowP || 1;
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '18px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14,
+      height: '100%',
+      boxSizing: 'border-box',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>{symbol}</span>
+        <span style={{
+          fontSize: F.xs, fontWeight: 700, padding: '3px 10px', borderRadius: R.pill,
+          background: stanceColor + '22', color: stanceColor, border: `1px solid ${stanceColor}44`,
+        }}>
+          {stanceLabel}
+        </span>
+      </div>
+
+      {/* Regime */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: F.xs, color: C.muted }}>Regime</span>
+        <span style={{
+          fontSize: F.xs, fontWeight: 700, padding: '2px 8px', borderRadius: R.pill,
+          background: regimeColor + '22', color: regimeColor,
+        }}>
+          {regime.toUpperCase()}
+        </span>
+      </div>
+
+      {/* AI Confidence bar */}
+      {confPct != null && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+            <span style={{ fontSize: F.xs, color: C.muted }}>AI Confidence</span>
+            <span style={{ fontSize: F.xs, fontWeight: 700, color: stanceColor }}>{confPct}%</span>
+          </div>
+          <div style={{ height: 5, background: C.border, borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${confPct}%`, height: '100%', background: stanceColor, borderRadius: 3, transition: 'width 0.4s ease' }} />
+          </div>
+        </div>
+      )}
+
+      {/* LLM notes */}
+      {llmDec?.notes && (
+        <div style={{
+          fontSize: F.xs, color: C.textSub, lineHeight: 1.5,
+          background: '#0f172a', borderRadius: R.sm, padding: '8px 10px',
+          borderLeft: `2px solid ${stanceColor}`,
+          maxHeight: 72, overflow: 'hidden',
+        }}>
+          {llmDec.notes}
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ height: 1, background: C.border }} />
+
+      {/* Price Signal Section */}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        Signal Levels
+      </div>
+
+      {signal ? (
+        <>
+          {/* Visual price ladder */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {levels.sort((a, b) => (b.price ?? 0) - (a.price ?? 0)).map((lvl) => {
+              const pct = highP > lowP ? ((lvl.price! - lowP) / range) * 100 : 50;
+              return (
+                <div key={lvl.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, color: lvl.color, width: 12, textAlign: 'center' }}>{lvl.icon}</span>
+                  <span style={{ fontSize: F.xs, color: C.muted, width: 36 }}>{lvl.label}</span>
+                  <div style={{ flex: 1, height: 3, background: C.border, borderRadius: 2 }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: lvl.color + '88', borderRadius: 2 }} />
+                  </div>
+                  <span style={{ fontSize: F.xs, fontWeight: 600, color: lvl.color, minWidth: 70, textAlign: 'right' }}>
+                    {fmtUsd(lvl.price, (lvl.price ?? 0) > 100 ? 2 : 4)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Key metrics */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {[
+              { label: 'Score', value: `${signal.score ?? '—'}`, color: (signal.score ?? 0) > 60 ? C.bull : C.warn },
+              { label: 'RSI', value: signal.rsi14 != null ? signal.rsi14.toFixed(1) : '—', color: signal.rsi14 != null && signal.rsi14 < 35 ? C.bull : signal.rsi14 != null && signal.rsi14 > 65 ? C.bear : C.muted },
+              { label: 'ATR %', value: signal.atr_pct != null ? signal.atr_pct.toFixed(2) + '%' : '—', color: C.muted },
+              { label: 'Vol Spike', value: signal.vol_spike ? 'YES' : 'No', color: signal.vol_spike ? C.warn : C.muted },
+            ].map(m => (
+              <div key={m.label} style={{ background: '#0f172a', borderRadius: R.sm, padding: '8px 10px' }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{m.label}</div>
+                <div style={{ fontSize: F.sm, fontWeight: 700, color: m.color }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Zone label */}
+          <div style={{
+            textAlign: 'center', fontSize: F.xs, fontWeight: 600,
+            padding: '6px 10px', borderRadius: R.sm, background: C.brand + '18', color: C.brand,
+            border: `1px solid ${C.brand}33`,
+          }}>
+            {signal.label ?? 'Observation'}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', padding: '12px 0' }}>
+          No signal data — bot may be offline
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Strategy Card ────────────────────────────────────────────────────────────
@@ -495,6 +864,7 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
   const [activeChart, setActiveChart] = useState('BTC');
+  const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('1h');
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const apiBase = resolveApiBase();
@@ -678,7 +1048,7 @@ export default function Home() {
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
-          sub={btRes ? `${btRes.config?.days ?? 30}-day backtest` : 'Waiting for data'}
+          sub={btRes ? `${backtest?.config?.days ?? 30}-day backtest` : 'Waiting for data'}
           color={btRes && btRes.total_return_pct > 0 ? C.bull : C.bear}
           loading={loading}
         />
@@ -726,7 +1096,7 @@ export default function Home() {
             <>
               <SparklineChart data={sparkData} width={180} height={48} />
               <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>
-                {btRes ? `$${(btRes.config?.starting_equity ?? 50000).toLocaleString()} → ${fmtUsd(btRes.final_equity)}` : 'No backtest data'}
+                {btRes ? `$${(backtest?.config?.starting_equity ?? 50000).toLocaleString()} → ${fmtUsd(btRes.final_equity)}` : 'No backtest data'}
               </div>
             </>
           )}
@@ -747,37 +1117,73 @@ export default function Home() {
             )}
           </div>
         </div>
-        <MarketHeatmap signals={signals} loading={loading} onSelect={setActiveChart} />
+        <MarketHeatmap signals={signals} llmView={llmView} loading={loading} onSelect={setActiveChart} activeChart={activeChart} />
       </div>
 
-      {/* ── Chart ────────────────────────────────────── */}
+      {/* ── Chart + Signal Panel ─────────────────────── */}
       <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Chart (1H)</h2>
-          <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+        {/* Controls row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Chart</h2>
+
+          {/* Symbol tabs */}
+          <div style={{ display: 'flex', gap: 5, marginLeft: 6 }}>
             {SYMBOLS.map((sym) => (
-              <button
-                key={sym}
-                onClick={() => setActiveChart(sym)}
-                style={{
-                  padding: '5px 14px',
-                  borderRadius: R.pill,
-                  border: `1px solid ${activeChart === sym ? C.brand : C.border}`,
-                  background: activeChart === sym ? C.brand : 'transparent',
-                  color: activeChart === sym ? '#fff' : C.muted,
-                  fontSize: F.sm,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
+              <button key={sym} onClick={() => setActiveChart(sym)} style={{
+                padding: '5px 14px', borderRadius: R.pill, cursor: 'pointer', transition: 'all 0.15s',
+                border: `1px solid ${activeChart === sym ? C.brand : C.border}`,
+                background: activeChart === sym ? C.brand : 'transparent',
+                color: activeChart === sym ? '#fff' : C.muted,
+                fontSize: F.sm, fontWeight: 600,
+              }}>
                 {sym}
               </button>
             ))}
           </div>
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 20, background: C.border, margin: '0 4px' }} />
+
+          {/* Timeframe tabs */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {CHART_TIMEFRAMES.map((tf) => (
+              <button key={tf} onClick={() => setActiveTimeframe(tf)} style={{
+                padding: '4px 10px', borderRadius: R.sm, cursor: 'pointer', transition: 'all 0.15s',
+                border: `1px solid ${activeTimeframe === tf ? C.brand + '88' : C.border}`,
+                background: activeTimeframe === tf ? C.brand + '22' : 'transparent',
+                color: activeTimeframe === tf ? C.brand : C.muted,
+                fontSize: F.xs, fontWeight: 600,
+              }}>
+                {tf}
+              </button>
+            ))}
+          </div>
+
+          {/* Zone legend */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: F.xs, color: C.muted, flexWrap: 'wrap' }}>
+            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#22c55e', verticalAlign: 'middle', marginRight: 4 }} />Buy zones</span>
+            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#ef4444', verticalAlign: 'middle', marginRight: 4, borderTop: '1px dashed #ef4444' }} />Sell zones</span>
+            <span><span style={{ display: 'inline-block', width: 22, height: 2, background: '#f59e0b', verticalAlign: 'middle', marginRight: 4 }} />Signal levels</span>
+          </div>
         </div>
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card }}>
-          <TradingViewChart symbol={activeChart} />
+
+        {/* Two-column: chart (large) + signal panel */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 14, alignItems: 'stretch' }}>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card, minHeight: 620 }}>
+            <CandleChart
+              symbol={activeChart}
+              apiBase={apiBase}
+              zones={signals[activeChart]?.zones ?? null}
+              signalLevels={null}
+              timeframe={activeTimeframe}
+            />
+          </div>
+          <SignalPanel
+            symbol={activeChart}
+            signal={signals[activeChart] ?? null}
+            llmDec={llmView?.per_symbol?.[activeChart] ?? null}
+            regime={regime}
+          />
         </div>
       </div>
 
