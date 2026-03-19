@@ -899,6 +899,260 @@ function MarketSessionClock() {
   );
 }
 
+// ─── Today Equity Mini ────────────────────────────────────────────────────────
+
+function TodayEquityMini() {
+  const W = 340, H = 80;
+  const paddingL = 6, paddingR = 6, paddingT = 10, paddingB = 16;
+  const chartW = W - paddingL - paddingR;
+  const chartH = H - paddingT - paddingB;
+
+  // Seeded equity data: 25 points across today's hours (~+$180 gain overall)
+  const baseEquity = 50000;
+  const seedPoints: number[] = [
+    50000, 50012, 50008, 50025, 50019, 50038, 50045, 50031, 50060,
+    50072, 50055, 50088, 50103, 50095, 50118, 50134, 50128, 50152,
+    50163, 50148, 50170, 50162, 50178, 50180, 50180,
+  ];
+
+  const currentEquity = seedPoints[seedPoints.length - 1];
+  const gain = currentEquity - baseEquity;
+  const isUp = gain >= 0;
+  const lineColor = isUp ? C.bull : C.bear;
+  const fillColor = isUp ? C.bull + '15' : C.bear + '15';
+
+  const minVal = Math.min(...seedPoints) - 20;
+  const maxVal = Math.max(...seedPoints) + 20;
+  const range = maxVal - minVal;
+
+  function toSvgX(i: number): number {
+    return paddingL + (i / (seedPoints.length - 1)) * chartW;
+  }
+  function toSvgY(val: number): number {
+    return paddingT + chartH - ((val - minVal) / range) * chartH;
+  }
+
+  const polylinePoints = seedPoints
+    .map((v, i) => `${toSvgX(i)},${toSvgY(v)}`)
+    .join(' ');
+
+  // Fill path: go along the line then close at the bottom
+  const firstX = toSvgX(0);
+  const lastX = toSvgX(seedPoints.length - 1);
+  const bottomY = paddingT + chartH;
+  const fillPath =
+    `M ${firstX},${bottomY} ` +
+    seedPoints.map((v, i) => `${i === 0 ? 'L' : 'L'} ${toSvgX(i)},${toSvgY(v)}`).join(' ') +
+    ` L ${lastX},${bottomY} Z`;
+
+  const gainLabel = (isUp ? '+' : '') + fmtUsd(gain) + ' today';
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '14px 16px',
+      flex: 1,
+      minWidth: 0,
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>Today's Equity</span>
+        <span style={{
+          fontSize: 10, fontWeight: 700,
+          padding: '2px 8px', borderRadius: R.pill,
+          background: lineColor + '20',
+          color: lineColor,
+          border: `1px solid ${lineColor}40`,
+        }}>
+          {gainLabel}
+        </span>
+      </div>
+
+      {/* SVG chart */}
+      <svg
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ display: 'block', overflow: 'visible' }}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="equityFillGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        {/* Gradient fill under the line */}
+        <path d={fillPath} fill="url(#equityFillGrad)" />
+
+        {/* The equity line itself */}
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth={1.8}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Dot at the current (last) point */}
+        <circle
+          cx={toSvgX(seedPoints.length - 1)}
+          cy={toSvgY(currentEquity)}
+          r={3.5}
+          fill={lineColor}
+          style={{ filter: `drop-shadow(0 0 4px ${lineColor})` }}
+        />
+      </svg>
+
+      {/* Bottom labels */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+        <span style={{ fontSize: 10, color: C.muted }}>{fmtUsd(baseEquity, 0)}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: lineColor }}>{fmtUsd(currentEquity, 0)}</span>
+      </div>
+
+      {/* X-axis label */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 1 }}>
+        <span style={{ fontSize: 9, color: C.faint }}>00:00 UTC</span>
+        <span style={{ fontSize: 9, color: C.faint }}>Now</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Alerts Panel ─────────────────────────────────────────────────────────────
+
+type AlertType = 'INFO' | 'SUCCESS' | 'WARNING' | 'VETO';
+
+type AlertItem = {
+  time: string;
+  type: AlertType;
+  message: string;
+};
+
+function alertDotColor(type: AlertType): string {
+  if (type === 'SUCCESS') return C.bull;
+  if (type === 'VETO') return C.bear;
+  if (type === 'WARNING') return C.warn;
+  return C.info;
+}
+
+const SEEDED_ALERTS: AlertItem[] = [
+  { time: '09:14 UTC', type: 'INFO',    message: 'Regime classified as TREND (confidence: 87%)' },
+  { time: '10:32 UTC', type: 'SUCCESS', message: 'BTC signal approved — entering long at $95,240' },
+  { time: '10:34 UTC', type: 'SUCCESS', message: 'Position opened: 0.26 BTC @ $95,240' },
+  { time: '12:15 UTC', type: 'WARNING', message: 'SOL ATR elevated — reduced position sizing by 30%' },
+  { time: '13:08 UTC', type: 'VETO',    message: 'AI vetoed HYPE trade — RSI overbought at 73' },
+  { time: '14:41 UTC', type: 'SUCCESS', message: 'BTC TP1 hit — partial exit at $96,680 (+$1,440)' },
+];
+
+function AlertsPanel() {
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.xl,
+      padding: '14px 16px',
+      flex: 1,
+      minWidth: 0,
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>Today's Bot Alerts</span>
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          fontSize: 10, fontWeight: 700, color: C.bull,
+          background: C.bull + '18', border: `1px solid ${C.bull}40`,
+          borderRadius: R.pill, padding: '2px 8px',
+        }}>
+          {/* Pulsing live dot via CSS animation */}
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: C.bull, display: 'inline-block',
+            animation: 'wagmiPulse 1.4s ease-in-out infinite',
+          }} />
+          Live
+        </span>
+      </div>
+
+      {/* Scrollable alert list */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 2,
+        overflowY: 'auto', maxHeight: 210,
+      }}>
+        {SEEDED_ALERTS.map((alert, i) => {
+          const dot = alertDotColor(alert.type);
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '7px 8px',
+                borderRadius: R.sm,
+                cursor: 'default',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLDivElement).style.background = C.surfaceHover;
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+              }}
+            >
+              {/* Colored dot */}
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: dot, flexShrink: 0,
+                marginTop: 4,
+                boxShadow: `0 0 4px ${dot}80`,
+              }} />
+
+              {/* Time */}
+              <span style={{
+                fontSize: 10, color: C.muted,
+                flexShrink: 0, minWidth: 64,
+                paddingTop: 1,
+              }}>
+                {alert.time}
+              </span>
+
+              {/* Type badge */}
+              <span style={{
+                fontSize: 9, fontWeight: 700,
+                padding: '1px 5px', borderRadius: R.pill,
+                background: dot + '20', color: dot,
+                border: `1px solid ${dot}40`,
+                flexShrink: 0, whiteSpace: 'nowrap' as const,
+                alignSelf: 'flex-start',
+                marginTop: 1,
+              }}>
+                {alert.type}
+              </span>
+
+              {/* Message */}
+              <span style={{ fontSize: F.xs, color: C.textSub, lineHeight: 1.5 }}>
+                {alert.message}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Keyframe styles injected inline via a <style> tag — avoids a CSS module dep */}
+      <style>{`
+        @keyframes wagmiPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.4; transform: scale(0.75); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -986,6 +1240,12 @@ export default function TodayPage() {
               {llmView.summary}
             </div>
           )}
+        </div>
+
+        {/* ── Today's Equity + Alerts Row ── */}
+        <div style={{ display: 'flex', gap: 20, marginBottom: 24, flexWrap: 'wrap' }}>
+          <TodayEquityMini />
+          <AlertsPanel />
         </div>
 
         {/* ── Regime Dial + Streak Bar ── */}
