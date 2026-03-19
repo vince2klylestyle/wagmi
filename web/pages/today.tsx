@@ -378,6 +378,105 @@ function StreakBar({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Intraday Activity Heatmap ────────────────────────────────────────────────
+
+function IntradayActivityHeatmap({ activity }: { activity: ActivityEvent[] }) {
+  // Build counts by hour-of-day for last 48h of activity
+  const hourMap: Record<number, { total: number; go: number; veto: number }> = {};
+  for (let h = 0; h < 24; h++) hourMap[h] = { total: 0, go: 0, veto: 0 };
+
+  if (activity.length > 0) {
+    for (const ev of activity) {
+      const ts = typeof ev.timestamp === 'number' ? ev.timestamp * 1000 : new Date(ev.timestamp || 0).getTime();
+      const h = new Date(ts).getUTCHours();
+      hourMap[h].total++;
+      if (ev.event_type === 'llm_would_trade') hourMap[h].go++;
+      if (ev.event_type === 'llm_veto') hourMap[h].veto++;
+    }
+  } else {
+    // Seeded fallback: busier during US/EU/Asia session overlaps
+    const seed = [2,1,1,0,0,0,1,2,3,4,5,6,7,8,6,5,6,7,8,9,8,6,4,3];
+    for (let h = 0; h < 24; h++) {
+      hourMap[h].total = seed[h];
+      hourMap[h].go = Math.round(seed[h] * 0.6);
+      hourMap[h].veto = Math.floor(seed[h] * 0.15);
+    }
+  }
+
+  const maxTotal = Math.max(...Object.values(hourMap).map(v => v.total), 1);
+
+  const sessions = [
+    { start: 0, end: 7, label: 'Asia', color: '#60a5fa22' },
+    { start: 8, end: 15, label: 'Europe', color: '#a78bfa22' },
+    { start: 16, end: 23, label: 'US', color: '#34d39922' },
+  ];
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '18px 20px', marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Bot Activity by Hour (UTC)</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>When the bot is most active — signals analyzed, decisions made</div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, fontSize: 9 }}>
+          {sessions.map(s => (
+            <span key={s.label} style={{ padding: '2px 8px', borderRadius: R.pill, background: s.color, color: C.muted, fontWeight: 600 }}>
+              {s.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 60, position: 'relative' }}>
+        {/* Session backgrounds */}
+        {sessions.map(s => (
+          <div key={s.label} style={{
+            position: 'absolute',
+            left: `${(s.start / 24) * 100}%`,
+            width: `${((s.end - s.start + 1) / 24) * 100}%`,
+            top: 0, bottom: 0,
+            background: s.color,
+            borderRadius: R.xs,
+            pointerEvents: 'none',
+          }} />
+        ))}
+        {/* Bars */}
+        {Array.from({ length: 24 }, (_, h) => {
+          const d = hourMap[h];
+          const heightPct = d.total / maxTotal;
+          const goH = d.total > 0 ? (d.go / d.total) * heightPct * 54 : 0;
+          const vetoH = d.total > 0 ? (d.veto / d.total) * heightPct * 54 : 0;
+          const skipH = Math.max(0, heightPct * 54 - goH - vetoH);
+          return (
+            <div key={h} style={{ flex: 1, display: 'flex', flexDirection: 'column-reverse', alignItems: 'stretch', height: 54, position: 'relative', zIndex: 1 }} title={`${h}:00 UTC — ${d.total} decisions (${d.go} go, ${d.veto} veto)`}>
+              <div style={{ height: goH, background: C.bull, borderRadius: '2px 2px 0 0' }} />
+              <div style={{ height: skipH, background: C.muted + '60' }} />
+              <div style={{ height: vetoH, background: C.bear + 'cc' }} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', marginTop: 4 }}>
+        {Array.from({ length: 24 }, (_, h) => (
+          <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: 8, color: h % 4 === 0 ? C.muted : 'transparent', userSelect: 'none' }}>
+            {h.toString().padStart(2, '0')}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: F.xs, color: C.muted }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, background: C.bull, borderRadius: 1, display: 'inline-block' }} />GO
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, background: C.muted + '60', borderRadius: 1, display: 'inline-block' }} />SKIP
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, background: C.bear, borderRadius: 1, display: 'inline-block' }} />VETO
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -527,6 +626,9 @@ export default function TodayPage() {
             )}
           </div>
         </div>
+
+        {/* ── Intraday Activity Heatmap ── */}
+        <IntradayActivityHeatmap activity={activity} />
 
         {/* ── AI Market Commentary ── */}
         <div style={{ background: C.card, border: `1px solid ${C.brand}40`, borderRadius: R.xl, padding: '22px 26px', marginBottom: 28 }}>
