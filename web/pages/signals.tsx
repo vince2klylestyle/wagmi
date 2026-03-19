@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { C, R, S, F, fmtUsd, timeAgo } from '../src/theme';
+import { C, G, R, S, F, fmtUsd, timeAgo } from '../src/theme';
 import type { ActivityEvent, LlmMarketView } from '../src/types';
 
 // ─── Signal / Heatmap types ───────────────────────────────────────────────────
@@ -45,7 +45,7 @@ const REGIME_EMOJI: Record<string, string> = {
 };
 const REGIME_COLOR: Record<string, string> = {
   trend: C.bull, range: '#2563eb', panic: C.bear,
-  high_volatility: '#d97706', low_liquidity: '#64748b',
+  high_volatility: C.warn, low_liquidity: '#64748b',
   news_dislocation: '#7c3aed', unknown: C.muted,
 };
 
@@ -56,7 +56,7 @@ function ConfRing({ value, size = 44 }: { value: number; size?: number }) {
   const r = (size - 6) / 2;
   const circ = 2 * Math.PI * r;
   const filled = circ * pct;
-  const color = pct >= 0.65 ? C.bull : pct >= 0.42 ? '#d97706' : C.bear;
+  const color = pct >= 0.65 ? C.bull : pct >= 0.42 ? C.warn : C.bear;
   return (
     <svg width={size} height={size} style={{ flexShrink: 0 }}>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth={4} />
@@ -210,6 +210,7 @@ function SignalCard({ event, index }: { event: ActivityEvent; index: number }) {
 
   return (
     <div
+      className="card-hover"
       style={{
         background: cfg.bg,
         border: `1px solid ${cfg.border}44`,
@@ -383,7 +384,7 @@ function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> |
   if (loading) {
     return (
       <div style={{
-        background: C.card,
+        background: G.card,
         border: `1px solid ${C.border}`,
         borderRadius: R.lg,
         padding: '20px 24px',
@@ -392,7 +393,7 @@ function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> |
         <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 16 }}>Market Metrics At a Glance</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[0, 1, 2, 3, 4, 5].map(i => (
-            <div key={i} style={{ height: 50, background: C.heatNeutral, borderRadius: R.sm, animation: 'pulse 1.4s ease-in-out infinite', opacity: 0.4 + i * 0.05 }} />
+            <div key={i} className="skeleton" style={{ height: 50, borderRadius: R.sm, opacity: 0.4 + i * 0.05 }} />
           ))}
         </div>
       </div>
@@ -470,7 +471,7 @@ function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> |
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -714,12 +715,15 @@ function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
       marginBottom: 28,
+      position: 'relative',
+      overflow: 'hidden',
     }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: C.brand, opacity: 0.4 }} />
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
@@ -953,7 +957,7 @@ function CorrelationMatrix({ signals }: { signals: Record<string, any> }) {
   }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Signal Score Correlation</div>
@@ -1029,7 +1033,7 @@ function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
   if (!entries.length) return null;
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
       <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>Signal Strength Comparison</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>Current signal score across tracked assets — higher is a stronger buy setup</div>
 
@@ -1038,7 +1042,7 @@ function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
           const score = data?.signal_score ?? 0;
           const rsi = data?.rsi ?? null;
           const atrPct = data?.atr_pct ?? null;
-          const color = score >= 70 ? C.bull : score >= 45 ? '#d97706' : C.bear;
+          const color = score >= 70 ? C.bull : score >= 45 ? C.warn : C.bear;
           const price = data?.price;
 
           return (
@@ -1324,7 +1328,7 @@ function SignalRadarChart({ signals, symbol }: { signals: Record<string, Signal>
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -1565,7 +1569,7 @@ function StrategyVoteGrid({ signals }: { signals: Record<string, Signal> | null 
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -1757,9 +1761,9 @@ function StrategyVoteGrid({ signals }: { signals: Record<string, Signal> | null 
 // ─── Signal Quality Trend Chart ───────────────────────────────────────────────
 
 const TREND_SYMBOLS = [
-  { key: 'BTC',  color: '#6366f1' as string },  // brand
-  { key: 'SOL',  color: '#16a34a' as string },  // bull
-  { key: 'HYPE', color: '#d97706' as string },  // warn
+  { key: 'BTC',  color: C.brand as string },  // brand
+  { key: 'SOL',  color: C.bull as string },   // bull
+  { key: 'HYPE', color: C.warn as string },   // warn
 ] as const;
 
 // Seeded per-tick score for a given symbol (produces a smooth-ish wandering line)
@@ -1816,7 +1820,7 @@ function SignalQualityTrendChart({ signals }: { signals: Record<string, Signal> 
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -1844,7 +1848,7 @@ function SignalQualityTrendChart({ signals }: { signals: Record<string, Signal> 
             65 min
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 16, height: 2, background: '#16a34a', opacity: 0.7, borderRadius: 1, display: 'inline-block', borderTop: '2px dashed #16a34a' }} />
+            <span style={{ width: 16, height: 2, background: C.bull, opacity: 0.7, borderRadius: 1, display: 'inline-block', borderTop: `2px dashed ${C.bull}` }} />
             75 strong
           </span>
         </div>
@@ -2063,7 +2067,7 @@ function MomentumIndicatorPanel() {
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -2237,7 +2241,7 @@ function VolatilityRankingBars({ signals: _signals }: { signals: Record<string, 
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -2683,7 +2687,7 @@ function SymbolDominanceChart({ signals }: { signals: Record<string, Signal> | n
 
   return (
     <div style={{
-      background: C.card,
+      background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
       padding: '20px 24px',
@@ -2927,7 +2931,7 @@ function MiniCandlestickRow({ symbol }: { symbol: string }) {
         const bodyTop    = toY(Math.max(c.open, c.close));
         const bodyBot    = toY(Math.min(c.open, c.close));
         const bodyH      = Math.max(1, bodyBot - bodyTop);
-        const color      = c.bull ? '#16a34a' : '#dc2626';
+        const color      = c.bull ? C.bull : C.bear;
         return (
           <g key={i}>
             {/* Wick */}
@@ -2972,10 +2976,10 @@ type RegimeBand = {
 };
 
 const REGIME_BAND_COLOR: Record<string, string> = {
-  trend:    '#16a34a',
+  trend:    C.bull,
   range:    '#475569',
-  panic:    '#dc2626',
-  high_vol: '#d97706',
+  panic:    C.bear,
+  high_vol: C.warn,
 };
 
 const REGIME_BAND_LABEL: Record<string, string> = {
@@ -3101,7 +3105,7 @@ function SignalTimelineWithRegime() {
           {markers.map((m, i) => {
             const x = hourToX(m.hoursAgo);
             const isBuy = m.side === 'BUY';
-            const col = isBuy ? '#16a34a' : '#dc2626';
+            const col = isBuy ? C.bull : C.bear;
             // Triangle points: pointing up for BUY, down for SELL
             const midY = PAD_T + BAND_H / 2;
             const tri = isBuy
@@ -3214,10 +3218,10 @@ const STRUCTURE_CELL_BORDER: Record<StructureCell['trend'], string> = {
   neutral: 'rgba(71,85,105,0.35)',
 };
 const STRUCTURE_REGIME_COLOR: Record<StructureCell['regime'], string> = {
-  T:  '#16a34a',
+  T:  C.bull,
   R:  '#475569',
-  P:  '#dc2626',
-  HV: '#d97706',
+  P:  C.bear,
+  HV: C.warn,
 };
 
 function MarketStructureGrid() {
@@ -3474,13 +3478,13 @@ export default function SignalsPage() {
       `}</style>
 
       {fetchError && !loading && (
-        <div style={{ marginBottom: 20, padding: '12px 16px', background: '#3d1a1a', border: '1px solid #7f1d1d', borderRadius: 8, color: '#fca5a5', fontSize: 14 }}>
+        <div style={{ marginBottom: 20, padding: '12px 16px', background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.3)', borderRadius: 8, color: C.bear, fontSize: 14 }}>
           Failed to load signals data. The API may be offline — data shown may be stale or empty.
         </div>
       )}
 
       {/* ── Hero header ─────────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 32 }} className="fade-in">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           {/* Live pulse */}
           <div style={{ position: 'relative', width: 12, height: 12, flexShrink: 0 }}>
@@ -3492,7 +3496,8 @@ export default function SignalsPage() {
           </span>
         </div>
         <h1 style={{ margin: '0 0 8px', fontSize: 32, fontWeight: 900, color: C.text, letterSpacing: '-0.03em' }}>
-          Live Signal Intelligence
+          Live Signal{' '}
+          <span className="gradient-text">Intelligence</span>
         </h1>
         <p style={{ margin: 0, fontSize: F.md, color: C.muted, maxWidth: 560 }}>
           Every market movement is analyzed around the clock. Even when no trades are taken, the bot never stops evaluating setups.
@@ -3500,7 +3505,7 @@ export default function SignalsPage() {
       </div>
 
       {/* ── Stat row ────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 28 }} className="fade-in-1">
         {[
           {
             label: 'Decisions Made',
@@ -3556,7 +3561,7 @@ export default function SignalsPage() {
       </div>
 
       {/* ── Signal Analysis ──────────────────────────────────────────────── */}
-      <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 16px', letterSpacing: '-0.02em' }}>
+      <h2 className="fade-in-2" style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '0 0 16px', letterSpacing: '-0.02em' }}>
         Signal Analysis
       </h2>
 
@@ -3694,7 +3699,7 @@ export default function SignalsPage() {
         {loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[0, 1, 2, 3, 4].map(i => (
-              <div key={i} style={{ height: 70, background: C.surface, borderRadius: R.md, animation: 'pulse 1.4s ease-in-out infinite' }} />
+              <div key={i} className="skeleton" style={{ height: 70, borderRadius: R.md }} />
             ))}
           </div>
         )}
@@ -3736,7 +3741,7 @@ export default function SignalsPage() {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           {['BTC', 'SOL', 'HYPE'].map(sym => (
-            <div key={sym} style={{
+            <div key={sym} className="card-hover" style={{
               display: 'flex',
               alignItems: 'center',
               gap: 12,

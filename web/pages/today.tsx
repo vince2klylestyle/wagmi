@@ -102,7 +102,7 @@ function regimeStyle(regime: string): { bg: string; border: string; text: string
 
 function StatCell({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.md, padding: '14px 16px' }}>
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.md, padding: '14px 16px' }}>
       <div style={{ fontSize: F.xs, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: F.lg, fontWeight: 700, color: color ?? C.text }}>{value}</div>
       {sub && <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>{sub}</div>}
@@ -1104,18 +1104,12 @@ function AlertsPanel() {
           return (
             <div
               key={i}
+              className="card-hover"
               style={{
                 display: 'flex', alignItems: 'flex-start', gap: 8,
                 padding: '7px 8px',
                 borderRadius: R.sm,
                 cursor: 'default',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLDivElement).style.background = C.surfaceHover;
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLDivElement).style.background = 'transparent';
               }}
             >
               {/* Colored dot */}
@@ -1436,7 +1430,7 @@ function BotScheduleTimeline() {
   const bands = [
     { start: 0, end: 8,  color: '#2563eb', label: 'Asia',   labelPos: 4 },
     { start: 7, end: 16, color: '#7c3aed', label: 'Europe', labelPos: 11 },
-    { start: 13, end: 22, color: '#16a34a', label: 'US',    labelPos: 17 },
+    { start: 13, end: 22, color: C.bull, label: 'US',    labelPos: 17 },
   ];
 
   function eventColor(kind: ScheduleEvent['kind'], warning?: boolean): string {
@@ -2145,8 +2139,8 @@ export default function TodayPage() {
         {/* ─────────────────────────────────────────────────────────────────────
             Header
         ───────────────────────────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Daily Brief</div>
+        <div style={{ marginBottom: 32 }} className="fade-in">
+          <div className="gradient-text" style={{ fontSize: F.xs, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Daily Brief</div>
           <h1 style={{ margin: '0 0 4px', fontSize: F['3xl'], fontWeight: 800, color: C.text }}>{dateStr}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <p style={{ margin: 0, fontSize: F.sm, color: C.muted }}>
@@ -2174,7 +2168,7 @@ export default function TodayPage() {
         {/* ─────────────────────────────────────────────────────────────────────
             § 1 · Today's Equity Snapshot + Alerts
         ───────────────────────────────────────────────────────────────────── */}
-        <h2 style={sectionH2}>
+        <h2 style={sectionH2} className="fade-in-1">
           Today's Equity &amp; Alerts
           {!hasLiveTrades && <span style={demoBadge}>SAMPLE DATA</span>}
         </h2>
@@ -2218,7 +2212,7 @@ export default function TodayPage() {
             <MarketSessionClock />
             <StreakBar trades={recentTrades} />
             {/* Today at a Glance summary card */}
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 18px', flex: 1 }}>
+            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 18px', flex: 1 }}>
               <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Today at a Glance</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
@@ -2231,7 +2225,7 @@ export default function TodayPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: F.xs, color: C.muted }}>AI vetoed</div>
-                  <div style={{ fontSize: F.xl, fontWeight: 700, color: '#a855f7' }}>{vetoed}</div>
+                  <div style={{ fontSize: F.xl, fontWeight: 700, color: C.purple }}>{vetoed}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: F.xs, color: C.muted }}>Recent P&L</div>
@@ -2288,7 +2282,7 @@ export default function TodayPage() {
           {!hasLiveActivity && <span style={demoBadge}>SAMPLE DATA</span>}
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 40 }}>
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+          <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
             <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Recent Activity</div>
             <StatCell label="Trades closed" value={String(recentTrades.length)} sub="Recent history" />
             <div style={{ marginTop: 10 }}>
@@ -2296,12 +2290,12 @@ export default function TodayPage() {
             </div>
           </div>
 
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+          <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
             <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Signal Funnel (24h)</div>
             <SignalFunnelBar analyzed={analyzed} passed={passed} executed={executed} vetoed={vetoed} />
           </div>
 
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+          <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
             <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>AI Decisions</div>
             {llmView?.decision_counts ? (
               <>
@@ -2328,7 +2322,7 @@ export default function TodayPage() {
         </h2>
 
         {/* AI Assessment card */}
-        <div style={{ background: C.card, border: `1px solid ${C.brand}40`, borderRadius: R.xl, padding: '22px 26px', marginBottom: 28 }}>
+        <div style={{ background: G.card, border: `1px solid ${C.brand}40`, borderRadius: R.xl, padding: '22px 26px', marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 20 }}>🤖</span>
             <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Live AI Assessment</span>
@@ -2362,7 +2356,7 @@ export default function TodayPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <div style={{ flex: 1, height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{ width: `${confPct}%`, height: '100%', background: col }} />
+                        <div style={{ width: `${confPct}%`, height: '100%', background: `linear-gradient(90deg, ${col}66, ${col})` }} />
                       </div>
                       <span style={{ fontSize: F.xs, color: col, fontWeight: 700 }}>{confPct}%</span>
                     </div>
@@ -2415,7 +2409,7 @@ export default function TodayPage() {
                   <WatchlistScoreChart items={watchItems} />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
                     {watchItems.map((s) => (
-                      <div key={s.sym} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
+                      <div key={s.sym} className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                           <div>
                             <span style={{ fontWeight: 800, color: C.text }}>{s.sym}</span>
@@ -2443,7 +2437,7 @@ export default function TodayPage() {
         {hasLiveTrades ? (
           <div style={{ marginBottom: 40 }}>
             <h2 style={sectionH2}>Recent Trade Recap</h2>
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '4px 16px' }}>
+            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '4px 16px' }}>
               {recentTrades.map((t, i) => <TradeRow key={`${t.symbol}-${t.side}-${t.entry ?? i}-${i}`} t={t} />)}
             </div>
           </div>
