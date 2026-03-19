@@ -9,6 +9,8 @@ const NAV_ITEMS = [
   { href: '/copy-trade', label: 'Copy Trade' },
   { href: '/results', label: 'Results' },
   { href: '/backtest', label: 'Backtest' },
+  { href: '/forensics', label: 'Forensics' },
+  { href: '/llm-audit', label: 'LLM Audit' },
   { href: '/strategies', label: 'Strategies' },
   { href: '/learn', label: 'Learn' },
 ];

@@ -152,6 +152,141 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
   );
 }
 
+// ─── Drawdown Sub-Chart ───────────────────────────────────────────────────────
+
+function DrawdownSubChart({ points, width = 700, height = 80 }: { points: EquityCurvePoint[]; width?: number; height?: number }) {
+  if (!points || points.length < 2) return null;
+  const dds = points.map((p) => p.drawdown_pct ?? 0);
+  const maxDd = Math.max(...dds.map(Math.abs), 0.001);
+  const pad = { top: 8, right: 20, bottom: 20, left: 70 };
+  const W = width - pad.left - pad.right;
+  const H = height - pad.top - pad.bottom;
+  const px = (i: number) => pad.left + (i / (points.length - 1)) * W;
+  const py = (dd: number) => pad.top + (Math.abs(dd) / maxDd) * H;
+
+  const areaPath = `M ${px(0)},${pad.top} ` +
+    points.slice(1).map((p, i) => `L ${px(i + 1)},${py(p.drawdown_pct ?? 0)}`).join(' ') +
+    ` L ${px(points.length - 1)},${pad.top} Z`;
+
+  const worstIdx = dds.reduce((mi, dd, i) => Math.abs(dd) > Math.abs(dds[mi]) ? i : mi, 0);
+
+  return (
+    <div>
+      <div style={{ fontSize: F.xs, color: C.bear, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 4 }}>
+        Drawdown
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block' }} preserveAspectRatio="xMinYMid meet">
+        <defs>
+          <linearGradient id="ddSubGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C.bear} stopOpacity={0.5} />
+            <stop offset="100%" stopColor={C.bear} stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        {/* Zero line */}
+        <line x1={pad.left} y1={pad.top} x2={pad.left + W} y2={pad.top} stroke={C.border} strokeWidth={1} />
+        {/* Drawdown area */}
+        <path d={areaPath} fill="url(#ddSubGrad)" />
+        {/* Worst drawdown marker */}
+        {worstIdx > 0 && (
+          <>
+            <circle cx={px(worstIdx)} cy={py(dds[worstIdx])} r={3} fill={C.bear} />
+            <text x={px(worstIdx) + 5} y={py(dds[worstIdx]) + 4} fill={C.bear} fontSize={9} fontFamily="Inter, system-ui">
+              {dds[worstIdx].toFixed(1)}%
+            </text>
+          </>
+        )}
+        {/* Y label */}
+        <text x={pad.left - 4} y={pad.top + H / 2} fill={C.muted} fontSize={9} textAnchor="end" fontFamily="Inter, system-ui">
+          -{maxDd.toFixed(1)}%
+        </text>
+        {/* X label: dates */}
+        {[0, points.length - 1].map((i) => (
+          <text key={i} x={px(i)} y={pad.top + H + 14} fill={C.muted} fontSize={9} textAnchor={i === 0 ? 'start' : 'end'} fontFamily="Inter, system-ui">
+            {new Date(points[i].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// ─── Strategy Bars ────────────────────────────────────────────────────────────
+
+function ByStrategyBars({ byStrategy }: { byStrategy: Record<string, { trades: number; wins: number; pnl: number; win_rate: number }> }) {
+  const entries = Object.entries(byStrategy).sort((a, b) => b[1].pnl - a[1].pnl);
+  if (!entries.length) return null;
+  const maxAbsPnl = Math.max(...entries.map(([, v]) => Math.abs(v.pnl)), 1);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {entries.map(([name, data]) => {
+        const pct = (Math.abs(data.pnl) / maxAbsPnl) * 100;
+        const isPos = data.pnl >= 0;
+        const wr = (data.win_rate * 100).toFixed(0);
+        return (
+          <div key={name}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: F.sm }}>
+              <div style={{ fontWeight: 600, color: C.text }}>
+                {name}
+                <span style={{ marginLeft: 8, fontSize: F.xs, color: C.muted, fontWeight: 400 }}>
+                  {data.trades} trades · {wr}% WR
+                </span>
+              </div>
+              <span style={{ fontWeight: 700, color: isPos ? C.bull : C.bear }}>{fmtUsd(data.pnl)}</span>
+            </div>
+            <div style={{ height: 16, background: C.surfaceHover, borderRadius: R.sm, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: isPos ? C.bull : C.bear, borderRadius: R.sm, transition: 'width 0.5s ease', opacity: 0.8 }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Regime Win Rate ──────────────────────────────────────────────────────────
+
+function RegimeWinRate({ trades }: { trades: TradeRecord[] }) {
+  const byRegime: Record<string, { wins: number; total: number; pnl: number }> = {};
+  trades.forEach((t) => {
+    const regime = t.llm_regime || 'unknown';
+    if (!byRegime[regime]) byRegime[regime] = { wins: 0, total: 0, pnl: 0 };
+    byRegime[regime].total++;
+    if (t.outcome === 'WIN') byRegime[regime].wins++;
+    byRegime[regime].pnl += t.pnl ?? 0;
+  });
+  const entries = Object.entries(byRegime).filter(([, v]) => v.total >= 2).sort((a, b) => (b[1].wins / b[1].total) - (a[1].wins / a[1].total));
+  if (!entries.length) return <div style={{ color: C.muted, fontSize: F.sm }}>Not enough data yet.</div>;
+
+  const regimeColors: Record<string, string> = {
+    trend: C.bull, range: C.info, panic: C.bear, high_volatility: C.warn, low_liquidity: C.muted, unknown: C.muted,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {entries.map(([regime, data]) => {
+        const wr = data.wins / data.total;
+        const color = regimeColors[regime.toLowerCase()] || C.muted;
+        return (
+          <div key={regime}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: F.sm, fontWeight: 700, color, textTransform: 'capitalize' }}>{regime}</span>
+              <div style={{ display: 'flex', gap: 12, fontSize: F.xs, color: C.muted }}>
+                <span>{data.total} trades</span>
+                <span style={{ fontWeight: 700, color: wr >= 0.6 ? C.bull : wr >= 0.45 ? C.warn : C.bear }}>{(wr * 100).toFixed(0)}% WR</span>
+                <span style={{ color: data.pnl >= 0 ? C.bull : C.bear }}>{fmtUsd(data.pnl)}</span>
+              </div>
+            </div>
+            <div style={{ height: 10, background: C.surfaceHover, borderRadius: R.pill, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${wr * 100}%`, background: wr >= 0.6 ? C.bull : wr >= 0.45 ? C.warn : C.bear, borderRadius: R.pill, transition: 'width 0.5s ease' }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── By-Symbol Bars ───────────────────────────────────────────────────────────
 
 function BySymbolBars({ bySymbol }: { bySymbol: Record<string, { trades: number; wins: number; pnl: number; win_rate: number }> }) {
@@ -493,12 +628,34 @@ export default function Results() {
         </div>
       )}
 
-      {/* ── Equity Curve ─────────────────────────────── */}
+      {/* ── Equity Curve + Drawdown ──────────────────── */}
       <div
         style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}
       >
         <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Equity Curve</h2>
-        <EquityCurveChart points={equityCurve} height={220} />
+        <EquityCurveChart points={equityCurve} height={200} />
+        {equityCurve.length >= 2 && (
+          <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+            <DrawdownSubChart points={equityCurve} height={80} />
+          </div>
+        )}
+      </div>
+
+      {/* ── By-Strategy + Regime Win Rate ──────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: F.lg, fontWeight: 700, color: C.text }}>By Strategy</h2>
+          {backtest?.by_strategy && Object.keys(backtest.by_strategy).length > 0 ? (
+            <ByStrategyBars byStrategy={backtest.by_strategy} />
+          ) : (
+            <div style={{ color: C.muted, fontSize: F.sm }}>No per-strategy breakdown in this backtest.</div>
+          )}
+        </div>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
+          <h2 style={{ margin: '0 0 4px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Win Rate by Regime</h2>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14 }}>Computed from live trade history</div>
+          <RegimeWinRate trades={trades} />
+        </div>
       </div>
 
       {/* ── By-Symbol + Exit Type ──────────────────────── */}

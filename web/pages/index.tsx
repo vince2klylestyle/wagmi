@@ -244,6 +244,14 @@ function MarketHeatmap({ signals, loading, onSelect }: {
         return { value: score, label: zone, low: 0, high: 1 };
       },
     },
+    {
+      label: 'Vol Spike',
+      render: (s: Signal) => ({
+        value: s.vol_spike ? 1 : 0,
+        label: s.vol_spike ? '⚡ Yes' : 'No',
+        low: 0, high: 1,
+      }),
+    },
   ];
 
   return (

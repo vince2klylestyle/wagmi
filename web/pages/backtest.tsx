@@ -124,6 +124,123 @@ function BySymbolBars({ bySymbol }: { bySymbol: Record<string, { trades: number;
   );
 }
 
+// ─── Comparison Delta Table ────────────────────────────────────────────────────
+
+function ComparisonDelta({ a, b, labelA, labelB }: { a: BacktestResult; b: BacktestResult; labelA: string; labelB: string }) {
+  const ra = a.results;
+  const rb = b.results;
+
+  const metrics = [
+    {
+      label: 'Total Return',
+      va: ra.total_return_pct, vb: rb.total_return_pct,
+      fmt: (v: number) => fmtPct(v),
+      delta: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(2)}pp`,
+      higherBetter: true,
+    },
+    {
+      label: 'Win Rate',
+      va: ra.win_rate * 100, vb: rb.win_rate * 100,
+      fmt: (v: number) => `${v.toFixed(1)}%`,
+      delta: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}pp`,
+      higherBetter: true,
+    },
+    {
+      label: 'Profit Factor',
+      va: ra.profit_factor ?? 0, vb: rb.profit_factor ?? 0,
+      fmt: (v: number) => `${v.toFixed(2)}×`,
+      delta: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(2)}×`,
+      higherBetter: true,
+    },
+    {
+      label: 'Max Drawdown',
+      va: -Math.abs(ra.max_drawdown_pct), vb: -Math.abs(rb.max_drawdown_pct),
+      fmt: (v: number) => fmtPct(v),
+      delta: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(2)}pp`,
+      higherBetter: false,
+    },
+    {
+      label: 'Net P&L',
+      va: ra.net_pnl, vb: rb.net_pnl,
+      fmt: (v: number) => fmtUsd(v),
+      delta: (d: number) => fmtUsd(d),
+      higherBetter: true,
+    },
+    {
+      label: 'Total Fees',
+      va: ra.total_fees, vb: rb.total_fees,
+      fmt: (v: number) => fmtUsd(v),
+      delta: (d: number) => fmtUsd(d),
+      higherBetter: false,
+    },
+    {
+      label: 'Avg Win',
+      va: ra.avg_win, vb: rb.avg_win,
+      fmt: (v: number) => fmtUsd(v),
+      delta: (d: number) => fmtUsd(d),
+      higherBetter: true,
+    },
+    {
+      label: 'Total Trades',
+      va: ra.total_trades, vb: rb.total_trades,
+      fmt: (v: number) => `${v}`,
+      delta: (d: number) => `${d > 0 ? '+' : ''}${d}`,
+      higherBetter: null,
+    },
+  ];
+
+  let aWins = 0; let bWins = 0;
+  metrics.forEach(({ va, vb, higherBetter }) => {
+    if (higherBetter === null) return;
+    if (higherBetter ? vb > va : vb < va) bWins++; else if (higherBetter ? va > vb : va < vb) aWins++;
+  });
+
+  const winner = aWins > bWins ? labelA : bWins > aWins ? labelB : 'Tie';
+
+  return (
+    <div style={{ background: C.surfaceHover, border: `1px solid ${C.brand}40`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Head-to-Head Comparison</div>
+        <div style={{ fontSize: F.xs, padding: '3px 10px', borderRadius: R.pill, background: C.brand + '22', color: C.brand, fontWeight: 700 }}>
+          {winner === 'Tie' ? '🤝 Tie' : `${winner} wins ${Math.max(aWins, bWins)}/${aWins + bWins}`}
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: F.sm }}>
+          <thead>
+            <tr>
+              {['Metric', labelA, labelB, 'Delta', ''].map((h, i) => (
+                <th key={i} style={{ padding: '6px 10px', fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: i === 0 ? 'left' : 'right', borderBottom: `1px solid ${C.border}` }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map(({ label, va, vb, fmt, delta, higherBetter }) => {
+              const d = vb - va;
+              const bBetter = higherBetter !== null ? (higherBetter ? vb > va : vb < va) : null;
+              const aBetter = higherBetter !== null ? (higherBetter ? va > vb : va < vb) : null;
+              return (
+                <tr key={label} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td style={{ padding: '8px 10px', color: C.textSub, fontWeight: 600 }}>{label}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: aBetter ? C.bull : aBetter === false ? C.muted : C.text, fontWeight: aBetter ? 700 : 400, fontVariantNumeric: 'tabular-nums' }}>{fmt(va)}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: bBetter ? C.bull : bBetter === false ? C.muted : C.text, fontWeight: bBetter ? 700 : 400, fontVariantNumeric: 'tabular-nums' }}>{fmt(vb)}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: d === 0 ? C.muted : d > 0 ? C.bull : C.bear, fontSize: F.xs, fontVariantNumeric: 'tabular-nums' }}>{d !== 0 ? delta(d) : '='}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                    {bBetter && <span style={{ fontSize: F.xs, color: C.bull }}>B ✓</span>}
+                    {aBetter && <span style={{ fontSize: F.xs, color: C.warn }}>A ✓</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function RunDetail({ result }: { result: BacktestResult }) {
   const r = result.results;
   const cfg = result.config;
@@ -590,6 +707,16 @@ export default function Backtest() {
                 <button onClick={() => setCompareId(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: F.sm }}>✕ Clear</button>
               )}
             </div>
+          )}
+
+          {/* Comparison delta table */}
+          {compareResult && selectedResult && (
+            <ComparisonDelta
+              a={selectedResult}
+              b={compareResult}
+              labelA="Run A"
+              labelB="Run B"
+            />
           )}
 
           {/* Detail panels (side by side if comparing) */}
