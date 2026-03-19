@@ -203,7 +203,7 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
         </div>
         <div style={{ background: C.surface, borderRadius: R.sm, padding: '8px 12px' }}>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Last Update</div>
-          <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{timeAgo(pos.updated_at)}</div>
+          <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{timeAgo((pos as any).updated_at ?? strategy.lastHeartbeat)}</div>
         </div>
       </div>
 
