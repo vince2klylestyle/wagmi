@@ -645,6 +645,85 @@ function DecisionMixDonut({ decisions }: { decisions: LlmDecision[] }) {
   );
 }
 
+// ─── AI Thinking Speed ────────────────────────────────────────────────────────
+
+const SPEED_MODELS = [
+  { name: 'Haiku',  ms: 200,  color: C.warn,   desc: 'Regime · Risk · Exit',   note: 'Fast'     },
+  { name: 'Sonnet', ms: 800,  color: C.info,   desc: 'Trade · Critic agents',  note: 'Balanced' },
+  { name: 'Opus',   ms: 2000, color: C.brand,  desc: 'High-stakes decisions',  note: 'Thorough' },
+];
+const MAX_MS = 2000;
+
+function AIThinkingSpeed() {
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '18px 20px',
+    }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>AI Thinking Speed</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
+        Speed vs thoroughness — the bot selects the right model for each decision type
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {SPEED_MODELS.map(({ name, ms, color, desc, note }) => {
+          const pct = Math.round((ms / MAX_MS) * 100);
+          return (
+            <div key={name}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{
+                    fontSize: F.xs, fontWeight: 800, color,
+                    width: 48, flexShrink: 0,
+                  }}>{name}</span>
+                  <span style={{
+                    fontSize: 10,
+                    padding: '1px 6px',
+                    borderRadius: R.pill,
+                    background: color + '18',
+                    color,
+                    fontWeight: 600,
+                    flexShrink: 0,
+                  }}>{note}</span>
+                </div>
+                <span style={{ fontSize: F.xs, fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>
+                  ~{ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`} avg
+                </span>
+              </div>
+
+              {/* Speed bar */}
+              <div style={{ height: 8, background: C.surface, borderRadius: R.pill, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${pct}%`,
+                  height: '100%',
+                  background: `linear-gradient(90deg, ${color}80, ${color})`,
+                  borderRadius: R.pill,
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+
+              <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>{desc}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: `1px solid ${C.border}`,
+        fontSize: 10,
+        color: C.muted,
+        lineHeight: 1.5,
+      }}>
+        Typical latency values. Actual response time varies with API load and prompt length.
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const ACTION_TABS = ['ALL', 'GO', 'SKIP', 'VETOED', 'BLOCKED', 'FLIP'];
@@ -856,6 +935,7 @@ export default function AiDecisionsPage() {
             <VetoPanel decisions={decisions} />
             <VetoReasonWordCloud decisions={decisions.filter((d) => d.is_veto).slice(0, 100)} />
             <ModelPanel decisions={decisions} />
+            <AIThinkingSpeed />
 
             {/* "What makes this unique" callout */}
             <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
