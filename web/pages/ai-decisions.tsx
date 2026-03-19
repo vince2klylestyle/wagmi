@@ -55,6 +55,222 @@ function confBar(conf: number, color: string) {
   );
 }
 
+// ─── Agent Pipeline Flow Visualization ───────────────────────────────────────
+
+function AgentPipelineFlow({ decision }: { decision: LlmDecision | null }) {
+  const notes = decision?.notes ?? '';
+  const notesLower = notes.toLowerCase();
+
+  const hasRegime = notesLower.includes('regime');
+  const hasTrade = notesLower.includes('trade agent') || notesLower.includes('trade:');
+  const hasRisk = notesLower.includes('risk agent') || notesLower.includes('risk:');
+  const hasCritic = notesLower.includes('critic');
+  const isVeto = decision?.is_veto ?? false;
+  const hasDecision = decision != null;
+
+  // Try to parse a confidence value for a given keyword prefix (e.g. "REGIME: ... confidence: 0.72")
+  function parseScore(keyword: string): string | null {
+    if (!notes) return null;
+    const idx = notesLower.indexOf(keyword);
+    if (idx === -1) return null;
+    const slice = notes.slice(idx, idx + 200);
+    const m = slice.match(/conf(?:idence)?[\s:=]+(\d+\.?\d*)/i);
+    if (m) {
+      const v = parseFloat(m[1]);
+      return v <= 1 ? `${Math.round(v * 100)}%` : `${Math.round(v)}%`;
+    }
+    return null;
+  }
+
+  const regimeScore = parseScore('regime');
+  const tradeScore = parseScore('trade agent') || parseScore('trade:');
+  const riskScore = parseScore('risk agent') || parseScore('risk:');
+  const criticScore = parseScore('critic');
+
+  const NODES = [
+    { key: 'regime', label: 'Regime', active: hasRegime, color: C.info, score: regimeScore },
+    { key: 'trade', label: 'Trade', active: hasTrade, color: C.brand, score: tradeScore },
+    { key: 'risk', label: 'Risk', active: hasRisk, color: C.warn, score: riskScore },
+    { key: 'critic', label: 'Critic', active: hasCritic, color: '#7c3aed', score: criticScore },
+    {
+      key: 'decision',
+      label: isVeto ? 'VETO' : 'GO',
+      active: hasDecision,
+      color: isVeto ? C.bear : C.bull,
+      score: decision ? `${Math.round((decision.confidence ?? 0) * 100)}%` : null,
+    },
+  ];
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '18px 24px',
+      marginBottom: 24,
+    }}>
+      <div style={{ fontSize: F.xs, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16 }}>
+        Live Agent Pipeline
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
+        {NODES.map((node, i) => (
+          <React.Fragment key={node.key}>
+            {/* Node */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: '50%',
+                background: node.active ? node.color + '20' : C.surface,
+                border: `2px solid ${node.active ? node.color : C.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: node.active ? 1 : 0.3,
+                boxShadow: node.active ? `0 0 12px ${node.color}50` : 'none',
+                transition: 'all 0.3s ease',
+                position: 'relative',
+              }}>
+                <span style={{ fontSize: 9, fontWeight: 800, color: node.active ? node.color : C.muted, textAlign: 'center', lineHeight: 1.2, padding: '0 4px' }}>
+                  {node.label}
+                </span>
+              </div>
+              {/* Score / confidence below node */}
+              <div style={{ fontSize: 9, fontWeight: 700, color: node.active && node.score ? node.color : C.faint, minHeight: 13 }}>
+                {node.active && node.score ? node.score : node.active ? '✓' : '—'}
+              </div>
+            </div>
+
+            {/* Connector arrow between nodes */}
+            {i < NODES.length - 1 && (
+              <div style={{ position: 'relative', width: 48, height: 4, flexShrink: 0, marginBottom: 13 }}>
+                {/* Dashed track */}
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, height: '100%',
+                  borderTop: `2px dashed ${C.border}`,
+                }}/>
+                {/* Filled portion when active */}
+                {NODES[i].active && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, height: '100%',
+                    width: NODES[i + 1].active ? '100%' : '50%',
+                    borderTop: `2px solid ${NODES[i].color}`,
+                    transition: 'width 0.4s ease',
+                  }}/>
+                )}
+                {/* Traveling dot */}
+                {NODES[i].active && !NODES[i + 1].active && (
+                  <div style={{
+                    position: 'absolute', top: -3, left: 0,
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: NODES[i].color,
+                    animation: 'pipelineDot 1.4s ease-in-out infinite',
+                    boxShadow: `0 0 6px ${NODES[i].color}`,
+                  }}/>
+                )}
+                {/* Arrow tip */}
+                <div style={{
+                  position: 'absolute', right: -1, top: -4,
+                  borderTop: '5px solid transparent',
+                  borderBottom: '5px solid transparent',
+                  borderLeft: `5px solid ${NODES[i].active ? NODES[i].color : C.border}`,
+                }}/>
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Status text */}
+      {decision && (
+        <div style={{ textAlign: 'center', marginTop: 8, fontSize: F.xs, color: C.muted }}>
+          {decision.symbol && <span style={{ fontWeight: 700, color: C.textSub }}>{decision.symbol}</span>}
+          {decision.regime && <span> · {decision.regime.replace('_', ' ')}</span>}
+          {decision.trigger && <span> · {decision.trigger.replace('_', ' ')}</span>}
+        </div>
+      )}
+      {!decision && (
+        <div style={{ textAlign: 'center', marginTop: 8, fontSize: F.xs, color: C.faint }}>
+          Waiting for first decision…
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Veto Reason Word Cloud ───────────────────────────────────────────────────
+
+const STOP_WORDS = new Set(['the', 'a', 'and', 'is', 'to', 'of', 'in', 'for', 'with', 'at', 'on', 'not', 'has', 'this', 'that', 'be', 'are', 'was', 'it']);
+const RISK_KEYWORDS = new Set(['risk', 'loss', 'stop', 'drawdown', 'position', 'exposure', 'volatile', 'spike', 'circuit']);
+const REGIME_KEYWORDS = new Set(['regime', 'trend', 'panic', 'range', 'volatility', 'shift', 'market', 'bearish', 'bullish']);
+
+function VetoReasonWordCloud({ decisions }: { decisions: LlmDecision[] }) {
+  const tags = useMemo(() => {
+    const freq: Record<string, number> = {};
+    for (const d of decisions) {
+      const text = ((d.notes || '') + ' ' + (d.gate_reason || '')).toLowerCase();
+      const words = text.split(/\W+/).filter((w) => w.length > 3 && !STOP_WORDS.has(w));
+      for (const w of words) {
+        freq[w] = (freq[w] || 0) + 1;
+      }
+    }
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20);
+  }, [decisions]);
+
+  if (tags.length === 0) return null;
+
+  const maxCount = tags[0][1];
+  const minCount = tags[tags.length - 1][1];
+  const range = Math.max(1, maxCount - minCount);
+
+  function tagColor(word: string): string {
+    if (RISK_KEYWORDS.has(word)) return C.bear;
+    if (REGIME_KEYWORDS.has(word)) return C.warn;
+    return C.muted;
+  }
+
+  function tagSize(count: number): number {
+    return 11 + Math.round(((count - minCount) / range) * 7);
+  }
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.purple}30`,
+      borderRadius: R.lg,
+      padding: '16px 18px',
+      marginTop: 16,
+    }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 14 }}>☁</span> Veto Reason Keywords
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {tags.map(([word, count]) => {
+          const col = tagColor(word);
+          const size = tagSize(count);
+          return (
+            <span key={word} style={{
+              fontSize: size,
+              fontWeight: count === maxCount ? 700 : 500,
+              color: col,
+              background: col + '14',
+              border: `1px solid ${col}25`,
+              borderRadius: R.pill,
+              padding: '2px 8px',
+              lineHeight: 1.4,
+              cursor: 'default',
+            }} title={`${count} occurrence${count !== 1 ? 's' : ''}`}>
+              {word}
+            </span>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 10, fontSize: F.xs, color: C.muted }}>
+        Extracted from {decisions.length} veto decision{decisions.length !== 1 ? 's' : ''}. Size = frequency.{' '}
+        <span style={{ color: C.bear }}>Red</span> = risk-related, <span style={{ color: C.warn }}>amber</span> = regime-related.
+      </div>
+    </div>
+  );
+}
+
 // ─── Agent Pipeline "thinking" steps parsed from notes ───────────────────────
 
 /**
@@ -385,6 +601,7 @@ export default function AiDecisionsPage() {
       <style>{`
         @keyframes fadeInDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes glow { 0%,100% { box-shadow: 0 0 6px ${C.brand}40; } 50% { box-shadow: 0 0 16px ${C.brand}70; } }
+        @keyframes pipelineDot { 0% { left: 0; opacity: 1; } 80% { left: 36px; opacity: 1; } 100% { left: 40px; opacity: 0; } }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -414,6 +631,9 @@ export default function AiDecisionsPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Agent Pipeline Flow ── */}
+        <AgentPipelineFlow decision={decisions[0] ?? null} />
 
         {/* ── KPI Strip ── */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
@@ -512,6 +732,7 @@ export default function AiDecisionsPage() {
           {/* ── Right: Stats panels ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 80 }}>
             <VetoPanel decisions={decisions} />
+            <VetoReasonWordCloud decisions={decisions.filter((d) => d.is_veto).slice(0, 100)} />
             <ModelPanel decisions={decisions} />
 
             {/* "What makes this unique" callout */}
