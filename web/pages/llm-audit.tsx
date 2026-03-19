@@ -474,7 +474,7 @@ function SymbolDecisionGrid({ decisions }: { decisions: LlmDecision[] }) {
   if (symbols.length === 0) return null;
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 20 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Per-Symbol Decision Breakdown</div>
@@ -564,7 +564,7 @@ function ActionRateTimeline({ decisions }: { decisions: LlmDecision[] }) {
   const maxH = Math.max(...buckets.map((b) => b.total), 1);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 20 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Decision Action Rate Over Time</div>
@@ -663,7 +663,7 @@ function TriggerBreakdownChart({ decisions }: { decisions: LlmDecision[] }) {
   };
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: C.text }}>Trigger Breakdown</h2>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         Which triggers fire most often — and what the AI decides for each
@@ -1131,7 +1131,7 @@ function AgentAccuracyMatrix({ decisions }: { decisions: LlmDecision[] }) {
   }
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px', marginBottom: 20 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Agent Accuracy Overview</div>
         <span style={{ fontSize: F.xs, color: C.muted, fontStyle: 'italic' }}>Demo estimates — live calibration tracked in decisions</span>
@@ -1278,7 +1278,7 @@ function VetoFrequencyBars({ decisions }: { decisions: LlmDecision[] }) {
   const maxCount = Math.max(1, ...sorted.map((r) => r.count));
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Top Veto Reasons</div>
@@ -1431,7 +1431,7 @@ function DecisionSpeedometer() {
   ];
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px', marginBottom: 20 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px', marginBottom: 20 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 8 }}>Decision Speed</div>
 
       <svg
@@ -1615,7 +1615,7 @@ function ModelCostBreakdown({ decisions }: { decisions: LlmDecision[] }) {
   };
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>LLM Cost Breakdown</div>
@@ -1843,7 +1843,7 @@ export default function LlmAudit() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Model Routing */}
           {decisions.length > 0 && (
-            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
+            <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 24 }}>
               <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: C.text }}>Model Routing</h2>
               <ModelRoutingChart decisions={decisions} />
               <div style={{ marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
@@ -1902,7 +1902,7 @@ export default function LlmAudit() {
       </div>
 
       {/* Filters */}
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 20px', marginBottom: 16 }}>
+      <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 20px', marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 600 }}>Filter:</span>
           {['All', 'PROCEED', 'SKIP', 'VETO', 'FLIP', 'BLOCKED'].map((a) => (
@@ -1936,7 +1936,7 @@ export default function LlmAudit() {
       </div>
 
       {/* Decision Timeline */}
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+      <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', background: C.surfaceHover, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Decision Timeline</span>
           <span style={{ fontSize: F.xs, color: C.muted }}>{filtered.length} decisions · click to expand reasoning</span>

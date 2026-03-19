@@ -135,7 +135,7 @@ function RoiTimelineChart() {
   const eliteFinal = eliteData[11].toFixed(0);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 16px', marginBottom: 0 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 16px', marginBottom: 0 }}>
       <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>Projected equity growth</div>
@@ -244,7 +244,7 @@ function TierValueBars() {
   ] as const;
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 20px' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>What you get at each tier</div>
@@ -302,7 +302,7 @@ function ReturnsCalc({ returnPct }: { returnPct: number }) {
   const [capital, setCapital] = useState(3000);
   const projected = capital * (returnPct / 100);
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 28px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 28px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 16 }}>What could this mean for you?</div>
       <div style={{ marginBottom: 14 }}>
         <label style={{ fontSize: F.xs, color: C.muted, display: 'block', marginBottom: 6 }}>Your trading capital</label>
@@ -474,7 +474,7 @@ function MonthlyReturnHeatmap() {
   const rowY = (rowIdx: number) => PAD + HEADER_H + GAP + rowIdx * (CELL_H + GAP);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 16px' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '24px 24px 16px' }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>
           Projected Cumulative Returns (monthly compounding)
@@ -598,6 +598,7 @@ function BreakEvenCalculator() {
 
   return (
     <div
+      className="card-hover"
       style={{
         background: G.card,
         border: `1px solid ${C.border}`,
@@ -784,6 +785,7 @@ function CostVsReturnChart() {
 
   return (
     <div
+      className="card-hover"
       style={{
         background: G.card,
         border: `1px solid ${C.border}`,
@@ -953,7 +955,7 @@ export default function PricingPage() {
           {TIERS.map((tier) => {
             const price = annual && tier.annual != null ? tier.annual / 12 : tier.monthly;
             return (
-              <div key={tier.name} style={{
+              <div key={tier.name} className="card-hover" style={{
                 background: G.card, border: `1px solid ${tier.highlighted ? C.brand : C.border}`,
                 borderRadius: R.xl, padding: '28px 24px', position: 'relative',
                 boxShadow: tier.highlighted ? S.glow : S.sm,

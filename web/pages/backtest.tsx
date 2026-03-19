@@ -1716,6 +1716,7 @@ function NewBacktestForm({ onJobStarted, apiBase }: { onJobStarted: (jobId: stri
         </button>
       ) : (
         <div
+          className="card-hover"
           style={{
             background: G.card,
             border: `1px solid ${C.brand}40`,
@@ -1878,7 +1879,7 @@ function JobProgress({ jobId, apiBase, onDone }: { jobId: string; apiBase: strin
   const currentStep = steps.indexOf(job.status);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>
           Backtest Running — {job.symbols}
@@ -2290,7 +2291,7 @@ function BacktestSummaryScorecard({ result }: { result: BacktestResult }) {
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>
         Letter grades for key performance metrics — weighted overall score
       </div>
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+      <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
 
         {/* Metric grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
@@ -3135,7 +3136,7 @@ export default function Backtest() {
         <div>
           {/* Compare dropdown */}
           {runs.length >= 2 && selectedResult && (
-            <div style={{
+            <div className="card-hover" style={{
               marginBottom: 20, padding: '12px 16px',
               background: G.card, border: `1px solid ${C.border}`,
               borderRadius: R.lg, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
@@ -3195,7 +3196,7 @@ export default function Backtest() {
           {/* Detail panels (side by side if comparing) */}
           <div style={{ display: 'grid', gridTemplateColumns: compareResult ? '1fr 1fr' : '1fr', gap: 16 }}>
             {/* Selected run */}
-            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
+            <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
               {loadingDetail ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <Skeleton h={24} w="60%" />
@@ -3214,7 +3215,7 @@ export default function Backtest() {
 
             {/* Compare run */}
             {compareResult && (
-              <div style={{ background: G.card, border: `1px solid ${C.brand}40`, borderRadius: R.lg, padding: '20px 24px' }}>
+              <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.brand}40`, borderRadius: R.lg, padding: '20px 24px' }}>
                 <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 12 }}>Comparison</div>
                 <RunDetail result={compareResult} />
               </div>

@@ -104,7 +104,7 @@ function AgentPipelineFlow({ decision }: { decision: LlmDecision | null }) {
   ];
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -234,7 +234,7 @@ function VetoReasonWordCloud({ decisions }: { decisions: LlmDecision[] }) {
   }
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.purple}30`,
       borderRadius: R.lg,
@@ -459,7 +459,7 @@ function VetoPanel({ decisions }: { decisions: LlmDecision[] }) {
   const maxReasonCount = Math.max(1, ...reasonEntries.map((e) => e[1]));
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.purple}30`, borderRadius: R.lg, padding: '18px 20px' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.purple}30`, borderRadius: R.lg, padding: '18px 20px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 16 }}>🚫</span> Critic Veto Analysis
       </div>
@@ -506,7 +506,7 @@ function ModelPanel({ decisions }: { decisions: LlmDecision[] }) {
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 14 }}>Model Routing</div>
       {entries.map(([model, count]) => {
         const mb = modelBadge(model);
@@ -544,7 +544,7 @@ function ConfidenceTrendSparkline({ decisions }: { decisions: LlmDecision[] }) {
   const avgConf = vals.reduce((a, b) => a + b, 0) / vals.length;
   const avgY = y(avgConf);
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
+    <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Confidence Trend</span>
         <span style={{ fontSize: F.xs, fontWeight: 700, color: avgConf >= 65 ? C.bull : avgConf >= 45 ? C.warn : C.bear }}>
@@ -668,7 +668,7 @@ const MAX_MS = 2000;
 
 function AIThinkingSpeed() {
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -790,7 +790,7 @@ const MAX_LATENCY_MS = Math.max(...TIMELINE_AGENTS.map((a) => a.latencyMs));
 
 function AgentSequenceTimeline() {
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -974,7 +974,7 @@ function ConfidenceCalibrationChart({ decisions }: { decisions: LlmDecision[] })
   const yTicks = [0, 25, 50, 75, 100];
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -1109,7 +1109,7 @@ function DecisionTimeHeatmap() {
   const hourLabels = [0, 3, 6, 9, 12, 15, 18, 21];
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -1257,7 +1257,7 @@ function MemoryEvolutionChart() {
   const xTicks = [0, 3, 6, 9, 13];
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -1403,7 +1403,7 @@ function AgentLatencyBreakdown() {
   const toBarX = (ms: number) => PAD.left + (ms / maxTotal) * plotW;
 
   return (
-    <div style={{
+    <div className="card-hover" style={{
       background: G.card,
       border: `1px solid ${C.border}`,
       borderRadius: R.lg,
@@ -1730,7 +1730,7 @@ export default function AiDecisionsPage() {
             <MemoryEvolutionChart />
 
             {/* "What makes this unique" callout */}
-            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+            <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
               <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 10 }}>Why this matters</div>
               {[
                 { icon: '🔍', text: 'Every decision has a reason — no black box' },
@@ -1748,7 +1748,7 @@ export default function AiDecisionsPage() {
             </div>
 
             {/* Deep dive links */}
-            <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+            <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
               <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 10 }}>Explore further</div>
               {[
                 { href: '/forensics', label: 'Trade Forensics', desc: 'Pair decisions with trade outcomes' },
