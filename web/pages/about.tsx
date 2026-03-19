@@ -434,6 +434,240 @@ function TransparencyScoreCard() {
   );
 }
 
+// ─── Regime Transition Diagram ────────────────────────────────────────────────
+
+function RegimeTransitionDiagram() {
+  const W = 500;
+  const H = 280;
+
+  // Node positions (cx, cy)
+  const nodes: Record<string, { cx: number; cy: number; label: string; color: string }> = {
+    trend:   { cx: 250, cy: 44,  label: 'Trend',    color: C.bull  },
+    range:   { cx: 250, cy: 150, label: 'Range',    color: C.info  },
+    highvol: { cx: 400, cy: 100, label: 'High Vol', color: C.warn  },
+    panic:   { cx: 390, cy: 220, label: 'Panic',    color: C.bear  },
+    lowliq:  { cx: 90,  cy: 185, label: 'Low Liq',  color: C.muted },
+  };
+
+  const R_NODE = 32;
+
+  // Arrow thickness: 2px at 15%, 5px at 60% — linear interpolation
+  function strokeW(pct: number): number {
+    return 2 + ((pct - 15) / (60 - 15)) * 3;
+  }
+
+  // Given two circles, compute the point on the circumference of the source
+  // facing the target, and vice versa (so arrows don't overlap the circles).
+  function edgePoints(
+    ax: number, ay: number,
+    bx: number, by: number,
+  ): { x1: number; y1: number; x2: number; y2: number } {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len;
+    const uy = dy / len;
+    return {
+      x1: ax + ux * R_NODE,
+      y1: ay + uy * R_NODE,
+      x2: bx - ux * (R_NODE + 6), // 6px gap for arrowhead
+      y2: by - uy * (R_NODE + 6),
+    };
+  }
+
+  // Midpoint for label placement, optionally offset perpendicular
+  function midpoint(
+    x1: number, y1: number,
+    x2: number, y2: number,
+    perpOffset = 0,
+  ): { x: number; y: number } {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    if (perpOffset === 0) return { x: mx, y: my };
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    return { x: mx + (-dy / len) * perpOffset, y: my + (dx / len) * perpOffset };
+  }
+
+  // Edges: [from, to, pct, perpLabelOffset]
+  const edges: [string, string, number, number][] = [
+    ['trend',   'range',   45,  10],
+    ['trend',   'highvol', 30,  -8],
+    ['range',   'trend',   35,  -10],
+    ['range',   'highvol', 25,  8],
+    ['range',   'lowliq',  15,  8],
+    ['highvol', 'panic',   40,  8],
+    ['highvol', 'range',   35,  -8],
+    ['panic',   'lowliq',  50,  -8],
+    ['panic',   'range',   30,  8],
+    ['lowliq',  'range',   60,  8],
+  ];
+
+  // Unique marker id per source color (to color arrowheads per source)
+  const markerColors: Record<string, string> = {
+    trend:   C.bull,
+    range:   C.info,
+    highvol: C.warn,
+    panic:   C.bear,
+    lowliq:  C.muted,
+  };
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 24 }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        Regime Transition Map — How Markets Evolve
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
+        Arrow thickness proportional to transition probability. Range is the most common steady-state regime.
+      </div>
+
+      {/* SVG diagram */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          width={W}
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ display: 'block', maxWidth: '100%' }}
+        >
+          <defs>
+            {/* One arrowhead marker per source node color */}
+            {Object.entries(markerColors).map(([key, color]) => (
+              <marker
+                key={key}
+                id={`arrow-${key}`}
+                markerWidth="7"
+                markerHeight="7"
+                refX="6"
+                refY="3.5"
+                orient="auto"
+              >
+                <polygon points="0 0, 7 3.5, 0 7" fill={color} opacity="0.85" />
+              </marker>
+            ))}
+          </defs>
+
+          {/* ── Edges ── */}
+          {edges.map(([from, to, pct, perpOffset]) => {
+            const a = nodes[from];
+            const b = nodes[to];
+            const { x1, y1, x2, y2 } = edgePoints(a.cx, a.cy, b.cx, b.cy);
+            const mid = midpoint(x1, y1, x2, y2, perpOffset);
+            const sw = strokeW(pct);
+            const srcColor = markerColors[from];
+            return (
+              <g key={`${from}-${to}`}>
+                <line
+                  x1={x1} y1={y1}
+                  x2={x2} y2={y2}
+                  stroke={srcColor}
+                  strokeWidth={sw}
+                  strokeOpacity={0.75}
+                  markerEnd={`url(#arrow-${from})`}
+                />
+                <text
+                  x={mid.x}
+                  y={mid.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={9}
+                  fontWeight={700}
+                  fill={srcColor}
+                  opacity={0.9}
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {pct}%
+                </text>
+              </g>
+            );
+          })}
+
+          {/* ── Self-loop on Range (most common steady state) ── */}
+          {(() => {
+            const { cx, cy } = nodes.range;
+            const loopR = 18;
+            // Small arc loop above-left of the Range node
+            const lx = cx - R_NODE - 4;
+            const ly = cy - R_NODE - 4;
+            return (
+              <g>
+                <circle
+                  cx={lx}
+                  cy={ly}
+                  r={loopR}
+                  fill="none"
+                  stroke={C.info}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.6}
+                  strokeDasharray="4 2"
+                  markerEnd="url(#arrow-range)"
+                />
+                <text
+                  x={lx - loopR - 2}
+                  y={ly - loopR + 2}
+                  fontSize={8}
+                  fill={C.info}
+                  fontWeight={700}
+                  opacity={0.8}
+                  textAnchor="end"
+                >
+                  steady
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* ── Nodes ── */}
+          {Object.entries(nodes).map(([key, { cx, cy, label, color }]) => (
+            <g key={key}>
+              {/* Shadow ring */}
+              <circle cx={cx} cy={cy} r={R_NODE + 3} fill={color} opacity={0.12} />
+              {/* Main circle */}
+              <circle cx={cx} cy={cy} r={R_NODE} fill={color} opacity={0.18} stroke={color} strokeWidth={2} />
+              {/* Label */}
+              <text
+                x={cx}
+                y={cy}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={10}
+                fontWeight={800}
+                fill={color}
+                style={{ pointerEvents: 'none' }}
+              >
+                {label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* ── Legend ── */}
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+        {Object.entries(nodes).map(([key, { label, color }]) => (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            <div style={{
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              background: color,
+              opacity: 0.85,
+            }} />
+            <span style={{ fontSize: 9, color: C.muted, fontWeight: 600 }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div style={{ width: 28, height: 2, background: C.muted, borderRadius: 1 }} />
+            <div style={{ width: 28, height: 5, background: C.muted, borderRadius: 1 }} />
+          </div>
+          <span style={{ fontSize: 9, color: C.muted, fontWeight: 600 }}>Arrow width = probability</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AboutPage() {
@@ -515,6 +749,7 @@ export default function AboutPage() {
             <StrategyCard name="Confidence Scorer" desc="Multi-factor scoring system: RSI, VWAP, ATR, trend alignment, volume confirmation. Outputs a 0–100 score." data="Multiple timeframes" why="Aggregating weak signals into a composite score reduces false positives vs any single indicator." />
             <StrategyCard name="Multi-Tier Quality" desc="Checks signal quality across short (5m) and medium (1h) timeframes. Filters out setups that lack multi-timeframe alignment." data="5m, 1h candles" why="A signal that looks good on 1h but bad on 5m is often entering at a local peak. MTF filters this." />
           </div>
+          <RegimeTransitionDiagram />
         </Section>
 
         {/* ── Agents ── */}
