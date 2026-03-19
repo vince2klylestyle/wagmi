@@ -39,7 +39,7 @@ export default function Document() {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             scroll-behavior: smooth;
           }
-          body { margin: 0; padding: 0; background: #0a0f1e; color: #f1f5f9; }
+          body { margin: 0; padding: 0; background: var(--color-bg); color: var(--color-text); }
           a { color: inherit; text-decoration: none; }
           button { font-family: inherit; cursor: pointer; }
           code, pre { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
@@ -84,11 +84,11 @@ export default function Document() {
             left: 12px;
             z-index: 9999;
             padding: 8px 16px;
-            background: #6366f1;
+            background: var(--color-brand);
             color: #fff;
             font-size: 14px;
             font-weight: 600;
-            border-radius: 0 0 6px 6px;
+            border-radius: 0 0 var(--radius-sm) var(--radius-sm);
             text-decoration: none;
             transition: top 0.15s ease;
           }
@@ -96,7 +96,7 @@ export default function Document() {
 
           /* Focus-visible ring for keyboard navigation */
           :focus-visible {
-            outline: 2px solid #6366f1;
+            outline: 2px solid var(--color-brand);
             outline-offset: 2px;
           }
           /* Suppress focus ring for mouse/touch interactions */
@@ -108,8 +108,8 @@ export default function Document() {
             50% { opacity: 0.4; }
           }
           .skeleton {
-            background: #1e293b;
-            border-radius: 6px;
+            background: var(--color-surface-hover);
+            border-radius: var(--radius-sm);
             animation: skeletonPulse 1.4s ease-in-out infinite;
           }
 
@@ -128,9 +128,9 @@ export default function Document() {
 
           /* Scrollbar styling */
           ::-webkit-scrollbar { width: 6px; height: 6px; }
-          ::-webkit-scrollbar-track { background: #111827; }
-          ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-          ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
+          ::-webkit-scrollbar-track { background: var(--color-surface); }
+          ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+          ::-webkit-scrollbar-thumb:hover { background: var(--color-border-bright); }
 
           /* Table base */
           table { border-collapse: collapse; width: 100%; }

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useId } from 'react';
 import { C, R, S, F, fmtUsd, fmtPct } from '../src/theme';
+import { seededRand as mkSeededRand } from '../lib/fmt';
 import type { BacktestResult, BacktestRunMeta, BacktestJob } from '../src/types';
 
 function resolveApiBase(): string {
@@ -928,11 +929,8 @@ function MonteCarloForecast({ result }: { result: BacktestResult }) {
   const NUM_SIMS    = 50;
   const NUM_TRADES  = 30;
 
-  // Seeded pseudo-random
-  function mcRand(seed: number): number {
-    const x = Math.sin(seed * 9301 + 49297) * 233280;
-    return x - Math.floor(x);
-  }
+  // Seeded pseudo-random (uses shared lib/fmt seededRand for determinism)
+  function mcRand(seed: number): number { return mkSeededRand(seed)(); }
 
   // Build all sim paths (array of equity-at-each-step, length NUM_TRADES+1)
   const allPaths: number[][] = Array.from({ length: NUM_SIMS }, (_, i) => {
