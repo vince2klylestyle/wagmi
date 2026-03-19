@@ -1118,8 +1118,6 @@ function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
 
 // ─── Signal Freshness Strip ───────────────────────────────────────────────────
 
-const FRESHNESS_SYMBOLS = ['BTC', 'SOL', 'HYPE', 'ETH', 'AVAX', 'LINK'];
-
 // Seeded fallback: stable per-symbol offset so it looks realistic without real timestamps
 function seededMinutesAgo(symbol: string): number {
   const seeds: Record<string, number> = {
@@ -2678,17 +2676,30 @@ function SignalAgeDistribution({ signals }: { signals: Record<string, Signal> | 
 // ─── Symbol Dominance Chart ───────────────────────────────────────────────────
 
 function SymbolDominanceChart({ signals }: { signals: Record<string, Signal> | null }) {
+  if (!signals || Object.keys(signals).length === 0) {
+    return (
+      <div style={{
+        background: G.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '40px 24px',
+        marginBottom: 28,
+        textAlign: 'center',
+        color: C.muted,
+        fontSize: F.sm,
+      }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 8 }}>Signal Dominance</div>
+        <div>No signal data available yet. Dominance chart will appear once the bot starts evaluating markets.</div>
+      </div>
+    );
+  }
+
   // Symbol palette
   const SYMBOL_COLORS: Record<string, string> = {
     BTC:  '#f97316', // orange
     SOL:  '#7c3aed', // purple
     HYPE: C.brand,   // indigo brand
   };
-  const DEFAULT_SYMS = ['BTC', 'SOL', 'HYPE'];
-
-  // Calculate dominance score per symbol: avg confidence × direction factor
-  // Use signal_score as a proxy for confidence; seeded fallbacks for BTC~82, SOL~78, HYPE~71
-  const SEEDED_SCORES: Record<string, number> = { BTC: 82, SOL: 78, HYPE: 71 };
 
   type DomEntry = {
     symbol: string;
@@ -2697,9 +2708,11 @@ function SymbolDominanceChart({ signals }: { signals: Record<string, Signal> | n
     color: string;
   };
 
-  const entries: DomEntry[] = DEFAULT_SYMS.map(sym => {
-    const sig = signals?.[sym];
-    const raw = sig?.signal_score ?? SEEDED_SCORES[sym] ?? 65;
+  const symbolList = Object.keys(signals).slice(0, 5);
+
+  const entries: DomEntry[] = symbolList.map(sym => {
+    const sig = signals[sym];
+    const raw = sig?.signal_score ?? 50;
     // Direction factor: BUY +1, SELL -1 (derived from SMA trend)
     const trendUp = sig ? (sig.sma20 ?? 0) > (sig.sma50 ?? 0) : true;
     const trendDown = sig ? (sig.sma20 ?? 0) < (sig.sma50 ?? 0) : false;
