@@ -336,9 +336,9 @@ function SignalScoreGauge({ score }: { score: number }) {
   const needleY = CY - needleLen * Math.sin(needleRad);
 
   const scoreColor =
-    score >= 80 ? '#4ade80' :
-    score >= 60 ? '#22c55e' :
-    score >= 30 ? '#eab308' :
+    safeScore >= 80 ? '#4ade80' :
+    safeScore >= 60 ? '#22c55e' :
+    safeScore >= 30 ? '#eab308' :
     '#ef4444';
 
   return (
@@ -1553,6 +1553,7 @@ export default function StrategyDetail() {
   const [logsLoading, setLogsLoading] = useState(true);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [card, setCard] = useState<StrategyCard | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const apiBase = resolveApiBase();
@@ -1561,6 +1562,7 @@ export default function StrategyDetail() {
   useEffect(() => {
     setActiveTab('signals');
     setCard(null);
+    setNotFound(false);
     setLogs([]);
     setLogsLoading(true);
     setLogsError(null);
@@ -1586,8 +1588,8 @@ export default function StrategyDetail() {
       // Fetch card
       try {
         const r = await fetch(`${apiBase}/v1/strategies/${encodeURIComponent(id)}`, { cache: 'no-store', signal });
-        if (r.ok) setCard(await r.json());
-        else if (r.status === 404) setCard(null);
+        if (r.ok) { setCard(await r.json()); setNotFound(false); }
+        else if (r.status === 404) { setCard(null); setNotFound(true); }
       } catch (_) {}
 
       // Fetch logs
@@ -1677,8 +1679,23 @@ export default function StrategyDetail() {
         ← Back to Strategies
       </button>
 
+      {/* 404 not-found state */}
+      {notFound && (
+        <div style={{
+          textAlign: 'center',
+          padding: '60px 20px',
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.lg,
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+          <div style={{ fontSize: F.lg, fontWeight: 600, color: C.text, marginBottom: 6 }}>Strategy not found</div>
+          <div style={{ fontSize: F.sm, color: C.muted }}>No strategy with ID &ldquo;{id}&rdquo; exists.</div>
+        </div>
+      )}
+
       {/* Page header */}
-      <div style={{
+      {!notFound && <div style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: R.lg,

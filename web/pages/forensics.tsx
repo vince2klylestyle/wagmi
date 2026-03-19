@@ -1430,7 +1430,7 @@ function TradeCard({ trade }: { trade: TradeRecord }) {
                   { label: 'Stop Loss', value: fmtUsd(trade.sl) },
                   { label: 'TP1', value: fmtUsd(trade.tp1) },
                   { label: 'TP2', value: fmtUsd(trade.tp2) },
-                  { label: 'R/R Target', value: trade.entry && trade.sl && trade.tp1 ? `${(Math.abs((trade.tp1 - trade.entry) / (trade.entry - trade.sl))).toFixed(2)}:1` : '—' },
+                  { label: 'R/R Target', value: trade.entry && trade.sl && trade.tp1 && trade.entry !== trade.sl ? `${(Math.abs((trade.tp1 - trade.entry) / (trade.entry - trade.sl))).toFixed(2)}:1` : '—' },
                   { label: 'R/R Achieved', value: trade.rr_achieved != null ? `${trade.rr_achieved.toFixed(2)}:1` : '—' },
                   { label: 'Leverage', value: trade.leverage != null ? `${trade.leverage.toFixed(1)}×` : '—' },
                   { label: 'Fee', value: fmtUsd(trade.fee) },
@@ -1720,7 +1720,7 @@ function RollingSharpeChart({ trades }: { trades: TradeRecord[] }) {
     const slice = validTrades.slice(i, i + WINDOW).map((t) => t.pnl!);
     const mean = slice.reduce((a, b) => a + b, 0) / WINDOW;
     const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / WINDOW;
-    const std = Math.sqrt(variance);
+    const std = Math.sqrt(Math.max(0, variance));
     const sharpe = std > 0 ? (mean / std) * Math.sqrt(WINDOW) : 0;
     sharpePoints.push({ x: i + WINDOW / 2, sharpe });
   }
@@ -3464,7 +3464,7 @@ export default function Forensics() {
         </div>
 
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={44} style={{ marginBottom: 8 }} />)
+          Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ marginBottom: 8 }}><Skeleton h={44} /></div>)
         ) : filtered.length === 0 ? (
           <div style={{ padding: '32px 24px', background: C.card, borderRadius: R.lg, border: `1px solid ${C.border}`, textAlign: 'center', color: C.muted, fontSize: F.sm }}>
             No trades match the current filters.

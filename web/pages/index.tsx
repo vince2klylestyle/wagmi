@@ -806,13 +806,15 @@ function RecentTradeStrip({ trades }: { trades: MiniTrade[] }) {
         <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8, fontWeight: 600 }}>CUMULATIVE P&L</div>
         <svg width={sparkW} height={sparkH} style={{ display: 'block', overflow: 'visible' }}>
           <line x1={0} y1={sparkH / 2} x2={sparkW} y2={sparkH / 2} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 3" />
-          <polyline
-            points={sparkPts.join(' ')}
-            fill="none"
-            stroke={sparkColor}
-            strokeWidth={2}
-            strokeLinejoin="round"
-          />
+          {sparkPts.length >= 2 && (
+            <polyline
+              points={sparkPts.join(' ')}
+              fill="none"
+              stroke={sparkColor}
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+          )}
           {cumPoints.length > 0 && (
             <circle
               cx={parseFloat(sparkPts[sparkPts.length - 1].split(',')[0])}

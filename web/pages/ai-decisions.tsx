@@ -605,6 +605,16 @@ function DecisionMixDonut({ decisions }: { decisions: LlmDecision[] }) {
   const CX = 60, CY = 60, R_out = 52, R_in = 34;
 
   const arcPath = (startPct: number, endPct: number) => {
+    // Full-circle edge case: SVG arc from a point to itself is degenerate — draw two semicircles instead
+    if (endPct - startPct >= 0.9999) {
+      const midA = (startPct * 360 - 90 + 180) * (Math.PI / 180);
+      const startA = (startPct * 360 - 90) * (Math.PI / 180);
+      const mx1 = CX + R_out * Math.cos(startA), my1 = CY + R_out * Math.sin(startA);
+      const mx2 = CX + R_out * Math.cos(midA), my2 = CY + R_out * Math.sin(midA);
+      const mx3 = CX + R_in * Math.cos(midA), my3 = CY + R_in * Math.sin(midA);
+      const mx4 = CX + R_in * Math.cos(startA), my4 = CY + R_in * Math.sin(startA);
+      return `M ${mx1} ${my1} A ${R_out} ${R_out} 0 1 1 ${mx2} ${my2} A ${R_out} ${R_out} 0 1 1 ${mx1} ${my1} M ${mx4} ${my4} A ${R_in} ${R_in} 0 1 0 ${mx3} ${my3} A ${R_in} ${R_in} 0 1 0 ${mx4} ${my4} Z`;
+    }
     const a1 = (startPct * 360 - 90) * (Math.PI / 180);
     const a2 = (endPct * 360 - 90) * (Math.PI / 180);
     const large = (endPct - startPct) * 360 > 180 ? 1 : 0;

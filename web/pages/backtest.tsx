@@ -16,8 +16,8 @@ function resolveApiBase(): string {
   return 'http://localhost:8000';
 }
 
-function Skeleton({ h = 16, w = '100%' }: { h?: number; w?: string | number }) {
-  return <div className="skeleton" style={{ height: h, width: w, borderRadius: R.sm }} />;
+function Skeleton({ h = 16, w = '100%', style }: { h?: number; w?: string | number; style?: React.CSSProperties }) {
+  return <div className="skeleton" style={{ height: h, width: w, borderRadius: R.sm, ...style }} />;
 }
 
 // ─── Equity Sparkline ─────────────────────────────────────────────────────────
@@ -2357,9 +2357,10 @@ function BacktestCalendarView({ result }: { result?: BacktestResult | null }) {
   // Build daily PnL map from trades if available
   const dailyPnl: Record<string, number> = {};
   if (result?.trades && result.trades.length > 0) {
+    const tradesLen = result.trades.length;
     result.trades.forEach((t, i) => {
       // Spread trades across the year deterministically
-      const dayOfYear = Math.floor((i / result.trades!.length) * 365);
+      const dayOfYear = Math.floor((i / tradesLen) * 365);
       const month = MONTH_NAMES[Math.floor(dayOfYear / 30.5)];
       const day = (dayOfYear % 28) + 1;
       const key = `${month}-${day}`;

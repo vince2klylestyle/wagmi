@@ -2564,7 +2564,7 @@ function MultiTimeframeConfluence() {
     return C.muted;
   };
 
-  const TfCell = ({ cell }: { cell: TfCell }) => {
+  const TfCellView = ({ cell }: { cell: TfCell }) => {
     if (cell.trend === 'neutral') {
       return (
         <td style={{ padding: '10px 8px', textAlign: 'center' }}>
@@ -2653,7 +2653,7 @@ function MultiTimeframeConfluence() {
                     </div>
                   </td>
                   {row.cells.map((cell, ci) => (
-                    <TfCell key={ci} cell={cell} />
+                    <TfCellView key={ci} cell={cell} />
                   ))}
                   <td style={{ padding: '10px 10px', textAlign: 'center' }}>
                     <span style={{
@@ -3371,7 +3371,8 @@ function MiniCandleChart() {
   const yMax = priceMax + pricePad;
 
   function yOf(price: number): number {
-    return PAD_T + chartH - ((price - yMin) / (yMax - yMin)) * chartH;
+    const range = yMax - yMin;
+    return PAD_T + chartH - (range > 0 ? ((price - yMin) / range) * chartH : 0.5 * chartH);
   }
   function xCenter(i: number): number {
     return PAD_L + i * candleSlotW + candleSlotW / 2;

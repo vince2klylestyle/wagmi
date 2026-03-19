@@ -392,14 +392,15 @@ function CompoundCalc() {
   const [months, setMonths] = useState(12);
 
   const rows: { month: number; equity: number; gain: number }[] = [];
-  let equity = capital;
+  let equity = capital > 0 ? capital : 1;
   for (let m = 1; m <= Math.min(months, 60); m++) {
     const gain = equity * (monthlyPct / 100);
-    equity += gain;
+    equity = Math.max(0, equity + gain);
     rows.push({ month: m, equity, gain });
   }
   const finalEquity = rows[rows.length - 1]?.equity ?? capital;
-  const totalReturn = ((finalEquity - capital) / capital) * 100;
+  const safeCapital = capital > 0 ? capital : 1;
+  const totalReturn = ((finalEquity - safeCapital) / safeCapital) * 100;
   const maxEquity = finalEquity;
 
   const inputStyle: React.CSSProperties = {
@@ -3484,7 +3485,7 @@ export default function Learn() {
 
       {/* ── Quick nav ─────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 32 }}>
-        {['What is this bot?', 'AI Simulator', 'Signals', 'AI Brain', 'Risk Management', 'Trade Flow', 'Calculators', 'Copy Trading', 'Glossary'].map((label) => (
+        {['What is this bot?', 'AI Simulator', 'Signals', 'AI Brain', 'Risk Management', 'Trade Flow', 'Calculators', 'Copy Trade Guide', 'Glossary'].map((label) => (
           <a
             key={label}
             href={`#${label.toLowerCase().replace(/\?/g, '').replace(/ /g, '-')}`}

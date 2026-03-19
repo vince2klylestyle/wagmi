@@ -626,7 +626,9 @@ function BreakEvenCalculator() {
             step={1000}
             value={accountSize}
             onChange={(e) => {
-              const v = Math.max(1000, Math.min(100000, Number(e.target.value)));
+              const raw = Number(e.target.value);
+              if (isNaN(raw)) return;
+              const v = Math.max(1000, Math.min(100000, raw));
               setAccountSize(v);
             }}
             style={{
@@ -740,7 +742,7 @@ function CostVsReturnChart() {
 
   // Performance multipliers per tier
   const perfBonus = [1.0, 1.08, 1.15] as const;
-  const costs = [0, 29, 79] as const;
+  const costs = [0, 29, 97] as const;
 
   const buildEquity = (tierIdx: number): number[] =>
     Array.from({ length: MONTHS + 1 }, (_, m) => {

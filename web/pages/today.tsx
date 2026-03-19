@@ -1426,8 +1426,8 @@ function BotScheduleTimeline() {
   const future1Decimal = nowDecimal + 1;
   const future3Decimal = nowDecimal + 3;
   const futureEvents: ScheduleEvent[] = [
-    { hour: Math.floor(future1Decimal) % 24, minute: Math.round((future1Decimal % 1) * 60), kind: 'future-regime', label: 'regime check' },
-    { hour: Math.floor(future3Decimal) % 24, minute: Math.round((future3Decimal % 1) * 60), kind: 'future-signal', label: 'signal check' },
+    { hour: Math.floor(future1Decimal) % 24, minute: Math.floor((future1Decimal % 1) * 60), kind: 'future-regime', label: 'regime check' },
+    { hour: Math.floor(future3Decimal) % 24, minute: Math.floor((future3Decimal % 1) * 60), kind: 'future-signal', label: 'signal check' },
   ];
 
   // Session background bands

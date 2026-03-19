@@ -2529,15 +2529,15 @@ function PnlDistributionHistogram({ trades }: { trades: TradeRecord[] }) {
   const toX = (i: number) => pad.left + i * bw;
   const toY = (count: number) => pad.top + iH - (count / maxCount) * iH;
 
-  // Gaussian curve: sample at 60 points
-  const gaussPoints = Array.from({ length: 60 }, (_, i) => {
+  // Gaussian curve: sample at 60 points (only meaningful when stdDev > 0)
+  const gaussPoints = stdDev > 0 ? Array.from({ length: 60 }, (_, i) => {
     const x = minPnl + (i / 59) * range;
     const gauss = (n * binWidth / (stdDev * Math.sqrt(2 * Math.PI))) *
       Math.exp(-0.5 * ((x - mean) / stdDev) ** 2);
     const svgX = pad.left + ((x - minPnl) / range) * iW;
     const svgY = pad.top + iH - (gauss / maxCount) * iH;
     return `${svgX.toFixed(1)},${Math.max(pad.top, svgY).toFixed(1)}`;
-  }).join(' ');
+  }).join(' ') : '';
 
   // Reference line X positions
   const medianX = pad.left + ((median - minPnl) / range) * iW;
