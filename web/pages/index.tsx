@@ -696,6 +696,117 @@ function StrategyCard({ strategy }: { strategy: Strategy }) {
   );
 }
 
+// ─── Recent Trade Strip + Cumulative P&L Spark ───────────────────────────────
+
+type MiniTrade = { outcome?: string; pnl?: number | null; symbol?: string };
+
+function RecentTradeStrip({ trades }: { trades: MiniTrade[] }) {
+  if (!trades.length) return null;
+  const last12 = [...trades].slice(0, 12).reverse(); // oldest→newest for left-to-right display
+  const wins = trades.filter((t) => t.outcome === 'WIN').length;
+  const wr = trades.length > 0 ? Math.round((wins / trades.length) * 100) : 0;
+  const totalPnl = trades.reduce((s, t) => s + (t.pnl ?? 0), 0);
+
+  // Cumulative P&L sparkline
+  let cumPnl = 0;
+  const cumPoints: number[] = [];
+  for (const t of last12) {
+    cumPnl += t.pnl ?? 0;
+    cumPoints.push(cumPnl);
+  }
+  const sparkMin = Math.min(...cumPoints, 0);
+  const sparkMax = Math.max(...cumPoints, 0);
+  const sparkRange = sparkMax - sparkMin || 1;
+  const sparkW = 160, sparkH = 32;
+  const sparkPts = cumPoints.map((v, i) => {
+    const x = (i / Math.max(cumPoints.length - 1, 1)) * sparkW;
+    const y = sparkH - ((v - sparkMin) / sparkRange) * (sparkH - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const sparkColor = totalPnl >= 0 ? C.bull : C.bear;
+
+  return (
+    <div style={{
+      background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl,
+      padding: '16px 22px', marginBottom: 24,
+      display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
+    }}>
+      {/* Trade dots */}
+      <div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8, fontWeight: 600 }}>RECENT TRADES</div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {last12.map((t, i) => {
+            const isWin = t.outcome === 'WIN';
+            const isLoss = t.outcome === 'LOSS';
+            const color = isWin ? C.bull : isLoss ? C.bear : C.muted;
+            const isLast = i === last12.length - 1;
+            return (
+              <div key={i} title={`${t.symbol ?? '?'} ${t.outcome ?? '?'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(1) : ''}`} style={{
+                width: isLast ? 12 : 8, height: isLast ? 12 : 8,
+                borderRadius: '50%', background: color, flexShrink: 0,
+                boxShadow: isLast ? `0 0 6px ${color}` : 'none',
+                transition: 'all 0.2s',
+              }} />
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>{wins}/{trades.length} wins · {wr}% WR</div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ width: 1, height: 44, background: C.border }} />
+
+      {/* Cumulative P&L sparkline */}
+      <div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8, fontWeight: 600 }}>CUMULATIVE P&L</div>
+        <svg width={sparkW} height={sparkH} style={{ display: 'block', overflow: 'visible' }}>
+          <line x1={0} y1={sparkH / 2} x2={sparkW} y2={sparkH / 2} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 3" />
+          <polyline
+            points={sparkPts.join(' ')}
+            fill="none"
+            stroke={sparkColor}
+            strokeWidth={2}
+            strokeLinejoin="round"
+          />
+          {cumPoints.length > 0 && (
+            <circle
+              cx={parseFloat(sparkPts[sparkPts.length - 1].split(',')[0])}
+              cy={parseFloat(sparkPts[sparkPts.length - 1].split(',')[1])}
+              r={3} fill={sparkColor}
+            />
+          )}
+        </svg>
+        <div style={{ fontSize: 10, color: sparkColor, fontWeight: 700, marginTop: 2 }}>
+          {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} net
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ width: 1, height: 44, background: C.border }} />
+
+      {/* Quick stats */}
+      <div style={{ display: 'flex', gap: 20 }}>
+        {[
+          { label: 'Total trades', value: String(trades.length) },
+          { label: 'Win rate', value: `${wr}%`, color: wr >= 60 ? C.bull : wr >= 40 ? '#d97706' : C.bear },
+          { label: 'Net P&L', value: `${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}`, color: totalPnl >= 0 ? C.bull : C.bear },
+        ].map(({ label, value, color }) => (
+          <div key={label}>
+            <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>{label}</div>
+            <div style={{ fontSize: F.md, fontWeight: 700, color: color ?? C.text }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginLeft: 'auto' }}>
+        <a href="/results" style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textDecoration: 'none' }}>
+          Full track record →
+        </a>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -707,6 +818,7 @@ export default function Home() {
   const [activeChart, setActiveChart] = useState('BTC');
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const [recentTrades, setRecentTrades] = useState<MiniTrade[]>([]);
   const apiBase = resolveApiBase();
 
   useEffect(() => {
@@ -740,6 +852,14 @@ export default function Home() {
         if (llmRes.status === 'fulfilled' && llmRes.value.ok) {
           setLlmView(await llmRes.value.json());
         }
+        // Fetch recent trades for the strip
+        try {
+          const trRes = await fetch(`${apiBase}/v1/trades/history?limit=20`);
+          if (trRes.ok) {
+            const d = await trRes.json();
+            setRecentTrades(d?.trades ?? []);
+          }
+        } catch {/* silent */}
         setLoading(false);
       } catch {
         setLoading(false);
@@ -971,6 +1091,9 @@ export default function Home() {
 
       {/* ── Activity ticker ───────────────────────────── */}
       <ActivityTicker events={activity} />
+
+      {/* ── Recent Trade Strip ────────────────────────── */}
+      {recentTrades.length > 0 && <RecentTradeStrip trades={recentTrades} />}
 
       {/* ── Market Heatmap ────────────────────────────── */}
       <div style={{ marginBottom: 28, marginTop: 24 }}>
