@@ -56,6 +56,13 @@ export const C = {
   heatBear1: '#ef4444',
   heatBear2: '#b91c1c',
   heatBear3: '#7f1d1d',
+
+  // Semantic muted background tints (12% alpha)
+  bearMuted: 'rgba(220,38,38,.12)',
+  bullMuted: 'rgba(22,163,74,.12)',
+  brandMuted: 'rgba(99,102,241,.12)',
+  warnMuted: 'rgba(234,179,8,.12)',
+  infoMuted: 'rgba(37,99,235,.12)',
 };
 
 export const R = {
@@ -116,6 +123,15 @@ export function fmtPct(n: number | null | undefined, decimals = 1): string {
   if (n == null || isNaN(n)) return '—';
   const sign = n > 0 ? '+' : '';
   return `${sign}${n.toFixed(decimals)}%`;
+}
+
+/** Return a CSS rgba string for any hex color at the given opacity (0-1) */
+export function alpha(hex: string, opacity: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0,2), 16);
+  const g = parseInt(h.substring(2,4), 16);
+  const b = parseInt(h.substring(4,6), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
 }
 
 /** Format a relative timestamp */
