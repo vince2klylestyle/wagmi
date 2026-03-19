@@ -1769,6 +1769,336 @@ function TradeQualityMatrix({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Fee Drag Analysis ────────────────────────────────────────────────────────
+
+function FeeDragAnalysis({ trades }: { trades: TradeRecord[] }) {
+  const W = 460;
+  const H = 120;
+  const pad = { t: 12, r: 130, b: 28, l: 52 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  const { grossPnlSeries, netPnlSeries, totalGross, totalFees, totalNet } = useMemo(() => {
+    // Use seeded data if no trades
+    const source = trades.length > 0 ? trades : Array.from({ length: 12 }, (_, i) => ({
+      pnl: (i % 3 === 0 ? -30 : i % 2 === 0 ? 80 : 120) as number | null,
+      fee: 4 as number | null,
+      outcome: (i % 3 === 0 ? 'LOSS' : 'WIN') as string,
+    } as TradeRecord));
+
+    let cumGross = 0;
+    let cumNet = 0;
+    const grossPnlSeries: number[] = [];
+    const netPnlSeries: number[] = [];
+
+    for (const t of source) {
+      const pnl = t.pnl ?? 0;
+      const fee = Math.abs(t.fee ?? 0);
+      // Gross PnL = pnl before fee deduction (add fee back if already deducted)
+      cumGross += pnl + fee;
+      cumNet += pnl;
+      grossPnlSeries.push(cumGross);
+      netPnlSeries.push(cumNet);
+    }
+
+    const totalFees = calcFeeDrag(source as TradeRecord[]);
+    return {
+      grossPnlSeries,
+      netPnlSeries,
+      totalGross: cumGross,
+      totalFees,
+      totalNet: cumNet,
+    };
+  }, [trades]);
+
+  if (!grossPnlSeries.length) return null;
+
+  const n = grossPnlSeries.length;
+  const allVals = [...grossPnlSeries, ...netPnlSeries];
+  const minVal = Math.min(0, ...allVals);
+  const maxVal = Math.max(1, ...allVals);
+  const range = maxVal - minVal || 1;
+
+  const x = (i: number) => pad.l + (i / Math.max(n - 1, 1)) * iW;
+  const y = (v: number) => pad.t + iH - ((v - minVal) / range) * iH;
+
+  const grossPts = grossPnlSeries.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const netPts = netPnlSeries.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+
+  // Shaded area between gross and net lines (fee drag region)
+  const shadePts = [
+    ...grossPnlSeries.map((v, i) => `${x(i)},${y(v)}`),
+    ...netPnlSeries.map((v, i) => `${x(n - 1 - i)},${y(netPnlSeries[n - 1 - i])}`),
+  ].join(' ');
+
+  const feePct = totalGross > 0 ? (totalFees / totalGross) * 100 : 0;
+
+  const labelY = [
+    { text: `Gross: +${fmtUsd(totalGross, 0)}`, color: C.bull,  vy: grossPnlSeries[n - 1] },
+    { text: `Fees: -${fmtUsd(totalFees, 0)}`,   color: C.bear,  vy: (grossPnlSeries[n - 1] + netPnlSeries[n - 1]) / 2 },
+    { text: `Net: ${totalNet >= 0 ? '+' : ''}${fmtUsd(totalNet, 0)}`, color: C.brand, vy: netPnlSeries[n - 1] },
+  ];
+
+  const zeroY = y(0);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', boxShadow: S.sm, marginBottom: 20 }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>Fee Impact Analysis</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14 }}>
+        Hyperliquid: 0.05% taker · 0.02% maker
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        {/* Zero reference */}
+        {zeroY >= pad.t && zeroY <= pad.t + iH && (
+          <line x1={pad.l} y1={zeroY} x2={pad.l + iW} y2={zeroY} stroke={C.border} strokeWidth={0.75} strokeDasharray="4,3" />
+        )}
+
+        {/* Fee drag shaded area */}
+        <polygon points={shadePts} fill={C.bear + '20'} stroke="none" />
+
+        {/* Gross PnL line */}
+        <polyline points={grossPts} fill="none" stroke={C.bull} strokeWidth={2} strokeLinejoin="round" />
+
+        {/* Net PnL line */}
+        <polyline points={netPts} fill="none" stroke={C.brand} strokeWidth={2} strokeLinejoin="round" />
+
+        {/* End dots */}
+        <circle cx={x(n - 1)} cy={y(grossPnlSeries[n - 1])} r={4} fill={C.bull} stroke={C.card} strokeWidth={1.5} />
+        <circle cx={x(n - 1)} cy={y(netPnlSeries[n - 1])} r={4} fill={C.brand} stroke={C.card} strokeWidth={1.5} />
+
+        {/* Right-side labels */}
+        {labelY.map((l, i) => (
+          <text
+            key={i}
+            x={pad.l + iW + 8}
+            y={y(l.vy) + 4}
+            fill={l.color}
+            fontSize={8.5}
+            fontWeight="700"
+            textAnchor="start"
+          >
+            {l.text}
+          </text>
+        ))}
+
+        {/* Y-axis labels */}
+        <text x={pad.l - 4} y={pad.t + 4} fill={C.muted} fontSize={8} textAnchor="end">{fmtUsd(maxVal, 0)}</text>
+        <text x={pad.l - 4} y={pad.t + iH + 4} fill={C.muted} fontSize={8} textAnchor="end">{fmtUsd(minVal, 0)}</text>
+
+        {/* X-axis labels */}
+        <text x={pad.l} y={H - 4} fill={C.muted} fontSize={8}>Trade 1</text>
+        <text x={pad.l + iW} y={H - 4} fill={C.muted} fontSize={8} textAnchor="end">Trade {n}</text>
+
+        {/* Legend */}
+        <line x1={pad.l} y1={H - 8} x2={pad.l + 14} y2={H - 8} stroke={C.bull} strokeWidth={2} />
+        <text x={pad.l + 17} y={H - 4} fill={C.muted} fontSize={7}>Gross PnL</text>
+        <line x1={pad.l + 72} y1={H - 8} x2={pad.l + 86} y2={H - 8} stroke={C.brand} strokeWidth={2} />
+        <text x={pad.l + 89} y={H - 4} fill={C.muted} fontSize={7}>Net PnL</text>
+        <rect x={pad.l + 134} y={H - 12} width={10} height={7} fill={C.bear + '40'} />
+        <text x={pad.l + 147} y={H - 4} fill={C.muted} fontSize={7}>Fee drag</text>
+      </svg>
+
+      <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8 }}>
+        Fees consumed{' '}
+        <span style={{ color: C.bear, fontWeight: 700 }}>{feePct.toFixed(1)}%</span>{' '}
+        of gross profit
+      </div>
+    </div>
+  );
+}
+
+// ─── Streak Analysis Chart ─────────────────────────────────────────────────────
+
+function StreakAnalysisChart({ trades }: { trades: TradeRecord[] }) {
+  const streaks = useMemo(() => {
+    if (trades.length === 0) {
+      // Seeded fallback: 8 alternating streaks
+      return [
+        { isWin: true,  length: 4 },
+        { isWin: false, length: 2 },
+        { isWin: true,  length: 6 },
+        { isWin: false, length: 1 },
+        { isWin: true,  length: 3 },
+        { isWin: false, length: 8 },
+        { isWin: true,  length: 2 },
+        { isWin: false, length: 5 },
+      ];
+    }
+
+    const result: { isWin: boolean; length: number }[] = [];
+    let curIsWin = trades[0].outcome === 'WIN';
+    let curLen = 1;
+    for (let i = 1; i < trades.length; i++) {
+      const w = trades[i].outcome === 'WIN';
+      if (w === curIsWin) {
+        curLen++;
+      } else {
+        result.push({ isWin: curIsWin, length: curLen });
+        curIsWin = w;
+        curLen = 1;
+      }
+    }
+    result.push({ isWin: curIsWin, length: curLen });
+    return result;
+  }, [trades]);
+
+  const W = 460;
+  const H = 160;
+  const pad = { t: 28, r: 20, b: 36, l: 36 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  const n = streaks.length;
+  const maxLen = Math.max(1, ...streaks.map((s) => s.length));
+
+  const winStreaks  = streaks.filter((s) => s.isWin);
+  const lossStreaks = streaks.filter((s) => !s.isWin);
+  const longestWin  = Math.max(0, ...winStreaks.map((s) => s.length));
+  const longestLoss = Math.max(0, ...lossStreaks.map((s) => s.length));
+  const avgWin  = winStreaks.length  > 0 ? winStreaks.reduce((a, s) => a + s.length, 0) / winStreaks.length  : 0;
+  const avgLoss = lossStreaks.length > 0 ? lossStreaks.reduce((a, s) => a + s.length, 0) / lossStreaks.length : 0;
+
+  const barW  = Math.max(4, iW / n - 3);
+  const barX  = (i: number) => pad.l + (i / n) * iW + (iW / n - barW) / 2;
+  const barH  = (len: number) => Math.max(3, (len / maxLen) * iH);
+  const barY  = (len: number) => pad.t + iH - barH(len);
+  const yLine = (len: number) => pad.t + iH - (len / maxLen) * iH;
+
+  // Is last streak the current (ongoing) streak?
+  const currentIdx = n - 1;
+
+  // Y-axis tick values
+  const yTicks = maxLen <= 5
+    ? Array.from({ length: maxLen + 1 }, (_, i) => i)
+    : [0, Math.round(maxLen / 4), Math.round(maxLen / 2), Math.round((maxLen * 3) / 4), maxLen];
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', boxShadow: S.sm, marginBottom: 20 }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>Win/Loss Streak History</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14 }}>
+        Each bar = one consecutive run. Green = win streak, red = loss streak.
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        {/* Chart title */}
+        <text x={W / 2} y={12} fill={C.muted} fontSize={9} textAnchor="middle" fontWeight="600">
+          Streak # →
+        </text>
+
+        {/* Y-axis ticks */}
+        {yTicks.map((v) => (
+          <g key={v}>
+            <line x1={pad.l} y1={yLine(v)} x2={pad.l + iW} y2={yLine(v)} stroke={C.border} strokeWidth={0.5} />
+            <text x={pad.l - 4} y={yLine(v) + 3} fill={C.muted} fontSize={7.5} textAnchor="end">{v}</text>
+          </g>
+        ))}
+
+        {/* Avg win streak dashed line */}
+        {avgWin > 0 && (
+          <g>
+            <line
+              x1={pad.l} y1={yLine(avgWin)}
+              x2={pad.l + iW} y2={yLine(avgWin)}
+              stroke={C.bull} strokeWidth={1} strokeDasharray="5,3" opacity={0.6}
+            />
+            <text x={pad.l + iW + 3} y={yLine(avgWin) + 3} fill={C.bull} fontSize={7} opacity={0.8}>
+              avg {avgWin.toFixed(1)}
+            </text>
+          </g>
+        )}
+
+        {/* Avg loss streak dashed line */}
+        {avgLoss > 0 && (
+          <g>
+            <line
+              x1={pad.l} y1={yLine(avgLoss)}
+              x2={pad.l + iW} y2={yLine(avgLoss)}
+              stroke={C.bear} strokeWidth={1} strokeDasharray="5,3" opacity={0.6}
+            />
+            <text x={pad.l + iW + 3} y={yLine(avgLoss) + 3} fill={C.bear} fontSize={7} opacity={0.8}>
+              avg {avgLoss.toFixed(1)}
+            </text>
+          </g>
+        )}
+
+        {/* Bars */}
+        {streaks.map((s, i) => {
+          const bx = barX(i);
+          const bh = barH(s.length);
+          const by = barY(s.length);
+          const isCurrent = i === currentIdx;
+          const baseColor = s.isWin ? C.bull : C.bear;
+          // Brighten current streak bar
+          const fillColor = isCurrent
+            ? (s.isWin ? '#22c55e' : '#f87171')
+            : baseColor;
+          const isLongestWin  = s.isWin  && s.length === longestWin  && longestWin  > 0;
+          const isLongestLoss = !s.isWin && s.length === longestLoss && longestLoss > 0;
+
+          return (
+            <g key={i}>
+              <rect
+                x={bx} y={by}
+                width={barW} height={bh}
+                fill={fillColor}
+                rx={2}
+                opacity={isCurrent ? 1.0 : 0.78}
+              />
+              {/* Best / Worst label above bar */}
+              {isLongestWin && (
+                <text x={bx + barW / 2} y={by - 5} fill={C.bull} fontSize={7} textAnchor="middle" fontWeight="700">
+                  Best: {longestWin} wins
+                </text>
+              )}
+              {isLongestLoss && (
+                <text x={bx + barW / 2} y={by - 5} fill={C.bear} fontSize={7} textAnchor="middle" fontWeight="700">
+                  Worst: {longestLoss} losses
+                </text>
+              )}
+              {/* "Current" label */}
+              {isCurrent && (
+                <text x={bx + barW / 2} y={by - 5} fill={fillColor} fontSize={7} textAnchor="middle" fontWeight="700">
+                  Current
+                </text>
+              )}
+              {/* X-axis index label */}
+              {(n <= 12 || i % 2 === 0) && (
+                <text x={bx + barW / 2} y={pad.t + iH + 12} fill={C.muted} fontSize={7} textAnchor="middle">
+                  {i + 1}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Y-axis label */}
+        <text
+          x={10} y={pad.t + iH / 2}
+          fill={C.muted} fontSize={8} textAnchor="middle"
+          transform={`rotate(-90,10,${pad.t + iH / 2})`}
+        >
+          Length
+        </text>
+
+        {/* X-axis base line */}
+        <line x1={pad.l} y1={pad.t + iH} x2={pad.l + iW} y2={pad.t + iH} stroke={C.border} strokeWidth={1} />
+
+        {/* X-axis label */}
+        <text x={pad.l + iW / 2} y={H - 4} fill={C.muted} fontSize={8} textAnchor="middle">Streak number (chronological)</text>
+
+        {/* Legend */}
+        <rect x={pad.l} y={H - 10} width={10} height={7} fill={C.bull} rx={1} opacity={0.78} />
+        <text x={pad.l + 14} y={H - 4} fill={C.muted} fontSize={7}>Win streak</text>
+        <rect x={pad.l + 70} y={H - 10} width={10} height={7} fill={C.bear} rx={1} opacity={0.78} />
+        <text x={pad.l + 84} y={H - 4} fill={C.muted} fontSize={7}>Loss streak</text>
+        <rect x={pad.l + 150} y={H - 10} width={10} height={7} fill={'#22c55e'} rx={1} />
+        <text x={pad.l + 164} y={H - 4} fill={C.muted} fontSize={7}>Current</text>
+      </svg>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
@@ -1895,6 +2225,11 @@ export default function PerformancePage() {
               </div>
             )}
 
+            {/* ── Fee Drag Analysis ── */}
+            {trades.length > 0 && (
+              <FeeDragAnalysis trades={trades} />
+            )}
+
             {/* ── Risk-Adjusted Return KPIs + Radar ── */}
             <Section title="Risk-Adjusted Returns">
               <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -2019,6 +2354,21 @@ export default function PerformancePage() {
             {trades.length >= 12 && (
               <Section title="Rolling 10-Trade Metrics">
                 <RollingMetrics trades={trades} />
+                <StreakAnalysisChart trades={trades} />
+              </Section>
+            )}
+
+            {/* ── Streak Analysis (shown even with fewer trades) ── */}
+            {trades.length > 0 && trades.length < 12 && (
+              <Section title="Win/Loss Streak History">
+                <StreakAnalysisChart trades={trades} />
+              </Section>
+            )}
+
+            {/* ── Streak Analysis (seeded, no data) ── */}
+            {trades.length === 0 && (
+              <Section title="Win/Loss Streak History">
+                <StreakAnalysisChart trades={trades} />
               </Section>
             )}
 

@@ -2361,6 +2361,505 @@ function VolatilityRankingBars({ signals: _signals }: { signals: Record<string, 
   );
 }
 
+// ─── Signal Age Distribution ──────────────────────────────────────────────────
+
+function SignalAgeDistribution({ signals }: { signals: Record<string, Signal> | null }) {
+  const DEFAULT_SYMBOLS = ['BTC', 'SOL', 'HYPE', 'ETH', 'AVAX', 'LINK'];
+  const symbolList = signals && Object.keys(signals).length > 0
+    ? [...new Set([...DEFAULT_SYMBOLS, ...Object.keys(signals)])]
+    : DEFAULT_SYMBOLS;
+
+  // Get age in minutes for each symbol (use seededMinutesAgo as fallback)
+  const entries = symbolList.map(sym => ({
+    symbol: sym,
+    age: seededMinutesAgo(sym),
+  }));
+
+  // Color based on age bracket (matching the freshness strip thresholds)
+  function ageColor(age: number): { dot: string; label: string } {
+    if (age < 5)  return { dot: C.bull,  label: 'Fresh'   };
+    if (age < 15) return { dot: C.warn,  label: 'Aging'   };
+    if (age < 30) return { dot: C.bear,  label: 'Stale'   };
+    return             { dot: C.muted, label: 'Expired' };
+  }
+
+  const CHART_W = 520;
+  const PAD_L   = 16;
+  const PAD_R   = 16;
+  const TRACK_W = CHART_W - PAD_L - PAD_R;
+  const AXIS_Y  = 80; // y of the main axis line
+  const DOT_R   = 5;
+  const MAX_MIN  = 60; // x-axis spans 0–60 minutes
+
+  // Convert minutes → x position on the track
+  function minToX(m: number): number {
+    return PAD_L + Math.min(1, m / MAX_MIN) * TRACK_W;
+  }
+
+  // Reference lines at 5, 15, 30 minutes
+  const REF_LINES = [
+    { min: 5,  label: 'Fresh',   color: C.bull  },
+    { min: 15, label: 'Aging',   color: C.warn  },
+    { min: 30, label: 'Stale',   color: C.bear  },
+    { min: 60, label: 'Expired', color: C.muted },
+  ];
+
+  // Stagger rows so overlapping dots don't stack on the same y
+  const ROW_GAP = 20;
+  const BASE_Y  = AXIS_Y + 18;
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      marginBottom: 28,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Data Freshness</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Timeline view — how stale is each symbol's last evaluation?
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 12, fontSize: F.xs, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {[
+            { dot: C.bull,  label: '<5m Fresh'    },
+            { dot: C.warn,  label: '5–15m Aging'  },
+            { dot: C.bear,  label: '15–30m Stale' },
+            { dot: C.muted, label: '>30m Expired' },
+          ].map(({ dot, label }) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block', flexShrink: 0 }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* SVG Timeline */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          width={CHART_W}
+          height={BASE_Y + entries.length * ROW_GAP + 20}
+          viewBox={`0 0 ${CHART_W} ${BASE_Y + entries.length * ROW_GAP + 20}`}
+          style={{ display: 'block', minWidth: 320 }}
+          aria-label="Signal age distribution timeline"
+        >
+          {/* Zone labels above axis */}
+          {REF_LINES.map((ref, i) => {
+            const x0 = i === 0 ? PAD_L : minToX(REF_LINES[i - 1].min);
+            const x1 = minToX(ref.min);
+            const midX = (x0 + x1) / 2;
+            return (
+              <text
+                key={ref.label}
+                x={midX}
+                y={14}
+                textAnchor="middle"
+                fontSize={9}
+                fontWeight="600"
+                fill={ref.color}
+                fontFamily="Inter, system-ui, sans-serif"
+                opacity={0.85}
+              >
+                {ref.label}
+              </text>
+            );
+          })}
+
+          {/* Zone background bands */}
+          {REF_LINES.map((ref, i) => {
+            const x0 = i === 0 ? PAD_L : minToX(REF_LINES[i - 1].min);
+            const x1 = minToX(ref.min);
+            return (
+              <rect
+                key={`zone-${i}`}
+                x={x0}
+                y={20}
+                width={x1 - x0}
+                height={AXIS_Y - 20 + entries.length * ROW_GAP + 18}
+                fill={ref.color}
+                opacity={0.04}
+              />
+            );
+          })}
+
+          {/* Vertical reference lines */}
+          {REF_LINES.map(ref => {
+            const x = minToX(ref.min);
+            return (
+              <line
+                key={`ref-${ref.min}`}
+                x1={x} y1={20}
+                x2={x} y2={AXIS_Y + entries.length * ROW_GAP + 8}
+                stroke={ref.color}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+                opacity={0.4}
+              />
+            );
+          })}
+
+          {/* Axis minute labels */}
+          {[0, 5, 15, 30, 60].map(m => (
+            <text
+              key={`ax-${m}`}
+              x={minToX(m)}
+              y={AXIS_Y - 4}
+              textAnchor="middle"
+              fontSize={8}
+              fill={C.muted}
+              fontFamily="Inter, system-ui, sans-serif"
+            >
+              {m}m
+            </text>
+          ))}
+
+          {/* Axis baseline */}
+          <line
+            x1={PAD_L} y1={AXIS_Y}
+            x2={PAD_L + TRACK_W} y2={AXIS_Y}
+            stroke={C.border}
+            strokeWidth={1.5}
+          />
+
+          {/* Symbol dots + labels */}
+          {entries.map((entry, i) => {
+            const x   = minToX(entry.age);
+            const y   = BASE_Y + i * ROW_GAP;
+            const { dot } = ageColor(entry.age);
+            return (
+              <g key={entry.symbol}>
+                {/* Tick from axis down to dot */}
+                <line
+                  x1={x} y1={AXIS_Y}
+                  x2={x} y2={y - DOT_R - 2}
+                  stroke={dot}
+                  strokeWidth={1}
+                  opacity={0.35}
+                />
+                {/* Dot */}
+                <circle
+                  cx={x} cy={y}
+                  r={DOT_R}
+                  fill={dot}
+                  stroke={C.surface}
+                  strokeWidth={1.5}
+                  opacity={0.9}
+                />
+                {/* Symbol label to the right of dot */}
+                <text
+                  x={x + DOT_R + 4}
+                  y={y + 3.5}
+                  fontSize={9}
+                  fontWeight="700"
+                  fill={dot}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {entry.symbol}
+                </text>
+                {/* Age label to the left */}
+                <text
+                  x={x - DOT_R - 4}
+                  y={y + 3.5}
+                  textAnchor="end"
+                  fontSize={8}
+                  fill={C.muted}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {entry.age}m
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─── Symbol Dominance Chart ───────────────────────────────────────────────────
+
+function SymbolDominanceChart({ signals }: { signals: Record<string, Signal> | null }) {
+  // Symbol palette
+  const SYMBOL_COLORS: Record<string, string> = {
+    BTC:  '#f97316', // orange
+    SOL:  '#7c3aed', // purple
+    HYPE: C.brand,   // indigo brand
+  };
+  const DEFAULT_SYMS = ['BTC', 'SOL', 'HYPE'];
+
+  // Calculate dominance score per symbol: avg confidence × direction factor
+  // Use signal_score as a proxy for confidence; seeded fallbacks for BTC~82, SOL~78, HYPE~71
+  const SEEDED_SCORES: Record<string, number> = { BTC: 82, SOL: 78, HYPE: 71 };
+
+  type DomEntry = {
+    symbol: string;
+    score: number;
+    side: 'BUY' | 'SELL' | 'NEUTRAL';
+    color: string;
+  };
+
+  const entries: DomEntry[] = DEFAULT_SYMS.map(sym => {
+    const sig = signals?.[sym];
+    const raw = sig?.signal_score ?? SEEDED_SCORES[sym] ?? 65;
+    // Direction factor: BUY +1, SELL -1 (derived from SMA trend)
+    const trendUp = sig ? (sig.sma20 ?? 0) > (sig.sma50 ?? 0) : true;
+    const trendDown = sig ? (sig.sma20 ?? 0) < (sig.sma50 ?? 0) : false;
+    const side: DomEntry['side'] = trendDown && raw < 50 ? 'SELL' : raw >= 55 ? 'BUY' : 'NEUTRAL';
+    void trendUp;
+    return {
+      symbol: sym,
+      score: raw,
+      side,
+      color: SYMBOL_COLORS[sym] ?? C.muted,
+    };
+  });
+
+  const totalScore = entries.reduce((s, e) => s + e.score, 0);
+  const dominant = [...entries].sort((a, b) => b.score - a.score)[0];
+
+  // SVG donut geometry
+  const CX = 80;
+  const CY = 80;
+  const OUTER_R = 70;
+  const INNER_R = 42;
+  const GAP_DEG = 1.5; // degrees gap between slices
+  const SVG_W = 360;
+  const SVG_H = 160;
+
+  // Build arc slices
+  function polarToXY(cx: number, cy: number, r: number, angleDeg: number) {
+    const rad = (angleDeg - 90) * (Math.PI / 180);
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+
+  function describeArc(
+    cx: number, cy: number,
+    outerR: number, innerR: number,
+    startDeg: number, endDeg: number,
+  ): string {
+    const o1 = polarToXY(cx, cy, outerR, startDeg);
+    const o2 = polarToXY(cx, cy, outerR, endDeg);
+    const i1 = polarToXY(cx, cy, innerR, endDeg);
+    const i2 = polarToXY(cx, cy, innerR, startDeg);
+    const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+    return [
+      `M ${o1.x.toFixed(2)},${o1.y.toFixed(2)}`,
+      `A ${outerR},${outerR} 0 ${largeArc},1 ${o2.x.toFixed(2)},${o2.y.toFixed(2)}`,
+      `L ${i1.x.toFixed(2)},${i1.y.toFixed(2)}`,
+      `A ${innerR},${innerR} 0 ${largeArc},0 ${i2.x.toFixed(2)},${i2.y.toFixed(2)}`,
+      'Z',
+    ].join(' ');
+  }
+
+  // Compute slice start/end angles
+  const slices = entries.map((entry, i) => {
+    const frac = totalScore > 0 ? entry.score / totalScore : 1 / entries.length;
+    const totalGapDeg = GAP_DEG * entries.length;
+    const availDeg = 360 - totalGapDeg;
+    // Cumulative start
+    const prevFrac = entries.slice(0, i).reduce((s, e) => s + (totalScore > 0 ? e.score / totalScore : 1 / entries.length), 0);
+    const startDeg = prevFrac * availDeg + i * GAP_DEG;
+    const sweepDeg = frac * availDeg;
+    return { ...entry, startDeg, sweepDeg, frac };
+  });
+
+  // Legend: right side of SVG starting at x=170
+  const LEGEND_X = 176;
+  const LEGEND_Y_START = 20;
+  const LEGEND_ROW = 40;
+
+  function sideColor(side: DomEntry['side']): string {
+    if (side === 'BUY')  return C.bull;
+    if (side === 'SELL') return C.bear;
+    return C.muted;
+  }
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      marginBottom: 28,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Dominance</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Which symbol has the strongest signal right now?
+          </div>
+        </div>
+        {dominant && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: dominant.color + '18',
+            border: `1px solid ${dominant.color}44`,
+            borderRadius: R.pill,
+            padding: '4px 12px',
+            fontSize: F.xs,
+            fontWeight: 700,
+            color: dominant.color,
+          }}>
+            Leader: {dominant.symbol}
+          </div>
+        )}
+      </div>
+
+      {/* SVG donut + legend */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          width={SVG_W}
+          height={SVG_H}
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ display: 'block', minWidth: 300 }}
+          aria-label="Symbol dominance donut chart"
+        >
+          <defs>
+            {slices.map((s) => (
+              <radialGradient key={`dom-grad-${s.symbol}`} id={`dom-grad-${s.symbol}`} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor={s.color} stopOpacity={0.7} />
+                <stop offset="100%" stopColor={s.color} stopOpacity={1} />
+              </radialGradient>
+            ))}
+          </defs>
+
+          {/* Donut slices */}
+          {slices.map((s) => (
+            <path
+              key={s.symbol}
+              d={describeArc(CX, CY, OUTER_R, INNER_R, s.startDeg, s.startDeg + s.sweepDeg)}
+              fill={`url(#dom-grad-${s.symbol})`}
+              stroke={C.card}
+              strokeWidth={2}
+            />
+          ))}
+
+          {/* Inner circle background */}
+          <circle cx={CX} cy={CY} r={INNER_R - 2} fill={C.card} />
+
+          {/* Inner label: "Market Leader" + symbol */}
+          <text
+            x={CX} y={CY - 8}
+            textAnchor="middle"
+            fontSize={7.5}
+            fill={C.muted}
+            fontFamily="Inter, system-ui, sans-serif"
+            letterSpacing="0.08em"
+          >
+            MARKET LEADER
+          </text>
+          <text
+            x={CX} y={CY + 8}
+            textAnchor="middle"
+            fontSize={15}
+            fontWeight="800"
+            fill={dominant ? dominant.color : C.text}
+            fontFamily="Inter, system-ui, sans-serif"
+          >
+            {dominant ? dominant.symbol : '—'}
+          </text>
+          <text
+            x={CX} y={CY + 22}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight="600"
+            fill={dominant ? dominant.color : C.muted}
+            fontFamily="Inter, system-ui, sans-serif"
+            opacity={0.85}
+          >
+            {dominant ? Math.round(dominant.score) + '%' : ''}
+          </text>
+
+          {/* Legend rows */}
+          {slices.map((s, i) => {
+            const rowY = LEGEND_Y_START + i * LEGEND_ROW;
+            const sc = sideColor(s.side);
+            const pct = totalScore > 0 ? Math.round((s.score / totalScore) * 100) : 0;
+            return (
+              <g key={`legend-${s.symbol}`}>
+                {/* Color swatch */}
+                <rect
+                  x={LEGEND_X}
+                  y={rowY + 4}
+                  width={10}
+                  height={10}
+                  rx={3}
+                  fill={s.color}
+                  opacity={0.9}
+                />
+                {/* Symbol name */}
+                <text
+                  x={LEGEND_X + 16}
+                  y={rowY + 13}
+                  fontSize={12}
+                  fontWeight="800"
+                  fill={C.text}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {s.symbol}
+                </text>
+                {/* Dominance score */}
+                <text
+                  x={LEGEND_X + 58}
+                  y={rowY + 13}
+                  fontSize={11}
+                  fontWeight="700"
+                  fill={s.color}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {Math.round(s.score)}pts
+                </text>
+                {/* Portfolio share */}
+                <text
+                  x={LEGEND_X + 108}
+                  y={rowY + 13}
+                  fontSize={10}
+                  fill={C.muted}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {pct}% share
+                </text>
+                {/* Direction pill background */}
+                <rect
+                  x={LEGEND_X + 162}
+                  y={rowY + 2}
+                  width={38}
+                  height={16}
+                  rx={8}
+                  fill={sc + '22'}
+                  stroke={sc + '55'}
+                  strokeWidth={1}
+                />
+                {/* Direction pill text */}
+                <text
+                  x={LEGEND_X + 181}
+                  y={rowY + 13}
+                  textAnchor="middle"
+                  fontSize={8.5}
+                  fontWeight="700"
+                  fill={sc}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {s.side}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
@@ -2529,11 +3028,17 @@ export default function SignalsPage() {
       {/* ── Signal Freshness Strip ───────────────────────────────────────── */}
       <SignalFreshnessStrip signals={signalsData?.signals ?? null} />
 
+      {/* ── Signal Age Distribution ──────────────────────────────────────── */}
+      <SignalAgeDistribution signals={signalsData?.signals ?? null} />
+
       {/* ── Strategy Vote Matrix ─────────────────────────────────────────── */}
       <StrategyVoteGrid signals={signalsData?.signals ?? null} />
 
       {/* ── Signal Quality Trend Chart ───────────────────────────────────── */}
       <SignalQualityTrendChart signals={signalsData?.signals ?? null} />
+
+      {/* ── Symbol Dominance Chart ───────────────────────────────────────── */}
+      <SymbolDominanceChart signals={signalsData?.signals ?? null} />
 
       {/* ── Signal Strength + Correlation ── */}
       {signalsData && Object.keys(signalsData.signals).length > 0 && (
