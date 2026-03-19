@@ -1749,6 +1749,288 @@ function StandaloneRiskCalc({ defaultEntry, defaultSl }: { defaultEntry?: number
   );
 }
 
+// ─── Volatility Regime Bands ─────────────────────────────────────────────────
+
+function VolatilityRegimeBands() {
+  // Seeded pseudo-random: produces stable values per index
+  function s(n: number): number {
+    return Math.abs((Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1);
+  }
+
+  const DAYS = 30;
+  // Generate 30 ATR% values seeded around 1.5–3.5%
+  const atrValues: number[] = Array.from({ length: DAYS }, (_, i) => {
+    const base = 1.5 + s(i * 3 + 1) * 2.0; // 1.5–3.5
+    const noise = (s(i * 7 + 2) - 0.5) * 0.4;
+    return Math.max(0.5, Math.min(4.5, base + noise));
+  });
+
+  const SVG_W = 520;
+  const SVG_H = 160;
+  const PAD_L = 42;  // left padding for Y labels
+  const PAD_R = 68;  // right padding for zone labels
+  const PAD_T = 28;  // top padding for title space
+  const PAD_B = 22;  // bottom padding for X axis
+
+  const chartW = SVG_W - PAD_L - PAD_R;
+  const chartH = SVG_H - PAD_T - PAD_B;
+
+  // ATR range for Y axis: 0 to 5%
+  const Y_MIN = 0;
+  const Y_MAX = 5;
+
+  function xOf(i: number): number {
+    return PAD_L + (i / (DAYS - 1)) * chartW;
+  }
+  function yOf(v: number): number {
+    return PAD_T + chartH - ((v - Y_MIN) / (Y_MAX - Y_MIN)) * chartH;
+  }
+
+  // Zone boundaries in ATR%
+  const zones = [
+    { from: 0,   to: 1.5, color: '#16a34a', label: 'Low Vol',  alpha: '1a' },
+    { from: 1.5, to: 2.5, color: '#2563eb', label: 'Normal',   alpha: '18' },
+    { from: 2.5, to: 3.5, color: '#d97706', label: 'High Vol', alpha: '1c' },
+    { from: 3.5, to: 5.0, color: '#dc2626', label: 'Extreme',  alpha: '1a' },
+  ];
+
+  // Reference lines (dashed)
+  const refLines = [1.5, 2.5, 3.5];
+
+  // Build polyline path — segments colored by zone
+  // We'll render a single path in a neutral color first, then overlay colored dots
+  const polyPoints = atrValues.map((v, i) => `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+
+  // Color for each segment
+  function zoneColor(v: number): string {
+    if (v < 1.5) return '#16a34a';
+    if (v < 2.5) return '#2563eb';
+    if (v < 3.5) return '#d97706';
+    return '#dc2626';
+  }
+
+  // Build colored path segments (line-to between adjacent points)
+  const segments: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+  for (let i = 0; i < DAYS - 1; i++) {
+    const midVal = (atrValues[i] + atrValues[i + 1]) / 2;
+    segments.push({
+      x1: xOf(i),
+      y1: yOf(atrValues[i]),
+      x2: xOf(i + 1),
+      y2: yOf(atrValues[i + 1]),
+      color: zoneColor(midVal),
+    });
+  }
+
+  const lastIdx = DAYS - 1;
+  const currentAtr = atrValues[lastIdx];
+  const currentX = xOf(lastIdx);
+  const currentY = yOf(currentAtr);
+  const currentColor = zoneColor(currentAtr);
+
+  // Pill styles
+  const pills = [
+    { color: '#16a34a', bg: '#dcfce7', label: 'Low Vol', desc: 'Tighter stops, larger size' },
+    { color: '#2563eb', bg: '#dbeafe', label: 'Normal',  desc: 'Standard parameters' },
+    { color: '#d97706', bg: '#fef3c7', label: 'High Vol', desc: 'Wider stops, reduce size' },
+    { color: '#dc2626', bg: '#fee2e2', label: 'Extreme', desc: 'Bot may pause trading' },
+  ];
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        ATR Volatility Regime — 30 Day View
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+        Simulated ATR% values color-coded by volatility regime. Current reading highlighted.
+      </div>
+
+      {/* SVG Chart */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ display: 'block', width: '100%', minWidth: 320, height: 'auto' }}
+          aria-label="ATR volatility regime bands chart"
+        >
+          {/* Background zone bands */}
+          {zones.map((z) => {
+            const bandY1 = yOf(z.to);
+            const bandY2 = yOf(z.from);
+            return (
+              <rect
+                key={z.label}
+                x={PAD_L}
+                y={bandY1}
+                width={chartW}
+                height={bandY2 - bandY1}
+                fill={z.color + z.alpha}
+              />
+            );
+          })}
+
+          {/* Dashed reference lines */}
+          {refLines.map((v) => {
+            const ry = yOf(v);
+            return (
+              <g key={v}>
+                <line
+                  x1={PAD_L}
+                  y1={ry}
+                  x2={PAD_L + chartW}
+                  y2={ry}
+                  stroke={C.border}
+                  strokeWidth={1}
+                  strokeDasharray="4 3"
+                />
+                {/* Y-axis label */}
+                <text
+                  x={PAD_L - 4}
+                  y={ry + 4}
+                  textAnchor="end"
+                  fontSize={9}
+                  fill={C.muted}
+                  fontFamily="inherit"
+                >
+                  {v}%
+                </text>
+              </g>
+            );
+          })}
+
+          {/* ATR line — colored segments */}
+          {segments.map((seg, i) => (
+            <line
+              key={i}
+              x1={seg.x1.toFixed(1)}
+              y1={seg.y1.toFixed(1)}
+              x2={seg.x2.toFixed(1)}
+              y2={seg.y2.toFixed(1)}
+              stroke={seg.color}
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          ))}
+
+          {/* Small dots at each data point */}
+          {atrValues.map((v, i) => (
+            <circle
+              key={i}
+              cx={xOf(i).toFixed(1)}
+              cy={yOf(v).toFixed(1)}
+              r={i === lastIdx ? 0 : 2}
+              fill={zoneColor(v)}
+            />
+          ))}
+
+          {/* Current ATR highlight — large dot + label */}
+          <circle
+            cx={currentX.toFixed(1)}
+            cy={currentY.toFixed(1)}
+            r={6}
+            fill={currentColor}
+            stroke={C.card}
+            strokeWidth={2}
+          />
+          <text
+            x={(currentX - 4).toFixed(1)}
+            y={(currentY - 11).toFixed(1)}
+            textAnchor="middle"
+            fontSize={10}
+            fontWeight="700"
+            fill={currentColor}
+            fontFamily="inherit"
+          >
+            Current: {currentAtr.toFixed(1)}%
+          </text>
+
+          {/* Zone labels on right side */}
+          {zones.map((z) => {
+            const midY = (yOf(z.from) + yOf(z.to)) / 2;
+            return (
+              <text
+                key={z.label + '-right'}
+                x={PAD_L + chartW + 6}
+                y={midY + 4}
+                fontSize={9}
+                fontWeight="600"
+                fill={z.color}
+                fontFamily="inherit"
+              >
+                {z.label}
+              </text>
+            );
+          })}
+
+          {/* X-axis tick labels: Day 1 / Day 15 / Day 30 */}
+          {[0, 14, 29].map((i) => (
+            <text
+              key={i}
+              x={xOf(i).toFixed(1)}
+              y={PAD_T + chartH + 16}
+              textAnchor="middle"
+              fontSize={9}
+              fill={C.muted}
+              fontFamily="inherit"
+            >
+              {`D${i + 1}`}
+            </text>
+          ))}
+
+          {/* Chart border */}
+          <rect
+            x={PAD_L}
+            y={PAD_T}
+            width={chartW}
+            height={chartH}
+            fill="none"
+            stroke={C.border}
+            strokeWidth={1}
+          />
+        </svg>
+      </div>
+
+      {/* Zone pills */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+        {pills.map((p) => (
+          <div
+            key={p.label}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 12px',
+              borderRadius: R.pill,
+              background: p.bg,
+              border: `1px solid ${p.color}44`,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: p.color,
+                display: 'inline-block',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: F.xs, fontWeight: 700, color: p.color }}>{p.label}:</span>
+            <span style={{ fontSize: F.xs, color: p.color }}>{p.desc}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CopyTrade() {
@@ -1827,6 +2109,9 @@ export default function CopyTrade() {
 
       {/* Risk Calculator */}
       <StandaloneRiskCalc />
+
+      {/* Volatility Regime Bands */}
+      <VolatilityRegimeBands />
 
       {/* Quick Guide */}
       <div
