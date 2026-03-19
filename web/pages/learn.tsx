@@ -2011,6 +2011,176 @@ function StopLossVisual() {
   );
 }
 
+// ─── Glossary Stats + Tag Cloud ───────────────────────────────────────────────
+
+// Category color assignments for tag cloud pills
+const GLOSSARY_TERM_CATEGORIES: Record<string, 'strategy' | 'risk' | 'ai' | 'technical'> = {
+  'Regime':           'ai',
+  'Ensemble':         'strategy',
+  'Veto':             'ai',
+  'Advisory Mode':    'ai',
+  'Thesis':           'ai',
+  'Counter-Thesis':   'ai',
+  'ATR':              'technical',
+  'RSI':              'technical',
+  'SMA':              'technical',
+  'EMA':              'technical',
+  'MACD':             'technical',
+  'Bollinger Bands':  'technical',
+  'Keltner Channel':  'technical',
+  'VWAP':             'technical',
+  'WaveTrend':        'technical',
+  'ADX':              'technical',
+  'Open Interest':    'technical',
+  'Confidence Score': 'strategy',
+  'Confluence':       'strategy',
+  'Backtest':         'strategy',
+  'Walk-Forward Testing': 'strategy',
+  'Monte Carlo Simulation': 'strategy',
+  'Drawdown':         'risk',
+  'Max Drawdown':     'risk',
+  'Circuit Breaker':  'risk',
+  'Liquidation Price':'risk',
+  'R:R':              'risk',
+  'Margin':           'risk',
+  'Profit Factor':    'risk',
+  'Trailing Stop':    'risk',
+  'Sharpe Ratio':     'risk',
+  'Calmar Ratio':     'risk',
+  'Slippage':         'risk',
+  'Funding Rate':     'risk',
+};
+
+// Importance weights for pill sizing (px font-size base)
+const GLOSSARY_IMPORTANCE: Record<string, number> = {
+  ATR: 16, RSI: 16, Regime: 16, Drawdown: 14, Confluence: 14, Veto: 14,
+  'Confidence Score': 14, Ensemble: 13, 'Circuit Breaker': 13, 'R:R': 13,
+  Backtest: 13, 'Trailing Stop': 12, Thesis: 12, MACD: 12, 'Bollinger Bands': 12,
+  SMA: 11, EMA: 11, VWAP: 11, 'Profit Factor': 11, 'Sharpe Ratio': 11,
+  'Liquidation Price': 11, Funding: 11, 'Monte Carlo Simulation': 11,
+};
+
+const GLOSSARY_CAT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  strategy: { bg: `${C.brand}18`, border: `${C.brand}40`, text: C.brand },
+  risk:      { bg: `${C.bear}14`,  border: `${C.bear}35`,  text: C.bearMid },
+  ai:        { bg: 'rgba(124,58,237,0.12)', border: 'rgba(124,58,237,0.32)', text: '#c084fc' },
+  technical: { bg: `${C.info}14`,  border: `${C.info}30`,  text: C.infoMid },
+};
+
+// Derive a short display label from a full term string
+function shortTermLabel(term: string): string {
+  // Use first parenthetical abbreviation if present, else first word(s)
+  const abbr = term.match(/\(([^)]+)\)/);
+  if (abbr) return abbr[1];
+  if (term.length <= 14) return term;
+  const words = term.split(' ');
+  return words.length >= 2 ? words.slice(0, 2).join(' ') : term.slice(0, 12);
+}
+
+function GlossaryStats() {
+  const totalTerms = GLOSSARY.length;
+
+  // Unique topic labels used in a quick descriptive way
+  const topics = ['RSI', 'ATR', 'Regime', 'Risk', 'AI Agents', 'Backtesting', 'Leverage'];
+
+  // Build tag cloud entries from GLOSSARY_TERM_CATEGORIES
+  const tagEntries = Object.entries(GLOSSARY_TERM_CATEGORIES).map(([term, cat]) => ({
+    term,
+    cat,
+    size: GLOSSARY_IMPORTANCE[term] ?? 11,
+  }));
+  // Sort by size desc so prominent terms appear first
+  tagEntries.sort((a, b) => b.size - a.size);
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      {/* ── 3 mini stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          {
+            label: 'Total Terms',
+            value: String(totalTerms),
+            sub: 'definitions',
+            color: C.brand,
+          },
+          {
+            label: 'Topics Covered',
+            value: String(topics.length) + '+',
+            sub: topics.slice(0, 3).join(', ') + '…',
+            color: C.info,
+          },
+          {
+            label: 'Last Updated',
+            value: 'Mar 2026',
+            sub: 'kept current',
+            color: C.bull,
+          },
+        ].map(stat => (
+          <div key={stat.label} style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: R.md,
+            padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{stat.label}</div>
+            <div style={{ fontSize: F.xl, fontWeight: 800, color: stat.color, marginBottom: 2 }}>{stat.value}</div>
+            <div style={{ fontSize: F.xs, color: C.muted }}>{stat.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Category legend ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        {(Object.entries(GLOSSARY_CAT_COLORS) as [string, { bg: string; border: string; text: string }][]).map(([cat, cols]) => (
+          <span key={cat} style={{
+            fontSize: F.xs,
+            padding: '2px 8px',
+            borderRadius: R.pill,
+            background: cols.bg,
+            border: `1px solid ${cols.border}`,
+            color: cols.text,
+            fontWeight: 600,
+            textTransform: 'capitalize',
+          }}>
+            {cat === 'ai' ? 'AI / Agents' : cat}
+          </span>
+        ))}
+      </div>
+
+      {/* ── Tag cloud ── */}
+      <div style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '16px 18px',
+        marginBottom: 16,
+      }}>
+        <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 12 }}>Key Concepts</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {tagEntries.map(({ term, cat, size }) => {
+            const cols = GLOSSARY_CAT_COLORS[cat];
+            return (
+              <span key={term} style={{
+                fontSize: size,
+                fontWeight: size >= 14 ? 700 : 600,
+                padding: '3px 10px',
+                borderRadius: R.pill,
+                background: cols.bg,
+                border: `1px solid ${cols.border}`,
+                color: cols.text,
+                cursor: 'default',
+                lineHeight: 1.5,
+              }} title={term}>
+                {shortTermLabel(term)}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Learn() {
@@ -2465,6 +2635,9 @@ export default function Learn() {
           }}
         />
       </div>
+
+      {/* ── Glossary Stats + Tag Cloud ── */}
+      <GlossaryStats />
 
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
         {filteredGlossary.length === 0 ? (

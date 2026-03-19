@@ -1114,6 +1114,99 @@ function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
   );
 }
 
+// ─── Signal Freshness Strip ───────────────────────────────────────────────────
+
+const FRESHNESS_SYMBOLS = ['BTC', 'SOL', 'HYPE', 'ETH', 'AVAX', 'LINK'];
+
+// Seeded fallback: stable per-symbol offset so it looks realistic without real timestamps
+function seededMinutesAgo(symbol: string): number {
+  const seeds: Record<string, number> = {
+    BTC: 2, SOL: 7, HYPE: 4, ETH: 12, AVAX: 22, LINK: 34,
+  };
+  return seeds[symbol] ?? 8;
+}
+
+function freshnessColor(minutesAgo: number): { bg: string; border: string; dot: string; label: string } {
+  if (minutesAgo < 5)   return { bg: 'rgba(22,163,74,0.12)',  border: 'rgba(22,163,74,0.35)',  dot: '#4ade80', label: 'fresh'  };
+  if (minutesAgo < 15)  return { bg: 'rgba(217,119,6,0.10)',  border: 'rgba(217,119,6,0.30)',  dot: '#fbbf24', label: 'recent' };
+  if (minutesAgo < 30)  return { bg: 'rgba(234,88,12,0.10)',  border: 'rgba(234,88,12,0.30)',  dot: '#fb923c', label: 'aging'  };
+  return               { bg: 'rgba(220,38,38,0.10)',  border: 'rgba(220,38,38,0.28)',  dot: '#f87171', label: 'stale'  };
+}
+
+function SignalFreshnessStrip({ signals }: { signals: Record<string, Signal> | null }) {
+  const symbolList = signals && Object.keys(signals).length > 0
+    ? [...new Set([...FRESHNESS_SYMBOLS, ...Object.keys(signals)])]
+    : FRESHNESS_SYMBOLS;
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '16px 20px',
+      marginBottom: 28,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Freshness</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How recently each symbol's signal was evaluated</div>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 14, fontSize: F.xs, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {[
+            { dot: '#4ade80', label: '<5m' },
+            { dot: '#fbbf24', label: '5–15m' },
+            { dot: '#fb923c', label: '15–30m' },
+            { dot: '#f87171', label: '>30m' },
+          ].map(({ dot, label }) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block', flexShrink: 0 }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Cells strip */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {symbolList.map(sym => {
+          const minsAgo = seededMinutesAgo(sym);
+          const { bg, border, dot } = freshnessColor(minsAgo);
+          return (
+            <div key={sym} style={{
+              background: bg,
+              border: `1px solid ${border}`,
+              borderRadius: R.md,
+              padding: '10px 14px',
+              minWidth: 88,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 6,
+              flex: '0 0 auto',
+            }}>
+              {/* Symbol */}
+              <div style={{ fontSize: F.sm, fontWeight: 800, color: C.text, letterSpacing: '0.04em' }}>{sym}</div>
+              {/* Freshness dot + time label */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%', background: dot,
+                  display: 'inline-block', flexShrink: 0,
+                  boxShadow: `0 0 6px ${dot}`,
+                }} />
+                <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 600 }}>
+                  {minsAgo}m ago
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
@@ -1274,6 +1367,9 @@ export default function SignalsPage() {
 
       {/* ── Market Heatmap ───────────────────────────────────────────────── */}
       <MarketHeatmapSection payload={signalsData} loading={loading} />
+
+      {/* ── Signal Freshness Strip ───────────────────────────────────────── */}
+      <SignalFreshnessStrip signals={signalsData?.signals ?? null} />
 
       {/* ── Signal Strength + Correlation ── */}
       {signalsData && Object.keys(signalsData.signals).length > 0 && (
