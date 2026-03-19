@@ -1260,6 +1260,23 @@ function ActivityCalendarHeatmap() {
   // Total signals
   const totalSignals = days.reduce((s, d) => s + d.count, 0);
 
+  // Count active days (days with count > 0)
+  const activeDays = days.filter((d) => d.count > 0).length;
+
+  // Find most active day index
+  let maxCount = 0;
+  let maxDayIdx = -1;
+  days.forEach((d, i) => {
+    if (d.count > maxCount) { maxCount = d.count; maxDayIdx = i; }
+  });
+
+  // Streak tracker: count consecutive active days ending at today (index 55)
+  let streak = 0;
+  for (let i = TOTAL_DAYS - 1; i >= 0; i--) {
+    if (days[i].count > 0) streak++;
+    else break;
+  }
+
   // Level → color
   const levelColor = (level: number): string => {
     if (level === 0) return C.surface;
@@ -1276,20 +1293,25 @@ function ActivityCalendarHeatmap() {
     { row: 5, label: 'Fri' },
   ];
 
-  // Week labels: "8w ago" … "This wk"
-  const weekLabels = Array.from({ length: WEEKS }, (_, wi) => {
-    const weeksAgo = WEEKS - 1 - wi;
-    return weeksAgo === 0 ? 'This wk' : `${weeksAgo}w ago`;
-  });
+  // Month labels: show month name above the first week-column that starts a new month
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthLabels: Array<{ wi: number; label: string }> = [];
+  let lastMonth = -1;
+  for (let wi = 0; wi < WEEKS; wi++) {
+    const firstDayInWeek = days[wi * DAYS_PER_WEEK];
+    const m = firstDayInWeek.date.getMonth();
+    if (m !== lastMonth) {
+      monthLabels.push({ wi, label: monthNames[m] });
+      lastMonth = m;
+    }
+  }
 
   const dayLabelWidth = 36;
-  const gridWidth = WEEKS * (CELL + GAP) - GAP;
 
   // Tooltip date + count string
   const tooltipText = (d: { date: Date; count: number }): string => {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dn = dayNames[d.date.getDay()];
+    const dayNamesArr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dn = dayNamesArr[d.date.getDay()];
     const mn = monthNames[d.date.getMonth()];
     const dd = d.date.getDate();
     if (d.count === 0) return `No signals on ${dn} ${mn} ${dd}`;
@@ -1320,24 +1342,37 @@ function ActivityCalendarHeatmap() {
       {/* Calendar grid */}
       <div style={{ overflowX: 'auto' }}>
         <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 0 }}>
+          {/* Month labels row */}
+          <div style={{ display: 'flex', marginLeft: dayLabelWidth, marginBottom: 2, position: 'relative', height: 14 }}>
+            {monthLabels.map(({ wi, label }) => (
+              <div
+                key={wi}
+                style={{
+                  position: 'absolute',
+                  left: wi * (CELL + GAP),
+                  fontSize: 9,
+                  color: C.textSub,
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  letterSpacing: 0.3,
+                }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
           {/* Week labels row */}
           <div style={{ display: 'flex', marginLeft: dayLabelWidth, marginBottom: 4 }}>
-            {weekLabels.map((lbl, wi) => (
+            {Array.from({ length: WEEKS }, (_, wi) => (
               <div
                 key={wi}
                 style={{
                   width: CELL,
                   marginRight: wi < WEEKS - 1 ? GAP : 0,
-                  fontSize: 9,
-                  color: C.muted,
-                  fontWeight: 600,
-                  textAlign: 'left',
-                  whiteSpace: 'nowrap',
-                  overflow: 'visible',
+                  fontSize: 0, // hidden — month labels above serve this purpose
                 }}
-              >
-                {lbl}
-              </div>
+              />
             ))}
           </div>
 
@@ -1375,6 +1410,7 @@ function ActivityCalendarHeatmap() {
                   {Array.from({ length: DAYS_PER_WEEK }, (_, dow) => {
                     const dayIdx = wi * DAYS_PER_WEEK + dow;
                     const day = days[dayIdx];
+                    const isMostActive = dayIdx === maxDayIdx;
                     return (
                       <div
                         key={dow}
@@ -1384,10 +1420,11 @@ function ActivityCalendarHeatmap() {
                           height: CELL,
                           borderRadius: 3,
                           background: levelColor(day.level),
-                          border: `1px solid ${C.border}`,
+                          border: isMostActive ? '2px solid #ffffff' : `1px solid ${C.border}`,
                           cursor: 'default',
                           transition: 'opacity 0.15s',
                           flexShrink: 0,
+                          boxShadow: isMostActive ? `0 0 6px ${C.brand}` : 'none',
                         }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.75'; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
@@ -1418,6 +1455,28 @@ function ActivityCalendarHeatmap() {
           />
         ))}
         <span style={{ fontWeight: 600 }}>More</span>
+        <span style={{ marginLeft: 'auto', color: C.textSub, fontWeight: 600 }}>
+          Total: {totalSignals} signals in {activeDays} days
+        </span>
+      </div>
+
+      {/* Streak tracker */}
+      <div style={{
+        marginTop: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: F.xs,
+        color: C.muted,
+        borderTop: `1px solid ${C.border}`,
+        paddingTop: 10,
+      }}>
+        <span style={{ fontWeight: 700, color: streak >= 5 ? C.warn : C.textSub }}>
+          {streak >= 5 ? '🔥' : '●'} Current streak: {streak} active {streak === 1 ? 'day' : 'days'}
+        </span>
+        {streak >= 5 && (
+          <span style={{ color: C.muted }}>— on fire!</span>
+        )}
       </div>
     </div>
   );

@@ -138,8 +138,27 @@ function ConfScatterPlot({ trades }: { trades: TradeRecord[] }) {
           </g>
         ))}
 
-        {/* Zero RR line */}
-        <line x1={pad.left} y1={py(0)} x2={pad.left + plotW} y2={py(0)} stroke={C.border} strokeWidth={1.5} />
+        {/* Cluster ellipse */}
+        {clusterRx > 0 && clusterRy > 0 && (
+          <ellipse
+            cx={clusterCx} cy={clusterCy}
+            rx={Math.min(clusterRx, plotW / 2)} ry={Math.min(clusterRy, plotH / 2)}
+            fill={C.brand} fillOpacity={0.05}
+            stroke={C.brand} strokeOpacity={0.25} strokeWidth={1} strokeDasharray="4 3"
+            clipPath="url(#scatterClip)"
+          />
+        )}
+
+        {/* Zero RR bold line (quadrant horizontal) */}
+        <line x1={pad.left} y1={py(0)} x2={pad.left + plotW} y2={py(0)} stroke={C.borderBright} strokeWidth={2} />
+
+        {/* Quadrant vertical at confidence=75 */}
+        <line
+          x1={px(75)} y1={pad.top}
+          x2={px(75)} y2={pad.top + plotH}
+          stroke={C.muted} strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.6}
+          clipPath="url(#scatterClip)"
+        />
 
         {/* Regression line */}
         {slope !== 0 && (
@@ -150,11 +169,25 @@ function ConfScatterPlot({ trades }: { trades: TradeRecord[] }) {
             clipPath="url(#scatterClip)"
           />
         )}
-        {slope > 0 && (
-          <text x={px(maxConf) - 5} y={py(regY2) - 6} fontSize={9} fill={C.brand} textAnchor="end" fontFamily="Inter, system-ui">
-            +ve correlation
-          </text>
-        )}
+
+        {/* Quadrant labels */}
+        <text x={px(87.5)} y={pad.top + 14} textAnchor="middle" fontSize={8} fill={C.bull} fontFamily="Inter, system-ui" clipPath="url(#scatterClip)">
+          High conviction wins ✓
+        </text>
+        <text x={px(87.5)} y={pad.top + plotH - 6} textAnchor="middle" fontSize={8} fill={C.bear} fontFamily="Inter, system-ui" clipPath="url(#scatterClip)">
+          Overconfident losses ✗
+        </text>
+        <text x={px(37.5)} y={pad.top + 14} textAnchor="middle" fontSize={8} fill={C.muted} fontFamily="Inter, system-ui" clipPath="url(#scatterClip)">
+          Lucky wins
+        </text>
+        <text x={px(37.5)} y={pad.top + plotH - 6} textAnchor="middle" fontSize={8} fill={C.muted} fontFamily="Inter, system-ui" clipPath="url(#scatterClip)">
+          Correct avoids
+        </text>
+
+        {/* Correlation label */}
+        <text x={pad.left + plotW - 4} y={pad.top + 14} textAnchor="end" fontSize={9} fill={C.brand} fontFamily="Inter, system-ui" fontWeight={600}>
+          {`r = ${corr >= 0 ? '+' : ''}${corr.toFixed(2)} correlation`}
+        </text>
 
         {/* Dots */}
         {plotTrades.map((t, i) => {
@@ -181,11 +214,6 @@ function ConfScatterPlot({ trades }: { trades: TradeRecord[] }) {
           transform={`rotate(-90 12 ${pad.top + plotH / 2})`}>
           R/R Achieved
         </text>
-
-        {/* Quadrant labels */}
-        <text x={px(75)} y={py(maxRR) + 14} textAnchor="middle" fontSize={8} fill={C.bullMid} fontFamily="Inter, system-ui">High Conf · Good RR</text>
-        <text x={px(25)} y={py(maxRR) + 14} textAnchor="middle" fontSize={8} fill={C.muted} fontFamily="Inter, system-ui">Low Conf · Good RR</text>
-        <text x={px(75)} y={py(minRR) - 4} textAnchor="middle" fontSize={8} fill={C.bearMid} fontFamily="Inter, system-ui">High Conf · Bad RR</text>
       </svg>
 
       {/* Tooltip */}
@@ -336,6 +364,51 @@ function TradeWaterfall({ trades }: { trades: TradeRecord[] }) {
         );
       })}
 
+      {/* Largest win annotation */}
+      {(() => {
+        const b = bars[maxGainIdx];
+        const x = xPos(maxGainIdx) + barW / 2;
+        const topY = Math.min(yPos(b.prev), yPos(b.curr));
+        return (
+          <g key="maxGain">
+            <text x={x} y={topY - 3} textAnchor="middle" fontSize={8} fontWeight={700} fill={C.bull} fontFamily="Inter, system-ui">
+              {`+$${b.pnl.toFixed(0)}`}
+            </text>
+          </g>
+        );
+      })()}
+
+      {/* Largest loss annotation */}
+      {(() => {
+        if (maxLossIdx === maxGainIdx) return null;
+        const b = bars[maxLossIdx];
+        const x = xPos(maxLossIdx) + barW / 2;
+        const botY = Math.max(yPos(b.prev), yPos(b.curr));
+        return (
+          <g key="maxLoss">
+            <text x={x} y={botY + 10} textAnchor="middle" fontSize={8} fontWeight={700} fill={C.bear} fontFamily="Inter, system-ui">
+              {`-$${Math.abs(b.pnl).toFixed(0)}`}
+            </text>
+          </g>
+        );
+      })()}
+
+      {/* Running total line connecting bar tops */}
+      {bars.length > 1 && (() => {
+        const points = bars.map((b, i) => `${xPos(i) + barW / 2},${yPos(b.curr)}`).join(' ');
+        return (
+          <polyline
+            points={points}
+            fill="none"
+            stroke={C.brand}
+            strokeWidth={1.2}
+            strokeDasharray="3 3"
+            strokeLinejoin="round"
+            clipPath="url(#wfClip)"
+          />
+        );
+      })()}
+
       {/* X-axis labels at key inflection points */}
       {bars.map((b, i) => {
         if (!inflectionSet.has(i)) return null;
@@ -346,6 +419,9 @@ function TradeWaterfall({ trades }: { trades: TradeRecord[] }) {
           </text>
         );
       })}
+
+      {/* Breakeven bold line */}
+      <line x1={pad.left} y1={zeroY} x2={pad.left + plotW} y2={zeroY} stroke={C.borderBright} strokeWidth={2} />
 
       {/* Breakeven label */}
       <text x={pad.left - 5} y={zeroY + 4} textAnchor="end" fontSize={8} fontWeight={700} fill={C.borderBright} fontFamily="Inter, system-ui">

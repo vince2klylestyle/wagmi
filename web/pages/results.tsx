@@ -35,6 +35,16 @@ function KpiBlock({ label, value, sub, color, big }: {
   );
 }
 
+// ─── SMA Helper ───────────────────────────────────────────────────────────────
+
+function calcSMA(data: number[], period: number): (number | null)[] {
+  return data.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = data.slice(i - period + 1, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  });
+}
+
 // ─── Equity Curve SVG ─────────────────────────────────────────────────────────
 
 function EquityCurveChart({ points, width = 700, height = 200 }: { points: EquityCurvePoint[]; width?: number; height?: number }) {
@@ -59,6 +69,34 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
 
   const polyline = points.map((p, i) => `${px(i)},${py(p.equity)}`).join(' ');
 
+  // SMA calculations
+  const sma5 = calcSMA(equities, 5);
+  const sma10 = calcSMA(equities, 10);
+
+  // Build polyline strings for SMA lines (skip null values, but break at gaps would require paths;
+  // here we simply skip nulls and connect the remaining points)
+  const sma5Points = sma5
+    .map((v, i) => (v !== null ? `${px(i)},${py(v)}` : null))
+    .filter((v): v is string => v !== null)
+    .join(' ');
+  const sma10Points = sma10
+    .map((v, i) => (v !== null ? `${px(i)},${py(v)}` : null))
+    .filter((v): v is string => v !== null)
+    .join(' ');
+
+  // ATR envelope: ±1% band around SMA10
+  const sma10WithIdx = sma10
+    .map((v, i) => (v !== null ? { v, i } : null))
+    .filter((x): x is { v: number; i: number } => x !== null);
+  const atrTopPoints = sma10WithIdx.map(({ v, i }) => `${px(i)},${py(v * 1.01)}`).join(' ');
+  const atrBottomRevPoints = [...sma10WithIdx].reverse().map(({ v, i }) => `${px(i)},${py(v * 0.99)}`).join(' ');
+  const atrBandPath = sma10WithIdx.length > 1
+    ? `M ${sma10WithIdx[0] ? `${px(sma10WithIdx[0].i)},${py(sma10WithIdx[0].v * 1.01)}` : ''} L ${atrTopPoints} L ${atrBottomRevPoints} Z`
+    : '';
+
+  // Find peak equity index
+  const peakIdx = equities.indexOf(maxE);
+
   // Find max drawdown trough
   let runningMax = equities[0];
   let maxDdIdx = 0;
@@ -69,12 +107,24 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
     if (dd > maxDd) { maxDd = dd; maxDdIdx = i; }
   });
 
+  // Trade entry/exit markers: points with >0.5% move vs previous
+  const tradeMarkers: Array<{ i: number; gain: boolean }> = [];
+  for (let i = 1; i < equities.length; i++) {
+    const change = (equities[i] - equities[i - 1]) / equities[i - 1];
+    if (Math.abs(change) > 0.005) {
+      tradeMarkers.push({ i, gain: change > 0 });
+    }
+  }
+
   // Area fill
   const areaD = `M ${px(0)},${py(points[0].equity)} ` +
     points.slice(1).map((p, i) => `L ${px(i + 1)},${py(p.equity)}`).join(' ') +
     ` L ${px(points.length - 1)},${pad.top + H} L ${px(0)},${pad.top + H} Z`;
 
   const isPositive = equities[equities.length - 1] > equities[0];
+  const lastIdx = points.length - 1;
+  const lastEquity = equities[lastIdx];
+  const peakEquity = maxE;
 
   // Y-axis labels
   const yTicks = 4;
@@ -89,6 +139,16 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
     i,
     label: new Date(points[i].ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
   }));
+
+  // Legend position (top-left, inside pad)
+  const legendX = pad.left + 8;
+  const legendY = pad.top + 4;
+
+  // Triangle polygon helpers
+  const triUp = (cx: number, cy: number, s: number) =>
+    `${cx},${cy - s} ${cx - s},${cy + s} ${cx + s},${cy + s}`;
+  const triDown = (cx: number, cy: number, s: number) =>
+    `${cx},${cy + s} ${cx - s},${cy - s} ${cx + s},${cy - s}`;
 
   return (
     <svg
@@ -113,12 +173,40 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
           stroke={C.border} strokeWidth={1} strokeDasharray={i === 0 ? '' : '3 4'} />
       ))}
 
+      {/* ATR envelope band (±1% of SMA10) */}
+      {atrBandPath && (
+        <path d={atrBandPath} fill={C.brand + '15'} stroke="none" />
+      )}
+
       {/* Area fill */}
       <path d={areaD} fill="url(#eqGrad)" />
+
+      {/* SMA5 line — dashed, warn color */}
+      {sma5Points && (
+        <polyline fill="none" stroke={C.warn} strokeWidth={1} strokeDasharray="4 3"
+          opacity={0.7} points={sma5Points} strokeLinejoin="round" />
+      )}
+
+      {/* SMA10 line — solid, info color */}
+      {sma10Points && (
+        <polyline fill="none" stroke={C.info} strokeWidth={1}
+          opacity={0.7} points={sma10Points} strokeLinejoin="round" />
+      )}
 
       {/* Equity line */}
       <polyline fill="none" stroke={isPositive ? C.bull : C.bear} strokeWidth={2.5}
         points={polyline} strokeLinejoin="round" strokeLinecap="round" />
+
+      {/* Trade entry/exit markers */}
+      {tradeMarkers.map(({ i, gain }) => {
+        const cx = px(i);
+        const cy = py(equities[i]);
+        return gain ? (
+          <polygon key={`m${i}`} points={triUp(cx, cy - 8, 4)} fill={C.bull} opacity={0.85} />
+        ) : (
+          <polygon key={`m${i}`} points={triDown(cx, cy + 8, 4)} fill={C.bear} opacity={0.85} />
+        );
+      })}
 
       {/* Max drawdown point */}
       <circle cx={px(maxDdIdx)} cy={py(equities[maxDdIdx])} r={5}
@@ -128,10 +216,26 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
         Max DD −{(maxDd * 100).toFixed(1)}%
       </text>
 
-      {/* Start & end dots */}
+      {/* Peak marker — highlighted circle with label */}
+      <circle cx={px(peakIdx)} cy={py(peakEquity)} r={6}
+        fill={C.warn} stroke={C.card} strokeWidth={2} opacity={0.9} />
+      <text x={px(peakIdx) + 9} y={py(peakEquity) + 4}
+        fill={C.warn} fontSize={10} fontFamily="Inter, system-ui" fontWeight="600">
+        Peak: ${peakEquity >= 1000 ? (peakEquity / 1000).toFixed(1) + 'k' : peakEquity.toFixed(0)}
+      </text>
+
+      {/* Start dot */}
       <circle cx={px(0)} cy={py(equities[0])} r={4} fill={C.muted} />
-      <circle cx={px(points.length - 1)} cy={py(equities[points.length - 1])} r={4}
-        fill={isPositive ? C.bull : C.bear} />
+
+      {/* Current value dot (last point) — large, labeled */}
+      <circle cx={px(lastIdx)} cy={py(lastEquity)} r={6}
+        fill={isPositive ? C.bull : C.bear} stroke={C.card} strokeWidth={2}
+        style={{ filter: `drop-shadow(0 0 4px ${isPositive ? C.bull : C.bear})` }} />
+      <text x={px(lastIdx) - 8} y={py(lastEquity) - 10}
+        fill={isPositive ? C.bull : C.bear} fontSize={10} fontFamily="Inter, system-ui"
+        fontWeight="600" textAnchor="end">
+        ${lastEquity >= 1000 ? (lastEquity / 1000).toFixed(1) + 'k' : lastEquity.toFixed(0)}
+      </text>
 
       {/* Y labels */}
       {yLabels.map(({ val, y }, i) => (
@@ -148,6 +252,26 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
           {label}
         </text>
       ))}
+
+      {/* Legend box (top-left) */}
+      <rect x={legendX - 4} y={legendY - 2} width={102} height={64}
+        fill={C.card} fillOpacity={0.85} rx={4} stroke={C.border} strokeWidth={0.5} />
+      {/* Equity row */}
+      <line x1={legendX} y1={legendY + 8} x2={legendX + 14} y2={legendY + 8}
+        stroke={isPositive ? C.bull : C.bear} strokeWidth={2} />
+      <text x={legendX + 18} y={legendY + 12} fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">Equity</text>
+      {/* SMA5 row */}
+      <line x1={legendX} y1={legendY + 22} x2={legendX + 14} y2={legendY + 22}
+        stroke={C.warn} strokeWidth={1} strokeDasharray="4 3" opacity={0.9} />
+      <text x={legendX + 18} y={legendY + 26} fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">SMA5</text>
+      {/* SMA10 row */}
+      <line x1={legendX} y1={legendY + 36} x2={legendX + 14} y2={legendY + 36}
+        stroke={C.info} strokeWidth={1} opacity={0.9} />
+      <text x={legendX + 18} y={legendY + 40} fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">SMA10</text>
+      {/* ATR Band row */}
+      <rect x={legendX} y={legendY + 46} width={14} height={8}
+        fill={C.brand + '15'} stroke={C.brand} strokeWidth={0.5} rx={1} />
+      <text x={legendX + 18} y={legendY + 54} fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">ATR Band</text>
     </svg>
   );
 }
