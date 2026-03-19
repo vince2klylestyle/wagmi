@@ -874,6 +874,499 @@ function VolatilityCycleDiagram() {
   );
 }
 
+// ─── Trading Flow Diagram ─────────────────────────────────────────────────────
+
+function TradingFlowDiagram() {
+  const W = 750, H = 180;
+  const nodeW = 80, nodeH = 36;
+  const arrowW = 24;
+  const totalNodes = 8; // Signal + 6 gates + Execute
+  // Horizontal spacing: total width split across nodes + arrows
+  const nodeCount = 8;
+  const arrowCount = 7;
+  const totalUsed = nodeCount * nodeW + arrowCount * arrowW;
+  const padH = (W - totalUsed) / 2;
+  const nodeY = 32; // top of nodes
+
+  const nodes: { label: string; sub?: string; color: string; bg: string }[] = [
+    { label: 'Signal', sub: 'Detected', color: C.info, bg: C.info + '22' },
+    { label: 'Gate 1', sub: 'Valid?', color: C.brand, bg: C.brand + '18' },
+    { label: 'Gate 2', sub: 'Circuit?', color: C.brand, bg: C.brand + '18' },
+    { label: 'Gate 3', sub: 'Pos. Limits?', color: C.brand, bg: C.brand + '18' },
+    { label: 'Gate 4', sub: 'Leverage?', color: C.brand, bg: C.brand + '18' },
+    { label: 'Gate 5', sub: 'Liq. Price?', color: C.brand, bg: C.brand + '18' },
+    { label: 'Gate 6', sub: 'Sizing?', color: C.brand, bg: C.brand + '18' },
+    { label: 'EXECUTE', sub: '✓', color: '#fff', bg: C.bull },
+  ];
+
+  const xs: number[] = [];
+  let cx = padH;
+  for (let i = 0; i < nodeCount; i++) {
+    xs.push(cx);
+    cx += nodeW + arrowW;
+  }
+
+  const midY = nodeY + nodeH / 2;
+  // REJECT box: branches down from Gate 1 (index 1)
+  const rejectX = xs[1];
+  const rejectY = nodeY + nodeH + 44;
+  const rejectW = 72, rejectH = 32;
+
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 16, marginBottom: 8 }}>
+      <svg width={W} height={H} style={{ display: 'block', minWidth: W }}>
+        <defs>
+          <marker id="arrowHead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={C.muted as string} />
+          </marker>
+          <marker id="arrowHeadRej" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={C.bear as string} />
+          </marker>
+        </defs>
+
+        {/* Horizontal arrows between nodes */}
+        {xs.slice(0, -1).map((x, i) => (
+          <line
+            key={i}
+            x1={x + nodeW}
+            y1={midY}
+            x2={x + nodeW + arrowW}
+            y2={midY}
+            stroke={C.muted as string}
+            strokeWidth={1.5}
+            markerEnd="url(#arrowHead)"
+          />
+        ))}
+
+        {/* REJECT branch: diagonal down from Gate 1 bottom-center */}
+        <line
+          x1={xs[1] + nodeW / 2}
+          y1={nodeY + nodeH}
+          x2={rejectX + rejectW / 2}
+          y2={rejectY}
+          stroke={C.bear as string}
+          strokeWidth={1.5}
+          strokeDasharray="4 3"
+          markerEnd="url(#arrowHeadRej)"
+        />
+
+        {/* Node boxes */}
+        {nodes.map((node, i) => (
+          <g key={i}>
+            <rect
+              x={xs[i]}
+              y={nodeY}
+              width={nodeW}
+              height={nodeH}
+              rx={6}
+              fill={node.bg}
+              stroke={i === nodes.length - 1 ? C.bull : C.brand}
+              strokeWidth={i === nodes.length - 1 ? 2 : 1}
+            />
+            <text
+              x={xs[i] + nodeW / 2}
+              y={nodeY + 14}
+              textAnchor="middle"
+              fontSize={9}
+              fontWeight={700}
+              fill={node.color}
+            >
+              {node.label}
+            </text>
+            {node.sub && (
+              <text
+                x={xs[i] + nodeW / 2}
+                y={nodeY + 26}
+                textAnchor="middle"
+                fontSize={8}
+                fill={i === nodes.length - 1 ? 'rgba(255,255,255,0.85)' : (C.muted as string)}
+              >
+                {node.sub}
+              </text>
+            )}
+          </g>
+        ))}
+
+        {/* REJECT box */}
+        <rect
+          x={rejectX + (nodeW - rejectW) / 2}
+          y={rejectY}
+          width={rejectW}
+          height={rejectH}
+          rx={6}
+          fill={C.bear + '22'}
+          stroke={C.bear}
+          strokeWidth={1.5}
+        />
+        <text
+          x={rejectX + nodeW / 2}
+          y={rejectY + 13}
+          textAnchor="middle"
+          fontSize={9}
+          fontWeight={700}
+          fill={C.bear as string}
+        >
+          REJECT ✗
+        </text>
+        <text
+          x={rejectX + nodeW / 2}
+          y={rejectY + 24}
+          textAnchor="middle"
+          fontSize={8}
+          fill={C.muted as string}
+        >
+          Logged + skipped
+        </text>
+
+        {/* "Any gate fails" label */}
+        <text
+          x={rejectX + nodeW / 2 + 44}
+          y={nodeY + nodeH + 20}
+          fontSize={8}
+          fill={C.muted as string}
+          fontStyle="italic"
+        >
+          any gate fails →
+        </text>
+      </svg>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+        A signal must pass all 6 gates sequentially. Failure at any gate triggers rejection — the trade is logged but never executed.
+      </div>
+    </div>
+  );
+}
+
+// ─── Risk/Reward Visualizer ────────────────────────────────────────────────────
+
+function RiskRewardVisualizer() {
+  const W = 400, H = 220;
+  const axisX = 300; // price axis x position
+  const entryY = H / 2; // entry price at center
+
+  // Price levels relative to entry ($63,700 example BTC)
+  const entryPrice = 63700;
+  const tp1Pct = 0.02;   // +2%
+  const tp2Pct = 0.035;  // +3.5%
+  const slPct  = 0.01;   // -1%
+
+  const tp1Price = entryPrice * (1 + tp1Pct);
+  const tp2Price = entryPrice * (1 + tp2Pct);
+  const slPrice  = entryPrice * (1 - slPct);
+
+  const tp1Dollar = entryPrice * tp1Pct;
+  const tp2Dollar = entryPrice * tp2Pct;
+  const slDollar  = entryPrice * slPct;
+
+  // Pixel mapping: 3.5% range maps to half the svg height
+  const maxPct = 0.04;
+  const pctToY = (pct: number) => entryY - (pct / maxPct) * (H * 0.42);
+
+  const tp2Y = pctToY(tp2Pct);
+  const tp1Y = pctToY(tp1Pct);
+  const slY  = pctToY(-slPct);
+
+  const barX = axisX - 40;
+  const barW = 22;
+
+  return (
+    <div style={{ marginTop: 20, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+        Risk / Reward Visualizer — BTC Example @ ${entryPrice.toLocaleString()}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={W} height={H} style={{ display: 'block', minWidth: 320 }}>
+          {/* TP2 zone (dark green) */}
+          <rect x={barX} y={tp2Y} width={barW} height={tp1Y - tp2Y} fill={C.bull + 'cc'} rx={2} />
+          {/* TP1 zone (green) */}
+          <rect x={barX} y={tp1Y} width={barW} height={entryY - tp1Y} fill={C.bull + '66'} rx={2} />
+          {/* SL zone (red) */}
+          <rect x={barX} y={entryY} width={barW} height={slY - entryY} fill={C.bear + '66'} rx={2} />
+
+          {/* Price axis line */}
+          <line x1={axisX} y1={tp2Y - 10} x2={axisX} y2={slY + 10} stroke={C.border as string} strokeWidth={1.5} />
+
+          {/* Entry line */}
+          <line x1={barX - 6} y1={entryY} x2={axisX + 6} y2={entryY} stroke={C.info as string} strokeWidth={2} strokeDasharray="4 2" />
+          {/* Entry dot (current price) */}
+          <circle cx={barX + barW / 2} cy={entryY} r={6} fill={C.info as string} stroke={C.card as string} strokeWidth={2} />
+
+          {/* TP1 line */}
+          <line x1={barX - 4} y1={tp1Y} x2={axisX + 4} y2={tp1Y} stroke={C.bullMid as string} strokeWidth={1.5} />
+          {/* TP2 line */}
+          <line x1={barX - 4} y1={tp2Y} x2={axisX + 4} y2={tp2Y} stroke={C.bull as string} strokeWidth={1.5} />
+          {/* SL line */}
+          <line x1={barX - 4} y1={slY} x2={axisX + 4} y2={slY} stroke={C.bearMid as string} strokeWidth={1.5} />
+
+          {/* Labels — right of axis */}
+          <text x={axisX + 10} y={tp2Y + 4} fontSize={9} fill={C.bull as string} fontWeight={700}>TP2 +{(tp2Pct * 100).toFixed(1)}%</text>
+          <text x={axisX + 10} y={tp2Y + 14} fontSize={8} fill={C.muted as string}>+${tp2Dollar.toLocaleString(undefined, { maximumFractionDigits: 0 })}</text>
+
+          <text x={axisX + 10} y={tp1Y + 4} fontSize={9} fill={C.bullMid as string} fontWeight={700}>TP1 +{(tp1Pct * 100).toFixed(1)}%</text>
+          <text x={axisX + 10} y={tp1Y + 14} fontSize={8} fill={C.muted as string}>+${tp1Dollar.toLocaleString(undefined, { maximumFractionDigits: 0 })}</text>
+
+          <text x={axisX + 10} y={entryY + 4} fontSize={9} fill={C.info as string} fontWeight={700}>Entry</text>
+          <text x={axisX + 10} y={entryY + 14} fontSize={8} fill={C.muted as string}>${entryPrice.toLocaleString()}</text>
+
+          <text x={axisX + 10} y={slY + 4} fontSize={9} fill={C.bearMid as string} fontWeight={700}>Stop -{(slPct * 100).toFixed(1)}%</text>
+          <text x={axisX + 10} y={slY + 14} fontSize={8} fill={C.muted as string}>-${slDollar.toLocaleString(undefined, { maximumFractionDigits: 0 })}</text>
+
+          {/* R:R label — left side */}
+          <text x={barX - 14} y={entryY - 28} fontSize={10} fill={C.bull as string} fontWeight={800} textAnchor="middle">R:R</text>
+          <text x={barX - 14} y={entryY - 16} fontSize={11} fill={C.bull as string} fontWeight={900} textAnchor="middle">2:1</text>
+
+          {/* EV label */}
+          <text x={barX - 14} y={entryY + 18} fontSize={8} fill={C.muted as string} textAnchor="middle">EV</text>
+          <text x={barX - 14} y={entryY + 28} fontSize={9} fill={C.bullMid as string} fontWeight={700} textAnchor="middle">+${(tp1Dollar * 0.5).toLocaleString(undefined, { maximumFractionDigits: 0 })}</text>
+        </svg>
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+        TP1 closes ~50% of position. Stop moves to breakeven after TP1. TP2 captures the remainder. Expected value assumes 60% win rate.
+      </div>
+    </div>
+  );
+}
+
+// ─── Strategy Voting Visual ───────────────────────────────────────────────────
+
+function StrategyVotingVisual() {
+  const strategies = [
+    { abbr: 'RGM', name: 'Regime Trend', vote: 'BUY' as const },
+    { abbr: 'MCZ', name: 'Monte Carlo Zones', vote: 'BUY' as const },
+    { abbr: 'CSC', name: 'Confidence Scorer', vote: 'BUY' as const },
+    { abbr: 'MTF', name: 'Multi-TF Quality', vote: 'SKIP' as const },
+  ];
+
+  const voteColor: Record<string, string> = {
+    BUY:  C.bull,
+    SKIP: C.muted,
+    SELL: C.bear,
+  };
+  const voteBg: Record<string, string> = {
+    BUY:  C.bull + '22',
+    SKIP: C.surfaceHover,
+    SELL: C.bear + '22',
+  };
+
+  const cols = ['BUY', 'SKIP', 'SELL'];
+
+  return (
+    <div style={{ marginTop: 20, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+        Weighted-Veto Ensemble — Sample Vote
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 360 }}>
+          <thead>
+            <tr>
+              <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: 11, color: C.muted, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}>
+                Strategy
+              </th>
+              {cols.map(col => (
+                <th key={col} style={{ padding: '6px 16px', textAlign: 'center', fontSize: 11, color: col === 'BUY' ? C.bull : col === 'SELL' ? C.bear : C.muted, fontWeight: 700, borderBottom: `1px solid ${C.border}` }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {strategies.map((s, si) => (
+              <tr key={s.abbr} style={{ background: si % 2 ? C.surfaceHover + '40' : 'transparent' }}>
+                <td style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: C.text }}>{s.abbr}</span>
+                  <span style={{ fontSize: 10, color: C.muted, marginLeft: 6 }}>{s.name}</span>
+                </td>
+                {cols.map(col => (
+                  <td key={col} style={{ padding: '8px 16px', textAlign: 'center', borderBottom: `1px solid ${C.border}` }}>
+                    {s.vote === col ? (
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 10px',
+                        borderRadius: R.pill,
+                        background: voteBg[col],
+                        color: voteColor[col],
+                        fontSize: 11,
+                        fontWeight: 800,
+                        border: `1px solid ${voteColor[col]}44`,
+                      }}>
+                        {col === 'BUY' ? '▲' : col === 'SELL' ? '▼' : '—'} {col}
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: C.faint }} />
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Tally + result */}
+      <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[
+            { label: '3 BUY', color: C.bull },
+            { label: '0 SELL', color: C.bear },
+            { label: '1 SKIP', color: C.muted },
+          ].map(({ label, color }) => (
+            <span key={label} style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: R.pill, background: color + '18', color, border: `1px solid ${color}33` }}>
+              {label}
+            </span>
+          ))}
+        </div>
+        <span style={{ color: C.muted, fontSize: 12 }}>→</span>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 12px', borderRadius: R.pill, background: C.brand + '18', color: C.brand, border: `1px solid ${C.brand}44` }}>
+          Signal PASSES minimum votes
+        </span>
+        <span style={{ color: C.muted, fontSize: 12 }}>→</span>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 12px', borderRadius: R.pill, background: C.info + '18', color: C.info, border: `1px solid ${C.info}44` }}>
+          AI review
+        </span>
+        <span style={{ color: C.muted, fontSize: 12 }}>→</span>
+        <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 12px', borderRadius: R.pill, background: C.bull + '22', color: C.bull, border: `1px solid ${C.bull}55` }}>
+          ✓ EXECUTE
+        </span>
+      </div>
+      <div style={{ marginTop: 8, fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
+        Weighted-Veto mode: each strategy votes independently. Minimum 2 agreements required. No SELL votes = no veto triggered. Signal advances to the LLM pipeline for final review.
+      </div>
+    </div>
+  );
+}
+
+// ─── Memory System Diagram ────────────────────────────────────────────────────
+
+function MemorySystemDiagram() {
+  const W = 600, H = 170;
+
+  const boxW = 190, boxH = 130;
+  const leftX = 10, rightX = W - boxW - 10;
+  const boxY = 20;
+  const brainX = W / 2, brainY = boxY + boxH / 2;
+
+  // Arrow endpoints (from brain to boxes and back)
+  const leftEdge  = leftX + boxW;
+  const rightEdge = rightX;
+  const arrowGap  = 18;
+
+  const shortNotes = [
+    '• RSI was 71 at 14:30',
+    '• BTC rejected $65k twice',
+    '• Regime shifted to range',
+    '• Trade skipped: low ATR',
+  ];
+  const longPatterns = [
+    '• BTC breakout → +4.2% avg',
+    '• High-vol: skip → +EV',
+    '• Range + RSI<35 = long edge',
+    '• After panic: wait 2h',
+  ];
+
+  return (
+    <div style={{ marginTop: 20, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+        Memory Architecture — How the Bot Remembers
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={W} height={H} style={{ display: 'block', minWidth: W }}>
+          {/* Short-term box */}
+          <rect x={leftX} y={boxY} width={boxW} height={boxH} rx={8} fill={C.info + '12'} stroke={C.info + '55'} strokeWidth={1.5} />
+          <text x={leftX + boxW / 2} y={boxY + 18} textAnchor="middle" fontSize={11} fontWeight={800} fill={C.info as string}>
+            Short-Term Memory
+          </text>
+          <text x={leftX + boxW / 2} y={boxY + 30} textAnchor="middle" fontSize={9} fill={C.infoMid as string}>
+            7-day TTL · 100 notes max
+          </text>
+          {shortNotes.map((note, i) => (
+            <text key={i} x={leftX + 10} y={boxY + 50 + i * 17} fontSize={9} fill={C.textSub as string}>
+              {note}
+            </text>
+          ))}
+
+          {/* Long-term box */}
+          <rect x={rightX} y={boxY} width={boxW} height={boxH} rx={8} fill={C.purple + '12'} stroke={C.purple + '55'} strokeWidth={1.5} />
+          <text x={rightX + boxW / 2} y={boxY + 18} textAnchor="middle" fontSize={11} fontWeight={800} fill={C.purple as string}>
+            Long-Term Memory
+          </text>
+          <text x={rightX + boxW / 2} y={boxY + 30} textAnchor="middle" fontSize={9} fill={C.purpleLight as string + '99'}>
+            Trade DNA · Patterns · Rules
+          </text>
+          {longPatterns.map((note, i) => (
+            <text key={i} x={rightX + 10} y={boxY + 50 + i * 17} fontSize={9} fill={C.textSub as string}>
+              {note}
+            </text>
+          ))}
+
+          {/* Brain icon (center) */}
+          <circle cx={brainX} cy={brainY} r={26} fill={C.brand + '22'} stroke={C.brand + '66'} strokeWidth={2} />
+          <text x={brainX} y={brainY - 4} textAnchor="middle" fontSize={18} fill={C.brand as string}>🤖</text>
+          <text x={brainX} y={brainY + 16} textAnchor="middle" fontSize={8} fontWeight={700} fill={C.brand as string}>AI Brain</text>
+
+          {/* Arrows: left box → brain (top arrow going right) */}
+          <line
+            x1={leftEdge}
+            y1={brainY - arrowGap / 2}
+            x2={brainX - 28}
+            y2={brainY - arrowGap / 2}
+            stroke={C.info as string}
+            strokeWidth={1.5}
+            markerEnd="url(#arrowInfo)"
+          />
+          {/* Brain → left box (bottom arrow going left) */}
+          <line
+            x1={brainX - 28}
+            y1={brainY + arrowGap / 2}
+            x2={leftEdge}
+            y2={brainY + arrowGap / 2}
+            stroke={C.info as string}
+            strokeWidth={1.5}
+            markerEnd="url(#arrowInfoBack)"
+          />
+
+          {/* Arrows: brain → right box (top arrow going right) */}
+          <line
+            x1={brainX + 28}
+            y1={brainY - arrowGap / 2}
+            x2={rightEdge}
+            y2={brainY - arrowGap / 2}
+            stroke={C.purple as string}
+            strokeWidth={1.5}
+            markerEnd="url(#arrowPurple)"
+          />
+          {/* Right box → brain (bottom arrow going left) */}
+          <line
+            x1={rightEdge}
+            y1={brainY + arrowGap / 2}
+            x2={brainX + 28}
+            y2={brainY + arrowGap / 2}
+            stroke={C.purple as string}
+            strokeWidth={1.5}
+            markerEnd="url(#arrowPurpleBack)"
+          />
+
+          <defs>
+            <marker id="arrowInfo" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill={C.info as string} />
+            </marker>
+            <marker id="arrowInfoBack" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
+              <path d="M6,0 L0,3 L6,6 Z" fill={C.info as string} />
+            </marker>
+            <marker id="arrowPurple" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill={C.purple as string} />
+            </marker>
+            <marker id="arrowPurpleBack" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
+              <path d="M6,0 L0,3 L6,6 Z" fill={C.purple as string} />
+            </marker>
+          </defs>
+        </svg>
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+        The AI brain reads from both memory stores each cycle and writes new observations after each decision. Long-term patterns graduate from short-term notes via the Learning Agent.
+      </div>
+    </div>
+  );
+}
+
 // ─── Glossary ─────────────────────────────────────────────────────────────────
 
 const GLOSSARY = [
@@ -1341,6 +1834,7 @@ export default function Learn() {
           <li style={{ marginBottom: 8 }}><strong>Veto rule:</strong> If any strategy sees a strong counter-signal (e.g., the trend strategy says SHORT while others say LONG), it can veto the trade entirely.</li>
           <li><strong>Confidence floor:</strong> The combined signal must score ≥ 75 confidence before advancing to LLM review.</li>
         </ol>
+        <StrategyVotingVisual />
         <InfoBox color={C.bull}>
           This system is designed to only trade when multiple independent analyses agree. A single strategy firing alone is not enough.
         </InfoBox>
@@ -1455,6 +1949,7 @@ export default function Learn() {
             </div>
           ))}
         </div>
+        <MemorySystemDiagram />
       </AccordionCard>
 
       <AccordionCard title="Advisory Mode vs Full Autonomy" badge="Mode Levels">
@@ -1527,6 +2022,7 @@ export default function Learn() {
           <li>Market regime (panic or high_volatility = leverage cap reduced)</li>
         </ul>
         <p>The result: leverage typically ranges 2-7× for normal setups and rarely exceeds 10×.</p>
+        <RiskRewardVisualizer />
       </AccordionCard>
 
       <AccordionCard title="Stop Loss Philosophy">
