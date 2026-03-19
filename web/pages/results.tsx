@@ -372,7 +372,7 @@ function BotVsBuyHold({ points, startEquity = 50000 }: { points: EquityCurvePoin
   const iH = H - pad.t - pad.b;
 
   const botEquities = points.map((p) => p.equity);
-  const botReturn = (botEquities[botEquities.length - 1] - startEquity) / startEquity;
+  const botReturn = startEquity > 0 ? (botEquities[botEquities.length - 1] - startEquity) / startEquity : 0;
 
   // Simulate BTC buy-and-hold: assume BTC started at 60k and ended at 65k for a 30d period
   // (approximation; real data would come from market data API)
@@ -400,7 +400,7 @@ function BotVsBuyHold({ points, startEquity = 50000 }: { points: EquityCurvePoin
   const btcPath = btcPoints.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ');
 
   const botColor = botEquities[n - 1] >= startEquity ? C.bull : C.bear;
-  const btcFinalReturn = (btcPoints[n - 1] - startEquity) / startEquity * 100;
+  const btcFinalReturn = startEquity > 0 ? (btcPoints[n - 1] - startEquity) / startEquity * 100 : 0;
   const botFinalReturn = botReturn * 100;
   const outperformance = botFinalReturn - btcFinalReturn;
 
@@ -419,19 +419,19 @@ function BotVsBuyHold({ points, startEquity = 50000 }: { points: EquityCurvePoin
           <div style={{ textAlign: 'right' }}>
             <div style={{ color: C.muted }}>WAGMI return</div>
             <div style={{ fontWeight: 800, color: botFinalReturn >= 0 ? C.bull : C.bear, fontSize: F.md }}>
-              {botFinalReturn >= 0 ? '+' : ''}{botFinalReturn.toFixed(2)}%
+              {botFinalReturn >= 0 ? '+' : ''}{isFinite(botFinalReturn) ? botFinalReturn.toFixed(2) : '0.00'}%
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ color: C.muted }}>BTC buy-hold</div>
             <div style={{ fontWeight: 800, color: btcFinalReturn >= 0 ? '#60a5fa' : C.bear, fontSize: F.md }}>
-              {btcFinalReturn >= 0 ? '+' : ''}{btcFinalReturn.toFixed(2)}%
+              {btcFinalReturn >= 0 ? '+' : ''}{isFinite(btcFinalReturn) ? btcFinalReturn.toFixed(2) : '0.00'}%
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ color: C.muted }}>Outperformance</div>
             <div style={{ fontWeight: 800, color: outperformance >= 0 ? C.bull : C.bear, fontSize: F.md }}>
-              {outperformance >= 0 ? '+' : ''}{outperformance.toFixed(2)}pp
+              {outperformance >= 0 ? '+' : ''}{isFinite(outperformance) ? outperformance.toFixed(2) : '0.00'}pp
             </div>
           </div>
         </div>
@@ -498,7 +498,7 @@ function BotVsBuyHold({ points, startEquity = 50000 }: { points: EquityCurvePoin
       <div style={{ fontSize: 10, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
         BTC buy-and-hold simulated from trend data for comparison purposes. Past results do not guarantee future returns.
         {outperformance > 0 && (
-          <strong style={{ color: C.bull }}> WAGMI outperformed BTC buy-hold by {outperformance.toFixed(1)} percentage points.</strong>
+          <strong style={{ color: C.bull }}> WAGMI outperformed BTC buy-hold by {isFinite(outperformance) ? outperformance.toFixed(1) : '0.0'} percentage points.</strong>
         )}
       </div>
     </div>
@@ -3320,8 +3320,8 @@ export default function Results() {
           </div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
             {[
-              { label: 'Win Rate', value: `${(r.win_rate * 100).toFixed(1)}%`, color: C.bull },
-              { label: 'Profit Factor', value: `${(r.profit_factor ?? 0).toFixed(2)}×`, color: C.info },
+              { label: 'Win Rate', value: `${((r.win_rate ?? 0) * 100).toFixed(1)}%`, color: C.bull },
+              { label: 'Profit Factor', value: isFinite(r.profit_factor ?? 0) ? `${(r.profit_factor ?? 0).toFixed(2)}×` : '—', color: C.info },
               { label: 'Total Trades', value: `${r.total_trades}`, color: C.text },
               { label: 'Max Drawdown', value: fmtPct(-Math.abs(r.max_drawdown_pct)), color: C.warn },
             ].map(({ label, value, color }) => (

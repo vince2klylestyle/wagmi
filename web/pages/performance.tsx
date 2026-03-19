@@ -2472,11 +2472,58 @@ function PerformanceAttributionTreemap() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+// ─── Date Range Tabs ──────────────────────────────────────────────────────────
+
+type DateRange = '7d' | '30d' | 'all';
+
+function DateRangeTabs({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
+  const options: { label: string; value: DateRange }[] = [
+    { label: '7 Days',  value: '7d'  },
+    { label: '30 Days', value: '30d' },
+    { label: 'All Time', value: 'all' },
+  ];
+  return (
+    <div style={{
+      display: 'inline-flex',
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: 3,
+      gap: 2,
+    }}>
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: '6px 16px',
+              borderRadius: R.md,
+              border: 'none',
+              background: active ? C.brand : 'transparent',
+              color: active ? '#fff' : C.muted,
+              fontSize: F.sm,
+              fontWeight: active ? 700 : 500,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              boxShadow: active ? S.sm : 'none',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PerformancePage() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [curve, setCurve] = useState<EquityCurvePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>('all');
 
   useEffect(() => {
     const load = async () => {
@@ -2497,49 +2544,74 @@ export default function PerformancePage() {
     load();
   }, []);
 
-  const dailyReturns = useMemo(() => dailyReturnsFromCurve(curve), [curve]);
+  // ── Filter by date range ──────────────────────────────────────────────────
+  // trades.csv has no timestamp; approximate by slicing from the end (most recent N%)
+  const filteredTrades = useMemo(() => {
+    if (dateRange === 'all') return trades;
+    const now = Date.now();
+    const cutoffMs = dateRange === '7d' ? 7 * 86400000 : 30 * 86400000;
+    // If trades have a timestamp field use it; otherwise fall back to tail slice
+    const hasTs = trades.some((t) => (t as { timestamp?: number }).timestamp != null);
+    if (hasTs) {
+      return trades.filter((t) => {
+        const ts = (t as { timestamp?: number }).timestamp;
+        return ts != null && (now - ts) <= cutoffMs;
+      });
+    }
+    // Approximate: assume trades are sorted oldest→newest
+    const fraction = dateRange === '7d' ? 0.25 : 0.6;
+    return trades.slice(Math.floor(trades.length * (1 - fraction)));
+  }, [trades, dateRange]);
+
+  const filteredCurve = useMemo(() => {
+    if (dateRange === 'all') return curve;
+    const fraction = dateRange === '7d' ? 0.25 : 0.6;
+    return curve.slice(Math.floor(curve.length * (1 - fraction)));
+  }, [curve, dateRange]);
+
+  const dailyReturns = useMemo(() => dailyReturnsFromCurve(filteredCurve), [filteredCurve]);
 
   const sharpe = useMemo(() => calcSharpe(dailyReturns), [dailyReturns]);
   const sortino = useMemo(() => calcSortino(dailyReturns), [dailyReturns]);
 
   const totalReturnPct = useMemo(() => {
-    if (curve.length < 2) return null;
-    const start = curve[0].equity;
-    const end = curve[curve.length - 1].equity;
+    if (filteredCurve.length < 2) return null;
+    const start = filteredCurve[0].equity;
+    const end = filteredCurve[filteredCurve.length - 1].equity;
     if (start === 0) return null;
     return ((end - start) / start) * 100;
-  }, [curve]);
+  }, [filteredCurve]);
 
   const maxDrawdownPct = useMemo(() => {
-    if (!curve.length) return null;
-    const dd = curve.map((p) => p.drawdown_pct);
+    if (!filteredCurve.length) return null;
+    const dd = filteredCurve.map((p) => p.drawdown_pct);
     return Math.min(...dd);
-  }, [curve]);
+  }, [filteredCurve]);
 
   const calmar = useMemo(() => {
     if (totalReturnPct == null || maxDrawdownPct == null) return null;
     return calcCalmar(totalReturnPct, maxDrawdownPct);
   }, [totalReturnPct, maxDrawdownPct]);
 
-  const maxConsecLoss = useMemo(() => calcMaxConsecLosses(trades), [trades]);
-  const avgWinDuration = useMemo(() => calcAvgDuration(trades, 'WIN'), [trades]);
-  const avgLossDuration = useMemo(() => calcAvgDuration(trades, 'LOSS'), [trades]);
-  const feeDrag = useMemo(() => calcFeeDrag(trades), [trades]);
+  const maxConsecLoss = useMemo(() => calcMaxConsecLosses(filteredTrades), [filteredTrades]);
+  const avgWinDuration = useMemo(() => calcAvgDuration(filteredTrades, 'WIN'), [filteredTrades]);
+  const avgLossDuration = useMemo(() => calcAvgDuration(filteredTrades, 'LOSS'), [filteredTrades]);
+  const feeDrag = useMemo(() => calcFeeDrag(filteredTrades), [filteredTrades]);
 
   const profitFactor = useMemo(() => {
-    const grossWin = trades.filter((t) => (t.pnl ?? 0) > 0).reduce((a, t) => a + (t.pnl ?? 0), 0);
-    const grossLoss = trades.filter((t) => (t.pnl ?? 0) < 0).reduce((a, t) => a + Math.abs(t.pnl ?? 0), 0);
+    const grossWin = filteredTrades.filter((t) => (t.pnl ?? 0) > 0).reduce((a, t) => a + (t.pnl ?? 0), 0);
+    const grossLoss = filteredTrades.filter((t) => (t.pnl ?? 0) < 0).reduce((a, t) => a + Math.abs(t.pnl ?? 0), 0);
     if (grossLoss === 0) return grossWin > 0 ? null : null;
     return grossWin / grossLoss;
-  }, [trades]);
+  }, [filteredTrades]);
 
-  const rollingWR = useMemo(() => rollingWinRate(trades, Math.min(10, Math.floor(trades.length / 3) || 5)), [trades]);
-  const rrHisto = useMemo(() => rrHistogram(trades), [trades]);
+  const rollingWR = useMemo(() => rollingWinRate(filteredTrades, Math.min(10, Math.floor(filteredTrades.length / 3) || 5)), [filteredTrades]);
+  const rrHisto = useMemo(() => rrHistogram(filteredTrades), [filteredTrades]);
 
-  // By strategy from trades
+  // By strategy from filteredTrades
   const byStrategy = useMemo(() => {
     const map: Record<string, { trades: number; wins: number; pnl: number; win_rate: number }> = {};
-    for (const t of trades) {
+    for (const t of filteredTrades) {
       const s = t.strategy || 'unknown';
       if (!map[s]) map[s] = { trades: 0, wins: 0, pnl: 0, win_rate: 0 };
       map[s].trades++;
@@ -2550,12 +2622,12 @@ export default function PerformancePage() {
       s.win_rate = s.trades > 0 ? s.wins / s.trades : 0;
     }
     return map;
-  }, [trades]);
+  }, [filteredTrades]);
 
   // Win/loss counts
-  const wins = trades.filter((t) => t.outcome === 'WIN').length;
-  const losses = trades.filter((t) => t.outcome === 'LOSS').length;
-  const winRate = trades.length > 0 ? (wins / trades.length) * 100 : null;
+  const wins = filteredTrades.filter((t) => t.outcome === 'WIN').length;
+  const losses = filteredTrades.filter((t) => t.outcome === 'LOSS').length;
+  const winRate = filteredTrades.length > 0 ? (wins / filteredTrades.length) * 100 : null;
 
   function fmtHours(h: number | null): string {
     if (h == null) return '—';

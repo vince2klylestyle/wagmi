@@ -1162,7 +1162,8 @@ function SignalFreshnessStrip({ signals }: { signals: Record<string, Signal> | n
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {symbolList.map(sym => {
           const minsAgo = seededMinutesAgo(sym);
-          const { bg, border, dot } = freshnessColor(minsAgo);
+          const { bg, border, dot, label } = freshnessColor(minsAgo);
+          const isStale = minsAgo >= 15;
           return (
             <div key={sym} style={{
               background: bg,
@@ -1175,6 +1176,7 @@ function SignalFreshnessStrip({ signals }: { signals: Record<string, Signal> | n
               alignItems: 'center',
               gap: 6,
               flex: '0 0 auto',
+              position: 'relative',
             }}>
               {/* Symbol */}
               <div style={{ fontSize: F.sm, fontWeight: 800, color: C.text, letterSpacing: '0.04em' }}>{sym}</div>
@@ -1189,6 +1191,15 @@ function SignalFreshnessStrip({ signals }: { signals: Record<string, Signal> | n
                   {minsAgo}m ago
                 </span>
               </div>
+              {/* Stale warning badge */}
+              {isStale && (
+                <span style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                  color: dot, textTransform: 'uppercase',
+                }}>
+                  {label}
+                </span>
+              )}
             </div>
           );
         })}

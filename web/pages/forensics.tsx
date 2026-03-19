@@ -2892,7 +2892,7 @@ function LeveragePnlChart({ trades }: { trades: TradeRecord[] }) {
               strokeDasharray={v === 0 ? '' : '3 4'}
             />
             <text x={PAD.left - 4} y={py(v) + 4} textAnchor="end" fontSize={8} fill={C.muted} fontFamily="Inter, system-ui">
-              ${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}
+              ${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.round(v)}
             </text>
           </g>
         ))}
