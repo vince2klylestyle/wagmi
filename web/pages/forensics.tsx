@@ -693,6 +693,139 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Multi-Symbol Cumulative P&L Chart ────────────────────────────────────────
+
+function MultiSymbolPnlChart({ trades }: { trades: TradeRecord[] }) {
+  if (trades.length < 3) return null;
+
+  // Sort by time, group by symbol
+  const sorted = [...trades].sort((a, b) => {
+    const ta = (a as any).entry_time ?? (a as any).timestamp ?? '';
+    const tb = (b as any).entry_time ?? (b as any).timestamp ?? '';
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
+  });
+
+  const symbols = Array.from(new Set(sorted.map((t) => t.symbol).filter(Boolean))).slice(0, 5) as string[];
+  if (symbols.length < 2) return null;
+
+  // Build cumulative P&L per symbol as sequential trade index
+  const symbolColors: Record<string, string> = {
+    BTC: C.brand,
+    SOL: C.bull,
+    HYPE: C.warn,
+    ETH: C.info,
+  };
+  const defaultColors = [C.bear, '#a78bfa', '#f472b6', C.muted, '#34d399'];
+  const getColor = (sym: string, i: number) => symbolColors[sym] ?? defaultColors[i % defaultColors.length];
+
+  const symData: Record<string, { x: number; y: number }[]> = {};
+  const symCum: Record<string, number> = {};
+
+  symbols.forEach((s) => { symData[s] = [{ x: 0, y: 0 }]; symCum[s] = 0; });
+
+  let globalIdx = 0;
+  sorted.forEach((t) => {
+    if (!t.symbol || !symbols.includes(t.symbol)) return;
+    globalIdx++;
+    symCum[t.symbol] += t.pnl ?? 0;
+    symData[t.symbol].push({ x: globalIdx, y: symCum[t.symbol] });
+  });
+
+  const W = 560, H = 160;
+  const pad = { t: 16, r: 20, b: 28, l: 60 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  const maxX = globalIdx || 1;
+  const allY = Object.values(symData).flatMap((pts) => pts.map((p) => p.y));
+  const minY = Math.min(...allY, 0);
+  const maxY = Math.max(...allY, 1);
+  const rangeY = maxY - minY || 1;
+
+  const px = (x: number) => pad.l + (x / maxX) * iW;
+  const py = (y: number) => pad.t + iH - ((y - minY) / rangeY) * iH;
+
+  const yTicks = [minY, 0, maxY / 2, maxY].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Cumulative P&L by Symbol</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>Each line tracks cumulative profit/loss per symbol over trade sequence</div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {symbols.map((sym, i) => {
+            const color = getColor(sym, i);
+            const finalPnl = symCum[sym];
+            return (
+              <span key={sym} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10 }}>
+                <span style={{ width: 16, height: 2.5, background: color, display: 'inline-block', borderRadius: 2 }} />
+                <span style={{ color: C.textSub, fontWeight: 600 }}>{sym}</span>
+                <span style={{ color: finalPnl >= 0 ? C.bull : C.bear, fontWeight: 700 }}>
+                  {finalPnl >= 0 ? '+' : ''}${finalPnl.toFixed(0)}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          {symbols.map((sym, i) => {
+            const color = getColor(sym, i);
+            return (
+              <linearGradient key={sym} id={`msGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.12" />
+                <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+              </linearGradient>
+            );
+          })}
+        </defs>
+
+        {/* Y grid + labels */}
+        {yTicks.map((tick) => {
+          const y = py(tick);
+          const isZero = tick === 0;
+          return (
+            <g key={tick}>
+              <line x1={pad.l} y1={y} x2={pad.l + iW} y2={y}
+                stroke={isZero ? C.muted : C.border}
+                strokeWidth={isZero ? 1 : 0.5}
+                strokeDasharray={isZero ? '4 3' : '2 4'}
+              />
+              <text x={pad.l - 4} y={y + 3} textAnchor="end" fontSize={8} fill={C.muted}>
+                {tick >= 0 ? '+' : ''}{tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick.toFixed(0)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Lines per symbol */}
+        {symbols.map((sym, i) => {
+          const color = getColor(sym, i);
+          const pts = symData[sym];
+          if (pts.length < 2) return null;
+          const polyPoints = pts.map((p) => `${px(p.x)},${py(p.y)}`).join(' ');
+          const areaPoints = [`${px(0)},${py(0)}`, ...pts.map((p) => `${px(p.x)},${py(p.y)}`), `${px(pts[pts.length - 1].x)},${py(0)}`].join(' ');
+          const lastPt = pts[pts.length - 1];
+          return (
+            <g key={sym}>
+              <polygon points={areaPoints} fill={`url(#msGrad${i})`} />
+              <polyline points={polyPoints} fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+              <circle cx={px(lastPt.x)} cy={py(lastPt.y)} r={3} fill={color} />
+            </g>
+          );
+        })}
+
+        {/* X axis label */}
+        <text x={pad.l + iW / 2} y={H - 4} textAnchor="middle" fontSize={8} fill={C.muted}>Trade sequence →</text>
+      </svg>
+    </div>
+  );
+}
+
 // ─── Trade Card ───────────────────────────────────────────────────────────────
 
 function TradeCard({ trade }: { trade: TradeRecord }) {
@@ -1070,6 +1203,8 @@ export default function Forensics() {
 
       {/* ── Trade Duration Histogram ── */}
       <TradeDurationHistogram trades={filtered} />
+
+      <MultiSymbolPnlChart trades={filtered} />
 
       {/* Filters */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
