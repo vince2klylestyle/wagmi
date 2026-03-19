@@ -42,6 +42,16 @@ type Tab = 'signals' | 'trades' | 'performance' | 'logs';
 
 import { resolveApiBase } from '../../src/api';
 
+function AwaitingResults({ label = 'Awaiting results', sub }: { label?: string; sub?: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, color: C.muted }}>
+      <div style={{ fontSize: 22, opacity: 0.4 }}>⏳</div>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{label}</div>
+      {sub && <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', maxWidth: 320 }}>{sub}</div>}
+    </div>
+  );
+}
+
 const fmt = (v: any, digits = 2) => {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n.toFixed(digits) : '—';
