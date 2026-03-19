@@ -296,6 +296,144 @@ function GateStep({ n, title, desc }: { n: number; title: string; desc: string }
   );
 }
 
+// ─── Transparency Score Card ──────────────────────────────────────────────────
+
+function TransparencyScoreCard() {
+  const dimensions = [
+    { name: 'Audit Trail', blackBox: 5, wagmi: 100 },
+    { name: 'AI Reasoning', blackBox: 0, wagmi: 95 },
+    { name: 'Risk Transparency', blackBox: 20, wagmi: 90 },
+    { name: 'Backtests Public', blackBox: 10, wagmi: 100 },
+    { name: 'Entry Logic', blackBox: 0, wagmi: 85 },
+  ];
+
+  const BAR_MAX_W = 220;
+  const ROW_H = 44;
+  const LABEL_W = 130;
+  const GAP = 6;
+  const svgW = LABEL_W + BAR_MAX_W + 64; // label + bars + value labels
+  const svgH = dimensions.length * (ROW_H + GAP) + 40; // rows + legend space
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 24 }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>Transparency Comparison</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>How open are trading bots about their inner workings? Scored 0–100.</div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 20, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: C.bear, opacity: 0.7 }} />
+          <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 600 }}>Typical Bot</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: C.brand }} />
+          <span style={{ fontSize: F.xs, color: C.muted, fontWeight: 600 }}>WAGMI</span>
+        </div>
+      </div>
+
+      {/* SVG bar chart */}
+      <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block', overflow: 'visible' }}>
+        {dimensions.map((dim, i) => {
+          const y = i * (ROW_H + GAP);
+          const bbW = (dim.blackBox / 100) * BAR_MAX_W;
+          const wagmiW = (dim.wagmi / 100) * BAR_MAX_W;
+          const barBg = 14; // individual bar height
+          const gap2 = 4;   // gap between the two bars in a group
+
+          return (
+            <g key={dim.name}>
+              {/* Dimension label */}
+              <text
+                x={LABEL_W - 8}
+                y={y + barBg + (barBg + gap2) / 2}
+                textAnchor="end"
+                fontSize={10}
+                fontWeight={600}
+                fill={C.textSub}
+              >
+                {dim.name}
+              </text>
+
+              {/* Background tracks */}
+              <rect x={LABEL_W} y={y} width={BAR_MAX_W} height={barBg} rx={4} fill={C.surface} />
+              <rect x={LABEL_W} y={y + barBg + gap2} width={BAR_MAX_W} height={barBg} rx={4} fill={C.surface} />
+
+              {/* Black Box bar (top) */}
+              <rect
+                x={LABEL_W}
+                y={y}
+                width={Math.max(bbW, dim.blackBox > 0 ? 3 : 0)}
+                height={barBg}
+                rx={4}
+                fill={C.bear}
+                opacity={0.7}
+              />
+
+              {/* WAGMI bar (bottom) */}
+              <rect
+                x={LABEL_W}
+                y={y + barBg + gap2}
+                width={wagmiW}
+                height={barBg}
+                rx={4}
+                fill={C.brand}
+              />
+
+              {/* Value labels */}
+              <text
+                x={LABEL_W + BAR_MAX_W + 6}
+                y={y + barBg - 2}
+                fontSize={9}
+                fill={C.muted}
+                fontWeight={600}
+              >
+                {dim.blackBox}
+              </text>
+              <text
+                x={LABEL_W + BAR_MAX_W + 6}
+                y={y + barBg + gap2 + barBg - 2}
+                fontSize={9}
+                fill={C.brand}
+                fontWeight={700}
+              >
+                {dim.wagmi}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X-axis tick labels */}
+        {[0, 25, 50, 75, 100].map((tick) => (
+          <g key={tick}>
+            <line
+              x1={LABEL_W + (tick / 100) * BAR_MAX_W}
+              y1={0}
+              x2={LABEL_W + (tick / 100) * BAR_MAX_W}
+              y2={dimensions.length * (ROW_H + GAP) - GAP}
+              stroke={C.faint}
+              strokeWidth={0.5}
+              strokeDasharray="3 3"
+            />
+            <text
+              x={LABEL_W + (tick / 100) * BAR_MAX_W}
+              y={dimensions.length * (ROW_H + GAP) + 12}
+              textAnchor="middle"
+              fontSize={9}
+              fill={C.muted}
+            >
+              {tick}
+            </text>
+          </g>
+        ))}
+      </svg>
+
+      <div style={{ marginTop: 14, padding: '8px 12px', background: `${C.brand}10`, border: `1px solid ${C.brand}25`, borderRadius: R.sm, fontSize: F.xs, color: C.textSub }}>
+        <strong style={{ color: C.brand }}>Transparency is the product.</strong> Every score above reflects what's actually inspectable at the linked pages — not marketing claims.
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AboutPage() {
@@ -363,6 +501,7 @@ export default function AboutPage() {
               ))}
             </div>
           </div>
+          <TransparencyScoreCard />
         </Section>
 
         {/* ── Strategies ── */}
