@@ -2380,6 +2380,283 @@ function RiskOfRuinChart() {
   );
 }
 
+// ─── Expected Value Calculator ────────────────────────────────────────────────
+
+function ExpectedValueCalc() {
+  const [winRate, setWinRate] = useState(0.77);
+  const [avgWin, setAvgWin] = useState(420);
+  const [avgLoss, setAvgLoss] = useState(180);
+
+  const ev = winRate * avgWin - (1 - winRate) * avgLoss;
+  const isPositive = ev >= 0;
+  const tradesPerMonth = 20;
+  const monthlyEV = ev * tradesPerMonth;
+
+  // Breakeven win rate: WR * avgWin = (1-WR) * avgLoss → WR = avgLoss / (avgWin + avgLoss)
+  const breakevenWR = avgLoss > 0 && avgWin > 0 ? avgLoss / (avgWin + avgLoss) : 0;
+
+  // Visual breakdown bar: width proportional to magnitude
+  const totalBar = winRate * avgWin + (1 - winRate) * avgLoss;
+  const gainPct = totalBar > 0 ? (winRate * avgWin / totalBar) * 100 : 50;
+  const lossPct = 100 - gainPct;
+
+  const inputStyle: React.CSSProperties = {
+    padding: '7px 10px',
+    background: C.surfaceHover,
+    border: `1px solid ${C.border}`,
+    borderRadius: R.sm,
+    color: C.text,
+    fontSize: F.sm,
+    width: '100%',
+    outline: 'none',
+    fontVariantNumeric: 'tabular-nums',
+  };
+  const labelStyle: React.CSSProperties = { fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 };
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px' }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 16 }}>
+        Expected Value Calculator
+      </div>
+
+      {/* EV Result */}
+      <div style={{ marginBottom: 20, padding: '16px 20px', background: (isPositive ? C.bull : C.bear) + '14', border: `1px solid ${(isPositive ? C.bull : C.bear)}33`, borderRadius: R.md, textAlign: 'center' }}>
+        <div style={{ fontSize: 28, fontWeight: 900, color: isPositive ? C.bull : C.bear, letterSpacing: -0.5 }}>
+          {isPositive ? '+' : ''}{ev >= 0 ? '$' : '-$'}{Math.abs(ev).toFixed(2)} per trade
+        </div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>
+          Win Rate: {(winRate * 100).toFixed(0)}% | Avg Win: ${avgWin} | Avg Loss: ${avgLoss}
+        </div>
+      </div>
+
+      {/* Inputs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div>
+          <div style={labelStyle}>Win Rate (%)</div>
+          <input
+            type="range"
+            min={0} max={100} step={1}
+            value={Math.round(winRate * 100)}
+            onChange={e => setWinRate(+e.target.value / 100)}
+            style={{ width: '100%', accentColor: C.brand as string, cursor: 'pointer' }}
+          />
+          <div style={{ ...inputStyle, textAlign: 'center', marginTop: 4 }}>
+            <input
+              type="number" min={0} max={100} step={1}
+              value={Math.round(winRate * 100)}
+              onChange={e => setWinRate(Math.min(100, Math.max(0, +e.target.value)) / 100)}
+              style={{ background: 'none', border: 'none', color: C.text, fontSize: F.sm, width: '100%', textAlign: 'center', outline: 'none' }}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={labelStyle}>Avg Win ($)</div>
+          <input
+            type="range"
+            min={10} max={2000} step={10}
+            value={avgWin}
+            onChange={e => setAvgWin(+e.target.value)}
+            style={{ width: '100%', accentColor: C.bull as string, cursor: 'pointer' }}
+          />
+          <div style={{ ...inputStyle, textAlign: 'center', marginTop: 4 }}>
+            <input
+              type="number" min={1} max={10000} step={10}
+              value={avgWin}
+              onChange={e => setAvgWin(Math.max(1, +e.target.value))}
+              style={{ background: 'none', border: 'none', color: C.text, fontSize: F.sm, width: '100%', textAlign: 'center', outline: 'none' }}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={labelStyle}>Avg Loss ($)</div>
+          <input
+            type="range"
+            min={10} max={2000} step={10}
+            value={avgLoss}
+            onChange={e => setAvgLoss(+e.target.value)}
+            style={{ width: '100%', accentColor: C.bear as string, cursor: 'pointer' }}
+          />
+          <div style={{ ...inputStyle, textAlign: 'center', marginTop: 4 }}>
+            <input
+              type="number" min={1} max={10000} step={10}
+              value={avgLoss}
+              onChange={e => setAvgLoss(Math.max(1, +e.target.value))}
+              style={{ background: 'none', border: 'none', color: C.text, fontSize: F.sm, width: '100%', textAlign: 'center', outline: 'none' }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Visual breakdown bar */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: F.xs, color: C.muted, marginBottom: 4 }}>
+          <span style={{ color: C.bull }}>Expected Gain ({(winRate * 100).toFixed(0)}% × ${avgWin})</span>
+          <span style={{ color: C.bear }}>Expected Loss ({((1 - winRate) * 100).toFixed(0)}% × ${avgLoss})</span>
+        </div>
+        <div style={{ height: 14, borderRadius: R.pill, overflow: 'hidden', display: 'flex' }}>
+          <div style={{ width: `${gainPct}%`, background: C.bull, transition: 'width 0.2s' }} />
+          <div style={{ width: `${lossPct}%`, background: C.bear, transition: 'width 0.2s' }} />
+        </div>
+      </div>
+
+      {/* Monthly projection + breakeven */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ padding: '10px 14px', background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: R.md }}>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Monthly Projection</div>
+          <div style={{ fontSize: F.md, fontWeight: 800, color: isPositive ? C.bull : C.bear }}>
+            {isPositive ? '+' : ''}${monthlyEV.toFixed(0)}
+          </div>
+          <div style={{ fontSize: F.xs, color: C.muted }}>If {tradesPerMonth} trades/month</div>
+        </div>
+        <div style={{ padding: '10px 14px', background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: R.md }}>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Breakeven Win Rate</div>
+          <div style={{ fontSize: F.md, fontWeight: 800, color: winRate >= breakevenWR ? C.bull : C.bear }}>
+            {(breakevenWR * 100).toFixed(1)}%
+          </div>
+          <div style={{ fontSize: F.xs, color: C.muted }}>
+            Need ≥{(breakevenWR * 100).toFixed(1)}% to be profitable
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Kelly Formula Diagram ─────────────────────────────────────────────────────
+
+function KellyFormulaDiagram() {
+  // Kelly: f* = (bp - q) / b
+  // b = odds (avg win / avg loss = 420/180 ≈ 2.33)
+  // p = win rate = 0.77, q = 0.23
+  const b = 2.33;
+  const p = 0.77;
+  const q = 1 - p;
+  const fullKelly = (b * p - q) / b; // ≈ 0.67
+  const halfKelly = fullKelly / 2;
+  const quarterKelly = fullKelly / 4;
+  // Bot caps at 1.5% risk
+  const botRisk = 0.015;
+
+  const kellyPct = (fullKelly * 100).toFixed(1);
+  const halfKellyPct = (halfKelly * 100).toFixed(1);
+  const quarterKellyPct = (quarterKelly * 100).toFixed(1);
+
+  // Bar zones
+  const zones = [
+    { from: 0,   to: 15,  label: 'Safe', color: C.bull },
+    { from: 15,  to: 35,  label: 'Moderate', color: C.warn },
+    { from: 35,  to: 67,  label: 'Aggressive', color: '#f97316' },
+    { from: 67,  to: 100, label: 'Full Kelly', color: C.bear },
+  ];
+
+  const fractions = [
+    { label: 'Full Kelly', pct: fullKelly * 100, color: C.bear, note: '~50%+ drawdowns possible' },
+    { label: 'Half Kelly', pct: halfKelly * 100, color: '#f97316', note: 'Still aggressive' },
+    { label: 'Quarter Kelly', pct: quarterKelly * 100, color: C.warn, note: `${quarterKellyPct}% → capped at 1.5%` },
+  ];
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+        Kelly Criterion — Why 1.5% Risk?
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>
+        Full Kelly maximizes long-run growth but causes 50%+ drawdowns. Quarter-Kelly is the standard conservative approach.
+      </div>
+
+      {/* Formula display */}
+      <div style={{ padding: '14px 18px', background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: R.md, marginBottom: 16, fontFamily: 'monospace' }}>
+        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>Kelly Formula:</div>
+        <div style={{ fontSize: F.md, color: C.text, fontWeight: 700, marginBottom: 6 }}>
+          f* = (b × p − q) / b
+        </div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>
+          where: b = odds (avg win / avg loss), p = win rate, q = loss rate
+        </div>
+        <div style={{ fontSize: F.sm, color: C.brand, fontWeight: 700 }}>
+          f* = ({b} × {p} − {q.toFixed(2)}) / {b} = <span style={{ color: C.bull }}>{(fullKelly * 100).toFixed(0)}%</span>
+        </div>
+      </div>
+
+      {/* Horizontal bar with zones */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', height: 28, borderRadius: R.sm, overflow: 'hidden', marginBottom: 6 }}>
+          {zones.map(z => (
+            <div
+              key={z.label}
+              style={{
+                width: `${z.to - z.from}%`,
+                background: z.color + '50',
+                borderRight: `1px solid ${z.color}`,
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <span style={{ fontSize: 9, fontWeight: 700, color: z.color }}>{z.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* Scale */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: C.muted, marginBottom: 10 }}>
+          {[0, 15, 35, 67, 100].map(v => (
+            <span key={v}>{v}%</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Kelly fraction comparison */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        {fractions.map(f => {
+          const isBotRange = f.label === 'Quarter Kelly';
+          return (
+            <div
+              key={f.label}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                background: (isBotRange ? C.bull : f.color) + '12',
+                border: `1px solid ${(isBotRange ? C.bull : f.color)}33`,
+                borderRadius: R.md,
+              }}
+            >
+              <div style={{ minWidth: 110, fontSize: F.xs, fontWeight: 700, color: isBotRange ? C.bull : f.color }}>{f.label}</div>
+              <div style={{ flex: 1, height: 8, background: C.border, borderRadius: R.pill, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, f.pct)}%`, height: '100%', background: isBotRange ? C.bull : f.color, borderRadius: R.pill }} />
+              </div>
+              <div style={{ minWidth: 44, fontSize: F.sm, fontWeight: 800, color: isBotRange ? C.bull : f.color, textAlign: 'right' }}>{f.pct.toFixed(1)}%</div>
+              <div style={{ fontSize: F.xs, color: C.muted, minWidth: 160 }}>{f.note}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bot marker */}
+      <div style={{
+        padding: '12px 16px',
+        background: C.brand + '14',
+        border: `1px solid ${C.brand}40`,
+        borderRadius: R.md,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <div style={{ fontSize: 20 }}>←</div>
+        <div>
+          <div style={{ fontSize: F.sm, fontWeight: 800, color: C.brand }}>Bot uses: 1.5% per trade</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2, lineHeight: 1.6 }}>
+            Quarter-Kelly ({quarterKellyPct}%) would suggest {quarterKellyPct}% per trade.
+            The bot caps this at <strong style={{ color: C.brand }}>1.5%</strong> for additional safety — well inside the green zone.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Learn() {
@@ -2679,6 +2956,23 @@ export default function Learn() {
           The 1.5% risk rule is not arbitrary — it is the result of ruin-probability mathematics. The chart below shows how ruin probability collapses as risk per trade decreases.
         </p>
         <RiskOfRuinChart />
+      </AccordionCard>
+
+      <AccordionCard title="Expected Value Calculator" badge="EV" badgeColor={C.brand}>
+        <p style={{ marginBottom: 16 }}>
+          A strategy is profitable only when its expected value (EV) is positive. EV = (win rate × avg win) − (loss rate × avg loss). Adjust the inputs to see the effect on long-run profitability.
+        </p>
+        <ExpectedValueCalc />
+        <div style={{ marginTop: 16, padding: '10px 14px', background: C.info + '10', border: `1px solid ${C.info}25`, borderRadius: R.sm, fontSize: F.xs, color: C.textSub, lineHeight: 1.7 }}>
+          <strong>WAGMI Bot defaults:</strong> 77% win rate, $420 avg win, $180 avg loss → EV ≈ +${((0.77 * 420) - (0.23 * 180)).toFixed(0)} per trade. At 20 trades/month that compounds quickly.
+        </div>
+      </AccordionCard>
+
+      <AccordionCard title="Kelly Criterion — Why 1.5% Risk?" badge="Position Sizing" badgeColor={C.warn}>
+        <p style={{ marginBottom: 16 }}>
+          The Kelly Criterion is a mathematical formula for optimal position sizing. Understanding why the bot uses Quarter-Kelly shows the trade-off between growth and drawdown.
+        </p>
+        <KellyFormulaDiagram />
       </AccordionCard>
 
       <AccordionCard title="Compounding With Consistent Returns" badge="Growth" badgeColor={C.brand}>
