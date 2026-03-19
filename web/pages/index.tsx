@@ -2730,7 +2730,7 @@ export default function Home() {
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
-          sub={btRes ? `${btRes.config?.days ?? 30}-day backtest` : 'Waiting for data'}
+          sub={btRes ? `${backtest?.config?.days ?? 30}-day backtest` : 'Waiting for data'}
           color={btRes && btRes.total_return_pct > 0 ? C.bull : C.bear}
           loading={loading}
         />
@@ -2778,7 +2778,7 @@ export default function Home() {
             <>
               <SparklineChart data={sparkData} width={180} height={48} />
               <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>
-                {btRes ? `$${(btRes.config?.starting_equity ?? 50000).toLocaleString()} → ${fmtUsd(btRes.final_equity)}` : 'No backtest data'}
+                {btRes ? `$${(backtest?.config?.starting_equity ?? 50000).toLocaleString()} → ${fmtUsd(btRes.final_equity)}` : 'No backtest data'}
               </div>
             </>
           )}
@@ -3134,7 +3134,7 @@ export default function Home() {
           }}
         >
           <div>
-            <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>{btRes.config?.days ?? 30}-day paper trading · full log available</div>
+            <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>{backtest?.config?.days ?? 30}-day paper trading · full log available</div>
             <div style={{ fontSize: F['2xl'], fontWeight: 800, color: C.bull }}>
               {fmtPct(btRes.total_return_pct)} return · {(btRes.win_rate * 100).toFixed(0)}% win rate
             </div>

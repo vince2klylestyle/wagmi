@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { LlmDecision, LlmMarketView, ActivityEvent, BacktestResult } from '../src/types';
-import { C, R, F, fmtUsd as themeFmtUsd } from '../src/theme';
+import { C, R, F, G, fmtUsd as themeFmtUsd } from '../src/theme';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

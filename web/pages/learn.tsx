@@ -2,7 +2,7 @@
 
 import React, { useState, useId } from 'react';
 import Link from 'next/link';
-import { C, R, S, F } from '../src/theme';
+import { C, R, S, F, G } from '../src/theme';
 
 // ─── Accordion Card ───────────────────────────────────────────────────────────
 
@@ -1187,7 +1187,7 @@ function StrategyVotingVisual() {
                 </td>
                 {cols.map(col => (
                   <td key={col} style={{ padding: '8px 16px', textAlign: 'center', borderBottom: `1px solid ${C.border}` }}>
-                    {s.vote === col ? (
+                    {(s.vote as string) === col ? (
                       <span style={{
                         display: 'inline-block',
                         padding: '2px 10px',

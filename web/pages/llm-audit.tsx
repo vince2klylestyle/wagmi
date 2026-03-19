@@ -1155,7 +1155,7 @@ function AgentAccuracyMatrix({ decisions }: { decisions: LlmDecision[] }) {
                 height={SPARK_H}
                 viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
                 style={{ flexShrink: 0, overflow: 'visible' }}
-                title={`${agent.name}: ${count} decisions in dataset`}
+                aria-label={`${agent.name}: ${count} decisions in dataset`}
               >
                 <polyline
                   points={sparkPoints(agent.spark)}
@@ -1943,7 +1943,7 @@ export default function LlmAudit() {
         </div>
         {loading ? (
           <div style={{ padding: '16px 20px' }}>
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={40} style={{ marginBottom: 8 }} />)}
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ marginBottom: 8 }}><Skeleton h={40} /></div>)}
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '32px 24px', textAlign: 'center', color: C.muted, fontSize: F.sm }}>

@@ -392,7 +392,7 @@ function IntradayActivityHeatmap({ activity }: { activity: ActivityEvent[] }) {
 
   if (activity.length > 0) {
     for (const ev of activity) {
-      const ts = typeof ev.timestamp === 'number' ? ev.timestamp * 1000 : new Date(ev.timestamp || 0).getTime();
+      const ts = ev.ts_iso ? new Date(ev.ts_iso).getTime() : ev.ts * 1000;
       const h = new Date(ts).getUTCHours();
       hourMap[h].total++;
       if (ev.event_type === 'llm_would_trade') hourMap[h].go++;
