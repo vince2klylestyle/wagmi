@@ -1482,6 +1482,99 @@ function ActivityCalendarHeatmap() {
   );
 }
 
+// ─── Bot Health Indicator ─────────────────────────────────────────────────────
+
+function BotHealthIndicator() {
+  type DotStatus = 'green' | 'yellow' | 'red' | 'blue';
+
+  const indicators: Array<{ label: string; status: DotStatus; pulse: boolean }> = [
+    { label: 'API Connection',    status: 'green',  pulse: true  },
+    { label: 'Data Feed',         status: 'green',  pulse: true  },
+    { label: 'Strategy Engine',   status: 'green',  pulse: false },
+    { label: 'LLM Brain',         status: 'blue',   pulse: true  },
+  ];
+
+  const dotColorMap: Record<DotStatus, string> = {
+    green:  '#22c55e',
+    yellow: '#f59e0b',
+    red:    '#ef4444',
+    blue:   '#60a5fa',
+  };
+
+  const allOk = indicators.every((ind) => ind.status === 'green' || ind.status === 'blue');
+
+  return (
+    <>
+      <style>{`
+        @keyframes healthPulse {
+          0%   { transform: scale(1);   opacity: 0.85; }
+          50%  { transform: scale(1.5); opacity: 0.35; }
+          100% { transform: scale(1);   opacity: 0.85; }
+        }
+      `}</style>
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.lg,
+          padding: '14px 18px',
+          minWidth: 200,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+          System Status
+        </div>
+        {/* 2×2 grid of indicators */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: 10 }}>
+          {indicators.map((ind) => {
+            const dotColor = dotColorMap[ind.status];
+            return (
+              <div key={ind.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                {/* Dot with optional pulse ring */}
+                <div style={{ position: 'relative', width: 10, height: 10, flexShrink: 0 }}>
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    background: dotColor,
+                    zIndex: 1,
+                  }} />
+                  {ind.pulse && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '50%',
+                      background: dotColor,
+                      animation: 'healthPulse 2.2s ease-in-out infinite',
+                      zIndex: 0,
+                    }} />
+                  )}
+                </div>
+                <span style={{ fontSize: 10, color: C.textSub, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {ind.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Summary text */}
+        <div style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: allOk ? '#22c55e' : '#f59e0b',
+          borderTop: `1px solid ${C.border}`,
+          paddingTop: 8,
+          textAlign: 'center',
+          letterSpacing: 0.3,
+        }}>
+          {allOk ? '✓ All Systems Operational' : '⚠ Check Required'}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -1690,7 +1783,7 @@ export default function Home() {
       <style>{`@keyframes ripplePulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }`}</style>
 
       {/* ── KPI Hero Row ──────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
@@ -1747,6 +1840,8 @@ export default function Home() {
             </>
           )}
         </div>
+        {/* Bot Health Indicator — top-right of hero section */}
+        <BotHealthIndicator />
       </div>
 
       {/* ── Market Snapshot ───────────────────────────── */}

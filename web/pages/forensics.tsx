@@ -712,13 +712,15 @@ function RiskRewardScatter({ trades }: { trades: TradeRecord[] }) {
   const plotH = H - pad.top - pad.bottom;
 
   const dots = hasRealData
-    ? plotTrades.map((t) => ({
+    ? plotTrades.map((t, i) => ({
         conf: (t.confidence ?? 0) * 100,
         rr: t.rr_achieved ?? 0,
         win: t.outcome === 'WIN',
         label: t.symbol,
+        size: (t as any).position_size != null ? Math.max(3, Math.min(9, 3 + ((t as any).position_size / 1000))) : 4,
+        isRecent: i >= plotTrades.length - 5,
       }))
-    : seedDots.map((d) => ({ ...d, label: '' }));
+    : seedDots.map((d, i) => ({ ...d, label: '', size: 4, isRecent: i >= seedDots.length - 5 }));
 
   const allRR = dots.map((d) => d.rr);
   const minRR = Math.min(...allRR, -1.5);
@@ -747,6 +749,23 @@ function RiskRewardScatter({ trades }: { trades: TradeRecord[] }) {
             <rect x={pad.left} y={pad.top} width={plotW} height={plotH} />
           </clipPath>
         </defs>
+
+        {/* Ideal zone: R:R > 1.5 AND confidence > 75 */}
+        {(() => {
+          const x1 = px(75);
+          const y1 = py(Math.min(maxRR, 999));
+          const x2 = px(100);
+          const y2 = py(1.5);
+          if (y2 > pad.top + plotH) return null; // 1.5 is below chart range
+          return (
+            <rect
+              x={x1} y={y1}
+              width={x2 - x1} height={Math.max(0, y2 - y1)}
+              fill={C.bull} fillOpacity={0.08}
+              clipPath="url(#rrScatterClip)"
+            />
+          );
+        })()}
 
         {/* Y grid lines */}
         {yTickValues.map((v) => (
@@ -813,21 +832,30 @@ function RiskRewardScatter({ trades }: { trades: TradeRecord[] }) {
         <text x={px(75) + 3} y={pad.top + 10} fontSize={8} fill={C.brand} fontFamily="Inter, system-ui">75%</text>
 
         {/* Dots */}
-        {dots.map((d, i) => (
-          <circle
-            key={i}
-            cx={px(d.conf)}
-            cy={py(d.rr)}
-            r={4}
-            fill={d.win ? C.bull : C.bear}
-            fillOpacity={0.75}
-            stroke={d.win ? C.bullMid : C.bearMid}
-            strokeWidth={0.8}
-            clipPath="url(#rrScatterClip)"
-          >
-            <title>{d.label ? `${d.label} — Conf: ${d.conf.toFixed(0)}% R:R: ${d.rr.toFixed(2)} (${d.win ? 'WIN' : 'LOSS'})` : `Conf: ${d.conf.toFixed(0)}% R:R: ${d.rr.toFixed(2)}`}</title>
-          </circle>
-        ))}
+        {dots.map((d, i) => {
+          const cx = px(d.conf);
+          const cy = py(d.rr);
+          const r = d.size ?? 4;
+          return (
+            <g key={i} clipPath="url(#rrScatterClip)">
+              {/* White ring for recent trades (last 5) */}
+              {d.isRecent && (
+                <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke="#ffffff" strokeWidth={1.5} strokeOpacity={0.7} />
+              )}
+              <circle
+                cx={cx}
+                cy={cy}
+                r={r}
+                fill={d.win ? C.bull : C.bear}
+                fillOpacity={0.75}
+                stroke={d.win ? C.bullMid : C.bearMid}
+                strokeWidth={0.8}
+              >
+                <title>{d.label ? `${d.label} — Conf: ${d.conf.toFixed(0)}% R:R: ${d.rr.toFixed(2)} (${d.win ? 'WIN' : 'LOSS'})` : `Conf: ${d.conf.toFixed(0)}% R:R: ${d.rr.toFixed(2)}`}</title>
+              </circle>
+            </g>
+          );
+        })}
 
         {/* Axis labels */}
         <text x={pad.left + plotW / 2} y={H - 4} textAnchor="middle" fontSize={10} fill={C.muted} fontFamily="Inter, system-ui">

@@ -421,12 +421,12 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
   }
 
   const vbW = 700;
-  const vbH = 80;
+  const vbH = 100;
   const pad = { t: 8, r: 16, b: 20, l: 52 };
   const W = vbW - pad.l - pad.r;
   const H = vbH - pad.t - pad.b;
 
-  // Top strip: equity line (20% of H)
+  // Top strip: equity line (30% of H)
   const eqH = Math.round(H * 0.30);
   // Bottom strip: drawdown bars (remaining)
   const ddH = H - eqH - 4;
@@ -441,9 +441,18 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
   const minDD = Math.min(...drawdowns); // most negative = worst
   const ddRange = Math.abs(minDD) || 1;
 
+  // Average drawdown (only include negative values)
+  const negDDs = drawdowns.filter((d) => d < 0);
+  const avgDD = negDDs.length > 0 ? negDDs.reduce((a, b) => a + b, 0) / negDDs.length : 0;
+
   const x = (i: number) => pad.l + (i / Math.max(1, points.length - 1)) * W;
   const yEq = (v: number) => pad.t + eqH - ((v - minE) / eqRange) * eqH;
   const ddBarH = (dd: number) => Math.max(1, (Math.abs(dd) / ddRange) * ddH);
+
+  // Y position within the DD strip (dd=0 is ddTop, more negative = taller bar = lower on SVG)
+  // We need a y coordinate for horizontal reference lines inside the DD strip
+  // dd% maps: 0 → ddTop, minDD → ddTop + ddH
+  const yDD = (ddPct: number) => ddTop + (Math.abs(ddPct) / ddRange) * ddH;
 
   // Find max drawdown trough index
   const maxDDIdx = drawdowns.indexOf(minDD);
@@ -451,14 +460,38 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
   // Equity line path
   const eqPts = points.map((p, i) => `${x(i)},${yEq(p.equity)}`).join(' ');
 
-  // Identify recovery periods: dd < -1% and recovering (dd improving toward 0)
-  // For simplicity: use opacity scaled to drawdown depth
+  // Recovery markers: where drawdown returns to 0 after a dip
+  const recoveryMarkers: number[] = [];
+  for (let i = 1; i < drawdowns.length; i++) {
+    if (drawdowns[i - 1] < -0.5 && drawdowns[i] >= -0.001) {
+      recoveryMarkers.push(i);
+    }
+  }
+
+  // Opacity scaled to drawdown depth
   const barOpacity = (dd: number) => 0.3 + 0.7 * (Math.abs(dd) / ddRange);
+
+  // Severity band heights inside DD strip
+  // -5% and -15% reference lines (as % of total DD range)
+  const band5Y = minDD < -5 ? yDD(-5) : null;
+  const band15Y = minDD < -15 ? yDD(-15) : null;
 
   return (
     <svg width="100%" viewBox={`0 0 ${vbW} ${vbH}`} style={{ display: 'block' }}>
       {/* Equity line strip */}
       <polyline points={eqPts} fill="none" stroke={C.bull} strokeWidth={1.5} strokeLinejoin="round" />
+
+      {/* Severity color bands (background, drawn behind bars) */}
+      {/* Green band: 0 to -5% */}
+      <rect x={pad.l} y={ddTop} width={W} height={band5Y != null ? band5Y - ddTop : ddH} fill="rgba(22,163,74,0.06)" />
+      {/* Yellow band: -5% to -15% */}
+      {band5Y != null && (
+        <rect x={pad.l} y={band5Y} width={W} height={band15Y != null ? band15Y - band5Y : ddTop + ddH - band5Y} fill="rgba(217,119,6,0.08)" />
+      )}
+      {/* Red band: below -15% */}
+      {band15Y != null && (
+        <rect x={pad.l} y={band15Y} width={W} height={ddTop + ddH - band15Y} fill="rgba(220,38,38,0.08)" />
+      )}
 
       {/* Drawdown bars */}
       {points.map((p, i) => {
@@ -477,6 +510,28 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
           />
         );
       })}
+
+      {/* Average drawdown dashed line */}
+      {avgDD < -0.001 && (
+        <g>
+          <line
+            x1={pad.l} y1={yDD(avgDD)}
+            x2={pad.l + W} y2={yDD(avgDD)}
+            stroke={C.muted} strokeWidth={1} strokeDasharray="4,3"
+          />
+          <text x={pad.l + W + 2} y={yDD(avgDD) + 3} fill={C.muted} fontSize={7} textAnchor="start">
+            avg {fmtPct(avgDD, 1)}
+          </text>
+        </g>
+      )}
+
+      {/* Severity band reference lines */}
+      {band5Y != null && (
+        <line x1={pad.l} y1={band5Y} x2={pad.l + W} y2={band5Y} stroke={C.warnMid} strokeWidth={0.5} strokeDasharray="3,4" opacity={0.5} />
+      )}
+      {band15Y != null && (
+        <line x1={pad.l} y1={band15Y} x2={pad.l + W} y2={band15Y} stroke={C.bear} strokeWidth={0.5} strokeDasharray="3,4" opacity={0.5} />
+      )}
 
       {/* Max drawdown trough annotation */}
       {maxDDIdx >= 0 && minDD < -0.001 && (
@@ -497,6 +552,13 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
         </g>
       )}
 
+      {/* Recovery markers ↑ */}
+      {recoveryMarkers.map((ri) => (
+        <text key={`rec-${ri}`} x={x(ri)} y={ddTop - 2} fill={C.bull} fontSize={9} textAnchor="middle" opacity={0.8}>
+          ↑
+        </text>
+      ))}
+
       {/* Y-axis label for drawdown strip */}
       <text x={pad.l - 4} y={ddTop + ddH / 2 + 3} fill={C.muted} fontSize={7.5} textAnchor="end">DD</text>
       <text x={pad.l - 4} y={pad.t + eqH / 2 + 3} fill={C.muted} fontSize={7.5} textAnchor="end">Eq.</text>
@@ -509,6 +571,7 @@ function DrawdownTimeline({ points }: { points: EquityCurvePoint[] }) {
       <text x={pad.l + 6} y={vbH - 2} fill={C.muted} fontSize={7}>Max drawdown trough</text>
       <line x1={pad.l + 110} y1={vbH - 5} x2={pad.l + 125} y2={vbH - 5} stroke={C.bear} strokeWidth={1.5} />
       <text x={pad.l + 128} y={vbH - 2} fill={C.muted} fontSize={7}>Drawdown depth</text>
+      <text x={pad.l + 210} y={vbH - 2} fill={C.bull} fontSize={7}>↑ recovery</text>
     </svg>
   );
 }
