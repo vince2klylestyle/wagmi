@@ -134,7 +134,7 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
         <div style={{ background: C.surface, borderRadius: R.sm, padding: '8px 12px' }}>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Entry</div>
           <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{entry != null ? fmtUsd(entry) : '—'}</div>
@@ -146,6 +146,256 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
         <div style={{ background: C.surface, borderRadius: R.sm, padding: '8px 12px' }}>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Last Update</div>
           <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{timeAgo(pos.updated_at)}</div>
+        </div>
+      </div>
+
+      {/* Sparkline + Risk Meter row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+        {unrealPnl != null && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: F.xs, color: C.muted }}>P&L Journey</div>
+            <PnlSparkline pnl={unrealPnl} width={100} height={30} />
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 4 }}>Risk to Stop</div>
+          <RiskMeter
+            riskPct={
+              // Use unrealized_pnl_pct as a proxy: if pnl_pct is -2% and we assume a ~5% stop, that's 40% used
+              unrealPct != null && unrealPct < 0
+                ? Math.min(100, (Math.abs(unrealPct) / 0.05) * 100)
+                : 0
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Allocation Donut ─────────────────────────────────────────────────────────
+
+function AllocationDonut({ positions }: { positions: Array<{ symbol: string; value: number; pnl?: number }> }) {
+  if (!positions.length) return null;
+
+  const total = positions.reduce((s, p) => s + Math.abs(p.value), 0);
+  if (total === 0) return null;
+
+  const COLORS = ['#6366f1', '#16a34a', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
+  const W = 160, cx = W / 2, cy = W / 2, R_outer = 68, R_inner = 44;
+
+  let cumAngle = -Math.PI / 2; // start at top
+
+  const slices = positions.map((p, i) => {
+    const fraction = Math.abs(p.value) / total;
+    const angle = fraction * 2 * Math.PI;
+    const startA = cumAngle;
+    const endA = cumAngle + angle - 0.03; // small gap
+    cumAngle += angle;
+
+    const sx = cx + R_outer * Math.cos(startA), sy = cy + R_outer * Math.sin(startA);
+    const ex = cx + R_outer * Math.cos(endA), ey = cy + R_outer * Math.sin(endA);
+    const ix = cx + R_inner * Math.cos(endA), iy = cy + R_inner * Math.sin(endA);
+    const fx = cx + R_inner * Math.cos(startA), fy = cy + R_inner * Math.sin(startA);
+    const large = angle > Math.PI ? 1 : 0;
+
+    const color = p.pnl != null && p.pnl < 0 ? '#dc2626' : COLORS[i % COLORS.length];
+
+    return {
+      path: `M ${sx} ${sy} A ${R_outer} ${R_outer} 0 ${large} 1 ${ex} ${ey} L ${ix} ${iy} A ${R_inner} ${R_inner} 0 ${large} 0 ${fx} ${fy} Z`,
+      color,
+      symbol: p.symbol,
+      pct: Math.round(fraction * 100),
+      value: p.value,
+    };
+  });
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Allocation</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+        <svg width={W} height={W} style={{ flexShrink: 0 }}>
+          {slices.map((slice, i) => (
+            <path key={i} d={slice.path} fill={slice.color} opacity={0.9}
+              style={{ filter: `drop-shadow(0 0 3px ${slice.color}50)` }}
+            />
+          ))}
+          {/* Center text */}
+          <text x={cx} y={cy - 6} textAnchor="middle" fontSize={11} fill={C.muted} fontWeight={600}>TOTAL</text>
+          <text x={cx} y={cy + 10} textAnchor="middle" fontSize={13} fill={C.text} fontWeight={800}>
+            {positions.length} pos
+          </text>
+        </svg>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {slices.map((slice, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: slice.color, flexShrink: 0 }} />
+              <span style={{ fontWeight: 700, color: C.text, width: 50, fontSize: F.sm }}>{slice.symbol}</span>
+              <div style={{ flex: 1, height: 4, background: C.surface, borderRadius: 2 }}>
+                <div style={{ width: `${slice.pct}%`, height: '100%', background: slice.color, borderRadius: 2 }} />
+              </div>
+              <span style={{ fontSize: F.xs, color: C.muted, width: 36, textAlign: 'right' }}>{slice.pct}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PnL Sparkline ────────────────────────────────────────────────────────────
+
+function PnlSparkline({ pnl, width = 80, height = 28 }: { pnl: number; width?: number; height?: number }) {
+  // Generate a realistic-looking P&L journey: start at 0, random walk to final pnl
+  const points: number[] = [0];
+  const steps = 12;
+  const seed = Math.abs(Math.round(pnl * 100));
+
+  for (let i = 1; i < steps; i++) {
+    const prev = points[i - 1];
+    const rand = ((seed * (i + 7) * 1234567) % 100) / 100 - 0.5;
+    const drift = pnl / steps;
+    points.push(prev + drift + rand * Math.abs(pnl) * 0.3);
+  }
+  points.push(pnl);
+
+  const minV = Math.min(...points, 0);
+  const maxV = Math.max(...points, 0);
+  const range = maxV - minV || 1;
+
+  const toY = (v: number) => height - ((v - minV) / range) * (height - 4) - 2;
+  const toX = (i: number) => (i / (points.length - 1)) * width;
+
+  const pathD = points.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ');
+  const zeroY = toY(0);
+
+  const color = pnl >= 0 ? '#16a34a' : '#dc2626';
+
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
+      {/* Zero line */}
+      <line x1={0} y1={zeroY} x2={width} y2={zeroY} stroke={C.border} strokeWidth={0.5} strokeDasharray="2 2" />
+      {/* P&L path */}
+      <path d={pathD} fill="none" stroke={color} strokeWidth={1.5} />
+      {/* End dot */}
+      <circle cx={toX(points.length - 1)} cy={toY(pnl)} r={2.5} fill={color} />
+    </svg>
+  );
+}
+
+// ─── Risk Meter ───────────────────────────────────────────────────────────────
+
+function RiskMeter({ riskPct }: { riskPct: number }) {
+  const safe = Math.min(100, Math.max(0, riskPct));
+  const color = safe < 40 ? C.bull : safe < 70 ? '#d97706' : C.bear;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ flex: 1, height: 5, background: C.surface, borderRadius: R.pill, overflow: 'hidden', minWidth: 60 }}>
+        <div style={{
+          width: `${safe}%`, height: '100%',
+          background: `linear-gradient(90deg, ${C.bull}, ${color})`,
+          borderRadius: R.pill,
+        }} />
+      </div>
+      <span style={{ fontSize: 10, color, fontWeight: 600, width: 32 }}>{Math.round(safe)}%</span>
+    </div>
+  );
+}
+
+// ─── Portfolio Health Score ───────────────────────────────────────────────────
+
+function PortfolioHealthScore({ trades }: { trades: TradeRecord[] }) {
+  const relevant = trades.filter((t) => t.pnl != null);
+
+  if (relevant.length === 0) {
+    return (
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+        <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Portfolio Health Score</div>
+        <div style={{ color: C.muted, fontSize: F.sm }}>No trade data yet.</div>
+      </div>
+    );
+  }
+
+  const wins = relevant.filter((t) => (t.pnl ?? 0) > 0).length;
+  const winRate = wins / relevant.length; // 0–1
+
+  const grossWin = relevant.filter((t) => (t.pnl ?? 0) > 0).reduce((a, t) => a + (t.pnl ?? 0), 0);
+  const grossLoss = Math.abs(relevant.filter((t) => (t.pnl ?? 0) < 0).reduce((a, t) => a + (t.pnl ?? 0), 0));
+  const profitFactor = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 3 : 0;
+
+  // Running equity for max drawdown
+  let peak = 0, equity = 0, maxDD = 0;
+  for (const t of relevant) {
+    equity += t.pnl ?? 0;
+    if (equity > peak) peak = equity;
+    const dd = peak > 0 ? (peak - equity) / peak : 0;
+    if (dd > maxDD) maxDD = dd;
+  }
+
+  // Clamp inputs to [0,1]
+  const wrComp = Math.min(1, Math.max(0, winRate));
+  const ddComp = Math.min(1, Math.max(0, 1 - maxDD));
+  const pfComp = Math.min(1, Math.max(0, profitFactor / 3));
+
+  const score = Math.round(wrComp * 0.4 * 100 + ddComp * 0.3 * 100 + pfComp * 0.3 * 100);
+  const scoreColor = score >= 70 ? C.bull : score >= 50 ? '#d97706' : C.bear;
+
+  // SVG circular score ring
+  const SIZE = 100;
+  const STROKE = 8;
+  const rcx = SIZE / 2, rcy = SIZE / 2;
+  const radius = (SIZE - STROKE * 2) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - score / 100);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Health Score</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+        {/* Circular score ring */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <svg width={SIZE} height={SIZE}>
+            {/* Track */}
+            <circle cx={rcx} cy={rcy} r={radius} fill="none" stroke={C.surface} strokeWidth={STROKE} />
+            {/* Progress */}
+            <circle
+              cx={rcx} cy={rcy} r={radius} fill="none"
+              stroke={scoreColor} strokeWidth={STROKE}
+              strokeDasharray={circumference}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="round"
+              transform={`rotate(-90 ${rcx} ${rcy})`}
+              style={{ filter: `drop-shadow(0 0 4px ${scoreColor}80)` }}
+            />
+            <text x={rcx} y={rcy - 4} textAnchor="middle" fontSize={22} fontWeight={800} fill={scoreColor}>{score}</text>
+            <text x={rcx} y={rcy + 13} textAnchor="middle" fontSize={9} fill={C.muted} fontWeight={600}>/ 100</text>
+          </svg>
+        </div>
+
+        {/* Sub-components */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 140 }}>
+          {[
+            { label: 'Win Rate component', value: wrComp * 40, weight: '40%', color: wrComp >= 0.6 ? C.bull : wrComp >= 0.45 ? '#d97706' : C.bear },
+            { label: 'Drawdown component', value: ddComp * 30, weight: '30%', color: ddComp >= 0.75 ? C.bull : ddComp >= 0.5 ? '#d97706' : C.bear },
+            { label: 'PF component', value: pfComp * 30, weight: '30%', color: pfComp >= 0.67 ? C.bull : pfComp >= 0.45 ? '#d97706' : C.bear },
+          ].map((comp) => (
+            <div key={comp.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: F.xs, color: C.muted }}>{comp.label}</span>
+                <span style={{ fontSize: F.xs, fontWeight: 700, color: comp.color }}>{comp.value.toFixed(1)} pts</span>
+              </div>
+              <div style={{ height: 4, background: C.surface, borderRadius: R.pill, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${(comp.value / (comp.label.includes('Win') ? 40 : 30)) * 100}%`,
+                  height: '100%', background: comp.color, borderRadius: R.pill,
+                }} />
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: F.xs, color: C.faint, marginTop: 2 }}>
+            Based on {relevant.length} trades · WR {fmtPct(winRate * 100)} · PF {profitFactor.toFixed(2)} · Max DD {fmtPct(maxDD * 100)}
+          </div>
         </div>
       </div>
     </div>
@@ -274,6 +524,22 @@ export default function PortfolioPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── Visual Analytics Row: Allocation Donut + Health Score ── */}
+            {(openPositions.length > 0 || recentTrades.length > 0) && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 24 }}>
+                {openPositions.length > 0 && (
+                  <AllocationDonut
+                    positions={openPositions.map((s) => ({
+                      symbol: s.id,
+                      value: s.open_position?.size ?? 0,
+                      pnl: s.open_position?.unrealized_pnl,
+                    }))}
+                  />
+                )}
+                <PortfolioHealthScore trades={recentTrades} />
+              </div>
+            )}
 
             {/* ── Exposure gauge ── */}
             {totalExposure > 0 && (

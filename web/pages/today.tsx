@@ -116,6 +116,187 @@ function TradeRow({ t }: { t: TradeRecord }) {
   );
 }
 
+// ─── Regime Dial ──────────────────────────────────────────────────────────────
+
+function RegimeDial({ regime }: { regime: string }) {
+  const segments = [
+    { key: 'trend', label: 'TREND', color: C.bull },
+    { key: 'range', label: 'RANGE', color: '#2563eb' },
+    { key: 'high_volatility', label: 'HIGH VOL', color: C.warn },
+    { key: 'panic', label: 'PANIC', color: C.bear },
+    { key: 'low_liquidity', label: 'LOW LIQ', color: '#64748b' },
+    { key: 'unknown', label: 'UNKNOWN', color: C.muted },
+  ];
+  // Arc from -180° to 0° (bottom half semicircle), 6 equal segments
+  // Each segment spans 30° of the 180° arc
+  const W = 320, H = 170, cx = W / 2, cy = H - 10;
+  const R_outer = 130, R_inner = 78;
+
+  function polarToXY(deg: number, r: number) {
+    const rad = (deg * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+
+  function segmentPath(startDeg: number, endDeg: number, outer: number, inner: number) {
+    const s1 = polarToXY(startDeg, outer);
+    const e1 = polarToXY(endDeg, outer);
+    const s2 = polarToXY(endDeg, inner);
+    const e2 = polarToXY(startDeg, inner);
+    return `M ${s1.x} ${s1.y} A ${outer} ${outer} 0 0 1 ${e1.x} ${e1.y} L ${s2.x} ${s2.y} A ${inner} ${inner} 0 0 0 ${e2.x} ${e2.y} Z`;
+  }
+
+  const r = regime?.toLowerCase() || 'unknown';
+  const activeIdx = segments.findIndex(s => r.includes(s.key.replace('_', ''))) ?? 5;
+  const safeActiveIdx = activeIdx >= 0 ? activeIdx : 5;
+
+  // Map segment index to degree start: from 180° (left) to 0° (right) going counterclockwise
+  // Each segment is 30° wide with 2° gap
+  const startDeg = (i: number) => 180 - i * 31;
+  const endDeg = (i: number) => 180 - i * 31 - 29;
+
+  // Needle pointing to active segment midpoint
+  const needleDeg = startDeg(safeActiveIdx) - 14.5; // midpoint of segment
+  const needleTip = polarToXY(needleDeg, R_outer - 12);
+  const needleBase1 = polarToXY(needleDeg + 90, 8);
+  const needleBase2 = polarToXY(needleDeg - 90, 8);
+  const activeColor = segments[safeActiveIdx]?.color ?? C.muted;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Market Regime Dial</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
+        <svg width={W} height={H} style={{ overflow: 'visible', maxWidth: '100%' }}>
+          {/* Background track */}
+          <path d={`M ${polarToXY(180, R_outer).x} ${polarToXY(180, R_outer).y} A ${R_outer} ${R_outer} 0 0 1 ${polarToXY(0, R_outer).x} ${polarToXY(0, R_outer).y} L ${polarToXY(0, R_inner).x} ${polarToXY(0, R_inner).y} A ${R_inner} ${R_inner} 0 0 0 ${polarToXY(180, R_inner).x} ${polarToXY(180, R_inner).y} Z`} fill={C.surface} />
+          {/* Segments */}
+          {segments.map((seg, i) => {
+            const isActive = i === safeActiveIdx;
+            return (
+              <path
+                key={seg.key}
+                d={segmentPath(startDeg(i), endDeg(i), R_outer, R_inner)}
+                fill={seg.color}
+                opacity={isActive ? 1 : 0.18}
+                style={{ filter: isActive ? `drop-shadow(0 0 8px ${seg.color})` : 'none' }}
+              />
+            );
+          })}
+          {/* Segment labels */}
+          {segments.map((seg, i) => {
+            const midDeg = startDeg(i) - 14.5;
+            const labelPos = polarToXY(midDeg, (R_outer + R_inner) / 2);
+            const isActive = i === safeActiveIdx;
+            return (
+              <text
+                key={seg.key + '_label'}
+                x={labelPos.x} y={labelPos.y}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={isActive ? 9 : 8}
+                fontWeight={isActive ? 800 : 500}
+                fill={isActive ? seg.color : '#64748b'}
+                transform={`rotate(${midDeg + 90}, ${labelPos.x}, ${labelPos.y})`}
+              >
+                {seg.label}
+              </text>
+            );
+          })}
+          {/* Needle */}
+          <polygon
+            points={`${needleTip.x},${needleTip.y} ${needleBase1.x},${needleBase1.y} ${cx},${cy} ${needleBase2.x},${needleBase2.y}`}
+            fill={activeColor}
+            style={{ filter: `drop-shadow(0 0 4px ${activeColor})` }}
+          />
+          {/* Center pivot */}
+          <circle cx={cx} cy={cy} r={10} fill={C.card} stroke={activeColor} strokeWidth={2} />
+          <circle cx={cx} cy={cy} r={4} fill={activeColor} />
+        </svg>
+
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <div style={{ fontSize: F['2xl'], fontWeight: 800, color: activeColor, marginBottom: 6 }}>
+            {segments[safeActiveIdx]?.label ?? 'UNKNOWN'}
+          </div>
+          <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.6 }}>
+            Current market regime detected by the AI. The needle shows where conditions sit across the 6 regime spectrum.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+            {segments.map((seg, i) => (
+              <span key={seg.key} style={{
+                fontSize: 10, padding: '2px 7px', borderRadius: R.pill,
+                background: i === safeActiveIdx ? seg.color + '22' : C.surface,
+                color: i === safeActiveIdx ? seg.color : C.muted,
+                fontWeight: i === safeActiveIdx ? 700 : 400,
+                border: `1px solid ${i === safeActiveIdx ? seg.color + '50' : C.border}`,
+              }}>
+                {seg.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Streak Bar ───────────────────────────────────────────────────────────────
+
+function StreakBar({ trades }: { trades: TradeRecord[] }) {
+  if (!trades.length) return null;
+  const last15 = trades.slice(0, 15).reverse(); // oldest first so it reads left→right
+  const wins = trades.filter(t => t.outcome === 'WIN').length;
+  const total = trades.length;
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>Win/Loss Streak</span>
+        <span style={{ fontSize: F.xs, color: C.muted }}>{wins}/{total} wins · {total > 0 ? Math.round((wins/total)*100) : 0}% WR</span>
+      </div>
+      <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+        {last15.map((t, i) => {
+          const isWin = t.outcome === 'WIN';
+          const isLoss = t.outcome === 'LOSS';
+          const color = isWin ? C.bull : isLoss ? C.bear : C.muted;
+          const isLast = i === last15.length - 1;
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div
+                title={`${t.symbol} ${t.side} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(2) : ''}`}
+                style={{
+                  width: isLast ? 14 : 10,
+                  height: isLast ? 14 : 10,
+                  borderRadius: '50%',
+                  background: color,
+                  flexShrink: 0,
+                  boxShadow: isLast ? `0 0 8px ${color}` : 'none',
+                  border: isLast ? `2px solid ${color}` : 'none',
+                  transition: 'all 0.2s',
+                }}
+              />
+              {i < last15.length - 1 && (
+                <div style={{ width: 6, height: 1, background: C.border }} />
+              )}
+            </div>
+          );
+        })}
+        {last15.length === 0 && (
+          <span style={{ fontSize: F.xs, color: C.muted, fontStyle: 'italic' }}>No recent trades</span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 10, color: C.muted }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.bull, display: 'inline-block' }} /> Win
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.bear, display: 'inline-block' }} /> Loss
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.muted, display: 'inline-block' }} /> Unknown
+        </span>
+        <span style={{ marginLeft: 'auto' }}>← older · newer →</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -203,6 +384,36 @@ export default function TodayPage() {
               {llmView.summary}
             </div>
           )}
+        </div>
+
+        {/* ── Regime Dial + Streak Bar ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
+          <RegimeDial regime={regime} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <StreakBar trades={recentTrades} />
+            {/* AI confidence overview */}
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 18px', flex: 1 }}>
+              <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Today at a Glance</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: F.xs, color: C.muted }}>Signals analyzed</div>
+                  <div style={{ fontSize: F.xl, fontWeight: 700, color: C.text }}>{analyzed}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: F.xs, color: C.muted }}>Trades executed</div>
+                  <div style={{ fontSize: F.xl, fontWeight: 700, color: C.bull }}>{executed}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: F.xs, color: C.muted }}>AI vetoed</div>
+                  <div style={{ fontSize: F.xl, fontWeight: 700, color: '#a855f7' }}>{vetoed}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: F.xs, color: C.muted }}>Recent P&L</div>
+                  <div style={{ fontSize: F.xl, fontWeight: 700, color: todayPnl >= 0 ? C.bull : C.bear }}>{fmtUsd(todayPnl)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── 3-Column Quick Stats ── */}

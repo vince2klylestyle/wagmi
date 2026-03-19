@@ -662,6 +662,179 @@ function MarketHeatmapSection({ payload, loading }: { payload: SignalsPayload | 
   );
 }
 
+// ─── Correlation Matrix ───────────────────────────────────────────────────────
+
+function CorrelationMatrix({ signals }: { signals: Record<string, any> }) {
+  const syms = Object.keys(signals).slice(0, 5); // up to 5 symbols
+  if (syms.length < 2) return null;
+
+  // Build score array for each symbol
+  const scores: Record<string, number> = {};
+  syms.forEach(s => { scores[s] = signals[s]?.signal_score ?? 50; });
+
+  // Simple correlation proxy: if both scores > 60 or both < 40, correlated
+  // If one > 60 and other < 40, anti-correlated
+  function corrColor(a: number, b: number): { bg: string; label: string; text: string } {
+    if (a === b) return { bg: `${C.brand}30`, label: '1.00', text: C.brand }; // diagonal
+    const diff = Math.abs(a - b);
+    if (diff < 15) return { bg: 'rgba(22,163,74,0.25)', label: '+0.' + (9 - Math.round(diff/3)), text: '#86efac' };
+    if (diff < 30) return { bg: 'rgba(22,163,74,0.12)', label: '+0.' + (6 - Math.round(diff/10)), text: '#4ade80' };
+    if (diff < 45) return { bg: 'rgba(148,163,184,0.12)', label: '~0.0', text: C.muted };
+    return { bg: 'rgba(220,38,38,0.2)', label: '-0.' + Math.round(diff/12), text: '#fca5a5' };
+  }
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Signal Score Correlation</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How much do markets move together right now? Green = correlated, red = diverging</div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 10, color: C.muted }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 12, height: 12, background: 'rgba(22,163,74,0.4)', borderRadius: 2, display: 'inline-block' }} />
+            Correlated
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 12, height: 12, background: 'rgba(148,163,184,0.2)', borderRadius: 2, display: 'inline-block' }} />
+            Neutral
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 12, height: 12, background: 'rgba(220,38,38,0.3)', borderRadius: 2, display: 'inline-block' }} />
+            Diverging
+          </span>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: 300 }}>
+          <thead>
+            <tr>
+              <th style={{ width: 52, padding: '6px 8px' }} />
+              {syms.map(s => (
+                <th key={s} style={{ padding: '6px 14px', fontSize: F.xs, fontWeight: 700, color: C.muted, textAlign: 'center', minWidth: 70 }}>
+                  {s}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {syms.map(rowSym => (
+              <tr key={rowSym}>
+                <td style={{ padding: '6px 8px', fontSize: F.xs, fontWeight: 700, color: C.text }}>{rowSym}</td>
+                {syms.map(colSym => {
+                  const { bg, label, text } = corrColor(scores[rowSym] ?? 50, scores[colSym] ?? 50);
+                  return (
+                    <td key={colSym} style={{ padding: '8px 14px', textAlign: 'center' }}>
+                      <div style={{
+                        background: bg,
+                        borderRadius: R.sm,
+                        padding: '8px 4px',
+                        fontSize: F.xs,
+                        fontWeight: 700,
+                        color: text,
+                        minWidth: 54,
+                      }}>
+                        {label}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
+        Correlation computed from current signal scores. Values near +1.0 mean both assets have similar buy/sell conditions. Near -1.0 means they are diverging. This is a snapshot, not a statistical correlation coefficient.
+      </div>
+    </div>
+  );
+}
+
+// ─── Signal Strength Timeline ─────────────────────────────────────────────────
+
+function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
+  const entries = Object.entries(signals).slice(0, 6);
+  if (!entries.length) return null;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>Signal Strength Comparison</div>
+      <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>Current signal score across tracked assets — higher is a stronger buy setup</div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {entries.map(([sym, data]) => {
+          const score = data?.signal_score ?? 0;
+          const rsi = data?.rsi ?? null;
+          const atrPct = data?.atr_pct ?? null;
+          const color = score >= 70 ? C.bull : score >= 45 ? '#d97706' : C.bear;
+          const price = data?.price;
+
+          return (
+            <div key={sym}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 800, color: C.text, width: 48 }}>{sym}</span>
+                  {price && <span style={{ fontSize: 10, color: C.muted }}>${price.toLocaleString()}</span>}
+                  {data?.vol_spike && (
+                    <span style={{ fontSize: 9, padding: '1px 5px', background: '#d9770620', color: '#fbbf24', borderRadius: R.pill, fontWeight: 700 }}>⚡ VOL</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: C.muted, alignItems: 'center' }}>
+                  {rsi != null && <span>RSI {rsi.toFixed(1)}</span>}
+                  {atrPct != null && <span>ATR {(atrPct * 100).toFixed(1)}%</span>}
+                  <span style={{ fontWeight: 700, color, fontSize: F.sm }}>{Math.round(score)}</span>
+                </div>
+              </div>
+
+              {/* Multi-layer bar: score fill, with RSI and ATR markers */}
+              <div style={{ position: 'relative', height: 18, background: C.surface, borderRadius: R.pill, overflow: 'visible' }}>
+                {/* Score fill */}
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, bottom: 0,
+                  width: `${Math.min(100, score)}%`,
+                  background: `linear-gradient(90deg, ${color}60, ${color})`,
+                  borderRadius: R.pill,
+                  transition: 'width 0.6s ease',
+                }} />
+                {/* 50 line marker */}
+                <div style={{
+                  position: 'absolute', top: -4, bottom: -4,
+                  left: '50%', width: 1, background: `${C.border}80`,
+                }} />
+                {/* 70 threshold marker */}
+                <div style={{
+                  position: 'absolute', top: -4, bottom: -4,
+                  left: '70%', width: 1, background: `${C.bull}60`,
+                }} />
+                {/* RSI marker dot if available */}
+                {rsi != null && (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${Math.min(100, rsi)}%`,
+                    top: -3, width: 6, height: 24, display: 'flex', justifyContent: 'center',
+                  }}>
+                    <div style={{ width: 2, height: '100%', background: '#60a5fa80', borderRadius: 1 }} />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: C.muted, marginTop: 2 }}>
+                <span>0 Weak</span>
+                <span>50 Neutral</span>
+                <span style={{ color: C.bull }}>70 Buy zone</span>
+                <span>100 Max</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
@@ -817,6 +990,14 @@ export default function SignalsPage() {
 
       {/* ── Market Heatmap ───────────────────────────────────────────────── */}
       <MarketHeatmapSection payload={signalsData} loading={loading} />
+
+      {/* ── Signal Strength + Correlation ── */}
+      {signalsData && Object.keys(signalsData.signals).length > 0 && (
+        <>
+          <SignalStrengthTimeline signals={signalsData.signals} />
+          <CorrelationMatrix signals={signalsData.signals} />
+        </>
+      )}
 
       {/* ── Two-column layout ────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 28 }}>
