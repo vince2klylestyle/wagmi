@@ -3,6 +3,28 @@ import Link from 'next/link';
 import { C, R, S, F, fmtUsd, timeAgo } from '../src/theme';
 import type { ActivityEvent, LlmMarketView } from '../src/types';
 
+// ─── Signal / Heatmap types ───────────────────────────────────────────────────
+
+type Signal = {
+  symbol: string;
+  rsi?: number | null;
+  atr_pct?: number | null;
+  signal_score?: number | null;
+  sma20?: number | null;
+  sma50?: number | null;
+  vol_spike?: boolean | null;
+  price?: number | null;
+  zones?: {
+    accum?: number | null;
+    distrib?: number | null;
+  } | null;
+};
+
+type SignalsPayload = {
+  signals: Record<string, Signal>;
+  last_updated?: string | null;
+};
+
 // ─── API helper ───────────────────────────────────────────────────────────────
 
 function resolveApiBase(): string {
@@ -314,11 +336,338 @@ function SignalCard({ event, index }: { event: ActivityEvent; index: number }) {
   );
 }
 
+// ─── Market Heatmap ───────────────────────────────────────────────────────────
+
+function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> | null; loading: boolean }) {
+  // Derive ordered symbol list: start with known defaults, append any extras from API
+  const DEFAULT_SYMBOLS = ['BTC', 'SOL', 'HYPE'];
+  const apiSymbols = signals ? Object.keys(signals) : [];
+  const extras = apiSymbols.filter(s => !DEFAULT_SYMBOLS.includes(s));
+  const symbols = signals ? [...DEFAULT_SYMBOLS.filter(s => apiSymbols.includes(s)), ...extras] : DEFAULT_SYMBOLS;
+
+  // ── Cell color helpers ───────────────────────────────────────────────────
+  function rsiColor(rsi: number | null | undefined): string {
+    if (rsi == null) return C.heatNeutral;
+    if (rsi < 30) return C.heatBull3;
+    if (rsi < 45) return C.heatBull2;
+    if (rsi < 55) return C.heatNeutral;
+    if (rsi < 70) return C.heatBear1;
+    return C.heatBear2;
+  }
+
+  function atrColor(atr: number | null | undefined): string {
+    if (atr == null) return C.heatNeutral;
+    if (atr < 0.5) return C.heatNeutral;
+    if (atr < 2)   return '#854d0e'; // amber-900
+    if (atr < 4)   return '#c2410c'; // orange-700
+    return C.heatBear2;
+  }
+
+  function scoreColor(score: number | null | undefined): string {
+    if (score == null) return C.heatNeutral;
+    if (score < 50) return C.heatNeutral;
+    if (score < 65) return '#854d0e';
+    if (score < 75) return '#1e40af'; // blue-800
+    if (score < 85) return C.heatBull2;
+    return C.heatBull3;
+  }
+
+  function trendValue(sig: Signal): { label: string; color: string } {
+    const { sma20, sma50 } = sig;
+    if (sma20 == null || sma50 == null) return { label: '— N/A', color: C.muted };
+    const diff = ((sma20 - sma50) / sma50) * 100;
+    if (diff > 0.3)  return { label: '↑ Bull', color: C.heatBull1 };
+    if (diff < -0.3) return { label: '↓ Bear', color: C.heatBear1 };
+    return { label: '→ Flat', color: C.muted };
+  }
+
+  function zoneValue(sig: Signal): { label: string; color: string; bg: string } {
+    const { price, zones } = sig;
+    if (price == null || !zones) return { label: '⬜ Neutral', color: C.muted, bg: C.heatNeutral };
+    if (zones.accum != null && price < zones.accum) return { label: '🟢 Accum', color: C.heatBull1, bg: C.heatBull3 };
+    if (zones.distrib != null && price > zones.distrib) return { label: '🔴 Distrib', color: C.heatBear1, bg: C.heatBear3 };
+    return { label: '⬜ Neutral', color: C.muted, bg: C.heatNeutral };
+  }
+
+  // ── Skeleton ─────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '20px 24px',
+        overflowX: 'auto',
+      }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 16 }}>Market Metrics At a Glance</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <div key={i} style={{ height: 50, background: C.heatNeutral, borderRadius: R.sm, animation: 'pulse 1.4s ease-in-out infinite', opacity: 0.4 + i * 0.05 }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Row definitions ───────────────────────────────────────────────────────
+  type RowDef = {
+    label: string;
+    render: (sig: Signal) => { text: string; bg: string; color: string; sub?: string };
+  };
+
+  const ROWS: RowDef[] = [
+    {
+      label: 'RSI 14',
+      render: (sig) => {
+        const v = sig.rsi;
+        const bg = rsiColor(v);
+        const color = '#f1f5f9';
+        const text = v != null ? v.toFixed(1) : '—';
+        const sub = v == null ? '' : v < 30 ? 'Oversold' : v > 70 ? 'Overbought' : 'Neutral';
+        return { text, bg, color, sub };
+      },
+    },
+    {
+      label: 'ATR %',
+      render: (sig) => {
+        const v = sig.atr_pct;
+        const bg = atrColor(v);
+        const color = '#f1f5f9';
+        const text = v != null ? `${v.toFixed(1)}%` : '—';
+        const sub = v == null ? '' : v < 0.5 ? 'Low vol' : v < 2 ? 'Moderate' : v < 4 ? 'High vol' : 'Extreme';
+        return { text, bg, color, sub };
+      },
+    },
+    {
+      label: 'Score',
+      render: (sig) => {
+        const v = sig.signal_score;
+        const bg = scoreColor(v);
+        const color = '#f1f5f9';
+        const text = v != null ? String(Math.round(v)) : '—';
+        const sub = v == null ? '' : v >= 85 ? 'Strong' : v >= 75 ? 'Good' : v >= 65 ? 'Moderate' : v >= 50 ? 'Weak' : 'No signal';
+        return { text, bg, color, sub };
+      },
+    },
+    {
+      label: 'Trend',
+      render: (sig) => {
+        const { label, color } = trendValue(sig);
+        const bg = label.includes('Bull') ? C.heatBull3 : label.includes('Bear') ? C.heatBear3 : C.heatNeutral;
+        return { text: label, bg, color: '#f1f5f9', sub: '' };
+      },
+    },
+    {
+      label: 'Vol Spike',
+      render: (sig) => {
+        const spike = sig.vol_spike;
+        if (spike) return { text: '⚡ Yes', bg: '#78350f', color: '#fbbf24', sub: 'Elevated' };
+        return { text: '· No', bg: C.heatNeutral, color: C.muted, sub: 'Normal' };
+      },
+    },
+    {
+      label: 'Zone',
+      render: (sig) => {
+        const { label, color, bg } = zoneValue(sig);
+        return { text: label, bg, color: '#f1f5f9', sub: '' };
+      },
+    },
+  ];
+
+  const COL_W = 92;
+  const ROW_H = 54;
+  const LABEL_W = 80;
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      overflowX: 'auto',
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 12 }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Market Metrics At a Glance</div>
+        {signals && (
+          <span style={{ fontSize: F.xs, color: C.muted, marginLeft: 'auto' }}>
+            {/* Attempt last_updated from parent payload via a prop-style lookup — handled at call site */}
+            Live snapshot
+          </span>
+        )}
+      </div>
+
+      {/* Table */}
+      <table style={{ borderCollapse: 'separate', borderSpacing: 4, minWidth: LABEL_W + symbols.length * (COL_W + 4) }}>
+        <thead>
+          <tr>
+            {/* Empty corner */}
+            <th style={{ width: LABEL_W, minWidth: LABEL_W }} />
+            {symbols.map(sym => (
+              <th
+                key={sym}
+                style={{
+                  width: COL_W,
+                  minWidth: COL_W,
+                  fontSize: F.sm,
+                  fontWeight: 800,
+                  color: C.text,
+                  textAlign: 'center',
+                  paddingBottom: 10,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {sym}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {ROWS.map(row => (
+            <tr key={row.label}>
+              {/* Row label */}
+              <td style={{
+                fontSize: F.xs,
+                fontWeight: 600,
+                color: C.muted,
+                paddingRight: 12,
+                paddingTop: 2,
+                paddingBottom: 2,
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}>
+                {row.label}
+              </td>
+
+              {/* Data cells */}
+              {symbols.map(sym => {
+                const sig = signals?.[sym];
+                if (!sig) {
+                  return (
+                    <td key={sym}>
+                      <div style={{
+                        height: ROW_H,
+                        width: COL_W,
+                        background: C.heatNeutral,
+                        borderRadius: R.sm,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: C.muted,
+                        fontSize: F.xs,
+                      }}>
+                        —
+                      </div>
+                    </td>
+                  );
+                }
+                const cell = row.render(sig);
+                return (
+                  <td key={sym} style={{ padding: 2 }}>
+                    <div style={{
+                      height: ROW_H,
+                      width: COL_W,
+                      background: cell.bg,
+                      borderRadius: R.sm,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 2,
+                      transition: 'opacity 0.2s',
+                    }}>
+                      <span style={{
+                        fontSize: F.sm,
+                        fontWeight: 700,
+                        color: cell.color,
+                        lineHeight: 1,
+                      }}>
+                        {cell.text}
+                      </span>
+                      {cell.sub && (
+                        <span style={{
+                          fontSize: 9,
+                          color: cell.color,
+                          opacity: 0.7,
+                          letterSpacing: '0.03em',
+                        }}>
+                          {cell.sub}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Legend */}
+      <div style={{
+        marginTop: 16,
+        paddingTop: 14,
+        borderTop: `1px solid ${C.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 20,
+        flexWrap: 'wrap',
+        fontSize: F.xs,
+        color: C.muted,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: C.heatBull3 }} />
+          <span>Bullish signal</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: C.heatBear2 }} />
+          <span>Bearish signal</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: C.heatNeutral }} />
+          <span>Neutral</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#78350f' }} />
+          <span>High volatility / caution</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Market Heatmap with timestamp wrapper ─────────────────────────────────────
+
+function MarketHeatmapSection({ payload, loading }: { payload: SignalsPayload | null; loading: boolean }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>Market Metrics At a Glance</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            Color-coded snapshot of key indicators across all tracked symbols
+          </div>
+        </div>
+        {payload?.last_updated && (
+          <span style={{ fontSize: F.xs, color: C.muted }}>
+            Updated {timeAgo(payload.last_updated)}
+          </span>
+        )}
+      </div>
+      <MarketHeatmap signals={payload?.signals || null} loading={loading} />
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [marketView, setMarketView] = useState<LlmMarketView | null>(null);
+  const [signalsData, setSignalsData] = useState<SignalsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [pulseCount, setPulseCount] = useState(0);
@@ -326,9 +675,10 @@ export default function SignalsPage() {
   const mounted = useRef(true);
 
   const fetchData = async () => {
-    const [feedRes, mvRes] = await Promise.allSettled([
+    const [feedRes, mvRes, sigRes] = await Promise.allSettled([
       fetch(`${apiBase}/v1/activity/feed?limit=100`, { cache: 'no-store' }),
       fetch(`${apiBase}/v1/llm/market-view`, { cache: 'no-store' }),
+      fetch(`${apiBase}/v1/signals`, { cache: 'no-store' }),
     ]);
 
     if (!mounted.current) return;
@@ -339,6 +689,9 @@ export default function SignalsPage() {
     }
     if (mvRes.status === 'fulfilled' && mvRes.value.ok) {
       setMarketView(await mvRes.value.json());
+    }
+    if (sigRes.status === 'fulfilled' && sigRes.value.ok) {
+      setSignalsData(await sigRes.value.json());
     }
     setLoading(false);
   };
@@ -461,6 +814,9 @@ export default function SignalsPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Market Heatmap ───────────────────────────────────────────────── */}
+      <MarketHeatmapSection payload={signalsData} loading={loading} />
 
       {/* ── Two-column layout ────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 28 }}>

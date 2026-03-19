@@ -489,6 +489,151 @@ function TradeTable({ trades, loading }: { trades: TradeRecord[]; loading: boole
   );
 }
 
+// ─── Win/Loss Histogram ───────────────────────────────────────────────────────
+
+type PnlBucket = { label: string; min: number; max: number; count: number; isWin: boolean };
+
+function WinLossHistogram({ trades }: { trades: TradeRecord[] }) {
+  const buckets: PnlBucket[] = [
+    { label: '< −5%',    min: -Infinity, max: -5,   count: 0, isWin: false },
+    { label: '−5 to −2%', min: -5,       max: -2,   count: 0, isWin: false },
+    { label: '−2 to 0%', min: -2,        max: 0,    count: 0, isWin: false },
+    { label: '0 to 2%',  min: 0,         max: 2,    count: 0, isWin: true  },
+    { label: '2 to 5%',  min: 2,         max: 5,    count: 0, isWin: true  },
+    { label: '> 5%',     min: 5,         max: Infinity, count: 0, isWin: true },
+  ];
+
+  // Fill buckets using pnl_pct if available, else rough estimate via outcome
+  trades.forEach((t) => {
+    const pnlPct = (t as any).pnl_pct ?? null;
+    if (pnlPct == null) return;
+    const val = pnlPct * 100; // convert decimal to %
+    for (const b of buckets) {
+      if (val > b.min && val <= b.max) { b.count++; break; }
+    }
+  });
+
+  // Fallback: if no pnl_pct, try outcome-based approach
+  const hasData = buckets.some((b) => b.count > 0);
+  if (!hasData) {
+    // Distribute by outcome as a rough fallback
+    trades.forEach((t) => {
+      if (t.outcome === 'WIN') buckets[3].count++;
+      else if (t.outcome === 'LOSS') buckets[1].count++;
+    });
+  }
+
+  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
+  const totalWins = buckets.filter((b) => b.isWin).reduce((s, b) => s + b.count, 0);
+  const totalLosses = buckets.filter((b) => !b.isWin).reduce((s, b) => s + b.count, 0);
+  const total = totalWins + totalLosses;
+
+  // SVG dimensions
+  const svgW = 700;
+  const svgH = 160;
+  const padL = 36;
+  const padR = 16;
+  const padT = 16;
+  const padB = 36;
+  const chartW = svgW - padL - padR;
+  const chartH = svgH - padT - padB;
+  const barW = chartW / buckets.length;
+  const barGap = barW * 0.18;
+  const zeroBucketIdx = 3; // "0 to 2%" is the first win bucket; zero line is between idx 2 and 3
+  const zeroX = padL + zeroBucketIdx * barW;
+
+  // Y gridlines
+  const yTicks = [0, Math.ceil(maxCount / 4), Math.ceil(maxCount / 2), Math.ceil((3 * maxCount) / 4), maxCount];
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Trade P&amp;L Distribution</h2>
+        <div style={{ display: 'flex', gap: 16, fontSize: F.sm }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: C.bull, display: 'inline-block' }} />
+            <span style={{ color: C.bull, fontWeight: 700 }}>{totalWins} wins</span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: C.bear, display: 'inline-block' }} />
+            <span style={{ color: C.bear, fontWeight: 700 }}>{totalLosses} losses</span>
+          </span>
+          {total > 0 && (
+            <span style={{ color: C.muted }}>
+              Win rate: <strong style={{ color: totalWins / total >= 0.6 ? C.bull : C.warn }}>{((totalWins / total) * 100).toFixed(0)}%</strong>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {total === 0 ? (
+        <div style={{ height: svgH, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: F.sm }}>
+          No trade history available yet.
+        </div>
+      ) : (
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{ width: '100%', height: 'auto', display: 'block' }} preserveAspectRatio="xMinYMid meet">
+          <defs>
+            <linearGradient id="histBull" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C.bull} stopOpacity={0.9} />
+              <stop offset="100%" stopColor={C.bull} stopOpacity={0.5} />
+            </linearGradient>
+            <linearGradient id="histBear" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C.bear} stopOpacity={0.9} />
+              <stop offset="100%" stopColor={C.bear} stopOpacity={0.5} />
+            </linearGradient>
+          </defs>
+
+          {/* Horizontal grid lines + Y labels */}
+          {yTicks.map((tick) => {
+            const y = padT + chartH - (tick / maxCount) * chartH;
+            return (
+              <g key={tick}>
+                <line x1={padL} y1={y} x2={padL + chartW} y2={y}
+                  stroke={C.border} strokeWidth={tick === 0 ? 1.5 : 1} strokeDasharray={tick === 0 ? '' : '3 4'} />
+                <text x={padL - 4} y={y + 4} textAnchor="end"
+                  fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">{tick}</text>
+              </g>
+            );
+          })}
+
+          {/* Bars */}
+          {buckets.map((b, i) => {
+            const barH = (b.count / maxCount) * chartH;
+            const x = padL + i * barW + barGap / 2;
+            const w = barW - barGap;
+            const y = padT + chartH - barH;
+            const fill = b.isWin ? 'url(#histBull)' : 'url(#histBear)';
+            return (
+              <g key={b.label}>
+                {b.count > 0 && (
+                  <>
+                    <rect x={x} y={y} width={w} height={barH} fill={fill} rx={3} />
+                    <text x={x + w / 2} y={y - 4} textAnchor="middle"
+                      fill={b.isWin ? C.bull : C.bear} fontSize={10} fontWeight={700} fontFamily="Inter, system-ui">
+                      {b.count}
+                    </text>
+                  </>
+                )}
+                {/* X axis label */}
+                <text x={x + w / 2} y={padT + chartH + 14} textAnchor="middle"
+                  fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">
+                  {b.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Zero line */}
+          <line x1={zeroX} y1={padT} x2={zeroX} y2={padT + chartH}
+            stroke={C.muted} strokeWidth={1.5} strokeDasharray="4 3" />
+          <text x={zeroX + 3} y={padT + 10} fill={C.muted} fontSize={9} fontFamily="Inter, system-ui">0%</text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Results() {
@@ -640,6 +785,9 @@ export default function Results() {
           </div>
         )}
       </div>
+
+      {/* ── P&L Distribution Histogram ───────────────── */}
+      <WinLossHistogram trades={trades} />
 
       {/* ── By-Strategy + Regime Win Rate ──────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>

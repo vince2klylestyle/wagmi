@@ -465,6 +465,415 @@ function CompoundCalc() {
   );
 }
 
+// ─── RSI Scale ────────────────────────────────────────────────────────────────
+
+function RSIScale() {
+  const W = 500, H = 80;
+  // Zone boundaries in RSI units → pixel x
+  const toX = (rsi: number) => (rsi / 100) * W;
+
+  const zones = [
+    { x1: toX(0),  x2: toX(30), fill: '#16a34a', label: 'OVERSOLD',  subLabel: 'Potential Long', labelX: toX(15)  },
+    { x1: toX(30), x2: toX(45), fill: '#4ade80', label: '',           subLabel: '',               labelX: toX(37)  },
+    { x1: toX(45), x2: toX(55), fill: '#6b7280', label: 'NEUTRAL',   subLabel: '',               labelX: toX(50)  },
+    { x1: toX(55), x2: toX(70), fill: '#f87171', label: '',           subLabel: '',               labelX: toX(62)  },
+    { x1: toX(70), x2: toX(100),fill: '#dc2626', label: 'OVERBOUGHT',subLabel: 'Potential Short', labelX: toX(85)  },
+  ];
+
+  const markers = [
+    { rsi: 30, label: '30' },
+    { rsi: 50, label: '50' },
+    { rsi: 70, label: '70' },
+  ];
+
+  // Example dots
+  const dots = [
+    { rsi: 62, color: '#f87171', note: '62' },
+    { rsi: 48, color: '#9ca3af', note: '48' },
+    { rsi: 71, color: '#dc2626', note: '71 ▲' },
+  ];
+
+  return (
+    <div style={{ marginTop: 20, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+        RSI Zone Map
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={W} height={H} style={{ display: 'block', minWidth: W }}>
+          <defs>
+            <linearGradient id="rsiGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stopColor="#16a34a" />
+              <stop offset="30%"  stopColor="#4ade80" />
+              <stop offset="50%"  stopColor="#6b7280" />
+              <stop offset="70%"  stopColor="#f87171" />
+              <stop offset="100%" stopColor="#dc2626" />
+            </linearGradient>
+          </defs>
+
+          {/* Gradient band */}
+          <rect x={0} y={12} width={W} height={18} rx={4} fill="url(#rsiGrad)" opacity={0.85} />
+
+          {/* Zone labels above band */}
+          {zones.filter(z => z.label).map(z => (
+            <text key={z.label} x={z.labelX} y={9} textAnchor="middle" fontSize={9} fontWeight={700} fill={C.text as string} opacity={0.75}>
+              {z.label}
+            </text>
+          ))}
+
+          {/* Marker ticks + labels below band */}
+          {markers.map(m => (
+            <g key={m.rsi}>
+              <line x1={toX(m.rsi)} y1={12} x2={toX(m.rsi)} y2={30} stroke={C.text as string} strokeWidth={1.5} opacity={0.6} />
+              {/* Small downward arrow */}
+              <text x={toX(m.rsi)} y={42} textAnchor="middle" fontSize={10} fontWeight={700} fill={C.text as string} opacity={0.8}>
+                {m.label}
+              </text>
+            </g>
+          ))}
+
+          {/* Sub-labels */}
+          <text x={toX(15)}  y={58} textAnchor="middle" fontSize={9} fill="#4ade80">Potential Long</text>
+          <text x={toX(50)}  y={58} textAnchor="middle" fontSize={9} fill={C.muted as string}>Neutral</text>
+          <text x={toX(85)}  y={58} textAnchor="middle" fontSize={9} fill="#f87171">Potential Short</text>
+
+          {/* Example RSI dots */}
+          {dots.map(d => (
+            <g key={d.rsi}>
+              <circle cx={toX(d.rsi)} cy={21} r={5} fill={d.color} stroke="#0f172a" strokeWidth={1.5} />
+              <text x={toX(d.rsi)} y={76} textAnchor="middle" fontSize={9} fill={d.color} fontWeight={700}>
+                {d.note}
+              </text>
+            </g>
+          ))}
+
+          {/* "Current" label */}
+          <text x={toX(71) + 8} y={18} fontSize={8} fill="#dc2626" fontWeight={700}>Current</text>
+        </svg>
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+        Dots show example RSI readings. Red dots are in overbought territory — the bot reduces long conviction here.
+      </div>
+    </div>
+  );
+}
+
+// ─── Confidence Gauge ─────────────────────────────────────────────────────────
+
+function ConfidenceGauge({ value = 78 }: { value?: number }) {
+  const cx = 100, cy = 100, r = 72;
+  // Half-circle gauge: arc from 180° (left = 0) to 0° (right = 100)
+  // We'll do a 200° sweep centered at bottom for readability
+  const startDeg = 200, endDeg = 340; // total 200° sweep mapped to 0-100
+  const totalDeg = startDeg; // degrees of sweep = 200
+  // Actually: left anchor 200° from positive-x axis = 10 o'clock, right anchor at -20° = 4 o'clock
+  // Let's use standard approach: arc from 215° to -35° (going counter-clockwise is 250°)
+  // Simpler: start=-215deg end=35deg, sweep=250deg
+  const arcStart = 215; // degrees from positive x-axis, going clockwise
+  const arcSweep = 250; // total degrees
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const arcPt = (deg: number) => ({
+    x: cx + r * Math.cos(toRad(deg)),
+    y: cy + r * Math.sin(toRad(deg)),
+  });
+
+  const startAngle = arcStart;
+  const endAngle = arcStart + arcSweep; // 465 = 105
+
+  // Build colored arc segments
+  const segments = [
+    { from: 0,  to: 50,  color: '#dc2626' },
+    { from: 50, to: 65,  color: '#f97316' },
+    { from: 65, to: 75,  color: '#eab308' },
+    { from: 75, to: 85,  color: '#22c55e' },
+    { from: 85, to: 100, color: '#16a34a' },
+  ];
+
+  const valueAngle = startAngle + (value / 100) * arcSweep;
+
+  const describeArc = (fromVal: number, toVal: number) => {
+    const a1 = toRad(startAngle + (fromVal / 100) * arcSweep);
+    const a2 = toRad(startAngle + (toVal / 100) * arcSweep);
+    const p1 = { x: cx + r * Math.cos(a1), y: cy + r * Math.sin(a1) };
+    const p2 = { x: cx + r * Math.cos(a2), y: cy + r * Math.sin(a2) };
+    const large = (toVal - fromVal) / 100 * arcSweep > 180 ? 1 : 0;
+    return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
+  };
+
+  // Needle
+  const needleAngle = toRad(valueAngle);
+  const needleTip = { x: cx + (r - 8) * Math.cos(needleAngle), y: cy + (r - 8) * Math.sin(needleAngle) };
+  const needleBase1 = { x: cx + 8 * Math.cos(needleAngle + Math.PI / 2), y: cy + 8 * Math.sin(needleAngle + Math.PI / 2) };
+  const needleBase2 = { x: cx + 8 * Math.cos(needleAngle - Math.PI / 2), y: cy + 8 * Math.sin(needleAngle - Math.PI / 2) };
+
+  const thresholds = [
+    { val: 0,   label: '0'  },
+    { val: 50,  label: '50' },
+    { val: 65,  label: '65' },
+    { val: 75,  label: '75' },
+    { val: 85,  label: '85' },
+    { val: 100, label: '100'},
+  ];
+
+  const labelColor = value >= 85 ? '#16a34a' : value >= 75 ? '#22c55e' : value >= 65 ? '#eab308' : value >= 50 ? '#f97316' : '#dc2626';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap', marginTop: 20 }}>
+      <div>
+        <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+          Confidence Gauge — Example: {value}
+        </div>
+        <svg width={200} height={130} style={{ display: 'block', overflow: 'visible' }}>
+          {/* Background track */}
+          <path d={describeArc(0, 100)} fill="none" stroke={C.border as string} strokeWidth={14} strokeLinecap="round" />
+
+          {/* Colored segments */}
+          {segments.map(seg => (
+            <path key={seg.from} d={describeArc(seg.from, seg.to)} fill="none" stroke={seg.color} strokeWidth={14} strokeLinecap="butt" opacity={0.9} />
+          ))}
+
+          {/* Threshold tick marks */}
+          {thresholds.map(t => {
+            const angle = toRad(startAngle + (t.val / 100) * arcSweep);
+            const inner = { x: cx + (r - 20) * Math.cos(angle), y: cy + (r - 20) * Math.sin(angle) };
+            const outer = { x: cx + (r - 8)  * Math.cos(angle), y: cy + (r - 8)  * Math.sin(angle) };
+            const lx    = cx + (r - 28) * Math.cos(angle);
+            const ly    = cy + (r - 28) * Math.sin(angle);
+            return (
+              <g key={t.val}>
+                <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={C.text as string} strokeWidth={1.5} opacity={0.5} />
+                <text x={lx} y={ly + 3} textAnchor="middle" fontSize={8} fill={C.muted as string}>{t.label}</text>
+              </g>
+            );
+          })}
+
+          {/* Needle */}
+          <polygon
+            points={`${needleTip.x},${needleTip.y} ${needleBase1.x},${needleBase1.y} ${needleBase2.x},${needleBase2.y}`}
+            fill={labelColor}
+            opacity={0.9}
+          />
+          <circle cx={cx} cy={cy} r={6} fill={C.card as string} stroke={labelColor} strokeWidth={2} />
+
+          {/* Center value label */}
+          <text x={cx} y={cy + 26} textAnchor="middle" fontSize={22} fontWeight={800} fill={labelColor}>{value}</text>
+          <text x={cx} y={cy + 38} textAnchor="middle" fontSize={9} fill={C.muted as string}>Confidence</text>
+        </svg>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {[
+          { range: '85–100', label: 'Strong Setup',    color: '#16a34a' },
+          { range: '75–84',  label: 'Good Setup',      color: '#22c55e' },
+          { range: '65–74',  label: 'Moderate',        color: '#eab308' },
+          { range: '50–64',  label: 'Below Threshold', color: '#f97316' },
+          { range: '0–49',   label: 'Weak / No Trade', color: '#dc2626' },
+        ].map(row => (
+          <div key={row.range} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: row.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: row.color, minWidth: 48 }}>{row.range}</span>
+            <span style={{ fontSize: 11, color: C.muted }}>{row.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Strategy When-It-Shines Grid ─────────────────────────────────────────────
+
+function StrategyShinesGrid() {
+  type Rating = 'Excellent' | 'Good' | 'Poor' | 'N/A';
+  const ratingColor: Record<Rating, string> = {
+    'Excellent': C.bull,
+    'Good':      C.info,
+    'Poor':      C.bear,
+    'N/A':       C.muted,
+  };
+  const ratingBg: Record<Rating, string> = {
+    'Excellent': C.bull + '20',
+    'Good':      C.info + '20',
+    'Poor':      C.bear + '20',
+    'N/A':       C.surfaceHover,
+  };
+
+  const strategies: { name: string; ratings: Rating[] }[] = [
+    { name: 'Regime Trend',      ratings: ['Excellent', 'Excellent', 'Poor',      'Poor', 'Good']      },
+    { name: 'Monte Carlo',       ratings: ['Good',      'Good',      'Excellent', 'Poor', 'Excellent'] },
+    { name: 'Conf. Scorer',      ratings: ['Good',      'Good',      'Good',      'Good', 'Good']      },
+    { name: 'Multi-Tier Quality',ratings: ['Excellent', 'Excellent', 'Good',      'Poor', 'Good']      },
+  ];
+
+  const conditions = ['Trending ↑', 'Trending ↓', 'Ranging', 'High Vol', 'Low Vol'];
+
+  return (
+    <div style={{ marginTop: 24, overflowX: 'auto' }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+        Strategy Performance by Market Condition
+      </div>
+      <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 440 }}>
+        <thead>
+          <tr>
+            <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: 11, color: C.muted, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}>
+              Strategy
+            </th>
+            {conditions.map(c => (
+              <th key={c} style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, color: C.muted, fontWeight: 600, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {strategies.map((s, si) => (
+            <tr key={s.name} style={{ background: si % 2 ? C.surfaceHover + '40' : 'transparent' }}>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: C.text, fontSize: 12, whiteSpace: 'nowrap', borderBottom: `1px solid ${C.border}` }}>
+                {s.name}
+              </td>
+              {s.ratings.map((rating, ri) => (
+                <td key={ri} style={{ padding: '8px 10px', textAlign: 'center', borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '2px 8px',
+                    borderRadius: R.pill,
+                    background: ratingBg[rating],
+                    color: ratingColor[rating],
+                    fontSize: 11,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {rating}
+                  </span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+        "Excellent" = strategy fires reliably and accurately in this condition. "Poor" = avoid using this strategy here.
+      </div>
+    </div>
+  );
+}
+
+// ─── Volatility Cycle Diagram ──────────────────────────────────────────────────
+
+function VolatilityCycleDiagram() {
+  const W = 480, H = 120;
+  const padL = 20, padR = 20, padT = 16, padB = 28;
+  const iW = W - padL - padR;
+  const iH = H - padT - padB;
+
+  // Wave: squeeze (narrow) → breakout (wide) → trend → re-squeeze
+  // We model the "band width" as a wave
+  const pts: { x: number; y: number }[] = [];
+  const N = 120;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    // Amplitude: starts low (squeeze), explodes at ~0.35, stays high, decays
+    let amp: number;
+    if (t < 0.3) {
+      amp = 0.08 + t * 0.1; // narrow, slight drift down
+    } else if (t < 0.45) {
+      amp = 0.08 + 0.1 * 0.3 + ((t - 0.3) / 0.15) * 0.6; // explosion
+    } else if (t < 0.75) {
+      amp = 0.68 - ((t - 0.45) / 0.3) * 0.25; // elevated trend
+    } else {
+      amp = 0.43 - ((t - 0.75) / 0.25) * 0.3; // re-compression
+    }
+    // Upper band
+    const mid = padT + iH * 0.5;
+    pts.push({ x: padL + t * iW, y: mid - amp * iH * 0.5 });
+  }
+
+  // Lower band (mirror)
+  const ptsLow = pts.map(p => ({
+    x: p.x,
+    y: H - padB - (H - padB - padT - (p.y - padT)),
+  }));
+
+  const midLine = pts.map((p, i) => ({
+    x: p.x,
+    y: (p.y + ptsLow[i].y) / 2,
+  }));
+
+  const polyUpper = pts.map(p => `${p.x},${p.y}`).join(' ');
+  const polyLower = ptsLow.map(p => `${p.x},${p.y}`).join(' ');
+  const polyMid   = midLine.map(p => `${p.x},${p.y}`).join(' ');
+
+  // Area between bands
+  const areaPath = `M ${pts[0].x},${pts[0].y} L ${pts.map(p => `${p.x},${p.y}`).join(' L ')} L ${ptsLow[ptsLow.length-1].x},${ptsLow[ptsLow.length-1].y} L ${ptsLow.slice().reverse().map(p => `${p.x},${p.y}`).join(' L ')} Z`;
+
+  // Phase annotations
+  const phases = [
+    { xPct: 0.15,  label: 'SQUEEZE',   sub: 'Bands narrow\nBot waits', color: C.info  },
+    { xPct: 0.37,  label: 'BREAKOUT',  sub: 'Volume spike\nBot enters', color: C.bull  },
+    { xPct: 0.60,  label: 'TREND',     sub: 'Ride the move\nTrail stop', color: C.brand },
+    { xPct: 0.875, label: 'RE-COIL',   sub: 'Volatility drops\nReduce size', color: C.warn  },
+  ];
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+        Volatility Cycle (Bollinger Band Width)
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={W} height={H} style={{ display: 'block', minWidth: W }}>
+          <defs>
+            <linearGradient id="volGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stopColor={C.info  as string} stopOpacity={0.15} />
+              <stop offset="35%"  stopColor={C.bull  as string} stopOpacity={0.20} />
+              <stop offset="70%"  stopColor={C.brand as string} stopOpacity={0.18} />
+              <stop offset="100%" stopColor={C.warn  as string} stopOpacity={0.12} />
+            </linearGradient>
+          </defs>
+
+          {/* Band fill */}
+          <path d={areaPath} fill="url(#volGrad)" />
+
+          {/* Upper + lower band */}
+          <polyline points={polyUpper} fill="none" stroke={C.bull as string}  strokeWidth={1.5} strokeDasharray="4 2" opacity={0.7} />
+          <polyline points={polyLower} fill="none" stroke={C.bear as string}  strokeWidth={1.5} strokeDasharray="4 2" opacity={0.7} />
+
+          {/* Mid line (price) */}
+          <polyline points={polyMid} fill="none" stroke={C.text as string} strokeWidth={1.8} opacity={0.5} />
+
+          {/* Phase vertical dividers */}
+          {[0.3, 0.45, 0.75].map(xPct => (
+            <line
+              key={xPct}
+              x1={padL + xPct * iW} y1={padT}
+              x2={padL + xPct * iW} y2={H - padB}
+              stroke={C.border as string} strokeWidth={1} strokeDasharray="3 3"
+            />
+          ))}
+
+          {/* Phase labels */}
+          {phases.map(ph => (
+            <g key={ph.label}>
+              <text x={padL + ph.xPct * iW} y={H - padB + 10} textAnchor="middle" fontSize={8} fontWeight={700} fill={ph.color as string}>
+                {ph.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Phase cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 10 }}>
+        {phases.map(ph => (
+          <div key={ph.label} style={{ padding: '8px 10px', background: (ph.color as string) + '12', border: `1px solid ${ph.color as string}30`, borderRadius: R.sm }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: ph.color as string, marginBottom: 3 }}>{ph.label}</div>
+            <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{ph.sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Glossary ─────────────────────────────────────────────────────────────────
 
 const GLOSSARY = [
@@ -593,6 +1002,7 @@ export default function Learn() {
             </div>
           ))}
         </div>
+        <StrategyShinesGrid />
       </AccordionCard>
 
       <AccordionCard title="How Ensemble Voting Works" badge="Weighted-Veto">
@@ -646,6 +1056,8 @@ export default function Learn() {
             </div>
           ))}
         </div>
+        <RSIScale />
+        <ConfidenceGauge value={78} />
       </AccordionCard>
 
       <AccordionCard title="Accumulation & Distribution Zones" badge="Price Zones">
@@ -667,6 +1079,14 @@ export default function Learn() {
         </div>
         <InfoBox color={C.info}>
           These zones shift every day as the bot recalculates based on recent volatility. A zone that was "Deep Accumulation" yesterday may be "Accumulation" today if price has moved.
+        </InfoBox>
+      </AccordionCard>
+
+      <AccordionCard title="Volatility Cycle: Squeeze → Breakout → Trend" badge="Vol Cycle" badgeColor={C.bull}>
+        <p>Markets move in cycles of <strong>compression</strong> and <strong>expansion</strong>. When Bollinger Bands squeeze inside Keltner Channels, energy is coiling. The bot watches for this pattern to anticipate the next big move:</p>
+        <VolatilityCycleDiagram />
+        <InfoBox color={C.info}>
+          The bot uses the squeeze detector in the Confidence Scorer strategy. A confirmed squeeze breakout raises the signal confidence score and can unlock higher leverage tiers.
         </InfoBox>
       </AccordionCard>
 

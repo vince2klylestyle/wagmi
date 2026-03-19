@@ -326,6 +326,208 @@ function MarketHeatmap({ signals, loading, onSelect }: {
   );
 }
 
+// ─── Market Snapshot ──────────────────────────────────────────────────────────
+
+function ScoreGauge({ value, max = 100 }: { value: number; max?: number }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const color = value >= 70 ? C.bull : value >= 40 ? C.warn : C.bear;
+  return (
+    <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.5s ease' }} />
+    </div>
+  );
+}
+
+function MiniBar({ value, max, color, label }: { value: number; max: number; color: string; label?: string }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  return (
+    <div>
+      {label && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+          <span style={{ fontSize: 10, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+          <span style={{ fontSize: 10, color: C.textSub, fontWeight: 700 }}>{value.toFixed(1)}</span>
+        </div>
+      )}
+      <div style={{ height: 5, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.4s ease' }} />
+      </div>
+    </div>
+  );
+}
+
+function MarketSnapshotCard({ sym, signal, loading, onSelect }: {
+  sym: string;
+  signal: Signal | undefined;
+  loading: boolean;
+  onSelect: (sym: string) => void;
+}) {
+  if (loading || !signal) {
+    return (
+      <div style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '20px 22px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        minWidth: 0,
+      }}>
+        <Skeleton h={20} w="40%" />
+        <Skeleton h={48} w="60%" />
+        <Skeleton h={10} />
+        <Skeleton h={10} />
+        <Skeleton h={10} />
+      </div>
+    );
+  }
+
+  const score = signal.score;
+  const rsi = signal.rsi14 ?? 50;
+  const atrPct = signal.atr_pct ?? 0;
+  const trendUp = signal.sma20 > signal.sma50;
+  const trendDir = trendUp ? '↑' : signal.sma20 < signal.sma50 ? '↓' : '→';
+  const trendColor = trendUp ? C.bull : C.bear;
+
+  const scoreColor = score >= 70 ? C.bull : score >= 40 ? C.warn : C.bear;
+  const isHighConf = score >= 75;
+
+  // Regime badge from zone proximity
+  const { deepAccum, accum, distrib, safeDistrib } = signal.zones;
+  const p = signal.price;
+  let zoneName = 'Neutral';
+  let zoneColor = C.muted;
+  if (p <= deepAccum) { zoneName = 'Deep Accum'; zoneColor = C.bull; }
+  else if (p <= accum) { zoneName = 'Accum'; zoneColor = '#22c55e'; }
+  else if (p >= safeDistrib) { zoneName = 'Distrib+'; zoneColor = C.bear; }
+  else if (p >= distrib) { zoneName = 'Distrib'; zoneColor = C.warn; }
+
+  // RSI interpretation
+  const rsiColor = rsi >= 70 ? C.bear : rsi <= 30 ? C.bull : C.info;
+
+  // ATR gauge color: higher ATR = more volatile = orange/warn
+  const atrColor = atrPct >= 4 ? C.bear : atrPct >= 2 ? C.warn : C.bull;
+
+  return (
+    <div
+      onClick={() => onSelect(sym)}
+      style={{
+        background: C.card,
+        border: `1px solid ${isHighConf ? scoreColor + '55' : C.border}`,
+        borderRadius: R.lg,
+        padding: '20px 22px',
+        cursor: 'pointer',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+        boxShadow: isHighConf ? `0 0 16px ${scoreColor}22` : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        minWidth: 0,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = scoreColor;
+        (e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${scoreColor}33`;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = isHighConf ? scoreColor + '55' : C.border;
+        (e.currentTarget as HTMLElement).style.boxShadow = isHighConf ? `0 0 16px ${scoreColor}22` : 'none';
+      }}
+    >
+      {/* Header: symbol + zone badge */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>{sym}</div>
+        <span style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: '2px 8px',
+          borderRadius: R.pill,
+          background: zoneColor + '22',
+          color: zoneColor,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        }}>
+          {zoneName}
+        </span>
+      </div>
+
+      {/* Score + trend direction */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+        <div style={{ fontSize: 44, fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
+          {score}
+        </div>
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: trendColor, lineHeight: 1 }}>{trendDir}</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>signal score</div>
+        </div>
+        {signal.vol_spike && (
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: R.pill,
+            background: C.warn + '33',
+            color: C.warn,
+            alignSelf: 'flex-start',
+          }}>
+            ⚡ VOL
+          </span>
+        )}
+      </div>
+
+      {/* Score gauge */}
+      <ScoreGauge value={score} />
+
+      {/* Metrics */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <MiniBar value={rsi} max={100} color={rsiColor} label={`RSI  ${rsi >= 70 ? '(Overbought)' : rsi <= 30 ? '(Oversold)' : ''}`} />
+        <MiniBar value={atrPct} max={6} color={atrColor} label="ATR % (Volatility)" />
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span style={{ fontSize: 10, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Signal Strength</span>
+            <span style={{ fontSize: 10, color: scoreColor, fontWeight: 700 }}>{score >= 70 ? 'Strong' : score >= 40 ? 'Moderate' : 'Weak'}</span>
+          </div>
+          <div style={{ height: 5, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${score}%`,
+              background: `linear-gradient(90deg, ${scoreColor}88, ${scoreColor})`,
+              borderRadius: 2,
+              transition: 'width 0.5s ease',
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Footer: price */}
+      <div style={{ fontSize: F.xs, color: C.muted, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+        Price: <span style={{ color: C.textSub, fontWeight: 600 }}>{fmtUsd(signal.price, signal.price > 100 ? 2 : 4)}</span>
+        <span style={{ marginLeft: 8, color: trendColor, fontWeight: 700 }}>
+          {trendUp ? 'SMA20 above SMA50' : 'SMA20 below SMA50'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MarketSnapshot({ signals, loading, onSelect }: {
+  signals: Record<string, Signal>;
+  loading: boolean;
+  onSelect: (sym: string) => void;
+}) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, 1fr)',
+      gap: 16,
+    }}>
+      {SYMBOLS.map((sym) => (
+        <MarketSnapshotCard key={sym} sym={sym} signal={signals[sym]} loading={loading} onSelect={onSelect} />
+      ))}
+    </div>
+  );
+}
+
 // ─── Activity Ticker ──────────────────────────────────────────────────────────
 
 function ActivityTicker({ events }: { events: ActivityEvent[] }) {
@@ -750,6 +952,21 @@ export default function Home() {
             </>
           )}
         </div>
+      </div>
+
+      {/* ── Market Snapshot ───────────────────────────── */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>
+            Market Snapshot <span style={{ color: C.muted, fontWeight: 400, fontSize: F.sm }}>— Live Signal Metrics</span>
+          </h2>
+          {signalsData.last_updated && (
+            <span style={{ fontSize: F.xs, color: C.muted }}>
+              Updated {timeAgo(signalsData.last_updated)}
+            </span>
+          )}
+        </div>
+        <MarketSnapshot signals={signals} loading={loading} onSelect={setActiveChart} />
       </div>
 
       {/* ── Activity ticker ───────────────────────────── */}
