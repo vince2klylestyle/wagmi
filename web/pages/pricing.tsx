@@ -573,7 +573,7 @@ function MonthlyReturnHeatmap() {
 
 // ─── BreakEvenCalculator ──────────────────────────────────────────────────────
 
-const TIER_COSTS = [0, 29, 79] as const;
+const TIER_COSTS = [0, 29, 97] as const;
 const TIER_NAMES = ['Observer', 'Pro', 'Elite'] as const;
 const TIER_COLORS: [string, string, string] = [C.muted, C.brand, C.bull];
 
@@ -582,16 +582,17 @@ function BreakEvenCalculator() {
   const [tier, setTier] = useState<0 | 1 | 2>(1);
 
   const monthlyCost = TIER_COSTS[tier];
-  const breakEvenReturnPct = monthlyCost > 0 ? (monthlyCost / accountSize) * 100 : 0;
+  const safeAccountSize = accountSize > 0 ? accountSize : 1;
+  const breakEvenReturnPct = monthlyCost > 0 ? (monthlyCost / safeAccountSize) * 100 : 0;
   // break-even trade count: assume 1.5% profit per winning trade, 77% win rate
   // expected profit per trade = 1.5% * 0.77 - (1 - 0.77) * something
   // Simplified: each trade nets 0.015 * accountSize on average (gross).
   // We need: n * 0.015 * 0.77 * accountSize >= monthlyCost
   const breakEvenTrades =
     monthlyCost > 0
-      ? Math.ceil(monthlyCost / (accountSize * 0.015 * 0.77))
+      ? Math.ceil(monthlyCost / (safeAccountSize * 0.015 * 0.77))
       : 0;
-  const monthlyReturnGross = accountSize * 0.11;
+  const monthlyReturnGross = safeAccountSize * 0.11;
   const netProfit = monthlyReturnGross - monthlyCost;
   const accentColor = TIER_COLORS[tier];
 

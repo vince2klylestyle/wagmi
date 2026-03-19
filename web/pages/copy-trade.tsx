@@ -458,7 +458,7 @@ function RiskCalculator({ entry, sl, symbol }: { entry: number; sl: number; symb
   const risk = parseFloat(riskPct) || 0;
   const dollarRisk = (acct * risk) / 100;
   const slDist = Math.abs(entry - sl);
-  const slDistPct = slDist / entry;
+  const slDistPct = entry > 0 ? slDist / entry : 0;
   const positionSizeUsd = slDistPct > 0 ? dollarRisk / slDistPct : 0;
   const qty = entry > 0 ? positionSizeUsd / entry : 0;
   const lev = positionSizeUsd > acct ? positionSizeUsd / acct : 1;
@@ -1006,7 +1006,7 @@ function VisualPriceRuler({
 
 function MultiTimeframeGrid({ signal }: { signal: Signal }) {
   const rsi = signal.rsi14 ?? 50;
-  const atrPct = (signal.atr_pct ?? (signal.atr14 / signal.price) * 100) || 1.5;
+  const atrPct = (signal.atr_pct ?? (signal.price > 0 ? (signal.atr14 / signal.price) * 100 : 0)) || 1.5;
   const score = signal.score ?? 50;
   const trendUp = signal.sma20 > signal.sma50;
 
@@ -1254,7 +1254,7 @@ function EnsembleVoteStrip({ signal }: { signal: Signal }) {
 // ─── Price Level Row ─────────────────────────────────────────────────────────
 
 function PriceLevel({ label, price, color, currentPrice }: { label: string; price: number; color: string; currentPrice: number }) {
-  const diff = ((price - currentPrice) / currentPrice) * 100;
+  const diff = currentPrice > 0 ? ((price - currentPrice) / currentPrice) * 100 : 0;
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: C.surfaceHover, borderRadius: R.sm, borderLeft: `3px solid ${color}` }}>
       <span style={{ fontSize: F.xs, color: C.muted }}>{label}</span>
@@ -4152,7 +4152,7 @@ function CopyTradeChecklist() {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CopyTrade() {
-  const [data, setData] = useState<SignalsPayload>({});
+  const [data, setData] = useState<SignalsPayload>({ signals: {} });
   const [llmView, setLlmView] = useState<LlmMarketView | null>(null);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);

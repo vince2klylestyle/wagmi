@@ -103,7 +103,7 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
   let maxDd = 0;
   equities.forEach((e, i) => {
     if (e > runningMax) runningMax = e;
-    const dd = (runningMax - e) / runningMax;
+    const dd = runningMax !== 0 ? (runningMax - e) / runningMax : 0;
     if (dd > maxDd) { maxDd = dd; maxDdIdx = i; }
   });
 
@@ -2486,7 +2486,7 @@ function PnlDistributionHistogram({ trades }: { trades: TradeRecord[] }) {
     ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
     : sorted[Math.floor(n / 2)];
   const variance = pnls.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
-  const stdDev = Math.sqrt(variance);
+  const stdDev = Math.sqrt(Math.max(0, variance));
 
   // Skewness (Pearson's moment)
   const skew = stdDev === 0

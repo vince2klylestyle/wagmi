@@ -29,9 +29,10 @@ function calcSharpe(dailyReturns: number[]): number | null {
 function calcSortino(dailyReturns: number[]): number | null {
   if (dailyReturns.length < 5) return null;
   const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
-  const downsideVariance = dailyReturns
-    .filter((r) => r < 0)
-    .reduce((a, b) => a + b ** 2, 0) / dailyReturns.length;
+  const negReturns = dailyReturns.filter((r) => r < 0);
+  if (negReturns.length === 0) return null;
+  // Downside deviation uses all returns in the denominator (not just negative ones)
+  const downsideVariance = negReturns.reduce((a, b) => a + b ** 2, 0) / dailyReturns.length;
   const downsideStd = Math.sqrt(downsideVariance);
   if (downsideStd === 0) return null;
   return (mean / downsideStd) * Math.sqrt(365);
@@ -1164,8 +1165,8 @@ function RatioGaugePanel({
   }, [dailyRets]);
 
   const calmarVal = useMemo(() => {
-    const totalReturn = backtest?.total_return_pct ?? 11.34;
-    const maxDD = backtest?.max_drawdown_pct ?? 10.2;
+    const totalReturn = backtest?.results?.total_return_pct ?? 11.34;
+    const maxDD = backtest?.results?.max_drawdown_pct ?? 10.2;
     const v = calcCalmar(totalReturn, maxDD);
     return v ?? 1.11;
   }, [backtest]);

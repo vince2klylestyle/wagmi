@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useId } from 'react';
 import { C, R, S, F, fmtUsd, fmtPct } from '../src/theme';
 import type { BacktestResult, BacktestRunMeta, BacktestJob } from '../src/types';
 
@@ -99,6 +99,7 @@ function RunCard({ run, selected, onClick }: { run: BacktestRunMeta; selected: b
 // ─── Equity Curve Chart ───────────────────────────────────────────────────────
 
 function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pnl?: number | null }>; startEquity?: number }) {
+  const uid = useId().replace(/:/g, '');
   if (!trades || trades.length === 0) return null;
 
   const W = 600, H = 200;
@@ -225,11 +226,11 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
       <defs>
-        <linearGradient id="eqArea" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`eqArea-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
           <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
         </linearGradient>
-        <clipPath id="eqClip">
+        <clipPath id={`eqClip-${uid}`}>
           <rect x={pad.l} y={pad.t} width={iW} height={iH} />
         </clipPath>
       </defs>
@@ -252,36 +253,36 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
 
       {/* ── Drawdown shading ── */}
       {ddRegions.map((r, i) => (
-        <rect key={i} x={r.x1} y={r.yPeak} width={r.x2 - r.x1} height={Math.max(0, Math.abs(r.yTrough - r.yPeak))} fill="rgba(220,38,38,0.12)" clipPath="url(#eqClip)" />
+        <rect key={i} x={r.x1} y={r.yPeak} width={r.x2 - r.x1} height={Math.max(0, Math.abs(r.yTrough - r.yPeak))} fill="rgba(220,38,38,0.12)" clipPath={`url(#eqClip-${uid})`} />
       ))}
 
       {/* ── Bollinger Band fill ── */}
       {bbFillPts && (
-        <polygon points={bbFillPts} fill={C.brand + '10'} stroke="none" clipPath="url(#eqClip)" />
+        <polygon points={bbFillPts} fill={C.brand + '10'} stroke="none" clipPath={`url(#eqClip-${uid})`} />
       )}
 
       {/* ── BB upper / lower dashed lines ── */}
       {bbPoints.length > 1 && (
         <>
-          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbUpperPts} clipPath="url(#eqClip)" />
-          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbLowerPts} clipPath="url(#eqClip)" />
+          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbUpperPts} clipPath={`url(#eqClip-${uid})`} />
+          <polyline fill="none" stroke={C.brand + '40'} strokeWidth={1} strokeDasharray="4 3" points={bbLowerPts} clipPath={`url(#eqClip-${uid})`} />
         </>
       )}
 
       {/* ── BB middle (SMA20) solid ── */}
       {bbPoints.length > 1 && (
-        <polyline fill="none" stroke={C.brand + '70'} strokeWidth={1.2} points={bbMidPts} clipPath="url(#eqClip)" />
+        <polyline fill="none" stroke={C.brand + '70'} strokeWidth={1.2} points={bbMidPts} clipPath={`url(#eqClip-${uid})`} />
       )}
 
       {/* ── Area fill under equity curve ── */}
-      <path d={areaD} fill="url(#eqArea)" clipPath="url(#eqClip)" />
+      <path d={areaD} fill={`url(#eqArea-${uid})`} clipPath={`url(#eqClip-${uid})`} />
 
       {/* ── Equity line ── */}
-      <path d={pathD} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" clipPath="url(#eqClip)" />
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" clipPath={`url(#eqClip-${uid})`} />
 
       {/* ── Trade markers ── */}
       {tradeMarkers.map((m, i) => (
-        <circle key={i} cx={m.x} cy={m.y} r={2.5} fill={m.color} opacity={0.75} clipPath="url(#eqClip)" />
+        <circle key={i} cx={m.x} cy={m.y} r={2.5} fill={m.color} opacity={0.75} clipPath={`url(#eqClip-${uid})`} />
       ))}
 
       {/* ── Start / end dots ── */}
@@ -315,6 +316,7 @@ function EquityCurveChart({ trades, startEquity = 50000 }: { trades?: Array<{ pn
 // ─── RSI Subplot ──────────────────────────────────────────────────────────────
 
 function RSISubplot({ values, width, height }: { values: number[]; width: number; height: number }) {
+  const uid = useId().replace(/:/g, '');
   if (!values || values.length < 16) return null;
 
   const RSI_PERIOD = 14;
@@ -398,14 +400,14 @@ function RSISubplot({ values, width, height }: { values: number[]; width: number
 
   return (
     <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
-      <clipPath id="rsiClip">
+      <clipPath id={`rsiClip-${uid}`}>
         <rect x={pad.l} y={pad.t} width={iW} height={iH} />
       </clipPath>
 
       {/* ── Overbought zone fill (RSI > 70) ── */}
-      <polygon points={obFill} fill={C.bear} fillOpacity={0.10} clipPath="url(#rsiClip)" />
+      <polygon points={obFill} fill={C.bear} fillOpacity={0.10} clipPath={`url(#rsiClip-${uid})`} />
       {/* ── Oversold zone fill (RSI < 30) ── */}
-      <polygon points={osFill} fill={C.bull} fillOpacity={0.10} clipPath="url(#rsiClip)" />
+      <polygon points={osFill} fill={C.bull} fillOpacity={0.10} clipPath={`url(#rsiClip-${uid})`} />
 
       {/* ── Reference lines at 30, 50, 70 ── */}
       <line x1={pad.l} y1={toY70} x2={pad.l + iW} y2={toY70} stroke={C.bear} strokeWidth={0.7} strokeDasharray="3 3" opacity={0.6} />
@@ -417,7 +419,7 @@ function RSISubplot({ values, width, height }: { values: number[]; width: number
       <text x={pad.l - 4} y={toY30} textAnchor="end" dominantBaseline="middle" fontSize={8} fill={C.bull} opacity={0.8}>30</text>
 
       {/* ── RSI line ── */}
-      <polyline fill="none" stroke={C.brand} strokeWidth={1.5} strokeLinejoin="round" points={rsiLinePts} clipPath="url(#rsiClip)" />
+      <polyline fill="none" stroke={C.brand} strokeWidth={1.5} strokeLinejoin="round" points={rsiLinePts} clipPath={`url(#rsiClip-${uid})`} />
 
       {/* ── Current RSI dot ── */}
       <circle cx={toX(lastRsi.i)} cy={toY(lastRsi.rsi)} r={3} fill={rsiDotColor} style={{ filter: `drop-shadow(0 0 3px ${rsiDotColor})` }} />
@@ -682,8 +684,8 @@ function RunComparisonRadar({
 
           const ra = runA.results;
           const rb = runB.results;
-          const rawA = ra[ax.key as keyof typeof ra] as number ?? 0;
-          const rawB = rb[ax.key as keyof typeof rb] as number ?? 0;
+          const rawA = (ra[ax.key as keyof typeof ra] ?? 0) as number;
+          const rawB = (rb[ax.key as keyof typeof rb] ?? 0) as number;
 
           return (
             <g key={ax.key}>
@@ -1455,7 +1457,7 @@ function WalkForwardChart() {
                   textAnchor="middle" fontSize={7.5}
                   fill={testColor} fontWeight={600}
                 >
-                  +{seg.testRet.toFixed(1)}%
+                  {seg.testRet >= 0 ? '+' : ''}{seg.testRet.toFixed(1)}%
                 </text>
                 {/* Segment label below */}
                 <text
@@ -1787,7 +1789,7 @@ function JobProgress({ jobId, apiBase, onDone }: { jobId: string; apiBase: strin
     poll();
     pollRef.current = setInterval(poll, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [jobId, apiBase]);
+  }, [jobId, apiBase, onDone]);
 
   if (!job) return <div style={{ padding: 16, color: C.muted, fontSize: F.sm }}>Starting backtest…</div>;
 
@@ -2479,6 +2481,7 @@ function BacktestCalendarView({ result }: { result?: BacktestResult | null }) {
 // ─── Strategy Alpha Chart ──────────────────────────────────────────────────────
 
 function StrategyAlphaChart({ result }: { result?: BacktestResult | null }) {
+  const uid = useId().replace(/:/g, '');
   const W = 560, H = 200;
   const pad = { t: 24, r: 140, b: 36, l: 56 };
   const iW = W - pad.l - pad.r;
@@ -2571,7 +2574,7 @@ function StrategyAlphaChart({ result }: { result?: BacktestResult | null }) {
           style={{ display: 'block', overflow: 'visible', minWidth: W }}
         >
           <defs>
-            <clipPath id="alphaClip">
+            <clipPath id={`alphaClip-${uid}`}>
               <rect x={pad.l} y={pad.t} width={iW} height={iH} />
             </clipPath>
           </defs>
@@ -2620,7 +2623,7 @@ function StrategyAlphaChart({ result }: { result?: BacktestResult | null }) {
                   strokeWidth={2}
                   strokeLinejoin="round"
                   points={pts}
-                  clipPath="url(#alphaClip)"
+                  clipPath={`url(#alphaClip-${uid})`}
                   opacity={0.9}
                 />
                 {/* End dot */}
@@ -2629,7 +2632,7 @@ function StrategyAlphaChart({ result }: { result?: BacktestResult | null }) {
                   cy={lastY}
                   r={3.5}
                   fill={strat.color}
-                  clipPath="url(#alphaClip)"
+                  clipPath={`url(#alphaClip-${uid})`}
                   style={{ filter: `drop-shadow(0 0 3px ${strat.color}88)` }}
                 />
               </g>
@@ -2683,6 +2686,7 @@ function StrategyAlphaChart({ result }: { result?: BacktestResult | null }) {
 // ─── Backtest Confidence Intervals ────────────────────────────────────────────
 
 function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | null }) {
+  const uid = useId().replace(/:/g, '');
   const W = 560, H = 200;
   const pad = { t: 28, r: 100, b: 36, l: 56 };
   const iW = W - pad.l - pad.r;
@@ -2806,10 +2810,10 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
           style={{ display: 'block', overflow: 'visible', minWidth: W }}
         >
           <defs>
-            <clipPath id="ciClip">
+            <clipPath id={`ciClip-${uid}`}>
               <rect x={pad.l} y={pad.t} width={iW} height={iH} />
             </clipPath>
-            <linearGradient id="ciBandGrad" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`ciBandGrad-${uid}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={C.brand} stopOpacity="0.18" />
               <stop offset="100%" stopColor={C.brand} stopOpacity="0.04" />
             </linearGradient>
@@ -2836,9 +2840,9 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
           {/* Outer band (p10–p90) */}
           <polygon
             points={bandPts}
-            fill="url(#ciBandGrad)"
+            fill={`url(#ciBandGrad-${uid})`}
             stroke="none"
-            clipPath="url(#ciClip)"
+            clipPath={`url(#ciClip-${uid})`}
           />
 
           {/* Inner band (p25–p75 approx) */}
@@ -2847,7 +2851,7 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
             fill={C.brand}
             fillOpacity={0.10}
             stroke="none"
-            clipPath="url(#ciClip)"
+            clipPath={`url(#ciClip-${uid})`}
           />
 
           {/* p90 dashed boundary line */}
@@ -2857,7 +2861,7 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
             strokeWidth={1.2}
             strokeDasharray="5 3"
             points={p90pts.join(' ')}
-            clipPath="url(#ciClip)"
+            clipPath={`url(#ciClip-${uid})`}
             opacity={0.7}
           />
 
@@ -2868,7 +2872,7 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
             strokeWidth={1.2}
             strokeDasharray="5 3"
             points={p10pts.join(' ')}
-            clipPath="url(#ciClip)"
+            clipPath={`url(#ciClip-${uid})`}
             opacity={0.7}
           />
 
@@ -2879,15 +2883,15 @@ function BacktestConfidenceIntervals({ result }: { result?: BacktestResult | nul
             strokeWidth={2.5}
             strokeLinejoin="round"
             points={p50pts.join(' ')}
-            clipPath="url(#ciClip)"
+            clipPath={`url(#ciClip-${uid})`}
             style={{ filter: `drop-shadow(0 0 4px ${C.brand}99)` }}
           />
 
           {/* End dots */}
-          <circle cx={toX(NUM_POINTS)} cy={toY(finalP90)} r={3} fill={C.bull} clipPath="url(#ciClip)" />
-          <circle cx={toX(NUM_POINTS)} cy={toY(finalP50)} r={4} fill={C.brand} clipPath="url(#ciClip)"
+          <circle cx={toX(NUM_POINTS)} cy={toY(finalP90)} r={3} fill={C.bull} clipPath={`url(#ciClip-${uid})`} />
+          <circle cx={toX(NUM_POINTS)} cy={toY(finalP50)} r={4} fill={C.brand} clipPath={`url(#ciClip-${uid})`}
             style={{ filter: `drop-shadow(0 0 4px ${C.brand})` }} />
-          <circle cx={toX(NUM_POINTS)} cy={toY(finalP10)} r={3} fill={C.bear} clipPath="url(#ciClip)" />
+          <circle cx={toX(NUM_POINTS)} cy={toY(finalP10)} r={3} fill={C.bear} clipPath={`url(#ciClip-${uid})`} />
 
           {/* End labels — right side */}
           <text

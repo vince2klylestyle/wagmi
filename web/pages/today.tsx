@@ -231,7 +231,7 @@ function RegimeDial({ regime }: { regime: string }) {
   }
 
   const r = regime?.toLowerCase() || 'unknown';
-  const activeIdx = segments.findIndex(s => r.includes(s.key.replace('_', ''))) ?? 5;
+  const activeIdx = segments.findIndex(s => r.includes(s.key));
   const safeActiveIdx = activeIdx >= 0 ? activeIdx : 5;
 
   // Map segment index to degree start: from 180° (left) to 0° (right) going counterclockwise
@@ -1190,7 +1190,7 @@ function cbStatusLabel(status: CbStatus): string {
 function CbRing({ limitNum, currentNum, status, label, sub }: { limitNum: number; currentNum: number; status: CbStatus; label: string; sub: string }) {
   const cx = 36, cy = 36, r = 28;
   const circumference = 2 * Math.PI * r;
-  const pct = Math.min(currentNum / limitNum, 1);
+  const pct = Math.min(currentNum / (limitNum || 1), 1);
   const dashOffset = circumference * (1 - pct);
   const col = cbColor(status);
   return (
@@ -1241,7 +1241,7 @@ function CbDots({ limitNum, currentNum, status }: { limitNum: number; currentNum
 
 /** Horizontal bar for drawdown limit */
 function CbBar({ limitNum, currentNum, status }: { limitNum: number; currentNum: number; status: CbStatus }) {
-  const pct = Math.min((currentNum / limitNum) * 100, 100);
+  const pct = Math.min((currentNum / (limitNum || 1)) * 100, 100);
   const col = cbColor(status);
   return (
     <div style={{ padding: '8px 0' }}>

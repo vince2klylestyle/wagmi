@@ -378,6 +378,7 @@ function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> |
   function trendValue(sig: Signal): { label: string; color: string } {
     const { sma20, sma50 } = sig;
     if (sma20 == null || sma50 == null) return { label: '— N/A', color: C.muted };
+    if (sma50 === 0) return { label: '— N/A', color: C.muted };
     const diff = ((sma20 - sma50) / sma50) * 100;
     if (diff > 0.3)  return { label: '↑ Bull', color: C.heatBull1 };
     if (diff < -0.3) return { label: '↓ Bear', color: C.heatBear1 };
@@ -959,10 +960,10 @@ function CorrelationMatrix({ signals }: { signals: Record<string, any> }) {
   function corrColor(a: number, b: number): { bg: string; label: string; text: string } {
     if (a === b) return { bg: `${C.brand}30`, label: '1.00', text: C.brand }; // diagonal
     const diff = Math.abs(a - b);
-    if (diff < 15) return { bg: 'rgba(22,163,74,0.25)', label: '+0.' + (9 - Math.round(diff/3)), text: '#86efac' };
-    if (diff < 30) return { bg: 'rgba(22,163,74,0.12)', label: '+0.' + (6 - Math.round(diff/10)), text: '#4ade80' };
+    if (diff < 15) return { bg: 'rgba(22,163,74,0.25)', label: '+0.' + Math.max(0, Math.min(9, 9 - Math.round(diff/3))), text: '#86efac' };
+    if (diff < 30) return { bg: 'rgba(22,163,74,0.12)', label: '+0.' + Math.max(0, Math.min(9, 6 - Math.round(diff/10))), text: '#4ade80' };
     if (diff < 45) return { bg: 'rgba(148,163,184,0.12)', label: '~0.0', text: C.muted };
-    return { bg: 'rgba(220,38,38,0.2)', label: '-0.' + Math.round(diff/12), text: '#fca5a5' };
+    return { bg: 'rgba(220,38,38,0.2)', label: '-0.' + Math.min(9, Math.round(diff/12)), text: '#fca5a5' };
   }
 
   return (
@@ -1066,7 +1067,7 @@ function SignalStrengthTimeline({ signals }: { signals: Record<string, any> }) {
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 10, color: C.muted, alignItems: 'center' }}>
                   {rsi != null && <span>RSI {rsi.toFixed(1)}</span>}
-                  {atrPct != null && <span>ATR {(atrPct * 100).toFixed(1)}%</span>}
+                  {atrPct != null && <span>ATR {atrPct.toFixed(1)}%</span>}
                   <span style={{ fontWeight: 700, color, fontSize: F.sm }}>{Math.round(score)}</span>
                 </div>
               </div>

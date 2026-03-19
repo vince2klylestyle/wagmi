@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useId, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
@@ -120,6 +120,7 @@ function KpiCard({
 // ─── Sparkline Chart ──────────────────────────────────────────────────────────
 
 function SparklineChart({ data, width = 220, height = 50 }: { data: number[]; width?: number; height?: number }) {
+  const uid = useId();
   if (!data || data.length < 2) {
     return <div style={{ width, height, background: C.surfaceHover, borderRadius: R.sm }} />;
   }
@@ -127,8 +128,8 @@ function SparklineChart({ data, width = 220, height = 50 }: { data: number[]; wi
   const max = Math.max(...data);
   const range = max - min || 1;
 
-  // Unique gradient ID per instance (based on data length + first/last values to avoid collision)
-  const gradId = `sparkGrad_${data.length}_${Math.round(data[0] * 1000)}_${Math.round(data[data.length - 1] * 1000)}`;
+  // Unique gradient ID per component instance (useId ensures no collisions)
+  const gradId = `sparkGrad-${uid.replace(/:/g, '')}`;
 
   const pts = data.map((v, i) => {
     const x = (i / (data.length - 1)) * width;
@@ -199,7 +200,7 @@ function SparklineChart({ data, width = 220, height = 50 }: { data: number[]; wi
 // ─── Market Heatmap ───────────────────────────────────────────────────────────
 
 function heatColor(value: number, low: number, high: number, invertBull = false): string {
-  const pct = Math.max(0, Math.min(1, (value - low) / (high - low)));
+  const pct = Math.max(0, Math.min(1, (value - low) / (high - low || 1)));
   // 0 = most bearish/low, 1 = most bullish/high
   const bullish = invertBull ? 1 - pct : pct;
   if (bullish > 0.72) return C.heatBull2;
@@ -373,7 +374,7 @@ function MarketHeatmap({ signals, loading, onSelect }: {
 // ─── Market Snapshot ──────────────────────────────────────────────────────────
 
 function ScoreGauge({ value, max = 100 }: { value: number; max?: number }) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const pct = Math.max(0, Math.min(100, (value / (max || 1)) * 100));
   const color = value >= 70 ? C.bull : value >= 40 ? C.warn : C.bear;
   return (
     <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -383,7 +384,7 @@ function ScoreGauge({ value, max = 100 }: { value: number; max?: number }) {
 }
 
 function MiniBar({ value, max, color, label }: { value: number; max: number; color: string; label?: string }) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const pct = Math.max(0, Math.min(100, (value / (max || 1)) * 100));
   return (
     <div>
       {label && (
@@ -1085,7 +1086,7 @@ function MarketMomentumStrip({
 
         // Percentage change: use score delta as proxy (seeded), or real ATR-based estimate
         const pctChange = sig
-          ? ((sig.sma20 - sig.sma50) / sig.sma50) * 100
+          ? ((sig.sma20 - sig.sma50) / (sig.sma50 || 1)) * 100
           : (rng() * 6 - 3);
         const pctLabel = (pctChange >= 0 ? '+' : '') + pctChange.toFixed(1) + '%';
         const pctColor = pctChange >= 0 ? C.bull : C.bear;
@@ -2871,17 +2872,17 @@ export default function Home() {
         <MarketSnapshot signals={signals} loading={loading} onSelect={setActiveChart} />
       </div>
 
-      {/* ── Activity ticker ───────────────────────────── */}
+      {/* ── Live Activity ─────────────────────────────── */}
+      <h2 style={{ margin: '0 0 12px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Live Activity</h2>
       <ActivityTicker events={activity} />
 
-      {/* ── Recent Trade Strip ────────────────────────── */}
       {recentTrades.length > 0 && <RecentTradeStrip trades={recentTrades} />}
 
-      {/* ── Activity Calendar Heatmap ─────────────────── */}
       <ActivityCalendarHeatmap />
 
       {/* ── Signal Health Gauge + Market Sentiment + Key Stats ──────── */}
       <div style={{ marginBottom: 28, marginTop: 24 }}>
+        <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text }}>Signal Health</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: 20, alignItems: 'start' }}>
           {/* Left: bot health gauge */}
           <SignalHealthGauge

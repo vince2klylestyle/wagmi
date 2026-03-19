@@ -28,7 +28,9 @@ function linearRegression(points: { x: number; y: number }[]): { slope: number; 
   const sumY = points.reduce((s, p) => s + p.y, 0);
   const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
   const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return { slope: 0, intercept: sumY / n };
+  const slope = (n * sumXY - sumX * sumY) / denom;
   const intercept = (sumY - slope * sumX) / n;
   return { slope, intercept };
 }
@@ -565,7 +567,7 @@ function HourOfDayWinRate({ trades }: { trades: TradeRecord[] }) {
   trades.forEach((t) => {
     const ts = (t as AnyRecord).entry_timestamp_ms;
     if (ts == null || isNaN(ts)) return;
-    const hour = Math.floor(ts / 3600000) % 24;
+    const hour = new Date(ts).getUTCHours();
     hasRealData = true;
     buckets[hour].total++;
     if (t.outcome === 'WIN') buckets[hour].wins++;
@@ -3035,6 +3037,32 @@ function LeveragePnlChart({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Placeholder components (data not yet available from API) ─────────────────
+
+function TradeAutopsyCard() {
+  return (
+    <div style={{ color: C.muted, fontSize: F.sm, padding: '16px 0' }}>
+      Worst trade autopsy requires MAE and price-path data — not yet available from the API.
+    </div>
+  );
+}
+
+function SignalDecayChart() {
+  return (
+    <div style={{ color: C.muted, fontSize: F.sm, padding: '16px 0' }}>
+      Signal confidence decay requires intra-trade confidence snapshots — not yet available from the API.
+    </div>
+  );
+}
+
+function ExposureRiskMatrix() {
+  return (
+    <div style={{ color: C.muted, fontSize: F.sm, padding: '16px 0' }}>
+      Exposure risk matrix requires position-size and volatility data per time slot — not yet available from the API.
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function Forensics() {
@@ -3086,8 +3114,9 @@ export default function Forensics() {
     const wins = filtered.filter((t) => t.outcome === 'WIN');
     const losses = filtered.filter((t) => t.outcome === 'LOSS');
 
-    const avgRR = wins.length > 0
-      ? wins.filter((t) => t.rr_achieved != null).reduce((s, t) => s + (t.rr_achieved ?? 0), 0) / wins.filter((t) => t.rr_achieved != null).length
+    const rrWins = wins.filter((t) => t.rr_achieved != null);
+    const avgRR = rrWins.length > 0
+      ? rrWins.reduce((s, t) => s + (t.rr_achieved ?? 0), 0) / rrWins.length
       : 0;
 
     const highConfTrades = filtered.filter((t) => (t.llm_confidence ?? 0) >= 0.65);

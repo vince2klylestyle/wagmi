@@ -327,7 +327,9 @@ function SignalScoreGauge({ score }: { score: number }) {
   ];
 
   // Needle angle (in SVG coordinate space: pointing from center)
-  const needleAngleDeg = scoreToAngle(Math.max(0, Math.min(100, score)));
+  // Guard against NaN/Infinity before clamping
+  const safeScore = Number.isFinite(score) ? score : 0;
+  const needleAngleDeg = scoreToAngle(Math.max(0, Math.min(100, safeScore)));
   const needleRad = (needleAngleDeg * Math.PI) / 180;
   const needleLen = RADIUS - STROKE / 2 - 4;
   const needleX = CX + needleLen * Math.cos(needleRad);
@@ -585,7 +587,7 @@ function SignalsTab({ card, logs }: { card: StrategyCard | null; logs: LogEntry[
   }
 
   const sig = card.latestSignal;
-  const score = sig.score || 0;
+  const score = Number.isFinite(sig.score) ? sig.score : 0;
   const scoreColor = score >= 70 ? C.bull : score >= 45 ? '#eab308' : C.bear;
 
   return (
@@ -822,9 +824,9 @@ function TradeStreakVisual({ trades }: { trades: TradeRecord[] }) {
     winRate >= 45 ? '#eab308' :
     lossColor;
 
-  // Momentum bar proportions
-  const lossPct = realCells.length > 0 ? (lossCount / 20) * 100 : 0;
-  const winPct = realCells.length > 0 ? (winCount / 20) * 100 : 0;
+  // Momentum bar proportions (use realCells.length, not hardcoded 20)
+  const lossPct = realCells.length > 0 ? (lossCount / realCells.length) * 100 : 0;
+  const winPct = realCells.length > 0 ? (winCount / realCells.length) * 100 : 0;
 
   return (
     <div style={{
@@ -1402,8 +1404,8 @@ function PerformanceTab({ trades }: { trades: TradeRecord[] }) {
     );
   }
 
-  const wins = trades.filter(t => (t as any).outcome === 'WIN' || (t as any).pnl > 0);
-  const losses = trades.filter(t => (t as any).outcome !== 'WIN' && (t as any).pnl <= 0);
+  const wins = trades.filter(t => t.outcome === 'WIN' || (t.pnl != null && t.pnl > 0));
+  const losses = trades.filter(t => t.outcome !== 'WIN' && (t.pnl != null && t.pnl <= 0));
   const winRate = trades.length > 0 ? (wins.length / trades.length) * 100 : 0;
   const totalPnl = trades.reduce((a, t) => a + ((t as any).pnl || 0), 0);
   const avgWin = wins.length > 0 ? wins.reduce((a, t) => a + (t as any).pnl, 0) / wins.length : 0;
@@ -1540,7 +1542,12 @@ function LogsTab({ logs, loading, error }: { logs: LogEntry[]; loading: boolean;
 
 export default function StrategyDetail() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id: rawId } = router.query;
+  // id can be string | string[] | undefined — normalise to string | undefined
+  const id: string | undefined = !router.isReady
+    ? undefined
+    : Array.isArray(rawId) ? rawId[0] : rawId;
+
   const [activeTab, setActiveTab] = useState<Tab>('signals');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
@@ -1549,6 +1556,16 @@ export default function StrategyDetail() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const apiBase = resolveApiBase();
+
+  // Reset per-route state whenever the strategy id changes
+  useEffect(() => {
+    setActiveTab('signals');
+    setCard(null);
+    setLogs([]);
+    setLogsLoading(true);
+    setLogsError(null);
+    setTrades([]);
+  }, [id]);
 
   const online = (() => {
     const ts = card?.lastHeartbeat || card?.last_seen;
@@ -1561,17 +1578,22 @@ export default function StrategyDetail() {
   useEffect(() => {
     if (!id) return;
 
+    // AbortController prevents stale responses from overwriting newer state
+    const controller = new AbortController();
+    const signal = controller.signal;
+
     const fetchAll = async () => {
       // Fetch card
       try {
-        const r = await fetch(`${apiBase}/v1/strategies/${id}`, { cache: 'no-store' });
+        const r = await fetch(`${apiBase}/v1/strategies/${encodeURIComponent(id)}`, { cache: 'no-store', signal });
         if (r.ok) setCard(await r.json());
+        else if (r.status === 404) setCard(null);
       } catch (_) {}
 
       // Fetch logs
       try {
         setLogsError(null);
-        const r = await fetch(`${apiBase}/v1/strategies/${id}/logs`, { cache: 'no-store' });
+        const r = await fetch(`${apiBase}/v1/strategies/${encodeURIComponent(id)}/logs`, { cache: 'no-store', signal });
         if (r.ok) {
           const data = await r.json();
           setLogs(Array.isArray(data) ? data : data?.value || []);
@@ -1579,19 +1601,20 @@ export default function StrategyDetail() {
           setLogsError(`HTTP ${r.status}`);
         }
       } catch (e: any) {
-        setLogsError(e?.message || 'Failed to load logs');
+        if (e?.name !== 'AbortError') setLogsError(e?.message || 'Failed to load logs');
       } finally {
-        setLogsLoading(false);
+        if (!signal.aborted) setLogsLoading(false);
       }
     };
 
     fetchAll();
     const iv = setInterval(fetchAll, 30000);
-    return () => clearInterval(iv);
+    return () => { controller.abort(); clearInterval(iv); };
   }, [id, apiBase]);
 
-  // Load trades when that tab is selected
+  // Load trades when that tab is selected; reset when id changes (handled above)
   useEffect(() => {
+    if (!id) return;
     if (activeTab !== 'trades' && activeTab !== 'performance') return;
     if (trades.length > 0) return;
     setTradesLoading(true);
@@ -1609,7 +1632,7 @@ export default function StrategyDetail() {
       })
       .catch(() => {})
       .finally(() => setTradesLoading(false));
-  }, [activeTab, apiBase, card]);
+  }, [activeTab, apiBase, card, id]);
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'signals', label: 'Signals' },
@@ -1666,10 +1689,10 @@ export default function StrategyDetail() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: '-0.02em' }}>
-              {card?.name || `Strategy ${id}`}
+              {card?.name || (id ? `Strategy ${id}` : 'Loading…')}
             </h1>
             <div style={{ marginTop: 6, fontSize: F.sm, color: C.muted }}>
-              ID: {id} · Last evaluated: {card?.lastEvaluated ? timeAgo(card.lastEvaluated) : '—'}
+              ID: {id ?? '—'} · Last evaluated: {card?.lastEvaluated ? timeAgo(card.lastEvaluated) : '—'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

@@ -964,7 +964,8 @@ function StrategyPerformancePolarChart() {
 
           {/* Strategy polygons */}
           {strategies.map(strat => {
-            const fractions = strat.values.map((v, i) => v / axes[i].max);
+            // Clamp to [0, 1] so vertices never escape the chart area
+            const fractions = strat.values.map((v, i) => Math.min(1, Math.max(0, v / axes[i].max)));
             return (
               <polygon
                 key={strat.abbr}
