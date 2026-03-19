@@ -282,6 +282,286 @@ function BySymbolBars({ bySymbol }: { bySymbol: Record<string, { trades: number;
   );
 }
 
+// ─── Run Comparison Radar ─────────────────────────────────────────────────────
+
+function RunComparisonRadar({
+  runA,
+  runB,
+  labelA = 'Run A',
+  labelB = 'Run B',
+}: {
+  runA: BacktestResult;
+  runB: BacktestResult;
+  labelA?: string;
+  labelB?: string;
+}) {
+  const SIZE = 320;
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const RADIUS = 118; // max axis length from center
+
+  // 6 axes, evenly spaced around the circle (starting at top, going clockwise)
+  const axes = [
+    { label: 'Win Rate',      key: 'win_rate' },
+    { label: 'Profit Factor', key: 'profit_factor' },
+    { label: 'Total Return',  key: 'total_return_pct' },
+    { label: 'Avg Win',       key: 'avg_win' },
+    { label: 'Max DD',        key: 'max_drawdown_pct' },
+    { label: 'Trade Count',   key: 'total_trades' },
+  ] as const;
+
+  const N = axes.length;
+
+  // Normalize raw values to 0–1
+  function normalize(key: typeof axes[number]['key'], raw: number): number {
+    switch (key) {
+      case 'win_rate':
+        // stored as 0–1 fraction, display as %; cap at 100%
+        return Math.min(1, Math.max(0, raw));
+      case 'profit_factor':
+        return Math.min(1, Math.max(0, (raw ?? 0) / 5));
+      case 'total_return_pct':
+        return Math.min(1, Math.max(0, raw / 50));
+      case 'avg_win':
+        return Math.min(1, Math.max(0, (raw ?? 0) / 5000));
+      case 'max_drawdown_pct':
+        // inverted: 0% DD → 1.0, 50% DD → 0.0
+        return Math.min(1, Math.max(0, 1 - Math.abs(raw) / 50));
+      case 'total_trades':
+        return Math.min(1, Math.max(0, (raw ?? 0) / 100));
+      default:
+        return 0;
+    }
+  }
+
+  // Tip label formatter for each axis
+  function axisLabel(key: typeof axes[number]['key'], raw: number): string {
+    switch (key) {
+      case 'win_rate':
+        return `${(raw * 100).toFixed(0)}%`;
+      case 'profit_factor':
+        return `${(raw ?? 0).toFixed(2)}×`;
+      case 'total_return_pct':
+        return fmtPct(raw);
+      case 'avg_win':
+        return fmtUsd(raw ?? 0);
+      case 'max_drawdown_pct':
+        return fmtPct(-Math.abs(raw));
+      case 'total_trades':
+        return `${raw ?? 0}`;
+      default:
+        return '';
+    }
+  }
+
+  // Angle for axis i: start at top (−π/2), go clockwise
+  function angleOf(i: number): number {
+    return -Math.PI / 2 + (2 * Math.PI * i) / N;
+  }
+
+  // Point on an axis at normalized value v
+  function axisPoint(i: number, v: number): { x: number; y: number } {
+    const a = angleOf(i);
+    return {
+      x: cx + RADIUS * v * Math.cos(a),
+      y: cy + RADIUS * v * Math.sin(a),
+    };
+  }
+
+  // Build polygon points for a run
+  function buildPolygon(result: BacktestResult): string {
+    const r = result.results;
+    return axes
+      .map((ax, i) => {
+        const raw = r[ax.key as keyof typeof r] as number;
+        const v = normalize(ax.key, raw ?? 0);
+        const pt = axisPoint(i, v);
+        return `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`;
+      })
+      .join(' ');
+  }
+
+  // Hexagonal grid rings (25%, 50%, 75%, 100%)
+  function buildRing(fraction: number): string {
+    return Array.from({ length: N }, (_, i) => {
+      const pt = axisPoint(i, fraction);
+      return `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`;
+    }).join(' ');
+  }
+
+  const polyA = buildPolygon(runA);
+  const polyB = buildPolygon(runB);
+
+  const BRAND = '#6366f1'; // indigo
+  const TEAL  = '#14b8a6'; // teal/green
+
+  return (
+    <div
+      style={{
+        background: C.surfaceHover,
+        border: `1px solid ${C.brand}40`,
+        borderRadius: R.lg,
+        padding: '20px 24px',
+        marginBottom: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 12,
+      }}
+    >
+      {/* Title */}
+      <div style={{ alignSelf: 'flex-start', fontSize: F.sm, fontWeight: 700, color: C.text }}>
+        Performance Radar
+      </div>
+
+      <svg
+        width={SIZE}
+        height={SIZE}
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        {/* Grid rings */}
+        {[0.25, 0.5, 0.75, 1].map((frac) => (
+          <polygon
+            key={frac}
+            points={buildRing(frac)}
+            fill="none"
+            stroke={C.border}
+            strokeWidth={frac === 1 ? 1.2 : 0.7}
+            strokeDasharray={frac === 1 ? undefined : '3 4'}
+            opacity={0.6}
+          />
+        ))}
+
+        {/* Axis lines + tip labels */}
+        {axes.map((ax, i) => {
+          const tip = axisPoint(i, 1);
+          const angle = angleOf(i);
+          // Label offset: push slightly beyond the tip
+          const LABEL_OFFSET = 22;
+          const lx = cx + (RADIUS + LABEL_OFFSET) * Math.cos(angle);
+          const ly = cy + (RADIUS + LABEL_OFFSET) * Math.sin(angle);
+          // Anchor based on which side of the chart the label falls on
+          const anchor =
+            Math.abs(Math.cos(angle)) < 0.15
+              ? 'middle'
+              : Math.cos(angle) < 0
+              ? 'end'
+              : 'start';
+
+          const ra = runA.results;
+          const rb = runB.results;
+          const rawA = ra[ax.key as keyof typeof ra] as number ?? 0;
+          const rawB = rb[ax.key as keyof typeof rb] as number ?? 0;
+
+          return (
+            <g key={ax.key}>
+              {/* Axis line */}
+              <line
+                x1={cx}
+                y1={cy}
+                x2={tip.x}
+                y2={tip.y}
+                stroke={C.border}
+                strokeWidth={0.8}
+                opacity={0.8}
+              />
+              {/* Axis perimeter label */}
+              <text
+                x={lx}
+                y={ly}
+                textAnchor={anchor}
+                dominantBaseline="middle"
+                fontSize={10}
+                fontWeight={600}
+                fill={C.muted}
+              >
+                {ax.label}
+              </text>
+              {/* Run A tip value */}
+              {(() => {
+                const vA = normalize(ax.key, rawA);
+                const ptA = axisPoint(i, vA);
+                const tipOffsetA = 14;
+                const txA = ptA.x + tipOffsetA * Math.cos(angle);
+                const tyA = ptA.y + tipOffsetA * Math.sin(angle);
+                return (
+                  <text
+                    x={txA}
+                    y={tyA}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={8}
+                    fill={BRAND}
+                    opacity={0.85}
+                  >
+                    {axisLabel(ax.key, rawA)}
+                  </text>
+                );
+              })()}
+            </g>
+          );
+        })}
+
+        {/* Run B filled polygon (comparison, teal) — drawn first so A is on top */}
+        <polygon
+          points={polyB}
+          fill={TEAL}
+          fillOpacity={0.18}
+          stroke={TEAL}
+          strokeWidth={1.8}
+          strokeOpacity={0.8}
+          strokeLinejoin="round"
+        />
+
+        {/* Run A filled polygon (main, indigo) */}
+        <polygon
+          points={polyA}
+          fill={BRAND}
+          fillOpacity={0.25}
+          stroke={BRAND}
+          strokeWidth={2}
+          strokeOpacity={0.9}
+          strokeLinejoin="round"
+        />
+
+        {/* Center dot */}
+        <circle cx={cx} cy={cy} r={3} fill={C.border} />
+      </svg>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 3,
+              background: BRAND,
+              opacity: 0.85,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: F.xs, color: C.text, fontWeight: 600 }}>{labelA}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 3,
+              background: TEAL,
+              opacity: 0.8,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: F.xs, color: C.text, fontWeight: 600 }}>{labelB}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Comparison Delta Table ────────────────────────────────────────────────────
 
 function ComparisonDelta({ a, b, labelA, labelB }: { a: BacktestResult; b: BacktestResult; labelA: string; labelB: string }) {
@@ -869,14 +1149,22 @@ export default function Backtest() {
             </div>
           )}
 
-          {/* Comparison delta table */}
+          {/* Comparison radar + delta table */}
           {compareResult && selectedResult && (
-            <ComparisonDelta
-              a={selectedResult}
-              b={compareResult}
-              labelA="Run A"
-              labelB="Run B"
-            />
+            <>
+              <RunComparisonRadar
+                runA={selectedResult}
+                runB={compareResult}
+                labelA="Run A"
+                labelB="Run B"
+              />
+              <ComparisonDelta
+                a={selectedResult}
+                b={compareResult}
+                labelA="Run A"
+                labelB="Run B"
+              />
+            </>
           )}
 
           {/* Detail panels (side by side if comparing) */}

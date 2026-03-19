@@ -639,6 +639,285 @@ function MarketHeatmap({ signals, loading }: { signals: Record<string, Signal> |
   );
 }
 
+// ─── Signal Score Ranking ─────────────────────────────────────────────────────
+
+type RankEntry = {
+  symbol: string;
+  score: number;
+  side: 'BUY' | 'SELL' | 'NEUTRAL';
+  stratCount: number;
+  stratTotal: number;
+};
+
+function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
+  const hasRealSignals = Object.keys(signals).length > 0;
+
+  // Build ranked entries from real signals or fall back to example data
+  const entries: RankEntry[] = hasRealSignals
+    ? Object.entries(signals).map(([sym, sig]) => {
+        const score = sig.signal_score ?? 0;
+        // Derive side proxy: score >= 60 → BUY lean, score <= 40 → SELL lean, else NEUTRAL
+        // (Signal type has no side field so we infer from score + trend)
+        const sma20 = sig.sma20 ?? 0;
+        const sma50 = sig.sma50 ?? 0;
+        const trendUp = sma50 > 0 && sma20 > sma50;
+        const trendDown = sma50 > 0 && sma20 < sma50;
+        let side: RankEntry['side'] = 'NEUTRAL';
+        if (score >= 60 && trendUp) side = 'BUY';
+        else if (score >= 60 && trendDown) side = 'SELL';
+        else if (score >= 60) side = 'BUY';
+        else if (score < 40) side = 'SELL';
+        // Strategy count: vol_spike + rsi present + atr_pct present + zones present
+        const checks = [
+          sig.rsi != null,
+          sig.atr_pct != null,
+          sig.vol_spike != null,
+          sig.zones != null,
+        ];
+        const stratCount = checks.filter(Boolean).length;
+        return { symbol: sym, score, side, stratCount, stratTotal: 4 };
+      })
+    : [
+        { symbol: 'BTC', score: 82, side: 'BUY', stratCount: 3, stratTotal: 4 },
+        { symbol: 'HYPE', score: 74, side: 'BUY', stratCount: 4, stratTotal: 4 },
+        { symbol: 'SOL', score: 61, side: 'NEUTRAL', stratCount: 2, stratTotal: 4 },
+      ];
+
+  // Sort descending by score
+  const sorted = [...entries].sort((a, b) => b.score - a.score);
+
+  const n = sorted.length;
+  const BAR_AREA_W = 300; // px — width of the bar drawing area
+  const ROW_H = 40;
+  const TOP_PAD = 48;
+  const BOT_PAD = 24;
+  const LEFT_PAD = 48;  // symbol labels
+  const RIGHT_PAD = 120; // score + badge + strat count
+  const svgW = LEFT_PAD + BAR_AREA_W + RIGHT_PAD;
+  const svgH = TOP_PAD + n * ROW_H + BOT_PAD;
+
+  // Threshold x positions
+  const x50 = LEFT_PAD + (50 / 100) * BAR_AREA_W;
+  const x70 = LEFT_PAD + (70 / 100) * BAR_AREA_W;
+
+  function barColor(score: number): { start: string; end: string } {
+    if (score >= 70) return { start: '#166534', end: C.bull };
+    if (score >= 50) return { start: '#78350f', end: C.warn };
+    return { start: '#7f1d1d', end: '#ef4444' };
+  }
+
+  function sideColor(side: RankEntry['side']): string {
+    if (side === 'BUY') return C.bull;
+    if (side === 'SELL') return C.bear;
+    return C.muted;
+  }
+
+  const gradDefs = sorted.map((e, i) => {
+    const { start, end } = barColor(e.score);
+    return (
+      <linearGradient key={e.symbol} id={`bar-grad-${i}`} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor={start} />
+        <stop offset="100%" stopColor={end} />
+      </linearGradient>
+    );
+  });
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: R.lg,
+      padding: '20px 24px',
+      marginBottom: 28,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Ranking — Live Scores</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 3 }}>
+            70% = bot considers trading&nbsp;&nbsp;·&nbsp;&nbsp;50% = monitor zone
+            {!hasRealSignals && <span style={{ color: C.muted, marginLeft: 8 }}>(example data)</span>}
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 14, fontSize: F.xs, color: C.muted, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.bull }} />
+            ≥70 Trading zone
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.warn }} />
+            50–69 Monitor
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: C.bear }} />
+            &lt;50 Weak
+          </span>
+        </div>
+      </div>
+
+      {/* SVG chart */}
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          width="100%"
+          style={{ display: 'block', minWidth: Math.min(svgW, 320) }}
+          aria-label="Signal score ranking bar chart"
+        >
+          <defs>{gradDefs}</defs>
+
+          {/* Title row */}
+          <text x={LEFT_PAD} y={18} fontSize={10} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">
+            SYMBOL
+          </text>
+          <text x={LEFT_PAD + BAR_AREA_W * 0.5} y={18} textAnchor="middle" fontSize={10} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">
+            SCORE
+          </text>
+          <text x={LEFT_PAD + BAR_AREA_W + 8} y={18} fontSize={10} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">
+            SIDE
+          </text>
+          <text x={svgW - 4} y={18} textAnchor="end" fontSize={10} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">
+            STRATS
+          </text>
+
+          {/* 50% dashed vertical line */}
+          <line
+            x1={x50} y1={TOP_PAD - 8}
+            x2={x50} y2={TOP_PAD + n * ROW_H + 4}
+            stroke={C.border}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+          />
+          <text x={x50} y={TOP_PAD - 10} textAnchor="middle" fontSize={9} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">
+            50%
+          </text>
+
+          {/* 70% dashed vertical line */}
+          <line
+            x1={x70} y1={TOP_PAD - 8}
+            x2={x70} y2={TOP_PAD + n * ROW_H + 4}
+            stroke={`${C.bull}70`}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+          />
+          <text x={x70} y={TOP_PAD - 10} textAnchor="middle" fontSize={9} fill={`${C.bull}cc`} fontFamily="Inter, system-ui, sans-serif">
+            70%
+          </text>
+
+          {/* Rows */}
+          {sorted.map((entry, i) => {
+            const y = TOP_PAD + i * ROW_H;
+            const barW = Math.max(2, (entry.score / 100) * BAR_AREA_W);
+            const midY = y + ROW_H / 2;
+            const sc = sideColor(entry.side);
+            const scoreX = LEFT_PAD + barW + 6;
+
+            return (
+              <g key={entry.symbol}>
+                {/* Row background (subtle zebra) */}
+                {i % 2 === 0 && (
+                  <rect
+                    x={0} y={y + 2}
+                    width={svgW} height={ROW_H - 4}
+                    fill={`${C.surface}80`}
+                    rx={4}
+                  />
+                )}
+
+                {/* Symbol label */}
+                <text
+                  x={LEFT_PAD - 6}
+                  y={midY + 4}
+                  textAnchor="end"
+                  fontSize={11}
+                  fontWeight="700"
+                  fill={C.text}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {entry.symbol}
+                </text>
+
+                {/* Bar track background */}
+                <rect
+                  x={LEFT_PAD} y={midY - 8}
+                  width={BAR_AREA_W} height={16}
+                  fill={C.surface}
+                  rx={4}
+                />
+
+                {/* Bar fill */}
+                <rect
+                  x={LEFT_PAD} y={midY - 8}
+                  width={barW} height={16}
+                  fill={`url(#bar-grad-${i})`}
+                  rx={4}
+                />
+
+                {/* Score number at end of bar */}
+                <text
+                  x={Math.min(scoreX, LEFT_PAD + BAR_AREA_W - 4)}
+                  y={midY + 4}
+                  fontSize={10}
+                  fontWeight="700"
+                  fill={C.text}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {Math.round(entry.score)}
+                </text>
+
+                {/* Side badge pill */}
+                <rect
+                  x={LEFT_PAD + BAR_AREA_W + 8}
+                  y={midY - 8}
+                  width={42}
+                  height={16}
+                  fill={`${sc}22`}
+                  stroke={`${sc}55`}
+                  strokeWidth={1}
+                  rx={8}
+                />
+                <text
+                  x={LEFT_PAD + BAR_AREA_W + 29}
+                  y={midY + 4}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontWeight="700"
+                  fill={sc}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {entry.side}
+                </text>
+
+                {/* Strategy count */}
+                <text
+                  x={svgW - 4}
+                  y={midY + 4}
+                  textAnchor="end"
+                  fontSize={10}
+                  fill={C.muted}
+                  fontFamily="Inter, system-ui, sans-serif"
+                >
+                  {entry.stratCount}/{entry.stratTotal} ✓
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Bottom axis baseline */}
+          <line
+            x1={LEFT_PAD} y1={TOP_PAD + n * ROW_H + 6}
+            x2={LEFT_PAD + BAR_AREA_W} y2={TOP_PAD + n * ROW_H + 6}
+            stroke={C.border}
+            strokeWidth={1}
+          />
+          <text x={LEFT_PAD} y={TOP_PAD + n * ROW_H + 18} fontSize={9} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">0</text>
+          <text x={LEFT_PAD + BAR_AREA_W} y={TOP_PAD + n * ROW_H + 18} textAnchor="end" fontSize={9} fill={C.muted} fontFamily="Inter, system-ui, sans-serif">100</text>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // ─── Market Heatmap with timestamp wrapper ─────────────────────────────────────
 
 function MarketHeatmapSection({ payload, loading }: { payload: SignalsPayload | null; loading: boolean }) {
@@ -987,6 +1266,11 @@ export default function SignalsPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Signal Score Ranking ────────────────────────────────────────── */}
+      {signalsData !== null && (
+        <SignalScoreRanking signals={signalsData?.signals ?? {}} />
+      )}
 
       {/* ── Market Heatmap ───────────────────────────────────────────────── */}
       <MarketHeatmapSection payload={signalsData} loading={loading} />
