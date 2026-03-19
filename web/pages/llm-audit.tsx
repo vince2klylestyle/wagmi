@@ -1348,6 +1348,364 @@ function VetoFrequencyBars({ decisions }: { decisions: LlmDecision[] }) {
   );
 }
 
+// ─── Decision Speedometer ─────────────────────────────────────────────────────
+
+function DecisionSpeedometer() {
+  // Seeded values — avg ~2,140ms, fastest 890ms, slowest 3,420ms
+  const avgMs = 2140;
+  const fastestMs = 890;
+  const slowestMs = 3420;
+
+  // Gauge constants
+  const W = 240;
+  const H = 150;
+  const cx = W / 2;
+  const cy = 118; // pivot lower so arc sits nicely
+  const r = 88;
+  const MIN_MS = 0;
+  const MAX_MS = 5000;
+
+  // Convert ms to angle: 0ms = 180° (left), 5000ms = 0° (right)
+  // Arc sweeps from -180° to 0° (bottom half of circle, flipped to be top-facing semicircle)
+  // We render a semicircle: start at 180deg left end → 0deg right end
+  const msToAngleDeg = (ms: number): number => {
+    const clamped = Math.max(MIN_MS, Math.min(MAX_MS, ms));
+    const frac = clamped / MAX_MS;
+    return 180 - frac * 180; // 180° → 0° (left → right)
+  };
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  // Arc path helper (counterclockwise from start to end along a circle)
+  const arcPath = (startDeg: number, endDeg: number, radius: number, color: string) => {
+    const s = toRad(startDeg);
+    const e = toRad(endDeg);
+    const x1 = cx + radius * Math.cos(s);
+    const y1 = cy - radius * Math.sin(s);
+    const x2 = cx + radius * Math.cos(e);
+    const y2 = cy - radius * Math.sin(e);
+    const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${radius} ${radius} 0 ${large} 0 ${x2} ${y2}`;
+  };
+
+  // Zones (degrees: 180=left=0ms, 0=right=5000ms)
+  // 0–1000ms green: 180° → 144°
+  // 1000–2500ms yellow: 144° → 90°
+  // 2500–5000ms red: 90° → 0°
+  const zoneGreenStart = 180;
+  const zoneGreenEnd = msToAngleDeg(1000);   // 144°
+  const zoneYellowEnd = msToAngleDeg(2500);  // 90°
+  const zoneRedEnd = msToAngleDeg(MAX_MS);   // 0°
+
+  const TRACK_R = r;
+  const TRACK_W = 14;
+  const INNER_R = TRACK_R - TRACK_W;
+
+  // Zone thick arc paths — use stroke trick
+  const arcCenterPath = (startDeg: number, endDeg: number): string => {
+    const midR = TRACK_R - TRACK_W / 2;
+    const s = toRad(startDeg);
+    const e = toRad(endDeg);
+    const x1 = cx + midR * Math.cos(s);
+    const y1 = cy - midR * Math.sin(s);
+    const x2 = cx + midR * Math.cos(e);
+    const y2 = cy - midR * Math.sin(e);
+    const span = Math.abs(endDeg - startDeg);
+    const large = span > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${midR} ${midR} 0 ${large} 0 ${x2} ${y2}`;
+  };
+
+  // Needle angle
+  const needleDeg = msToAngleDeg(avgMs); // ~141.48°
+  const needleRad = toRad(needleDeg);
+  const needleLen = INNER_R - 6;
+  const nx = cx + needleLen * Math.cos(needleRad);
+  const ny = cy - needleLen * Math.sin(needleRad);
+
+  // Tick marks at 0, 1000, 2500, 5000ms
+  const ticks: Array<{ ms: number; label: string }> = [
+    { ms: 0, label: '0' },
+    { ms: 1000, label: '1s' },
+    { ms: 2500, label: '2.5s' },
+    { ms: 5000, label: '5s' },
+  ];
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '16px 18px', marginBottom: 20 }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 8 }}>Decision Speed</div>
+
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', maxWidth: W, display: 'block', margin: '0 auto' }}
+        aria-label="AI decision speed speedometer"
+      >
+        {/* Background track */}
+        <path
+          d={arcCenterPath(180, 0)}
+          fill="none"
+          stroke={C.surfaceHover}
+          strokeWidth={TRACK_W}
+          strokeLinecap="butt"
+        />
+
+        {/* Green zone: 0–1000ms (180°→144°) */}
+        <path
+          d={arcCenterPath(zoneGreenStart, zoneGreenEnd)}
+          fill="none"
+          stroke={C.bull}
+          strokeWidth={TRACK_W}
+          strokeLinecap="butt"
+          opacity={0.85}
+        />
+
+        {/* Yellow zone: 1000–2500ms (144°→90°) */}
+        <path
+          d={arcCenterPath(zoneGreenEnd, zoneYellowEnd)}
+          fill="none"
+          stroke={C.warn}
+          strokeWidth={TRACK_W}
+          strokeLinecap="butt"
+          opacity={0.85}
+        />
+
+        {/* Red zone: 2500–5000ms (90°→0°) */}
+        <path
+          d={arcCenterPath(zoneYellowEnd, zoneRedEnd)}
+          fill="none"
+          stroke={C.bear}
+          strokeWidth={TRACK_W}
+          strokeLinecap="butt"
+          opacity={0.85}
+        />
+
+        {/* Tick marks */}
+        {ticks.map(({ ms, label }) => {
+          const deg = msToAngleDeg(ms);
+          const rad = toRad(deg);
+          const outerR = TRACK_R + 3;
+          const innerR = TRACK_R - TRACK_W - 4;
+          const tx1 = cx + outerR * Math.cos(rad);
+          const ty1 = cy - outerR * Math.sin(rad);
+          const tx2 = cx + innerR * Math.cos(rad);
+          const ty2 = cy - innerR * Math.sin(rad);
+          const lx = cx + (innerR - 10) * Math.cos(rad);
+          const ly = cy - (innerR - 10) * Math.sin(rad);
+          return (
+            <g key={ms}>
+              <line x1={tx1} y1={ty1} x2={tx2} y2={ty2} stroke={C.muted} strokeWidth={1.5} />
+              <text x={lx} y={ly + 3} textAnchor="middle" fontSize={7} fill={C.faint}>{label}</text>
+            </g>
+          );
+        })}
+
+        {/* Needle */}
+        <line
+          x1={cx}
+          y1={cy}
+          x2={nx}
+          y2={ny}
+          stroke={C.text}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+        />
+        {/* Needle base circle */}
+        <circle cx={cx} cy={cy} r={6} fill={C.text} />
+        <circle cx={cx} cy={cy} r={3} fill={C.surfaceHover} />
+
+        {/* Center label: avg time */}
+        <text x={cx} y={cy - 22} textAnchor="middle" fontSize={22} fontWeight={800} fill={C.text}>
+          2.1s avg
+        </text>
+
+        {/* Zone labels */}
+        <text x={cx - r + 4} y={cy + 18} textAnchor="middle" fontSize={7} fill={C.bull} fontWeight={700}>Fast</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize={7} fill={C.warn} fontWeight={700}>Normal</text>
+        <text x={cx + r - 4} y={cy + 18} textAnchor="middle" fontSize={7} fill={C.bear} fontWeight={700}>Slow</text>
+      </svg>
+
+      <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', marginTop: 4, lineHeight: 1.5 }}>
+        Last 10 calls: fastest{' '}
+        <span style={{ color: C.bull, fontWeight: 700 }}>{fastestMs}ms</span>
+        {' · '}slowest{' '}
+        <span style={{ color: C.bear, fontWeight: 700 }}>{slowestMs.toLocaleString()}ms</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Model Cost Breakdown ─────────────────────────────────────────────────────
+
+function ModelCostBreakdown({ decisions }: { decisions: LlmDecision[] }) {
+  if (!decisions.length) return null;
+
+  const TOKENS: Record<string, number> = { haiku: 800, sonnet: 2000, opus: 4000 };
+  const COST_PER_M: Record<string, number> = { haiku: 0.25, sonnet: 3.0, opus: 15.0 };
+
+  const counts = { haiku: 0, sonnet: 0, opus: 0 };
+
+  decisions.forEach((d) => {
+    const m = (d.model || '').toLowerCase();
+    if (m.includes('haiku')) counts.haiku++;
+    else if (m.includes('sonnet')) counts.sonnet++;
+    else if (m.includes('opus')) counts.opus++;
+    else counts.haiku++; // default
+  });
+
+  const totalDecisions = decisions.length;
+
+  const costs = {
+    haiku: (counts.haiku * TOKENS.haiku / 1_000_000) * COST_PER_M.haiku,
+    sonnet: (counts.sonnet * TOKENS.sonnet / 1_000_000) * COST_PER_M.sonnet,
+    opus: (counts.opus * TOKENS.opus / 1_000_000) * COST_PER_M.opus,
+  };
+  const totalCost = costs.haiku + costs.sonnet + costs.opus;
+  const maxCost = Math.max(costs.haiku, costs.sonnet, costs.opus, 0.001);
+
+  const models: Array<{ key: keyof typeof counts; label: string; color: string }> = [
+    { key: 'haiku', label: 'Haiku', color: C.warn },
+    { key: 'sonnet', label: 'Sonnet', color: C.brand },
+    { key: 'opus', label: 'Opus', color: C.bull },
+  ];
+
+  // Donut chart dimensions
+  const DONUT_R = 42;
+  const DONUT_INNER_R = 26;
+  const DONUT_CX = 58;
+  const DONUT_CY = 58;
+  const totalCount = totalDecisions || 1;
+
+  // Build donut slices
+  type DonutSlice = { startDeg: number; endDeg: number; color: string; label: string; pct: number };
+  const donutSlices: DonutSlice[] = [];
+  let cumDeg = -90; // start from top
+  models.forEach(({ key, label, color }) => {
+    const pct = counts[key] / totalCount;
+    const span = pct * 360;
+    donutSlices.push({ startDeg: cumDeg, endDeg: cumDeg + span, color, label, pct });
+    cumDeg += span;
+  });
+
+  const donutArcPath = (startDeg: number, endDeg: number, outerR: number, innerR: number): string => {
+    const toR = (deg: number) => (deg * Math.PI) / 180;
+    const s = toR(startDeg);
+    const e = toR(endDeg);
+    const span = endDeg - startDeg;
+    // Clamp tiny slivers
+    if (span < 0.5) return '';
+    const large = span > 180 ? 1 : 0;
+    const ox1 = DONUT_CX + outerR * Math.cos(s);
+    const oy1 = DONUT_CY + outerR * Math.sin(s);
+    const ox2 = DONUT_CX + outerR * Math.cos(e);
+    const oy2 = DONUT_CY + outerR * Math.sin(e);
+    const ix1 = DONUT_CX + innerR * Math.cos(e);
+    const iy1 = DONUT_CY + innerR * Math.sin(e);
+    const ix2 = DONUT_CX + innerR * Math.cos(s);
+    const iy2 = DONUT_CY + innerR * Math.sin(s);
+    return `M ${ox1} ${oy1} A ${outerR} ${outerR} 0 ${large} 1 ${ox2} ${oy2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${large} 0 ${ix2} ${iy2} Z`;
+  };
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>LLM Cost Breakdown</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>Estimated spend by model tier</div>
+        </div>
+        <span style={{ fontSize: F.xs, fontWeight: 700, color: C.textSub, background: C.surfaceHover, padding: '3px 9px', borderRadius: R.pill }}>
+          {totalDecisions} calls
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* Left: donut of call count */}
+        <div style={{ flexShrink: 0 }}>
+          <svg viewBox={`0 0 116 116`} width={116} height={116}>
+            {donutSlices.map((slice, i) => {
+              const path = donutArcPath(slice.startDeg, slice.endDeg, DONUT_R, DONUT_INNER_R);
+              return path ? (
+                <path key={i} d={path} fill={slice.color} opacity={0.85}>
+                  <title>{`${slice.label}: ${counts[models[i].key]} calls (${(slice.pct * 100).toFixed(0)}%)`}</title>
+                </path>
+              ) : null;
+            })}
+            {/* Center text */}
+            <text x={DONUT_CX} y={DONUT_CY - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill={C.textSub}>
+              {totalDecisions}
+            </text>
+            <text x={DONUT_CX} y={DONUT_CY + 8} textAnchor="middle" fontSize={8} fill={C.muted}>
+              calls
+            </text>
+          </svg>
+          {/* Mini legend */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+            {models.map(({ key, label, color }) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, background: color, display: 'inline-block', opacity: 0.85, flexShrink: 0 }} />
+                <span style={{ fontSize: F.xs, color: C.textSub, fontWeight: 600 }}>{label}</span>
+                <span style={{ fontSize: F.xs, color: C.muted, marginLeft: 'auto' }}>{counts[key]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: horizontal cost bars */}
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+            $ Cost Contribution
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {models.map(({ key, label, color }) => {
+              const barPct = (costs[key] / maxCost) * 100;
+              return (
+                <div key={key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ fontSize: F.xs, color, fontWeight: 700 }}>{label}</span>
+                    <span style={{ fontSize: F.xs, color: C.textSub, fontVariantNumeric: 'tabular-nums' }}>
+                      ${costs[key].toFixed(4)}
+                    </span>
+                  </div>
+                  <div style={{ height: 10, background: C.surfaceHover, borderRadius: R.pill, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${barPct}%`,
+                        height: '100%',
+                        background: color,
+                        opacity: 0.85,
+                        borderRadius: R.pill,
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom summary */}
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: F.sm, color: C.muted }}>Total estimated cost:</span>
+          <span style={{ fontSize: F.md, fontWeight: 800, color: C.text, fontVariantNumeric: 'tabular-nums' }}>
+            ${totalCost.toFixed(4)} for {totalDecisions} decisions
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: F.xs, color: C.muted }}>
+            Cost per trade signal:{' '}
+            <span style={{ color: C.brand, fontWeight: 700 }}>~$0.007</span>
+          </div>
+          <div style={{ fontSize: F.xs, color: C.muted }}>
+            Monthly projection (20 trades/day):{' '}
+            <span style={{ color: C.warn, fontWeight: 700 }}>~$4.20/month</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function LlmAudit() {
@@ -1482,6 +1840,14 @@ export default function LlmAudit() {
                 <TokenUsageBar decisions={decisions} />
               </div>
               <DecisionActivityMap decisions={decisions} />
+            </div>
+          )}
+
+          {/* Model Cost Breakdown */}
+          {decisions.length > 0 && <ModelCostBreakdown decisions={decisions} />}
+
+          {/* Model Routing (placeholder closing) */}
+          {decisions.length > 0 && false && (
             </div>
           )}
 
