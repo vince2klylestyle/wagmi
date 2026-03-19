@@ -1126,6 +1126,8 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
           const lossH = total > 0 ? (d.losses / maxTotal) * iH : 0;
           const x = pad.l + i * (iW / data.length) + 2;
           const wr = total > 0 ? Math.round((d.wins / total) * 100) : null;
+          const isBest = i === bestBucketIdx && total > 0;
+          const barTopY = pad.t + iH - lossH - winH;
 
           return (
             <g key={d.label}>
@@ -1141,8 +1143,13 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
               )}
               {/* Total count label */}
               {total > 0 && (
-                <text x={x + barW / 2} y={pad.t + iH - lossH - winH - 4}
+                <text x={x + barW / 2} y={barTopY - (isBest ? 14 : 4)}
                   textAnchor="middle" fontSize={8} fill={C.muted}>{total}</text>
+              )}
+              {/* Star for best performing bucket */}
+              {isBest && (
+                <text x={x + barW / 2} y={barTopY - 4}
+                  textAnchor="middle" fontSize={11} fill={C.warn}>★</text>
               )}
               {/* WR label inside if tall enough */}
               {wr != null && winH + lossH > 20 && (
@@ -1156,19 +1163,51 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
           );
         })}
 
+        {/* Mean duration vertical line */}
+        {(() => {
+          const xMean = pad.l + durationToFrac(meanDuration) * iW;
+          return (
+            <g>
+              <line x1={xMean} y1={pad.t} x2={xMean} y2={pad.t + iH}
+                stroke={C.brand} strokeWidth={1.2} strokeDasharray="4 3" />
+              <text x={xMean + 2} y={pad.t + 9} fontSize={7} fill={C.brand} fontFamily="Inter, system-ui">avg</text>
+            </g>
+          );
+        })()}
+
+        {/* Median duration vertical line */}
+        {(() => {
+          const xMedian = pad.l + durationToFrac(medianDuration) * iW;
+          return (
+            <g>
+              <line x1={xMedian} y1={pad.t} x2={xMedian} y2={pad.t + iH}
+                stroke={C.warn} strokeWidth={1.2} />
+              <text x={xMedian + 2} y={pad.t + 17} fontSize={7} fill={C.warn} fontFamily="Inter, system-ui">med</text>
+            </g>
+          );
+        })()}
+
         {/* Axis */}
         <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + iH} stroke={C.border} strokeWidth={0.5} />
         <line x1={pad.l} y1={pad.t + iH} x2={pad.l + iW} y2={pad.t + iH} stroke={C.border} strokeWidth={0.5} />
       </svg>
 
-      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: C.muted, marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: C.muted, marginTop: 8, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 10, height: 10, background: C.bull, borderRadius: 2, display: 'inline-block' }} /> Win
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 10, height: 10, background: C.bear, borderRadius: 2, display: 'inline-block' }} /> Loss
         </span>
-        <span>Number inside bar = win rate for that duration bucket</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 16, height: 2, background: C.brand, display: 'inline-block', verticalAlign: 'middle', borderTop: '1px dashed' }} /> Avg
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 16, height: 2, background: C.warn, display: 'inline-block', verticalAlign: 'middle' }} /> Median
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11, color: C.warn }}>★</span> Best win rate bucket
+        </span>
       </div>
     </div>
   );
