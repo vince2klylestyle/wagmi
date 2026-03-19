@@ -115,7 +115,7 @@ function LlmBrainBanner({ view }: { view: LlmMarketView | null }) {
   const symbols = Object.keys(view.per_symbol);
 
   return (
-    <div style={{ background: C.bg, border: `1px solid `, borderRadius: 12, padding: '16px 20px', marginBottom: 24, color: C.text }}>
+    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: '16px 20px', marginBottom: 24, color: C.text }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -162,7 +162,7 @@ function LlmBrainBanner({ view }: { view: LlmMarketView | null }) {
 
       {/* Summary text */}
       {view.summary && (
-        <div style={{ fontSize: 13, color: C.textSub, lineHeight: 1.6, borderTop: `1px solid `, paddingTop: 10 }}>
+        <div style={{ fontSize: 13, color: C.textSub, lineHeight: 1.6, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
           {view.summary}
         </div>
       )}
@@ -228,7 +228,7 @@ function LlmDecisionPanel({ decision }: { decision: LlmDecision | null }) {
       </div>
 
       {decision.notes && (
-        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.6, borderTop: `1px solid `, paddingTop: 8, marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: C.textSub, lineHeight: 1.6, borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 4 }}>
           {decision.notes}
         </div>
       )}
@@ -2385,6 +2385,51 @@ function StrategyConsensusGauge() {
           {current.confidence}%
         </strong>
       </div>
+    </div>
+  );
+}
+
+// ─── How It Works (collapsed) ────────────────────────────────────────────────
+
+function HowItWorksCollapsed() {
+  const [open, setOpen] = useState(false);
+
+  const steps = [
+    { n: '1', text: 'The bot scans BTC, SOL, and HYPE every 60 seconds using 4 independent strategies.' },
+    { n: '2', text: 'The LLM Brain (Claude AI) evaluates each setup in advisory mode — it logs what it would trade but does NOT execute.' },
+    { n: '3', text: 'Each signal card shows technical data, AI reasoning, price zones, and a step-by-step trade guide for Hyperliquid.' },
+    { n: '4', text: 'Always use a stop loss. Start with small size. This is a tool, not a guarantee.' },
+  ];
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '12px 16px', background: C.info + '10', border: `1px solid ${C.info}30`,
+          borderRadius: open ? `${R.md}px ${R.md}px 0 0` : R.md,
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.info }}>How to Copy Trade</span>
+        <span style={{ color: C.muted, fontSize: 12, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+      </button>
+      {open && (
+        <div style={{ padding: '14px 16px', background: C.info + '08', border: `1px solid ${C.info}30`, borderTop: 'none', borderRadius: `0 0 ${R.md}px ${R.md}px` }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {steps.map((s) => (
+              <div key={s.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ minWidth: 22, height: 22, borderRadius: '50%', background: C.info + '30', color: C.info, fontWeight: 800, fontSize: F.xs, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</span>
+                <span style={{ fontSize: F.sm, color: C.textSub, lineHeight: 1.6 }}>{s.text}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: F.xs, color: C.muted, padding: '8px 12px', background: C.warn + '12', border: `1px solid ${C.warn}30`, borderRadius: R.sm }}>
+            <strong>Risk Warning:</strong> Not financial advice. All signals are informational. Never risk more than you can afford to lose.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

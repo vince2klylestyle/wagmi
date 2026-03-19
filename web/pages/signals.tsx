@@ -644,12 +644,26 @@ type RankEntry = {
 function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
   const hasRealSignals = Object.keys(signals).length > 0;
 
-  // Build ranked entries from real signals or fall back to example data
-  const entries: RankEntry[] = hasRealSignals
-    ? Object.entries(signals).map(([sym, sig]) => {
+  if (!hasRealSignals) {
+    return (
+      <div style={{
+        background: G.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.lg,
+        padding: '40px 24px',
+        marginBottom: 28,
+        textAlign: 'center',
+        color: C.muted,
+      }}>
+        <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 8 }}>Signal Ranking — Live Scores</div>
+        <div style={{ fontSize: F.sm }}>No signal data yet. Rankings will appear once the bot starts evaluating markets.</div>
+      </div>
+    );
+  }
+
+  // Build ranked entries from real signals
+  const entries: RankEntry[] = Object.entries(signals).map(([sym, sig]) => {
         const score = sig.signal_score ?? 0;
-        // Derive side proxy: score >= 60 → BUY lean, score <= 40 → SELL lean, else NEUTRAL
-        // (Signal type has no side field so we infer from score + trend)
         const sma20 = sig.sma20 ?? 0;
         const sma50 = sig.sma50 ?? 0;
         const trendUp = sma50 > 0 && sma20 > sma50;
@@ -659,7 +673,6 @@ function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
         else if (score >= 60 && trendDown) side = 'SELL';
         else if (score >= 60) side = 'BUY';
         else if (score < 40) side = 'SELL';
-        // Strategy count: vol_spike + rsi present + atr_pct present + zones present
         const checks = [
           sig.rsi != null,
           sig.atr_pct != null,
@@ -668,12 +681,7 @@ function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
         ];
         const stratCount = checks.filter(Boolean).length;
         return { symbol: sym, score, side, stratCount, stratTotal: 4 };
-      })
-    : [
-        { symbol: 'BTC', score: 82, side: 'BUY', stratCount: 3, stratTotal: 4 },
-        { symbol: 'HYPE', score: 74, side: 'BUY', stratCount: 4, stratTotal: 4 },
-        { symbol: 'SOL', score: 61, side: 'NEUTRAL', stratCount: 2, stratTotal: 4 },
-      ];
+      });
 
   // Sort descending by score
   const sorted = [...entries].sort((a, b) => b.score - a.score);
@@ -731,7 +739,6 @@ function SignalScoreRanking({ signals }: { signals: Record<string, Signal> }) {
           <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Ranking — Live Scores</div>
           <div style={{ fontSize: F.xs, color: C.muted, marginTop: 3 }}>
             70% = bot considers trading&nbsp;&nbsp;·&nbsp;&nbsp;50% = monitor zone
-            {!hasRealSignals && <span style={{ color: C.muted, marginLeft: 8 }}>(example data)</span>}
           </div>
         </div>
         {/* Legend */}
@@ -1833,7 +1840,7 @@ function SignalQualityTrendChart({ signals }: { signals: Record<string, Signal> 
           <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Signal Score Trend (last 20 checks)</div>
           <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
             How signal quality has tracked across recent evaluation cycles
-            {!signals && <span style={{ marginLeft: 8 }}>(example data)</span>}
+            <span style={{ marginLeft: 8, color: C.faint }}>(trend line is illustrative; last point = live score)</span>
           </div>
         </div>
         {/* Legend */}
