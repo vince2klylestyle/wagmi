@@ -455,6 +455,88 @@ function VetoAnalysis({ decisions }: { decisions: LlmDecision[] }) {
   );
 }
 
+// ─── Symbol Decision Grid ─────────────────────────────────────────────────────
+
+function SymbolDecisionGrid({ decisions }: { decisions: LlmDecision[] }) {
+  if (!decisions.length) return null;
+
+  // Build per-symbol stats
+  const bySymbol: Record<string, { proceed: number; skip: number; veto: number; total: number; avgConf: number; confSum: number }> = {};
+  decisions.forEach((d) => {
+    const sym = d.symbol || 'UNKNOWN';
+    if (!bySymbol[sym]) bySymbol[sym] = { proceed: 0, skip: 0, veto: 0, total: 0, avgConf: 0, confSum: 0 };
+    bySymbol[sym].total++;
+    bySymbol[sym].confSum += d.confidence ?? 0;
+    if (d.is_veto) bySymbol[sym].veto++;
+    else if (['proceed', 'go'].includes((d.action || '').toLowerCase())) bySymbol[sym].proceed++;
+    else bySymbol[sym].skip++;
+  });
+  Object.values(bySymbol).forEach((v) => { v.avgConf = v.total > 0 ? v.confSum / v.total : 0; });
+
+  const symbols = Object.entries(bySymbol).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
+  if (symbols.length === 0) return null;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Per-Symbol Decision Breakdown</div>
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>GO / SKIP / VETO count per symbol with avg confidence</div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 10 }}>
+          {[['GO', C.bull], ['SKIP', C.muted], ['VETO', C.bear]].map(([label, color]) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, color: color as string }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: color as string, display: 'inline-block' }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {symbols.map(([sym, s]) => {
+          const goW = s.total > 0 ? (s.proceed / s.total) * 100 : 0;
+          const skipW = s.total > 0 ? (s.skip / s.total) * 100 : 0;
+          const vetoW = s.total > 0 ? (s.veto / s.total) * 100 : 0;
+          const confPct = Math.round(s.avgConf * 100);
+          const confColor = confPct >= 65 ? C.bull : confPct >= 42 ? C.warn : C.bear;
+          return (
+            <div key={sym} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 48, fontSize: F.xs, fontWeight: 800, color: C.text, flexShrink: 0, textAlign: 'right' }}>{sym}</span>
+              {/* Stacked bar */}
+              <div style={{ flex: 1, height: 16, borderRadius: R.pill, overflow: 'hidden', display: 'flex', background: C.surface, minWidth: 100 }}>
+                {goW > 0 && (
+                  <div
+                    title={`GO: ${s.proceed}`}
+                    style={{ width: `${goW}%`, background: C.bull, opacity: 0.85, transition: 'width 0.3s' }}
+                  />
+                )}
+                {skipW > 0 && (
+                  <div
+                    title={`SKIP: ${s.skip}`}
+                    style={{ width: `${skipW}%`, background: C.muted, opacity: 0.5, transition: 'width 0.3s' }}
+                  />
+                )}
+                {vetoW > 0 && (
+                  <div
+                    title={`VETO: ${s.veto}`}
+                    style={{ width: `${vetoW}%`, background: C.bear, opacity: 0.85, transition: 'width 0.3s' }}
+                  />
+                )}
+              </div>
+              {/* Counts */}
+              <span style={{ fontSize: 10, color: C.muted, width: 80, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                {s.proceed}G·{s.skip}S·{s.veto}V
+              </span>
+              {/* Avg confidence */}
+              <span style={{ fontSize: 10, fontWeight: 700, color: confColor, width: 36, flexShrink: 0, textAlign: 'right' }}>{confPct}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Action Rate Timeline ─────────────────────────────────────────────────────
 
 function ActionRateTimeline({ decisions }: { decisions: LlmDecision[] }) {
@@ -788,6 +870,9 @@ export default function LlmAudit() {
 
       {/* Action Rate Timeline */}
       {decisions.length >= 6 && <ActionRateTimeline decisions={decisions} />}
+
+      {/* Per-Symbol Decision Grid */}
+      {decisions.length > 0 && <SymbolDecisionGrid decisions={decisions} />}
 
       {/* Veto Analysis */}
       {decisions.some((d) => d.is_veto) && (

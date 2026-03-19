@@ -5,6 +5,87 @@ import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
 import { apiFetch } from '../src/api';
 import type { ActivityFeedResponse, ActivityEvent, LlmMarketView, TradeHistoryResponse, TradeRecord } from '../src/types';
 
+// ─── Watchlist Score Visual ───────────────────────────────────────────────────
+
+type WatchItem = { sym: string; setup: string; trigger: string; quality: number; eta: string; strategies: string };
+
+function WatchlistScoreChart({ items }: { items: WatchItem[] }) {
+  if (!items.length) return null;
+  const W = 480, H = 120;
+  const barH = 22, gap = 14, paddingL = 56, paddingR = 80;
+  const chartW = W - paddingL - paddingR;
+  const totalH = items.length * (barH + gap) + 20;
+
+  const stratBadge = (s: string) => {
+    const [n, d] = s.split('/');
+    const frac = Number(d) > 0 ? Number(n) / Number(d) : 0;
+    return frac >= 0.75 ? C.bull : frac >= 0.5 ? C.warn : C.muted;
+  };
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 18px' }}>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Pre-Score Ranking</div>
+      <svg viewBox={`0 0 ${W} ${totalH}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          {items.map((item, i) => {
+            const col = item.quality >= 75 ? C.bull : item.quality >= 60 ? C.warn : C.muted;
+            return (
+              <linearGradient key={i} id={`wg${i}`} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={col} stopOpacity="0.85" />
+                <stop offset="100%" stopColor={col} stopOpacity="0.25" />
+              </linearGradient>
+            );
+          })}
+        </defs>
+        {/* Grid lines */}
+        {[0, 25, 50, 75, 100].map(pct => {
+          const x = paddingL + (pct / 100) * chartW;
+          return (
+            <g key={pct}>
+              <line x1={x} y1={10} x2={x} y2={totalH - 10} stroke={C.border} strokeWidth={0.5} strokeDasharray="3 4" />
+              <text x={x} y={totalH - 2} textAnchor="middle" fontSize={8} fill={C.muted}>{pct}</text>
+            </g>
+          );
+        })}
+        {items.map((item, i) => {
+          const y = 14 + i * (barH + gap);
+          const barW = (item.quality / 100) * chartW;
+          const col = item.quality >= 75 ? C.bull : item.quality >= 60 ? C.warn : C.muted;
+          return (
+            <g key={i}>
+              {/* Symbol label */}
+              <text x={paddingL - 6} y={y + barH / 2 + 1} textAnchor="end" dominantBaseline="middle" fontSize={10} fontWeight="700" fill={C.text}>{item.sym}</text>
+              {/* Background bar */}
+              <rect x={paddingL} y={y} width={chartW} height={barH} rx={4} fill={C.surface} />
+              {/* Score bar */}
+              <rect x={paddingL} y={y} width={barW} height={barH} rx={4} fill={`url(#wg${i})`} />
+              {/* Score label */}
+              <text x={paddingL + barW + 6} y={y + barH / 2 + 1} dominantBaseline="middle" fontSize={10} fontWeight="700" fill={col}>{item.quality}</text>
+              {/* Strategies */}
+              <text x={W - paddingR + 30} y={y + barH / 2 + 1} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill={stratBadge(item.strategies)}>{item.strategies}</text>
+            </g>
+          );
+        })}
+        {/* Header labels */}
+        <text x={paddingL - 6} y={6} textAnchor="end" fontSize={8} fill={C.muted}>SYM</text>
+        <text x={W - paddingR + 30} y={6} textAnchor="middle" fontSize={8} fill={C.muted}>STRAT</text>
+      </svg>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 10, color: C.muted }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 1, background: C.bull, display: 'inline-block' }} /> ≥75 Strong
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 1, background: C.warn, display: 'inline-block' }} /> 60-74 Moderate
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 1, background: C.muted, display: 'inline-block' }} /> &lt;60 Weak
+        </span>
+        <span style={{ marginLeft: 'auto', color: C.faint }}>STRAT = strategies aligned</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Regime Colors ────────────────────────────────────────────────────────────
 
 function regimeStyle(regime: string): { bg: string; border: string; text: string; label: string } {
@@ -515,30 +596,38 @@ export default function TodayPage() {
           {/* ── What the Bot Is Watching ── */}
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text }}>What the Bot Is Watching</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
+            {(() => {
+              const watchItems: WatchItem[] = [
                 { sym: 'BTC', setup: 'Breakout continuation', trigger: 'Close above $68,400 on 1h', quality: 78, eta: '2–4h', strategies: '3/4' },
                 { sym: 'SOL', setup: 'Accumulation zone bounce', trigger: 'Hold above $145 with vol spike', quality: 62, eta: 'If BTC confirms', strategies: '2/4' },
                 { sym: 'HYPE', setup: 'Momentum continuation', trigger: 'RSI reset + 6h uptrend', quality: 71, eta: 'Today', strategies: '3/4' },
-              ].map((s) => (
-                <div key={s.sym} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div>
-                      <span style={{ fontWeight: 800, color: C.text }}>{s.sym}</span>
-                      <span style={{ marginLeft: 8, fontSize: F.xs, color: C.muted }}>{s.setup}</span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: F.xs, fontWeight: 700, color: s.quality >= 70 ? C.bull : C.warn }}>Pre-score: {s.quality}</span>
-                    </div>
+              ];
+              return (
+                <>
+                  <WatchlistScoreChart items={watchItems} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                    {watchItems.map((s) => (
+                      <div key={s.sym} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <div>
+                            <span style={{ fontWeight: 800, color: C.text }}>{s.sym}</span>
+                            <span style={{ marginLeft: 8, fontSize: F.xs, color: C.muted }}>{s.setup}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: F.xs, fontWeight: 700, color: s.quality >= 70 ? C.bull : C.warn }}>Pre-score: {s.quality}</span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: F.xs, color: C.textSub, marginBottom: 4 }}>Trigger: {s.trigger}</div>
+                        <div style={{ display: 'flex', gap: 12, fontSize: 10, color: C.muted }}>
+                          <span>Strategies: {s.strategies}</span>
+                          <span>ETA: {s.eta}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: F.xs, color: C.textSub, marginBottom: 4 }}>Trigger: {s.trigger}</div>
-                  <div style={{ display: 'flex', gap: 12, fontSize: 10, color: C.muted }}>
-                    <span>Strategies: {s.strategies}</span>
-                    <span>ETA: {s.eta}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
