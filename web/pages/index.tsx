@@ -589,7 +589,7 @@ export default function Home() {
             alignItems: 'center',
           }}
         >
-          <span>⚠ API not responding — data may be stale. Check that the API server is running.</span>
+          <span>⚠ Can't reach the API — showing cached data. Your positions are unaffected. Check that the API server is running.</span>
           <button
             onClick={() => window.location.reload()}
             style={{ background: 'none', border: `1px solid #d97706`, borderRadius: R.sm, padding: '2px 10px', fontSize: F.xs, cursor: 'pointer', color: '#92400e' }}
@@ -604,18 +604,18 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
-              Dashboard
+              The Trading Brain Running 24/7
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: F.sm, color: C.muted }}>
-              Live signals · AI analysis · Real-time market intelligence
+              Seven AI models analyze every major crypto pair, every 15 minutes. You see the verdict — and exactly why.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '6px 14px', borderRadius: R.md }}>
-              View Results →
+              See the Track Record →
             </Link>
             <Link href="/copy-trade" style={{ fontSize: F.sm, color: '#fff', fontWeight: 600, textDecoration: 'none', background: C.brand, padding: '6px 14px', borderRadius: R.md }}>
-              Copy Trade →
+              Follow a Signal →
             </Link>
           </div>
         </div>
@@ -686,7 +686,7 @@ export default function Home() {
             borderRadius: R.pill,
             flexShrink: 0,
           }}>
-            View Signal Feed →
+            See Live Analysis →
           </Link>
         </div>
       )}
@@ -815,11 +815,11 @@ export default function Home() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 20 }}>🧠</span>
-              <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>AI Brain Summary</span>
-              <span style={{ fontSize: F.xs, padding: '2px 8px', borderRadius: R.pill, background: '#1e293b', color: C.muted }}>Advisory Mode</span>
+              <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>Live AI Assessment</span>
+              <span style={{ fontSize: F.xs, padding: '2px 8px', borderRadius: R.pill, background: '#1e293b', color: C.muted }} title="The bot analyzes and flags opportunities — it does not auto-execute trades">Advisory Mode · signals only</span>
             </div>
             <Link href="/signals" style={{ fontSize: F.xs, color: C.brand, fontWeight: 600, textDecoration: 'none' }}>
-              Full signal feed →
+              See every decision →
             </Link>
           </div>
 
@@ -889,7 +889,7 @@ export default function Home() {
           </div>
         ) : strategies.length === 0 ? (
           <div style={{ padding: '24px', background: C.card, borderRadius: R.lg, border: `1px solid ${C.border}`, textAlign: 'center', color: C.muted, fontSize: F.sm }}>
-            No strategies registered yet. Start the bot to populate strategy data.
+            Strategies appear here once the bot starts scanning. Nothing active yet — start the bot to begin receiving signals.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
@@ -917,12 +917,12 @@ export default function Home() {
           }}
         >
           <div>
-            <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>Latest backtest results</div>
+            <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 4 }}>{btRes.config?.days ?? 30}-day paper trading · full log available</div>
             <div style={{ fontSize: F['2xl'], fontWeight: 800, color: C.bull }}>
               {fmtPct(btRes.total_return_pct)} return · {(btRes.win_rate * 100).toFixed(0)}% win rate
             </div>
             <div style={{ fontSize: F.sm, color: C.textSub, marginTop: 4 }}>
-              {btRes.total_trades} trades · {fmtUsd(btRes.net_pnl)} net profit · {btRes.profit_factor?.toFixed(2)}× profit factor
+              {btRes.total_trades} closed trades · {fmtUsd(btRes.net_pnl)} net profit · {btRes.profit_factor?.toFixed(2)}× profit factor
             </div>
           </div>
           <Link
@@ -939,7 +939,7 @@ export default function Home() {
               boxShadow: S.glow,
             }}
           >
-            See Full Results →
+            Verify the Performance →
           </Link>
         </div>
       )}

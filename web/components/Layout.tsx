@@ -5,16 +5,16 @@ import { C, R, S, timeAgo } from '../src/theme';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
-  { href: '/signals', label: '🔴 Signals' },
-  { href: '/copy-trade', label: 'Copy Trade' },
+  { href: '/signals', label: 'Live Signals' },
+  { href: '/copy-trade', label: 'Trade This' },
   { href: '/portfolio', label: 'Portfolio' },
-  { href: '/results', label: 'Results' },
+  { href: '/results', label: 'Track Record' },
   { href: '/performance', label: 'Performance' },
   { href: '/backtest', label: 'Backtest' },
   { href: '/forensics', label: 'Forensics' },
-  { href: '/llm-audit', label: 'LLM Audit' },
-  { href: '/strategies', label: 'Strategies' },
-  { href: '/learn', label: 'Learn' },
+  { href: '/llm-audit', label: 'AI Audit' },
+  { href: '/strategies', label: 'How It Trades' },
+  { href: '/learn', label: 'Understand' },
 ];
 
 function resolveApiBase(): string {
@@ -275,9 +275,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           lineHeight: 1.7,
         }}
       >
-        <strong style={{ color: C.textSub }}>WAGMI</strong> — AI-powered crypto trading intelligence.{' '}
-        <strong>Not financial advice.</strong> All signals are for informational purposes only.
-        Past performance does not guarantee future results. Always use a stop loss.
+        <strong style={{ color: C.textSub }}>WAGMI</strong> — AI-driven market analysis for informational purposes only. Nothing on this platform
+        is financial advice — you are responsible for your own trading decisions. Crypto markets carry significant
+        risk. Historical results don't predict future performance. Trade responsibly, and always define your risk before entering a position.
+        &nbsp; © 2026 WAGMI
       </footer>
 
       {/* Responsive styles via style tag */}

@@ -542,10 +542,10 @@ export default function Learn() {
           Knowledge Base
         </div>
         <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
-          Learn
+          Understand the Edge
         </h1>
         <p style={{ margin: '6px 0 0', fontSize: F.sm, color: C.muted, maxWidth: 600 }}>
-          Everything you need to understand what the bot is doing, why it trades when it does, and how to make better decisions yourself.
+          Every signal explained. Every decision unpacked. The more you know, the better you'll trade.
         </p>
       </div>
 
