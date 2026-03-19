@@ -1427,8 +1427,8 @@ function WalkForwardChart() {
             const trainY  = toY(seg.trainRet);
             const trainH  = Math.max(1, toY(0) - trainY);
 
-            const testY   = toY(Math.max(0, seg.testRet));
-            const testH   = Math.max(1, toY(0) - testY);
+            const testY   = seg.testRet >= 0 ? toY(seg.testRet) : toY(0);
+            const testH   = Math.max(1, seg.testRet >= 0 ? toY(0) - toY(seg.testRet) : toY(seg.testRet) - toY(0));
             const testColor = seg.testRet >= 0 ? TEST_POS : TEST_NEG;
 
             return (

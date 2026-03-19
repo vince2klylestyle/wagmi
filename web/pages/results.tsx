@@ -110,7 +110,8 @@ function EquityCurveChart({ points, width = 700, height = 200 }: { points: Equit
   // Trade entry/exit markers: points with >0.5% move vs previous
   const tradeMarkers: Array<{ i: number; gain: boolean }> = [];
   for (let i = 1; i < equities.length; i++) {
-    const change = (equities[i] - equities[i - 1]) / equities[i - 1];
+    const prev = equities[i - 1];
+    const change = prev !== 0 ? (equities[i] - prev) / prev : 0;
     if (Math.abs(change) > 0.005) {
       tradeMarkers.push({ i, gain: change > 0 });
     }
