@@ -1433,7 +1433,7 @@ const GLOSSARY = [
   { term: 'Equity Curve', def: 'A chart showing account equity over time. A smooth upward-sloping curve with small drawdowns is the goal. The bot\'s backtest results page shows the equity curve for all tested periods.' },
   { term: 'Max Drawdown', def: 'The largest peak-to-trough decline in equity during a trading period. A strategy with a 30% max drawdown would have caused an account to fall 30% from its peak before recovering. Lower is better.' },
   { term: 'Calmar Ratio', def: 'Annual return divided by maximum drawdown. A ratio above 1.0 means the strategy earns more annually than its worst drawdown. Higher is better.' },
-  { term: 'Win Rate', def: 'The percentage of trades that are profitable. A strategy can be profitable with a win rate below 50% if the average win is much larger than the average loss. The bot currently targets win rates above 60%.' },
+  { term: 'Win Rate', def: 'The percentage of trades that are profitable. A strategy can be profitable with a win rate below 50% if the average win is much larger than the average loss. See the live track record at /forensics for the bot\'s actual win rate.' },
   { term: 'Expectancy', def: 'The average profit per trade, accounting for both win rate and average win/loss size. Formula: (WinRate × AvgWin) − (LossRate × AvgLoss). Positive expectancy means the system is profitable over many trades.' },
 ];
 
@@ -2226,11 +2226,11 @@ function RiskOfRuinChart() {
   // Safe zone threshold (ruin < 5%)
   const safeThresholdY = toY(0.05);
 
-  // Bot win rate reference line
-  const botWR = 0.77;
+  // Example reference line at 60% win rate (illustrative, not a claimed bot stat)
+  const botWR = 0.60;
   const botX = toX(botWR);
 
-  // Bot current ruin at 1.5% risk
+  // Ruin at 60% WR, 1.5% risk
   const botRoR = ror(botWR, 1.5);
 
   // Build polyline points for each curve
@@ -2331,17 +2331,17 @@ function RiskOfRuinChart() {
             />
           ))}
 
-          {/* Bot win rate reference line */}
+          {/* Reference line at 60% win rate (illustrative example) */}
           <line
             x1={botX} y1={padT}
             x2={botX} y2={padT + iH}
             stroke={C.brand as string} strokeWidth={1.5} strokeDasharray="5 3"
           />
           <text x={botX + 4} y={padT + 12} fontSize={9} fontWeight={700} fill={C.brand as string}>
-            WAGMI Bot: 77%
+            Example: 60% WR
           </text>
 
-          {/* Dot at 77% WR, 1.5% risk */}
+          {/* Dot at 60% WR, 1.5% risk */}
           {(() => {
             const dotRoR = ror(botWR, 1.5);
             const dotX = botX;
@@ -2351,7 +2351,7 @@ function RiskOfRuinChart() {
               <g>
                 <circle cx={dotX} cy={clampedDotY} r={6} fill={C.bull as string} stroke={C.card as string} strokeWidth={2} />
                 <text x={dotX + 10} y={clampedDotY + 4} fontSize={9} fontWeight={700} fill={C.bull as string}>
-                  &lt;0.1% ruin probability
+                  Low ruin at 1.5% risk
                 </text>
               </g>
             );
@@ -2369,7 +2369,7 @@ function RiskOfRuinChart() {
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 20, height: 2, background: C.brand as string, borderRadius: 2, opacity: 0.8 }} />
-          <span style={{ fontSize: F.xs, color: C.brand }}>Bot (77% WR, 1.5% risk)</span>
+          <span style={{ fontSize: F.xs, color: C.brand }}>Example (60% WR, 1.5% risk)</span>
         </div>
       </div>
 
@@ -2384,8 +2384,7 @@ function RiskOfRuinChart() {
         color: C.textSub,
         lineHeight: 1.7,
       }}>
-        At <strong style={{ color: C.text }}>77% win rate</strong> and <strong style={{ color: C.text }}>1.5% risk/trade</strong>, the bot&apos;s theoretical ruin probability is{' '}
-        <strong style={{ color: C.bull }}>&lt;0.1%</strong>. Doubling risk to 5%/trade at the same win rate would push ruin probability above <strong style={{ color: C.bear }}>25%</strong>.
+        At <strong style={{ color: C.text }}>1.5% risk/trade</strong>, even a modest win rate keeps ruin probability extremely low. Doubling risk to 5%/trade dramatically increases your ruin probability — this is why position sizing discipline matters.
       </div>
     </div>
   );
@@ -2394,9 +2393,9 @@ function RiskOfRuinChart() {
 // ─── Expected Value Calculator ────────────────────────────────────────────────
 
 function ExpectedValueCalc() {
-  const [winRate, setWinRate] = useState(0.77);
-  const [avgWin, setAvgWin] = useState(420);
-  const [avgLoss, setAvgLoss] = useState(180);
+  const [winRate, setWinRate] = useState(0.60);
+  const [avgWin, setAvgWin] = useState(300);
+  const [avgLoss, setAvgLoss] = useState(150);
 
   const ev = winRate * avgWin - (1 - winRate) * avgLoss;
   const isPositive = ev >= 0;
@@ -2543,10 +2542,10 @@ function ExpectedValueCalc() {
 
 function KellyFormulaDiagram() {
   // Kelly: f* = (bp - q) / b
-  // b = odds (avg win / avg loss = 420/180 ≈ 2.33)
-  // p = win rate = 0.77, q = 0.23
-  const b = 2.33;
-  const p = 0.77;
+  // b = odds (avg win / avg loss = 300/150 = 2.0) — illustrative example
+  // p = win rate = 0.60, q = 0.40 — illustrative example
+  const b = 2.0;
+  const p = 0.60;
   const q = 1 - p;
   const fullKelly = (b * p - q) / b; // ≈ 0.67
   const halfKelly = fullKelly / 2;
@@ -3818,7 +3817,7 @@ export default function Learn() {
         </p>
         <ExpectedValueCalc />
         <div style={{ marginTop: 16, padding: '10px 14px', background: C.info + '10', border: `1px solid ${C.info}25`, borderRadius: R.sm, fontSize: F.xs, color: C.textSub, lineHeight: 1.7 }}>
-          <strong>WAGMI Bot defaults:</strong> 77% win rate, $420 avg win, $180 avg loss → EV ≈ +${((0.77 * 420) - (0.23 * 180)).toFixed(0)} per trade. At 20 trades/month that compounds quickly.
+          Adjust the inputs to match your own trading results. Positive EV means you make money over enough trades — the exact numbers depend on your actual outcomes.
         </div>
       </AccordionCard>
 
@@ -3906,7 +3905,7 @@ export default function Learn() {
       </AccordionCard>
 
       <AccordionCard title="Compound Growth Calculator" badge="Monthly Returns">
-        <p style={{ marginBottom: 16 }}>See how consistent monthly returns compound over time. The bot&apos;s 30-day backtest averaged ~11.3% — see what that looks like extended over a year.</p>
+        <p style={{ marginBottom: 16 }}>See how consistent monthly returns compound over time — run the bot to see your actual returns projected forward.</p>
         <CompoundCalc />
         <div style={{ marginTop: 16, padding: '10px 14px', background: C.brand + '10', border: `1px solid ${C.brand}25`, borderRadius: R.sm, fontSize: F.xs, color: C.textSub, lineHeight: 1.7 }}>
           <strong>Reality check:</strong> Past backtest results don&apos;t guarantee future performance. Use conservative estimates (3-5% monthly) for realistic projections.

@@ -738,9 +738,9 @@ export default function WelcomePage() {
         {/* ── Number Bar ── */}
         <section style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
           <div style={{ maxWidth: 1000, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-            <StatBlock value={totalTrades ? String(totalTrades) : '847+'} label="Trades Analyzed" sub={totalTrades ? 'Full audit trail available' : 'Demo figure — see /results'} />
-            <StatBlock value={winRate ? `${(winRate * 100).toFixed(1)}%` : '64.2%'} label="Win Rate" sub={winRate ? 'Paper trading, verified' : 'Demo figure — see /results'} />
-            <StatBlock value={totalReturn ? fmtPct(totalReturn) : '+11.3%'} label="30-Day Return" sub={totalReturn ? 'vs market conditions' : 'Demo figure — see /results'} />
+            <StatBlock value={totalTrades ? String(totalTrades) : '—'} label="Trades Analyzed" sub={totalTrades ? 'Full audit trail available' : 'No data yet'} />
+            <StatBlock value={winRate ? `${(winRate * 100).toFixed(1)}%` : '—'} label="Win Rate" sub={winRate ? 'Paper trading, verified' : 'No data yet'} />
+            <StatBlock value={totalReturn ? fmtPct(totalReturn) : '—'} label="30-Day Return" sub={totalReturn ? 'vs market conditions' : 'No data yet'} />
             <StatBlock value="7" label="AI Agents" sub="Haiku + Sonnet + Opus" />
             <StatBlock value="24/7" label="Always On" sub="No sleep. No emotion." />
           </div>
@@ -752,7 +752,7 @@ export default function WelcomePage() {
             <div style={{ textAlign: 'center', marginBottom: 40 }}>
               <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Performance</div>
               <h2 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>30-Day Performance Snapshot</h2>
-              <p style={{ margin: '8px 0 0', fontSize: F.xs, color: C.muted }}>Demo figures shown when live data is unavailable — see <a href="/results" style={{ color: C.brand }}>Track Record</a> for verified results</p>
+              <p style={{ margin: '8px 0 0', fontSize: F.xs, color: C.muted }}>See <a href="/results" style={{ color: C.brand }}>Track Record</a> for verified results</p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
               {/* Win Rate Ring */}
@@ -767,7 +767,10 @@ export default function WelcomePage() {
                 gap: 8,
               }}>
                 <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 4 }}>Trade Outcomes</div>
-                <WinRateRing winRate={0.769} wins={10} losses={3} />
+                {winRate != null && totalTrades != null
+                  ? <WinRateRing winRate={winRate} wins={Math.round(winRate * totalTrades)} losses={Math.round((1 - winRate) * totalTrades)} />
+                  : <div style={{ color: C.muted, fontSize: F.sm, padding: '24px 0' }}>No data yet</div>
+                }
               </div>
 
               {/* Confidence Bars */}

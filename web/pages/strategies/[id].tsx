@@ -758,29 +758,21 @@ function TradesTab({ trades, loading }: { trades: TradeRecord[]; loading: boolea
 // ─── TradeStreakVisual ────────────────────────────────────────────────────────
 
 function TradeStreakVisual({ trades }: { trades: TradeRecord[] }) {
-  // Seeded fallback: [W,W,L,W,W,W,W,L,W,W,W,L,W,W,W,W,L,W,W,W]
-  const FALLBACK: boolean[] = [
-    true, true, false, true, true, true, true, false,
-    true, true, true, false, true, true, true, true,
-    false, true, true, true,
-  ];
+  if (trades.length === 0) {
+    return <AwaitingResults label="No trade history yet" sub="Trade streak will appear once real trades are recorded." />;
+  }
 
   // Derive win/loss booleans from real trades (newest last → oldest first after slice)
   const isWin = (t: TradeRecord): boolean =>
     t.outcome === 'WIN' || (t.pnl != null && t.pnl > 0);
 
-  const useFallback = trades.length === 0;
-  const last20: boolean[] = useFallback
-    ? FALLBACK
-    : trades.slice(-20).map(isWin);
+  const last20: boolean[] = trades.slice(-20).map(isWin);
 
   // Pad to 20 if fewer than 20 real trades (pad from front with nulls represented as false)
-  const grid: (boolean | null)[] = useFallback
-    ? last20
-    : Array.from({ length: 20 }, (_, i) => {
-        const offset = 20 - last20.length;
-        return i < offset ? null : last20[i - offset];
-      });
+  const grid: (boolean | null)[] = Array.from({ length: 20 }, (_, i) => {
+    const offset = 20 - last20.length;
+    return i < offset ? null : last20[i - offset];
+  });
 
   // Current streak (from the most-recent trade going backwards)
   let streakCount = 0;
@@ -1156,29 +1148,32 @@ function SignalEntryDistribution({ trades }: { trades: TradeRecord[] }) {
 
   const CONFIDENCE_THRESHOLD = 65;
 
-  // Seeded fallback: normal distribution centered ~77
-  const FALLBACK_COUNTS = [0, 1, 2, 5, 9, 14, 20, 24, 16, 9];
-  const FALLBACK_WINS   = [0, 0, 1, 2, 4,  7, 13, 19, 14, 8];
-
-  const useFallback = trades.length === 0;
+  if (trades.length === 0) {
+    return (
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px' }}>
+        <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 14 }}>
+          Entry Signal Score Distribution
+        </div>
+        <AwaitingResults label="No trade history yet" sub="Distribution will populate once real trades are recorded." />
+      </div>
+    );
+  }
 
   const counts: number[] = Array(BUCKETS).fill(0);
   const winCounts: number[] = Array(BUCKETS).fill(0);
 
-  if (!useFallback) {
-    for (const t of trades) {
-      const score = t.confidence != null ? t.confidence : null;
-      if (score == null) continue;
-      // confidence is 0–100 (already a percentage in TradeRecord, but could be 0–1)
-      const normalized = score > 1 ? score : score * 100;
-      const bucket = Math.min(BUCKETS - 1, Math.floor(normalized / 10));
-      counts[bucket]++;
-      if (t.outcome === 'WIN' || (t.pnl != null && t.pnl > 0)) winCounts[bucket]++;
-    }
+  for (const t of trades) {
+    const score = t.confidence != null ? t.confidence : null;
+    if (score == null) continue;
+    // confidence is 0–100 (already a percentage in TradeRecord, but could be 0–1)
+    const normalized = score > 1 ? score : score * 100;
+    const bucket = Math.min(BUCKETS - 1, Math.floor(normalized / 10));
+    counts[bucket]++;
+    if (t.outcome === 'WIN' || (t.pnl != null && t.pnl > 0)) winCounts[bucket]++;
   }
 
-  const displayCounts = useFallback ? FALLBACK_COUNTS : counts;
-  const displayWins   = useFallback ? FALLBACK_WINS   : winCounts;
+  const displayCounts = counts;
+  const displayWins   = winCounts;
 
   const maxCount = Math.max(...displayCounts, 1);
 
