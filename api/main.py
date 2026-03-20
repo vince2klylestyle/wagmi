@@ -7,7 +7,7 @@ import aiohttp
 import asyncio
 from datetime import datetime, timezone
 from config import COINS, CACHE_TTL_SEC, DISABLE_SIGNALS, API_ORIGINS
-from indicators import build_signals_snapshot, compute_regime, fetch_df, _regime_from_indicators, compute_indicators
+from indicators import build_signals_snapshot, fetch_df, _regime_from_indicators, compute_indicators
 
 app = FastAPI(title="MICO Signals")
 
@@ -81,7 +81,7 @@ async def refresh_signals_task():
             cache.errors += 1
             cache.status = "degraded"
         
-        await asyncio.sleep(60)  # refresh every 60 seconds
+        await asyncio.sleep(180)  # refresh every 3 minutes (fetch cycle takes ~35s)
 
 
 @app.on_event("startup")
@@ -99,78 +99,24 @@ async def shutdown():
 @app.get("/v1/signals")
 async def signals():
     now = time.time()
-    if DISABLE_SIGNALS:
-        return {
-            "last_updated": cache.ts or int(now),
-            "regime": cache.regime,
-            "signals": cache.data or {},
-            "status": "paused",
-        }
-    if cache.data and now - cache.ts < CACHE_TTL_SEC:
-        return {
-            "last_updated": cache.ts,
-            "regime": cache.regime,
-            "signals": cache.data,
-            "status": cache.status,
-        }
-    try:
-        regime = await compute_regime(app.state.session)
-        signals = await build_signals_snapshot(app.state.session, COINS, regime)
-        if signals:  # only overwrite cache if we actually got data
-            cache.ts = int(now)
-            cache.data = signals
-            cache.regime = regime
-            cache.status = "ok"
-            cache.errors = 0
-        return {
-            "last_updated": cache.ts or int(now),
-            "regime": cache.regime,
-            "signals": cache.data or {},
-            "status": cache.status or "ok",
-        }
-    except Exception as e:
-        cache.errors += 1
-        cache.status = "degraded" if cache.errors < 3 else "degraded"
-        return {
-            "last_updated": cache.ts or int(now),
-            "regime": cache.regime,
-            "signals": cache.data or {},
-            "status": cache.status,
-            "error": str(e),
-        }
+    status = "paused" if DISABLE_SIGNALS else (cache.status or "loading")
+    return {
+        "last_updated": cache.ts or int(now),
+        "regime": cache.regime,
+        "signals": cache.data or {},
+        "status": status,
+    }
 
 
 @app.get("/v1/summary")
 async def summary():
     now = time.time()
-    if cache.data and now - cache.ts < CACHE_TTL_SEC:
-        return {
-            "updatedAt": cache.ts,
-            "regime": cache.regime,
-            "status": cache.status,
-            "errors": cache.errors,
-        }
-    try:
-        regime = await compute_regime(app.state.session)
-        cache.regime = regime
-        cache.ts = int(now)
-        cache.status = "ok"
-        cache.errors = 0
-        return {
-            "updatedAt": cache.ts,
-            "regime": regime,
-            "status": "ok",
-            "errors": 0,
-        }
-    except Exception as e:
-        cache.errors += 1
-        cache.status = "degraded"
-        return {
-            "updatedAt": cache.ts or int(now),
-            "regime": cache.regime,
-            "status": cache.status,
-            "errors": cache.errors,
-        }
+    return {
+        "updatedAt": cache.ts or int(now),
+        "regime": cache.regime,
+        "status": cache.status or "loading",
+        "errors": cache.errors,
+    }
 
 
 @app.get("/healthz")
@@ -317,21 +263,9 @@ async def view_strategy(strategy_id: str):
 async def strategies():
     """Frontend compatibility endpoint - returns strategies array"""
     now = time.time()
-    if cache.data and now - cache.ts < CACHE_TTL_SEC:
-        signals = cache.data
-        regime = cache.regime
-    else:
-        try:
-            regime = await compute_regime(app.state.session)
-            signals = await build_signals_snapshot(app.state.session, COINS, regime)
-            cache.ts = int(now)
-            cache.data = signals
-            cache.regime = regime
-            cache.status = "ok"
-        except Exception:
-            signals = cache.data or {}
-            regime = cache.regime
-    
+    signals = cache.data or {}
+    regime = cache.regime
+
     # Convert signals to strategies array format
     strategies_list = []
     for market, signal in signals.items():
@@ -365,21 +299,8 @@ async def strategy_legacy():
 async def strategy_detail(strategy_id: str):
     """Get single strategy details"""
     now = time.time()
-    if cache.data and now - cache.ts < CACHE_TTL_SEC:
-        signals = cache.data
-        regime = cache.regime
-    else:
-        try:
-            regime = await compute_regime(app.state.session)
-            signals = await build_signals_snapshot(app.state.session, COINS, regime)
-            cache.ts = int(now)
-            cache.data = signals
-            cache.regime = regime
-            cache.status = "ok"
-        except Exception:
-            signals = cache.data or {}
-            regime = cache.regime
-    
+    signals = cache.data or {}
+
     # Extract market from strategy_id (e.g., "signals-btc" -> "BTC")
     market = strategy_id.replace("signals-", "").upper()
     signal = signals.get(market, {})
@@ -417,27 +338,12 @@ async def strategy_logs(strategy_id: str, limit: int = 50):
     """Get strategy evaluation logs - returns history (newest first)"""
     market = strategy_id.replace("signals-", "").upper()
     
-    # Return history if available, otherwise return current reading
+    # Return history if available, otherwise return current reading from cache
     if market in cache.history and cache.history[market]:
-        # Return newest first (reverse order)
         return list(reversed(cache.history[market][-limit:]))
-    
-    # Fallback: return current reading if no history yet
+
     now = time.time()
-    if cache.data and now - cache.ts < CACHE_TTL_SEC:
-        signals = cache.data
-    else:
-        try:
-            regime = await compute_regime(app.state.session)
-            signals = await build_signals_snapshot(app.state.session, COINS, regime)
-            cache.ts = int(now)
-            cache.data = signals
-            cache.regime = regime
-            cache.status = "ok"
-        except Exception:
-            signals = cache.data or {}
-    
-    signal = signals.get(market, {})
+    signal = (cache.data or {}).get(market, {})
     timestamp_iso = datetime.fromtimestamp(cache.ts or now, tz=timezone.utc).isoformat() if cache.ts else datetime.now(timezone.utc).isoformat()
     
     log_entry = {
