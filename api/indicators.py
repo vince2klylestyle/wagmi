@@ -1,23 +1,35 @@
+import asyncio
 import pandas as pd
 import numpy as np
 import aiohttp
 from config import RISK_K, VS_CURRENCY
 
 API = "https://api.coingecko.com/api/v3/coins/{id}/market_chart"
+_INTER_REQUEST_DELAY = 15  # seconds between CoinGecko fetches (free tier: ~5 req/min)
 
 
-async def fetch_df(session, coin_id: str, days: int = 60):
+async def fetch_df(session, coin_id: str, days: int = 60, _retries: int = 2):
     params = {"vs_currency": VS_CURRENCY, "days": days}
-    async with session.get(API.format(id=coin_id), params=params, timeout=20) as r:
-        if r.status != 200:
-            return None
-        js = await r.json()
-        if "prices" not in js or "total_volumes" not in js:
-            return None
-        df = pd.DataFrame(js["prices"], columns=["ts", "close"])
-        df["volume"] = [v[1] for v in js["total_volumes"]]
-        df["ts"] = pd.to_datetime(df["ts"], unit="ms")
-        return df
+    for attempt in range(_retries + 1):
+        try:
+            async with session.get(API.format(id=coin_id), params=params, timeout=20) as r:
+                if r.status == 429:
+                    retry_after = int(r.headers.get("Retry-After", 30))
+                    await asyncio.sleep(retry_after)
+                    continue
+                if r.status != 200:
+                    return None
+                js = await r.json()
+                if "prices" not in js or "total_volumes" not in js:
+                    return None
+                df = pd.DataFrame(js["prices"], columns=["ts", "close"])
+                df["volume"] = [v[1] for v in js["total_volumes"]]
+                df["ts"] = pd.to_datetime(df["ts"], unit="ms")
+                return df
+        except Exception:
+            if attempt < _retries:
+                await asyncio.sleep(10)
+    return None
 
 
 def compute_indicators(df: pd.DataFrame):
@@ -98,9 +110,7 @@ def score_state(z: dict, regime: str) -> int:
     return score
 
 
-async def compute_regime(session) -> str:
-    df = await fetch_df(session, "bitcoin", days=60)
-    di = compute_indicators(df)
+def _regime_from_indicators(di) -> str:
     if di is None:
         return "Neutral"
     last = di.iloc[-1]
@@ -111,10 +121,24 @@ async def compute_regime(session) -> str:
     return "Neutral"
 
 
-async def build_signals_snapshot(session, coins: dict, regime: str) -> dict:
+async def compute_regime(session) -> str:
+    df = await fetch_df(session, "bitcoin", days=60)
+    return _regime_from_indicators(compute_indicators(df))
+
+
+async def build_signals_snapshot(session, coins: dict, regime: str, _btc_df=None) -> dict:
+    """Fetch and compute signals for all coins. Pass _btc_df to reuse an already-fetched BTC df."""
     out = {}
+    first = True
     for sym, info in coins.items():
-        df = await fetch_df(session, info["id"], days=60)
+        # Reuse pre-fetched BTC data to avoid a duplicate request
+        if sym == "BTC" and _btc_df is not None:
+            df = _btc_df
+        else:
+            if not first:
+                await asyncio.sleep(_INTER_REQUEST_DELAY)
+            df = await fetch_df(session, info["id"], days=60)
+            first = False
         di = compute_indicators(df)
         if di is None:
             continue

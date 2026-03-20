@@ -7,7 +7,7 @@ import aiohttp
 import asyncio
 from datetime import datetime, timezone
 from config import COINS, CACHE_TTL_SEC, DISABLE_SIGNALS, API_ORIGINS
-from indicators import build_signals_snapshot, compute_regime
+from indicators import build_signals_snapshot, compute_regime, fetch_df, _regime_from_indicators, compute_indicators
 
 app = FastAPI(title="MICO Signals")
 
@@ -37,8 +37,10 @@ async def refresh_signals_task():
     while True:
         try:
             if not DISABLE_SIGNALS:
-                regime = await compute_regime(app.state.session)
-                signals = await build_signals_snapshot(app.state.session, COINS, regime)
+                # Fetch BTC once, derive regime from it, then reuse df in snapshot
+                btc_df = await fetch_df(app.state.session, "bitcoin", days=60)
+                regime = _regime_from_indicators(compute_indicators(btc_df))
+                signals = await build_signals_snapshot(app.state.session, COINS, regime, _btc_df=btc_df)
                 now = int(time.time())
                 if signals:  # only overwrite cache if we actually got data
                     cache.ts = now
