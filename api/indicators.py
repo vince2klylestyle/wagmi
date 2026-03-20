@@ -129,16 +129,17 @@ async def compute_regime(session) -> str:
 async def build_signals_snapshot(session, coins: dict, regime: str, _btc_df=None) -> dict:
     """Fetch and compute signals for all coins. Pass _btc_df to reuse an already-fetched BTC df."""
     out = {}
-    first = True
+    # If BTC was pre-fetched externally, treat it as a prior request so we delay before SOL
+    need_delay = _btc_df is not None
     for sym, info in coins.items():
         # Reuse pre-fetched BTC data to avoid a duplicate request
         if sym == "BTC" and _btc_df is not None:
             df = _btc_df
         else:
-            if not first:
+            if need_delay:
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
             df = await fetch_df(session, info["id"], days=60)
-            first = False
+            need_delay = True  # every subsequent fetch needs a delay
         di = compute_indicators(df)
         if di is None:
             continue
