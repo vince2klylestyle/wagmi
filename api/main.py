@@ -40,11 +40,12 @@ async def refresh_signals_task():
                 regime = await compute_regime(app.state.session)
                 signals = await build_signals_snapshot(app.state.session, COINS, regime)
                 now = int(time.time())
-                cache.ts = now
-                cache.data = signals
-                cache.regime = regime
-                cache.status = "ok"
-                cache.errors = 0
+                if signals:  # only overwrite cache if we actually got data
+                    cache.ts = now
+                    cache.data = signals
+                    cache.regime = regime
+                    cache.status = "ok"
+                    cache.errors = 0
                 
                 # Append to history for each market
                 iso_ts = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
@@ -113,16 +114,17 @@ async def signals():
     try:
         regime = await compute_regime(app.state.session)
         signals = await build_signals_snapshot(app.state.session, COINS, regime)
-        cache.ts = int(now)
-        cache.data = signals
-        cache.regime = regime
-        cache.status = "ok"
-        cache.errors = 0
+        if signals:  # only overwrite cache if we actually got data
+            cache.ts = int(now)
+            cache.data = signals
+            cache.regime = regime
+            cache.status = "ok"
+            cache.errors = 0
         return {
-            "last_updated": cache.ts,
-            "regime": regime,
-            "signals": signals,
-            "status": "ok",
+            "last_updated": cache.ts or int(now),
+            "regime": cache.regime,
+            "signals": cache.data or {},
+            "status": cache.status or "ok",
         }
     except Exception as e:
         cache.errors += 1
