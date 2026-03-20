@@ -1,0 +1,164 @@
+================================================================================
+DATA PIPELINE AUDIT — FILE REFERENCE
+================================================================================
+
+CRITICAL DATA FLOW FILES:
+
+1. FETCHER (OHLCV Data Source)
+   /home/user/WAGMI/bot/data/fetcher.py
+   - Lines 69-113: ExchangeCircuitBreaker class
+   - Lines 129-141: DataFetcher.__init__() - config & initialization
+   - Lines 147-167: Symbol → exchange mapping
+   - Lines 181-186: Rate limiting config
+   - Lines 199-250: _validate_ohlcv() - integrity checks
+   - Lines 252-267: Staleness detection (is_data_stale, get_data_freshness)
+   - Lines 323-332: _ccxt_rate_limit() - rate limiting enforcement
+   - Lines 336-346: In-memory cache (get/set with Lock)
+   - Lines 350-381: Disk cache (load/save for backtest)
+   - Lines 385-425: _check_data_continuity() - gap detection
+   - Lines 715-755: fetch_ohlcv() - public API
+   - Lines 757-810: fetch_multi_timeframe() - concurrent multi-TF fetch
+   - Lines 871-920: latest_price() - current price fetch
+
+2. DATABASE & PERSISTENCE
+   /home/user/WAGMI/bot/data/db.py
+   - Lines 24-32: SQLite WAL configuration
+   - Lines 35-169: init_db() - schema creation
+   - Lines 175-203: log_signal() - signal persistence + try/except/rollback
+   - Lines 228-254: log_trade() - trade logging
+   - Lines 257-279: log_equity() - equity snapshots
+   - Lines 375-411: log_signal_outcome() - outcome tracking
+   - Lines 517-542: log_signal_rejection() - rejection audit trail
+   - Tables at lines 40-164:
+     * signals (line 40-55)
+     * trades (line 57-70)
+     * equity_snapshots (line 72-79)
+     * signal_outcomes (line 81-101)
+     * health_events (line 103-111)
+     * signal_rejections (line 146-159)
+     * performance_daily (line 113-131)
+
+3. MIGRATIONS (Schema Evolution)
+   /home/user/WAGMI/bot/data/migrations.py
+   - Lines 37-64: MIGRATIONS registry
+   - Lines 67-170: MigrationRunner class - idempotent schema updates
+   - Line 80-88: Tracking table initialization
+
+4. PRICE CACHE
+   /home/user/WAGMI/bot/data/price_store.py
+   - Lines 16-22: PriceSnapshot dataclass
+   - Lines 25-83: PriceStore class - thread-safe price cache with staleness
+   - Lines 28-50: get/update/is_stale logic
+
+5. SIGNAL GENERATION & FILTERING
+   /home/user/WAGMI/bot/core/signal_pipeline.py
+   - Lines 74-300+: RiskFilterChain class - 6-gate validation
+   - Lines 122-150: Gate 1-1c: Signal validity + R:R + fee drag
+   - Lines 200+: Gates 2-6: Circuit breaker, position limits, leverage, liquidation, portfolio risk
+
+6. MAIN LOOP & STALENESS CHECK
+   /home/user/WAGMI/bot/multi_strategy_main.py
+   - Lines 365-550: MultiStrategyBot.__init__() - setup
+   - Lines 850-871: _reconcile_exchange_positions() - crash recovery
+   - Lines 873-920: run() - main loop startup
+   - Lines 1774-1900: _process_symbol() - CORE SIGNAL PIPELINE
+     * Line 1785: fetch_multi_timeframe() call
+     * Lines 1815-1847: Staleness detection (5min tolerance + period)
+     * Line 1858: ensemble.evaluate() call
+     * Lines 1900+: Signal filtering and execution
+
+7. STRATEGY INTEGRATION
+   /home/user/WAGMI/bot/strategies/base.py
+   - Lines 15-86: Signal dataclass with validation
+   - Properties: stop_width_pct, risk_reward_tp1/tp2, is_valid
+   - Lines 89-100: BaseStrategy abstract base
+
+8. ENSEMBLE & VOTING
+   /home/user/WAGMI/bot/strategies/ensemble.py
+   - Lines 346: deepcopy(sig) before mutation (shadows)
+   - Lines 377: deepcopy(signals) before processing
+   - Lines 380: deepcopy for _last_signals storage
+   - Lines 605-606: deepcopy in weighted_veto mode
+   - Lines 716: deepcopy in trend alignment
+
+================================================================================
+OPTIONAL/SUPPORTING FILES:
+
+9. CONFIGURATION
+   /home/user/WAGMI/bot/trading_config.py
+   - Scan interval settings
+   - Exchange rate limits
+   - Cache TTL defaults
+   - Minimum signal requirements
+
+10. EXECUTION & POSITION MANAGEMENT
+    /home/user/WAGMI/bot/execution/position_manager.py
+    - Position state machine (IDLE → OPEN → TP1_HIT → TRAILING → CLOSED)
+    - SL/TP monitoring
+
+11. RISK MANAGEMENT
+    /home/user/WAGMI/bot/execution/risk.py
+    - Circuit breaker logic
+    - Daily loss limits
+    - Consecutive loss streak tracking
+
+12. DATA LOGGING & TELEMETRY
+    /home/user/WAGMI/bot/data/storage/csv_logger.py
+    - CSV export for trades
+    - Alternative persistence format
+
+================================================================================
+KEY DATA FLOW SEQUENCE:
+
+1. main loop (multi_strategy_main.py:873)
+   ↓
+2. _process_symbol() (line 1774)
+   ↓
+3. fetch_multi_timeframe() (line 1785, fetcher.py:757)
+   ├─ Check in-memory cache (fetcher.py:336-346)
+   ├─ Check disk cache (fetcher.py:350-381)
+   └─ Fetch from CCXT or CoinGecko (fallback chain at fetcher.py:147-167)
+   ↓
+4. Validate OHLCV (fetcher.py:199-250)
+   ↓
+5. Check staleness (multi_strategy_main.py:1815-1847)
+   ↓
+6. ensemble.evaluate() (ensemble.py)
+   ├─ deepcopy signals (line 377)
+   └─ merge votes (weighted_veto mode)
+   ↓
+7. risk_filter_chain.evaluate() (signal_pipeline.py)
+   ├─ Gate 1-6 validation
+   └─ Log rejections to db (db.py:517-542)
+   ↓
+8a. APPROVED: log_trade() (db.py:228-254)
+   ↓
+8b. REJECTED: log_signal_rejection() (db.py:517-542)
+   ↓
+9. log_signal_outcome() (db.py:375-411)
+   ↓
+10. log_equity() (db.py:257-279)
+
+================================================================================
+CRITICAL SECTIONS TO REVIEW:
+
+For understanding data pipeline:
+  - fetcher.py:147-167 (exchange chains)
+  - fetcher.py:69-113 (circuit breaker)
+  - fetcher.py:199-250 (OHLCV validation)
+  - multi_strategy_main.py:1815-1847 (staleness check)
+  - multi_strategy_main.py:1785 (data fetch call)
+  - db.py:27-32 (WAL mode)
+  - ensemble.py:377, 380 (signal deepcopy)
+
+For crash recovery:
+  - multi_strategy_main.py:850-871 (reconciliation)
+  - multi_strategy_main.py:897-899 (circuit breaker state restore)
+
+For data validation:
+  - fetcher.py:199-250 (OHLCV integrity)
+  - fetcher.py:385-425 (continuity check)
+  - signal_pipeline.py:122-150 (signal validity gates)
+  - strategies/base.py:65-86 (Signal.is_valid)
+
+================================================================================
