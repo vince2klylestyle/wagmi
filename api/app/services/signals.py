@@ -300,7 +300,8 @@ async def refresh_signals():
             atr_abs = atr14_proxy(df)
             label, score, atr_pct = label_and_score(zones, zones["sma20"], zones["sma50"], rsi, atr_abs)
 
-            results[symbol] = {
+            # Update state immediately so the coin is visible before the next fetch
+            state["signals"][symbol] = {
                 "symbol": symbol,
                 "label": label,
                 "score": score,  # 0–100
@@ -318,15 +319,11 @@ async def refresh_signals():
                     "safeDistrib": zones["safe_sell"],
                 },
             }
+            state["regime"] = compute_regime(state["signals"])
+            state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
             # Rate-limit friendly: wait 15s between coins (CoinGecko free = ~5 req/min)
             await asyncio.sleep(15 * random.uniform(0.9, 1.1))
-
-        # Only update symbols that successfully refreshed; don't wipe stale-but-valid data
-        if results:
-            state["signals"].update(results)
-            state["regime"] = compute_regime(state["signals"])
-            state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
 
 async def loop_runner():

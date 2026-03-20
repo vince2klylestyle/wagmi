@@ -70,6 +70,15 @@ async def force_refresh_signals():
     await refresh_signals()
     return signals_state
 
+@app.get("/v1/signals/debug")
+async def debug_signals():
+    """Return signal state including errors — for diagnosing fetch failures."""
+    return {
+        "last_updated": signals_state.get("last_updated"),
+        "coins_loaded": list(signals_state.get("signals", {}).keys()),
+        "errors": signals_state.get("errors", []),
+    }
+
 @app.post("/seed")
 def seed_database():
     """One-time endpoint to seed strategies. Safe to call multiple times."""
