@@ -3102,6 +3102,89 @@ function MaxAdverseExcursion({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
+// ─── Last Lost Trade ──────────────────────────────────────────────────────────
+
+function LastLostTrade({ trades }: { trades: TradeRecord[] }) {
+  const lostTrades = trades.filter((t) => t.outcome?.toUpperCase() === 'LOSS');
+  if (!lostTrades.length) {
+    return (
+      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Last Lost Trade</span>
+          <span style={{ fontSize: F.xs, color: C.muted }}>None yet</span>
+        </div>
+        <div style={{ fontSize: F.xs, color: C.muted, padding: '16px 12px', textAlign: 'center', opacity: 0.7 }}>
+          No losing trades recorded yet
+        </div>
+      </div>
+    );
+  }
+
+  const trade = lostTrades[0];
+  const pnlPct = trade.entry && trade.exit ? ((trade.exit - trade.entry) / trade.entry) * 100 : 0;
+
+  return (
+    <div style={{ background: G.card, border: `1px solid ${C.bear}40`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Last Lost Trade</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: R.pill, background: C.bear + '22', color: C.bear, fontSize: F.xs, fontWeight: 700 }}>
+          {trade.symbol}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 14 }}>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Side</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: sideColor(trade.side) }}>{trade.side?.toUpperCase()}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Entry</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>${trade.entry?.toFixed(2)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Exit</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.bear }}>${trade.exit?.toFixed(2)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>P&L</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.bear }}>{fmtUsd(trade.pnl || 0)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Return</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.bear }}>{pnlPct.toFixed(2)}%</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Reason</div>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{trade.close_reason || '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Duration</div>
+          <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{trade.duration_h?.toFixed(1) || '—'}h</div>
+        </div>
+        <div>
+          <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, marginBottom: 4 }}>Strategy</div>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{trade.strategy || '—'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Active Trades / Open Positions ────────────────────────────────────────────
+
+function ActiveTrades() {
+  return (
+    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Active Positions</span>
+        <span className="live-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: C.bull, display: 'inline-block' }} />
+      </div>
+      <div style={{ fontSize: F.xs, color: C.muted, padding: '16px 12px', textAlign: 'center', opacity: 0.7 }}>
+        No open positions currently
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Results() {
@@ -3203,6 +3286,12 @@ export default function Results() {
       {/* ── PnL Ticker Banner — sticky-style top strip ── */}
       <div style={{ position: 'sticky', top: 0, zIndex: 20, marginBottom: 28 }}>
         <PnlTickerBanner trades={trades} />
+      </div>
+
+      {/* ── Quick Insights: Active Positions + Last Lost Trade ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
+        <ActiveTrades />
+        {loadingTrades ? <Skeleton h={200} /> : <LastLostTrade trades={trades} />}
       </div>
 
       {/* ════════════════════════════════════════════════
