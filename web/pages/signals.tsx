@@ -2752,36 +2752,11 @@ const REGIME_BAND_LABEL: Record<string, string> = {
   high_vol: 'HV',
 };
 
-// Seeded regime bands for the past 48h
-function buildRegimeBands(): RegimeBand[] {
-  return [
-    { regime: 'range',    startH: 48, endH: 36 },
-    { regime: 'trend',    startH: 36, endH: 24 },
-    { regime: 'high_vol', startH: 24, endH: 18 },
-    { regime: 'panic',    startH: 18, endH: 14 },
-    { regime: 'trend',    startH: 14, endH:  6 },
-    { regime: 'range',    startH:  6, endH:  0 },
-  ];
-}
-
-// Seeded signal markers for the past 48h
 type SignalMarker = { hoursAgo: number; side: 'BUY' | 'SELL'; symbol: string };
 
-function buildSignalMarkers(): SignalMarker[] {
-  return [
-    { hoursAgo: 45, side: 'BUY',  symbol: 'BTC'  },
-    { hoursAgo: 39, side: 'SELL', symbol: 'SOL'  },
-    { hoursAgo: 31, side: 'BUY',  symbol: 'HYPE' },
-    { hoursAgo: 22, side: 'SELL', symbol: 'BTC'  },
-    { hoursAgo: 16, side: 'BUY',  symbol: 'SOL'  },
-    { hoursAgo: 11, side: 'BUY',  symbol: 'HYPE' },
-    { hoursAgo:  7, side: 'SELL', symbol: 'BTC'  },
-    { hoursAgo:  3, side: 'BUY',  symbol: 'SOL'  },
-    { hoursAgo:  1, side: 'BUY',  symbol: 'BTC'  },
-  ];
-}
+const VALID_REGIME_BANDS = new Set(['trend', 'range', 'panic', 'high_vol']);
 
-function SignalTimelineWithRegime() {
+function SignalTimelineWithRegime({ events }: { events: any[] }) {
   const SVG_W = 600;
   const SVG_H = 80;
   const PAD_L = 8;
@@ -2791,14 +2766,42 @@ function SignalTimelineWithRegime() {
   const AXIS_Y = PAD_T + BAND_H + 8;
   const TRACK_W = SVG_W - PAD_L - PAD_R;
   const TOTAL_H = 48;
+  const cutoff = Date.now() / 1000 - 48 * 3600;
 
   function hourToX(hoursAgo: number): number {
     const frac = (TOTAL_H - hoursAgo) / TOTAL_H;
     return PAD_L + frac * TRACK_W;
   }
 
-  const bands = buildRegimeBands();
-  const markers = buildSignalMarkers();
+  // Derive regime bands from real llm_regime events
+  const regimeEvents = events
+    .filter(e => e.event_type === 'llm_regime' && e.ts >= cutoff)
+    .sort((a, b) => a.ts - b.ts);
+
+  const bands: RegimeBand[] = [];
+  for (let i = 0; i < regimeEvents.length; i++) {
+    const ev = regimeEvents[i];
+    const rawRegime: string = (ev.data?.regime || '').toLowerCase().replace('high_volatility', 'high_vol');
+    if (!VALID_REGIME_BANDS.has(rawRegime)) continue;
+    const regime = rawRegime as RegimeBand['regime'];
+    const startH = Math.min(48, (Date.now() / 1000 - ev.ts) / 3600);
+    const nextEv = regimeEvents[i + 1];
+    const endH = nextEv
+      ? Math.max(0, (Date.now() / 1000 - nextEv.ts) / 3600)
+      : 0;
+    bands.push({ regime, startH, endH });
+  }
+
+  // Derive signal markers from real trade/veto events
+  const markers: SignalMarker[] = events
+    .filter(e => (e.event_type === 'llm_would_trade' || e.event_type === 'llm_veto') && e.ts >= cutoff)
+    .map(e => ({
+      hoursAgo: (Date.now() / 1000 - e.ts) / 3600,
+      side: (e.data?.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+      symbol: (e.symbol || '').replace(/-.*$/, '').toUpperCase() || '?',
+    }));
+
+  const hasData = bands.length > 0 || markers.length > 0;
   const hourLabels = [48, 42, 36, 30, 24, 18, 12, 6, 0];
 
   return (
@@ -2812,7 +2815,7 @@ function SignalTimelineWithRegime() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>48-Hour Signal + Regime Timeline</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Colored bands = regime; triangles = signals fired <span style={{ color: C.faint }}>(illustrative view)</span></div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Colored bands = regime; triangles = signals fired</div>
         </div>
         <div style={{ display: 'flex', gap: 10, fontSize: 10, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {Object.entries(REGIME_BAND_COLOR).map(([k, col]) => (
@@ -2823,173 +2826,132 @@ function SignalTimelineWithRegime() {
           ))}
         </div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <svg
-          width={SVG_W}
-          height={SVG_H}
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          style={{ display: 'block', minWidth: 320 }}
-          aria-label="48-hour signal and regime timeline"
-        >
-          {/* Regime background bands */}
-          {bands.map((band, i) => {
-            const x0 = hourToX(band.startH);
-            const x1 = hourToX(band.endH);
-            const bw = Math.max(0, x1 - x0);
-            const col = REGIME_BAND_COLOR[band.regime] ?? C.muted;
-            return (
-              <g key={i}>
-                <rect
-                  x={x0.toFixed(1)} y={PAD_T}
-                  width={bw.toFixed(1)} height={BAND_H}
-                  fill={col}
-                  opacity={0.15}
-                />
-                {/* Regime label */}
-                {bw > 20 && (
+      {!hasData ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: C.muted, fontSize: 13 }}>
+          ⏳ Awaiting regime and signal events from the bot activity feed.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <svg
+            width={SVG_W}
+            height={SVG_H}
+            viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+            style={{ display: 'block', minWidth: 320 }}
+            aria-label="48-hour signal and regime timeline"
+          >
+            {/* Regime background bands */}
+            {bands.map((band, i) => {
+              const x0 = hourToX(band.startH);
+              const x1 = hourToX(band.endH);
+              const bw = Math.max(0, x1 - x0);
+              const col = REGIME_BAND_COLOR[band.regime] ?? C.muted;
+              return (
+                <g key={i}>
+                  <rect
+                    x={x0.toFixed(1)} y={PAD_T}
+                    width={bw.toFixed(1)} height={BAND_H}
+                    fill={col}
+                    opacity={0.15}
+                  />
+                  {bw > 20 && (
+                    <text
+                      x={(x0 + bw / 2).toFixed(1)}
+                      y={(PAD_T + BAND_H / 2 + 4).toFixed(1)}
+                      textAnchor="middle"
+                      fontSize={9}
+                      fontWeight="700"
+                      fill={col}
+                      fontFamily="Inter, system-ui, sans-serif"
+                      opacity={0.9}
+                    >
+                      {REGIME_BAND_LABEL[band.regime]}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Signal markers — triangles */}
+            {markers.map((m, i) => {
+              const x = hourToX(m.hoursAgo);
+              const isBuy = m.side === 'BUY';
+              const col = isBuy ? C.bull : C.bear;
+              const midY = PAD_T + BAND_H / 2;
+              const tri = isBuy
+                ? `${x},${midY - 7} ${x - 5},${midY + 2} ${x + 5},${midY + 2}`
+                : `${x},${midY + 7} ${x - 5},${midY - 2} ${x + 5},${midY - 2}`;
+              return (
+                <g key={i}>
+                  <polygon points={tri} fill={col} opacity={0.9} />
                   <text
-                    x={(x0 + bw / 2).toFixed(1)}
-                    y={(PAD_T + BAND_H / 2 + 4).toFixed(1)}
+                    x={x.toFixed(1)}
+                    y={isBuy ? (midY - 10).toFixed(1) : (midY + 18).toFixed(1)}
                     textAnchor="middle"
-                    fontSize={9}
-                    fontWeight="700"
+                    fontSize={7}
                     fill={col}
                     fontFamily="Inter, system-ui, sans-serif"
-                    opacity={0.9}
+                    fontWeight="600"
                   >
-                    {REGIME_BAND_LABEL[band.regime]}
+                    {m.symbol}
                   </text>
-                )}
-              </g>
-            );
-          })}
+                </g>
+              );
+            })}
 
-          {/* Signal markers — triangles */}
-          {markers.map((m, i) => {
-            const x = hourToX(m.hoursAgo);
-            const isBuy = m.side === 'BUY';
-            const col = isBuy ? C.bull : C.bear;
-            // Triangle points: pointing up for BUY, down for SELL
-            const midY = PAD_T + BAND_H / 2;
-            const tri = isBuy
-              ? `${x},${midY - 7} ${x - 5},${midY + 2} ${x + 5},${midY + 2}`
-              : `${x},${midY + 7} ${x - 5},${midY - 2} ${x + 5},${midY - 2}`;
-            return (
-              <g key={i}>
-                <polygon points={tri} fill={col} opacity={0.9} />
-                {/* Symbol label below/above triangle */}
+            {/* Current time marker — right edge */}
+            <line
+              x1={(SVG_W - PAD_R).toFixed(1)} y1={PAD_T}
+              x2={(SVG_W - PAD_R).toFixed(1)} y2={AXIS_Y + 12}
+              stroke="#6366f1"
+              strokeWidth={2}
+            />
+            <text
+              x={(SVG_W - PAD_R - 2).toFixed(1)}
+              y={(PAD_T - 2).toFixed(1)}
+              textAnchor="end"
+              fontSize={8}
+              fill="#6366f1"
+              fontFamily="Inter, system-ui, sans-serif"
+              fontWeight="700"
+            >
+              NOW
+            </text>
+
+            {/* Axis baseline */}
+            <line
+              x1={PAD_L} y1={AXIS_Y}
+              x2={SVG_W - PAD_R} y2={AXIS_Y}
+              stroke={C.border}
+              strokeWidth={1}
+            />
+
+            {/* Hour labels every 6h */}
+            {hourLabels.map(h => {
+              const x = hourToX(h);
+              return (
                 <text
+                  key={h}
                   x={x.toFixed(1)}
-                  y={isBuy ? (midY - 10).toFixed(1) : (midY + 18).toFixed(1)}
+                  y={(AXIS_Y + 10).toFixed(1)}
                   textAnchor="middle"
-                  fontSize={7}
-                  fill={col}
+                  fontSize={8}
+                  fill={C.muted}
                   fontFamily="Inter, system-ui, sans-serif"
-                  fontWeight="600"
                 >
-                  {m.symbol}
+                  {h === 0 ? 'now' : `-${h}h`}
                 </text>
-              </g>
-            );
-          })}
-
-          {/* Current time marker — right edge */}
-          <line
-            x1={(SVG_W - PAD_R).toFixed(1)} y1={PAD_T}
-            x2={(SVG_W - PAD_R).toFixed(1)} y2={AXIS_Y + 12}
-            stroke="#6366f1"
-            strokeWidth={2}
-          />
-          <text
-            x={(SVG_W - PAD_R - 2).toFixed(1)}
-            y={(PAD_T - 2).toFixed(1)}
-            textAnchor="end"
-            fontSize={8}
-            fill="#6366f1"
-            fontFamily="Inter, system-ui, sans-serif"
-            fontWeight="700"
-          >
-            NOW
-          </text>
-
-          {/* Axis baseline */}
-          <line
-            x1={PAD_L} y1={AXIS_Y}
-            x2={SVG_W - PAD_R} y2={AXIS_Y}
-            stroke={C.border}
-            strokeWidth={1}
-          />
-
-          {/* Hour labels every 6h */}
-          {hourLabels.map(h => {
-            const x = hourToX(h);
-            return (
-              <text
-                key={h}
-                x={x.toFixed(1)}
-                y={(AXIS_Y + 10).toFixed(1)}
-                textAnchor="middle"
-                fontSize={8}
-                fill={C.muted}
-                fontFamily="Inter, system-ui, sans-serif"
-              >
-                {h === 0 ? 'now' : `-${h}h`}
-              </text>
-            );
-          })}
-        </svg>
-      </div>
+              );
+            })}
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── MarketStructureGrid ──────────────────────────────────────────────────────
 
-const MSG_SYMBOLS = ['BTC', 'SOL', 'HYPE'] as const;
-const MSG_TIMEFRAMES = ['5m', '1h', '6h', '1d'] as const;
-type MsgSymbol = typeof MSG_SYMBOLS[number];
-type MsgTimeframe = typeof MSG_TIMEFRAMES[number];
-
-type StructureCell = {
-  trend: 'bull' | 'bear' | 'neutral';
-  regime: 'T' | 'R' | 'P' | 'HV';
-};
-
-// Seeded cell data: deterministic per symbol+timeframe
-function buildStructureCell(sym: MsgSymbol, tf: MsgTimeframe): StructureCell {
-  const symIdx = MSG_SYMBOLS.indexOf(sym);
-  const tfIdx  = MSG_TIMEFRAMES.indexOf(tf);
-  const v = r(symIdx + 1, tfIdx + 1);
-  const trend: StructureCell['trend'] = v > 0.62 ? 'bull' : v < 0.35 ? 'bear' : 'neutral';
-  const regimes: StructureCell['regime'][] = ['T', 'R', 'P', 'HV'];
-  const ri = Math.floor(r(symIdx * 3 + 1, tfIdx * 7 + 2) * 4);
-  const regime = regimes[ri] ?? 'R';
-  return { trend, regime };
-}
-
-const STRUCTURE_TREND_ARROW: Record<StructureCell['trend'], string> = {
-  bull: '↑', bear: '↓', neutral: '→',
-};
-const STRUCTURE_CELL_BG: Record<StructureCell['trend'], string> = {
-  bull:    'rgba(22,163,74,0.15)',
-  bear:    'rgba(220,38,38,0.15)',
-  neutral: 'rgba(71,85,105,0.20)',
-};
-const STRUCTURE_CELL_BORDER: Record<StructureCell['trend'], string> = {
-  bull:    'rgba(22,163,74,0.35)',
-  bear:    'rgba(220,38,38,0.35)',
-  neutral: 'rgba(71,85,105,0.35)',
-};
-const STRUCTURE_REGIME_COLOR: Record<StructureCell['regime'], string> = {
-  T:  C.bull,
-  R:  '#475569',
-  P:  C.bear,
-  HV: C.warn,
-};
-
 function MarketStructureGrid() {
-  const [activeCol, setActiveCol] = useState<number | null>(null);
-
   return (
     <div style={{
       background: C.surface,
@@ -2998,155 +2960,15 @@ function MarketStructureGrid() {
       padding: '16px 20px',
       marginBottom: 28,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Market Structure Grid</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-            Trend direction and regime per symbol/timeframe — click a column to highlight <span style={{ color: C.faint }}>(illustrative view)</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, fontSize: 10, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {(['T', 'R', 'P', 'HV'] as const).map(badge => (
-            <span key={badge} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{
-                padding: '1px 5px',
-                borderRadius: 4,
-                background: STRUCTURE_REGIME_COLOR[badge] + '22',
-                border: `1px solid ${STRUCTURE_REGIME_COLOR[badge]}44`,
-                color: STRUCTURE_REGIME_COLOR[badge],
-                fontWeight: 700,
-                fontSize: 10,
-              }}>
-                {badge}
-              </span>
-              ={badge === 'T' ? 'Trend' : badge === 'R' ? 'Range' : badge === 'P' ? 'Panic' : 'High Vol'}
-            </span>
-          ))}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Market Structure Grid</div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+          Trend direction and regime per symbol/timeframe
         </div>
       </div>
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'separate', borderSpacing: 4, minWidth: 320 }}>
-          <thead>
-            <tr>
-              {/* TF label col */}
-              <th style={{ width: 40, padding: '4px 6px' }} />
-              {MSG_SYMBOLS.map((sym, colIdx) => (
-                <th
-                  key={sym}
-                  onClick={() => setActiveCol(activeCol === colIdx ? null : colIdx)}
-                  style={{
-                    padding: '6px 10px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: activeCol === colIdx ? C.brand : C.text,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: activeCol === colIdx ? C.brand + '18' : 'transparent',
-                    borderRadius: 4,
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                    userSelect: 'none',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {sym}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MSG_TIMEFRAMES.map((tf) => (
-              <tr key={tf}>
-                {/* Timeframe label */}
-                <td style={{
-                  padding: '4px 6px',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: C.muted,
-                  textAlign: 'right',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  whiteSpace: 'nowrap',
-                  verticalAlign: 'middle',
-                }}>
-                  {tf}
-                </td>
-                {MSG_SYMBOLS.map((sym, colIdx) => {
-                  const cell = buildStructureCell(sym, tf);
-                  const isHighlighted = activeCol === colIdx;
-                  const bg     = STRUCTURE_CELL_BG[cell.trend];
-                  const border = STRUCTURE_CELL_BORDER[cell.trend];
-                  const trendColor = cell.trend === 'bull' ? '#4ade80' : cell.trend === 'bear' ? '#f87171' : C.muted;
-                  const rCol = STRUCTURE_REGIME_COLOR[cell.regime];
-                  return (
-                    <td
-                      key={sym}
-                      onClick={() => setActiveCol(activeCol === colIdx ? null : colIdx)}
-                      style={{ padding: 3, cursor: 'pointer' }}
-                    >
-                      <div style={{
-                        width: 72,
-                        height: 52,
-                        background: bg,
-                        border: `1.5px solid ${isHighlighted ? C.brand : border}`,
-                        borderRadius: 6,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        transition: 'border-color 0.15s',
-                        boxShadow: isHighlighted ? `0 0 0 1px ${C.brand}44` : 'none',
-                      }}>
-                        {/* Trend arrow */}
-                        <span style={{ fontSize: 18, lineHeight: 1, color: trendColor, fontWeight: 700 }}>
-                          {STRUCTURE_TREND_ARROW[cell.trend]}
-                        </span>
-                        {/* Regime badge */}
-                        <span style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          padding: '1px 5px',
-                          borderRadius: 3,
-                          background: rCol + '22',
-                          border: `1px solid ${rCol}44`,
-                          color: rCol,
-                          letterSpacing: '0.04em',
-                        }}>
-                          {cell.regime}
-                        </span>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ padding: '24px 0', textAlign: 'center', color: C.muted, fontSize: 13 }}>
+        ⏳ Per-symbol, per-timeframe regime data is not yet exposed by the bot API. This section will populate once that endpoint is available.
       </div>
-
-      {/* Active column callout */}
-      {activeCol !== null && (
-        <div style={{
-          marginTop: 12,
-          padding: '8px 14px',
-          background: C.brand + '12',
-          border: `1px solid ${C.brand}33`,
-          borderRadius: 6,
-          fontSize: 11,
-          color: C.brand,
-          fontWeight: 600,
-        }}>
-          {MSG_SYMBOLS[activeCol]} structure across all timeframes highlighted.{' '}
-          <span
-            onClick={() => setActiveCol(null)}
-            style={{ cursor: 'pointer', textDecoration: 'underline', opacity: 0.7, fontWeight: 400 }}
-          >
-            Clear
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -3546,7 +3368,7 @@ export default function SignalsPage() {
       <h2 style={{ fontSize: F.lg, fontWeight: 800, color: C.text, margin: '32px 0 16px', letterSpacing: '-0.02em' }}>
         48-Hour Overview
       </h2>
-      <SignalTimelineWithRegime />
+      <SignalTimelineWithRegime events={events} />
 
       {/* ── Market Structure Grid ─────────────────────────────────────────── */}
       <MarketStructureGrid />
