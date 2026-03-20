@@ -455,6 +455,7 @@ function CandleChart({
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const roRef = useRef<ResizeObserver | null>(null);
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [chartReady, setChartReady] = useState(false);
 
   // Initialize chart once on mount (browser only)
   useEffect(() => {
@@ -469,6 +470,7 @@ function CandleChart({
 
       containerRef.current.innerHTML = '';
       chart = lc.createChart(containerRef.current, {
+        autoSize: true,
         layout: { background: { color: C.card }, textColor: C.textSub },
         grid: { vertLines: { color: C.border }, horzLines: { color: C.border } },
         crosshair: { mode: lc.CrosshairMode.Normal },
@@ -498,6 +500,7 @@ function CandleChart({
         wickDownColor: C.bear,
       });
       candleSeriesRef.current = candleSeries;
+      setChartReady(true);
 
       // Auto-resize via ResizeObserver
       const ro = new ResizeObserver(() => {
@@ -520,14 +523,18 @@ function CandleChart({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch + render candles when symbol/timeframe changes
+  // Fetch + render candles when symbol/timeframe changes (or chart becomes ready)
   useEffect(() => {
-    if (!candleSeriesRef.current) return;
+    if (!chartReady || !candleSeriesRef.current) return;
     setStatus('loading');
 
-    fetch(`${apiBase}/v1/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=300`)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+    fetch(`${apiBase}/v1/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=300`, { signal: controller.signal })
       .then((r) => r.json())
       .then((raw: any[]) => {
+        clearTimeout(timeoutId);
         if (!Array.isArray(raw) || raw.length === 0) { setStatus('error'); return; }
         const candles: Candle[] = raw.map((c) => ({ ...c, time: c.time as UTCTimestamp }));
         const sorted = [...candles].sort((a, b) => a.time - b.time);
@@ -540,8 +547,9 @@ function CandleChart({
         }
         setStatus('ok');
       })
-      .catch(() => setStatus('error'));
-  }, [symbol, timeframe, apiBase]);
+      .catch(() => { clearTimeout(timeoutId); setStatus('error'); });
+    return () => { clearTimeout(timeoutId); controller.abort(); };
+  }, [symbol, timeframe, apiBase, chartReady]);
 
   // Apply zone bands + signal price lines whenever they change
   useEffect(() => {
@@ -589,17 +597,28 @@ function CandleChart({
     })();
   }, [zones, signalLevels]);
 
+  // TradingView widget fallback when OHLCV API is unavailable
+  if (status === 'error') {
+    const TV_TF: Record<string, string> = { '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
+    const tvSrc = `https://s.tradingview.com/widgetembed/?frameElementId=tv_${symbol}&symbol=${TV_SYMBOLS[symbol] ?? symbol}&interval=${TV_TF[timeframe] ?? '60'}&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&withdateranges=1`;
+    return (
+      <div style={{ width: '100%', height: 620, borderRadius: R.md, overflow: 'hidden', background: '#131722' }}>
+        <iframe
+          src={tvSrc}
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          allow="fullscreen"
+          title={`${symbol} Chart`}
+        />
+      </div>
+    );
+  }
+
   return (
     <div style={{ position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: 620, background: C.card, borderRadius: R.md }} />
       {status === 'loading' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
           Loading candles…
-        </div>
-      )}
-      {status === 'error' && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
-          Chart unavailable
         </div>
       )}
     </div>
@@ -869,6 +888,9 @@ export default function Home() {
   const [correlations, setCorrelations] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const [sniperQueue, setSniperQueue] = useState<any[]>([]);
+  const [sniperStats, setSniperStats] = useState<any>({pending:0,approved:0,rejected:0,executed:0,total:0});
+  const [sniperAction, setSniperAction] = useState<Record<string, 'approving'|'rejecting'|null>>({});
   const apiBase = resolveApiBase();
 
   // Compute correlation matrix from recent OHLCV (30 daily candles)
@@ -914,12 +936,14 @@ export default function Home() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [sigRes, stratRes, btRes, actRes, llmRes] = await Promise.allSettled([
+        const [sigRes, stratRes, btRes, actRes, llmRes, sniperRes, sniperStatsRes] = await Promise.allSettled([
           fetch(`${apiBase}/v1/signals`),
           fetch(`${apiBase}/v1/strategies`),
           fetch(`${apiBase}/v1/backtest/results/latest`),
           fetch(`${apiBase}/v1/activity/feed?limit=8`),
           fetch(`${apiBase}/v1/llm/market-view`),
+          fetch(`${apiBase}/v1/sniper/queue?limit=20`),
+          fetch(`${apiBase}/v1/sniper/stats`),
         ]);
 
         if (sigRes.status === 'fulfilled' && sigRes.value.ok) {
@@ -942,6 +966,13 @@ export default function Home() {
         if (llmRes.status === 'fulfilled' && llmRes.value.ok) {
           setLlmView(await llmRes.value.json());
         }
+        if (sniperRes.status === 'fulfilled' && sniperRes.value.ok) {
+          const d = await sniperRes.value.json();
+          setSniperQueue(d?.proposals || []);
+        }
+        if (sniperStatsRes.status === 'fulfilled' && sniperStatsRes.value.ok) {
+          setSniperStats(await sniperStatsRes.value.json());
+        }
         setLoading(false);
       } catch {
         setLoading(false);
@@ -957,6 +988,22 @@ export default function Home() {
   const signals = signalsData.signals || {};
   const btRes = backtest?.results;
   const regime = llmView?.regime || signalsData.regime || 'Unknown';
+
+  const handleSniperAction = async (id: string, action: 'approve' | 'reject') => {
+    setSniperAction(prev => ({ ...prev, [id]: action === 'approve' ? 'approving' : 'rejecting' }));
+    try {
+      const res = await fetch(`${apiBase}/v1/sniper/${id}/${action}`, { method: 'POST' });
+      if (res.ok) {
+        setSniperQueue(prev => prev.filter(p => p.id !== id));
+        setSniperStats((prev: any) => ({
+          ...prev,
+          pending: Math.max(0, (prev.pending || 0) - 1),
+          [action === 'approve' ? 'approved' : 'rejected']: (prev[action === 'approve' ? 'approved' : 'rejected'] || 0) + 1,
+        }));
+      }
+    } catch {}
+    setSniperAction(prev => ({ ...prev, [id]: null }));
+  };
 
   // Equity sparkline data from backtest equity (simplified: just use total_return as flat curve)
   // We'll use by_symbol pnl data to derive a simple visual
@@ -1575,6 +1622,156 @@ export default function Home() {
             {strategies.slice(0, 4).map((s) => (
               <StrategyCard key={s.id} strategy={s} />
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── LLM Sniper Queue ─────────────────────────── */}
+      <div style={{ marginBottom: 28 }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 18 }}>🎯</div>
+            <div>
+              <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>LLM Sniper Queue</div>
+              <div style={{ fontSize: F.xs, color: C.muted }}>
+                Single-strategy signals evaluated by LLM for high-conviction entries
+              </div>
+            </div>
+          </div>
+          {/* Stats pills */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Pending', val: sniperStats.pending, color: '#f59e0b' },
+              { label: 'Approved', val: sniperStats.approved, color: C.bull },
+              { label: 'Rejected', val: sniperStats.rejected, color: C.bear },
+            ].map(s => (
+              <div key={s.label} style={{
+                background: C.card, border: `1px solid ${C.border}`,
+                borderRadius: R.sm, padding: '4px 10px',
+                fontSize: F.xs, color: s.color, fontWeight: 700,
+              }}>
+                {s.label}: {s.val}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {sniperQueue.length === 0 ? (
+          <div style={{
+            background: C.card, border: `1px solid ${C.border}`, borderRadius: R.md,
+            padding: '24px', textAlign: 'center', color: C.muted, fontSize: F.sm,
+          }}>
+            {sniperStats.total === 0
+              ? 'No sniper proposals yet — enable LLM_SNIPER_ENABLED=true to start collecting'
+              : 'No pending proposals — check history for past reviews'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
+            {sniperQueue.map((p: any) => {
+              const isBuy = p.side === 'BUY';
+              const sideColor = isBuy ? C.bull : C.bear;
+              const confPct = Math.round((p.confidence || 0) * 100);
+              const isActing = !!sniperAction[p.id];
+              return (
+                <div key={p.id} style={{
+                  background: C.card,
+                  border: `1px solid ${sideColor}40`,
+                  borderLeft: `4px solid ${sideColor}`,
+                  borderRadius: R.md,
+                  padding: '14px 16px',
+                }}>
+                  {/* Title row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: F.md, fontWeight: 800, color: C.text }}>{p.symbol}</span>
+                      <span style={{
+                        fontSize: F.xs, fontWeight: 700, color: sideColor,
+                        background: sideColor + '20', borderRadius: R.sm, padding: '2px 8px',
+                      }}>{p.side}</span>
+                      <span style={{ fontSize: F.xs, color: C.muted }}>{p.strategy_source}</span>
+                    </div>
+                    <div style={{ fontSize: F.xs, color: C.muted }}>
+                      {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+
+                  {/* Price levels */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    {[
+                      { label: 'Entry', val: p.entry, color: C.text },
+                      { label: 'SL', val: p.sl, color: C.bear },
+                      { label: 'TP1', val: p.tp1, color: C.bull },
+                    ].map(({ label, val, color }) => (
+                      <div key={label} style={{ background: '#0f172a', borderRadius: R.sm, padding: '6px 8px' }}>
+                        <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontSize: F.xs, fontWeight: 700, color }}>{Number(val).toFixed(4)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Confidence + Leverage */}
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.muted, marginBottom: 4 }}>
+                        <span>LLM Conf</span><span style={{ color: sideColor, fontWeight: 700 }}>{confPct}%</span>
+                      </div>
+                      <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ width: `${confPct}%`, height: '100%', background: sideColor, borderRadius: 2 }} />
+                      </div>
+                    </div>
+                    <div style={{
+                      background: '#7c3aed20', border: '1px solid #7c3aed40',
+                      borderRadius: R.sm, padding: '4px 10px', fontSize: F.xs,
+                      color: '#a78bfa', fontWeight: 700, alignSelf: 'center',
+                    }}>
+                      {p.leverage?.toFixed(0)}x
+                    </div>
+                  </div>
+
+                  {/* LLM reasoning */}
+                  {p.llm_reasoning && (
+                    <div style={{
+                      fontSize: F.xs, color: C.textSub, fontStyle: 'italic',
+                      background: '#0f172a', borderRadius: R.sm, padding: '6px 8px', marginBottom: 10,
+                      borderLeft: `2px solid ${C.brand}40`,
+                    }}>
+                      "{p.llm_reasoning}"
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      disabled={isActing}
+                      onClick={() => handleSniperAction(p.id, 'approve')}
+                      style={{
+                        flex: 1, padding: '7px 0', borderRadius: R.sm, border: 'none',
+                        background: isActing ? C.border : C.bull + '20',
+                        color: isActing ? C.muted : C.bull,
+                        fontWeight: 700, fontSize: F.xs, cursor: isActing ? 'not-allowed' : 'pointer',
+                        transition: 'background 0.2s',
+                      }}
+                    >
+                      {sniperAction[p.id] === 'approving' ? '...' : '✓ Approve'}
+                    </button>
+                    <button
+                      disabled={isActing}
+                      onClick={() => handleSniperAction(p.id, 'reject')}
+                      style={{
+                        flex: 1, padding: '7px 0', borderRadius: R.sm, border: 'none',
+                        background: isActing ? C.border : C.bear + '20',
+                        color: isActing ? C.muted : C.bear,
+                        fontWeight: 700, fontSize: F.xs, cursor: isActing ? 'not-allowed' : 'pointer',
+                        transition: 'background 0.2s',
+                      }}
+                    >
+                      {sniperAction[p.id] === 'rejecting' ? '...' : '✕ Reject'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
