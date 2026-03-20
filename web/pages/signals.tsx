@@ -3266,6 +3266,7 @@ export default function SignalsPage() {
   const [visibleEventCount, setVisibleEventCount] = useState<number>(20);
   const apiBase = resolveApiBase();
   const mounted = useRef(true);
+  const hasGoodSignals = useRef(false);
 
   const fetchData = async () => {
     try {
@@ -3293,6 +3294,7 @@ export default function SignalsPage() {
           const newSig = await sigRes.value.json();
           if (newSig?.signals && Object.keys(newSig.signals).length > 0) {
             setSignalsData(newSig);
+            hasGoodSignals.current = true;
           }
         } catch { /* non-JSON response, skip */ }
       }
@@ -3300,7 +3302,9 @@ export default function SignalsPage() {
     } catch {
       if (mounted.current) setFetchError(true);
     } finally {
-      if (mounted.current) setLoading(false);
+      // Only stop showing the loading skeleton once we have real signal data.
+      // This prevents blank "No data yet" states during backend warm-up or CoinGecko hiccups.
+      if (mounted.current && hasGoodSignals.current) setLoading(false);
     }
   };
 
