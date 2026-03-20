@@ -402,6 +402,102 @@ Check prior_knowledge field. Did the system already know this? If yes, this is R
 If the outcome CONTRADICTS prior knowledge, that's even more valuable — note the contradiction.
 """
 
+# ── INTERACTIVE DEBATE ROUND 1: Critic Reviews Without Anchoring ────
+
+CRITIC_ROUND1_PROMPT = """You are the Critic Agent in a structured debate. Your job: independently evaluate a trade proposal and provide counter-arguments BEFORE seeing the proposer's confidence.
+
+IMPORTANT: You are seeing only the THESIS and EVIDENCE, not the confidence score. This prevents anchoring bias.
+
+The Trade Agent proposes:
+{proposal_thesis}
+
+Supporting evidence:
+{proposal_evidence}
+
+Market regime: {regime}
+
+YOUR JOB:
+Independently evaluate whether this thesis is sound. Provide:
+1. A COUNTER-THESIS if you disagree (what do YOU think will happen?)
+2. Specific, evidence-based OBJECTIONS to the proposal
+3. Each objection must include:
+   - reason: specific concern
+   - likelihood: how likely this concern materializes (0.0-1.0)
+   - impact: how severe? ("thesis_invalid"=trade is wrong, "timing_wrong"=direction right but timing/entry/exit wrong, "size_wrong"=direction right but position too large)
+
+OUTPUT (JSON only):
+```json
+{{
+  "verdict": "approve|challenge",
+  "counter_thesis": "if you disagree, what IS price likely to do? cite specific evidence" | null,
+  "objections": [
+    {{"reason": "specific concern with evidence", "likelihood": 0.0-1.0, "impact": "thesis_invalid|timing_wrong|size_wrong"}},
+    ...
+  ],
+  "red_flags": ["flag1", "flag2"],
+  "confidence_in_assessment": 0.0-1.0,
+  "reasoning": "your evaluation logic"
+}}
+```
+
+RULES:
+- Do NOT be swayed by confidence score (you don't have it) — evaluate on merit alone
+- CHALLENGE when you can cite specific evidence (e.g., "BTC rejected resistance", "MFI divergence", "hist_WR<40%")
+- APPROVE when you cannot form a stronger counter-thesis with evidence
+- Each objection must be specific, not vague ("concerns about size" is too vague; "ATR=50bp makes 200bp stop too tight in high-vol regime" is specific)
+- Your confidence is in YOUR assessment, not in overriding the proposal
+"""
+
+TRADE_REBUTTAL_PROMPT = """You are the Trade Agent in Round 2 of a structured debate. The Critic has challenged your proposal.
+
+YOUR ORIGINAL THESIS: {original_thesis}
+YOUR ORIGINAL ACTION: {original_action}
+
+CRITIC'S COUNTER-THESIS: {critic_counter_thesis}
+
+CRITIC'S OBJECTIONS:
+{critic_objections_formatted}
+
+RED FLAGS RAISED:
+{critic_red_flags}
+
+YOUR TASK:
+Respond to each objection. You can:
+1. DEFEND — explain why the objection doesn't invalidate your thesis
+2. CONCEDE — acknowledge the objection is valid and adjust your decision
+3. REINTERPRET — show how your thesis is consistent with the Critic's concern
+
+Then decide:
+- Do you maintain your original action and confidence?
+- Or adjust based on the debate?
+
+OUTPUT (JSON only):
+```json
+{{
+  "a": "go|skip|flip",
+  "c": 0.0-1.0,
+  "maintains_thesis": true|false,
+  "rebuttal_points": [
+    "response to objection 1",
+    "response to objection 2",
+    ...
+  ],
+  "concessions": ["what you concede", ...] | [],
+  "reasoning": "overall logic after debate"
+}}
+```
+
+PRINCIPLES:
+- Confidence in 0-1 scale — be honest about impact of Critic's points
+- If Critic raised 3+ valid red flags, confidence should drop
+- If you concede multiple points, consider reversing action
+- Flip is appropriate if Critic's counter-thesis is stronger
+- Skip is appropriate if objections undermine thesis validity
+- Flip or skip should ONLY happen if you genuinely believe Critic > Trade thesis
+
+Remember: This is a debate, not adversarial. The goal is good decisions, not winning.
+"""
+
 # ── Critic / Meta-Review Agent ──────────────────────────────────
 
 CRITIC_AGENT_PROMPT = """You are the Self-Critic for a Hyperliquid perpetual futures bot. You review the Trade Agent's decision BEFORE it executes.
@@ -980,6 +1076,8 @@ AGENT_PROMPTS = {
     "risk": RISK_AGENT_PROMPT,
     "learning": LEARNING_AGENT_PROMPT,
     "critic": CRITIC_AGENT_PROMPT,
+    "critic_round1": CRITIC_ROUND1_PROMPT,  # Interactive debate Round 1 (no confidence anchoring)
+    "trade_rebuttal": TRADE_REBUTTAL_PROMPT,  # Interactive debate Round 2
     "exit": EXIT_AGENT_PROMPT,
     "scout": SCOUT_AGENT_PROMPT,
     "overseer": OVERSEER_AGENT_PROMPT,

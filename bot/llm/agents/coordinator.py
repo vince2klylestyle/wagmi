@@ -56,6 +56,7 @@ try:
         get_brain_context_for_agent,
         record_agent_decision,
         run_debate_if_warranted,
+        run_interactive_debate_if_enabled,
         apply_debate_to_confidence,
         log_pipeline_telemetry,
         format_quant_for_prompt,
@@ -350,6 +351,7 @@ class AgentCoordinator:
 
         # ── Debate: synthesize diverse agent viewpoints ───────
         debate_outcome = None
+        interactive_debate_outcome = None
         if _EXTENSIONS_AVAILABLE:
             try:
                 _agent_data = {
@@ -361,13 +363,26 @@ class AgentCoordinator:
                 _markets = snapshot_data.get("m", []) if snapshot_data else []
                 if _markets and isinstance(_markets[0], dict):
                     _sym = _markets[0].get("s", _markets[0].get("sym", ""))
-                debate_outcome = run_debate_if_warranted(
-                    _agent_data,
-                    regime=regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown",
-                    symbol=_sym,
-                )
-                if debate_outcome:
-                    scratchpad.write("debate", "outcome", debate_outcome)
+
+                # Try interactive debate first (2-round, more sophisticated)
+                if trade_out.ok and critic_out and critic_out.ok:
+                    interactive_debate_outcome = run_interactive_debate_if_enabled(
+                        trade_agent_output=trade_out.data,
+                        critic_agent_output=critic_out.data,
+                        market_context=snapshot_data or {},
+                    )
+                    if interactive_debate_outcome:
+                        scratchpad.write("debate", "interactive_outcome", interactive_debate_outcome)
+
+                # Fall back to post-hoc debate if interactive not enabled
+                if not interactive_debate_outcome:
+                    debate_outcome = run_debate_if_warranted(
+                        _agent_data,
+                        regime=regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown",
+                        symbol=_sym,
+                    )
+                    if debate_outcome:
+                        scratchpad.write("debate", "outcome", debate_outcome)
             except Exception as e:
                 logger.debug(f"[MULTI-AGENT] Debate error: {e}")
 
@@ -382,8 +397,14 @@ class AgentCoordinator:
             scratchpad.write("system", "consensus_confidence", round(consensus_conf, 3))
 
         # Apply debate adjustment to consensus confidence
-        if _EXTENSIONS_AVAILABLE and debate_outcome and consensus_conf is not None:
-            consensus_conf = apply_debate_to_confidence(consensus_conf, debate_outcome)
+        if _EXTENSIONS_AVAILABLE and consensus_conf is not None:
+            # Interactive debate takes precedence if available
+            if interactive_debate_outcome:
+                # Use debate resolution's final confidence
+                if "final_confidence" in interactive_debate_outcome:
+                    consensus_conf = interactive_debate_outcome["final_confidence"]
+            elif debate_outcome:
+                consensus_conf = apply_debate_to_confidence(consensus_conf, debate_outcome)
 
         # ── Merge into LLMDecision ──────────────────────────────
         decision = self._merge_outputs(

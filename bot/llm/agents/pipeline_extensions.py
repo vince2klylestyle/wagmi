@@ -12,6 +12,7 @@ in the pipeline without bloating coordinator.py itself.
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("bot.llm.agents.pipeline_extensions")
@@ -346,6 +347,114 @@ def apply_debate_to_confidence(
         return base_confidence * 0.80
 
 
+# ── Interactive Debate Integration ──────────────────────────────
+
+def run_interactive_debate_if_enabled(
+    trade_agent_output: Dict[str, Any],
+    critic_agent_output: Optional[Dict[str, Any]],
+    market_context: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Run interactive 2-round Trade-Critic debate if enabled.
+
+    This is an enhancement over post-hoc debate synthesis:
+    - Round 1: Critic sees Trade thesis WITHOUT confidence (prevents anchoring)
+    - Round 2: Trade Agent rebuts Critic's objections
+    - Resolution: Score-based (FREE-MAD) rather than vote-based
+
+    Args:
+        trade_agent_output: Trade Agent's decision output
+        critic_agent_output: Critic Agent's response (already generated in main pipeline)
+        market_context: Market data for context
+
+    Returns:
+        Debate resolution dict or None if debate not run
+    """
+    try:
+        from llm.agents.interactive_debate import (
+            InteractiveDebater,
+            ThesisProposal,
+            CounterThesis,
+        )
+    except ImportError:
+        logger.debug("[PIPELINE_EXT] interactive_debate module not available yet")
+        return None
+
+    # Check if interactive debate is enabled
+    if not os.getenv("LLM_INTERACTIVE_DEBATE", "false").lower() in ("1", "true", "yes"):
+        return None
+
+    if not critic_agent_output or not trade_agent_output:
+        return None
+
+    try:
+        debater = InteractiveDebater()
+
+        # Round 1: Extract Trade Agent's proposal
+        proposal = debater.round1_extract_proposal(trade_agent_output)
+
+        # Round 2: Extract Critic's counter-thesis
+        counter_thesis = debater.round1_extract_counter_thesis(critic_agent_output)
+
+        # For now, we don't have the actual Round 2 rebuttal LLM call yet.
+        # In a full implementation, we would:
+        # 1. Call Trade Agent again with Round 2 input
+        # 2. Extract the rebuttal
+        # 3. Score and resolve
+
+        # For MVP, we score based on what we have:
+        # - Trade Agent's original proposal
+        # - Critic's counter-thesis and objections
+
+        # Estimate a rebuttal based on Trade Agent's confidence drop
+        original_conf = proposal.confidence
+        adjusted_conf = critic_agent_output.get("adjusted_confidence", original_conf)
+
+        # If confidence dropped significantly, assume Trade Agent conceded
+        if adjusted_conf < original_conf - 0.1:
+            maintains_thesis = False
+            concessions = [obj.get("reason", "")[:50] for obj in counter_thesis.objections[:2]]
+        else:
+            maintains_thesis = True
+            concessions = []
+
+        from llm.agents.interactive_debate import Rebuttal
+        simulated_rebuttal = Rebuttal(
+            action=trade_agent_output.get("a", "skip"),
+            adjusted_confidence=float(adjusted_conf),
+            rebuttal_points=[],
+            concessions=concessions,
+            maintains_thesis=maintains_thesis,
+        )
+
+        # Score the debate
+        resolution = debater.score_debate(proposal, counter_thesis, simulated_rebuttal)
+
+        logger.info(
+            f"[INTERACTIVE_DEBATE] winner={resolution.debate_winner} "
+            f"trade_score={resolution.trade_score:.2f} "
+            f"critic_score={resolution.critic_score:.2f} "
+            f"final_action={resolution.final_action} "
+            f"final_conf={resolution.final_confidence:.2f}"
+        )
+
+        return {
+            "debate_type": "interactive",
+            "final_action": resolution.final_action,
+            "final_confidence": resolution.final_confidence,
+            "winner": resolution.debate_winner,
+            "trade_score": resolution.trade_score,
+            "critic_score": resolution.critic_score,
+            "key_turning_points": resolution.key_turning_points,
+            "risk_flags": resolution.risk_flags,
+            "recommendation": resolution.recommendation,
+            "rounds_used": resolution.rounds_used,
+        }
+
+    except Exception as e:
+        logger.debug(f"[PIPELINE_EXT] interactive_debate error: {e}")
+        return None
+
+
 # ── Pipeline Telemetry ──────────────────────────────────────────────
 
 def log_pipeline_telemetry(
@@ -419,5 +528,6 @@ __all__ = [
     "record_agent_outcome",
     "run_debate_if_warranted",
     "apply_debate_to_confidence",
+    "run_interactive_debate_if_enabled",
     "log_pipeline_telemetry",
 ]
