@@ -18,8 +18,8 @@ from datetime import datetime
 import json
 import os
 
-from bot_perception_aggregator import get_bot_perception_aggregator
-from bot_perception_analyzer import get_bot_perception_analyzer
+from llm.bot_perception_aggregator import get_bot_perception_aggregator
+from llm.bot_perception_analyzer import get_bot_perception_analyzer
 
 logger = logging.getLogger("bot.llm.bot_perception_report")
 

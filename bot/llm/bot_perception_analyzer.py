@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 import statistics
 
-from bot_perception_aggregator import get_bot_perception_aggregator
+from llm.bot_perception_aggregator import get_bot_perception_aggregator
 
 logger = logging.getLogger("bot.llm.bot_perception_analyzer")
 

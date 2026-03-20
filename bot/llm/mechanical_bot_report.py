@@ -17,9 +17,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 
-from mechanical_bot_memory import get_mechanical_bot_memory
-from mechanical_bot_analyzer import get_mechanical_bot_analyzer
-from mechanical_bot_state_tracker import get_mechanical_bot_state_tracker
+from llm.mechanical_bot_memory import get_mechanical_bot_memory
+from llm.mechanical_bot_analyzer import get_mechanical_bot_analyzer
+from llm.mechanical_bot_state_tracker import get_mechanical_bot_state_tracker
 
 logger = logging.getLogger("bot.llm.mechanical_bot_report")
 

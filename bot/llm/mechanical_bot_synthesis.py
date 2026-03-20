@@ -20,8 +20,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime
 
-from mechanical_bot_analyzer import get_mechanical_bot_analyzer
-from mechanical_bot_memory import get_mechanical_bot_memory
+from llm.mechanical_bot_analyzer import get_mechanical_bot_analyzer
+from llm.mechanical_bot_memory import get_mechanical_bot_memory
 from strategies.base import Signal
 
 logger = logging.getLogger("bot.llm.mechanical_bot_synthesis")

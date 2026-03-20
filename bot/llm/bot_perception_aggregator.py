@@ -21,7 +21,7 @@ from datetime import datetime
 import time
 from collections import defaultdict
 
-from bot_perception_api import (
+from llm.bot_perception_api import (
     get_bot_perception_api_client,
     BotSummarySnapshot,
     StrategySnapshot,

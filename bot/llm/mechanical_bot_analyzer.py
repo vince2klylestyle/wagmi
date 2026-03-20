@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from collections import defaultdict
 
-from mechanical_bot_memory import get_mechanical_bot_memory, MechanicalBotSignal, MechanicalBotPattern
+from llm.mechanical_bot_memory import get_mechanical_bot_memory, MechanicalBotSignal, MechanicalBotPattern
 
 logger = logging.getLogger("bot.llm.mechanical_bot_analyzer")
 
