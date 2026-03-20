@@ -30,6 +30,10 @@ class AgentRole(str, Enum):
     FORECASTER = "forecaster"  # Regime shift prediction (daily)
     HYPOTHESIS = "hypothesis"  # Novel pattern discovery and generation (weekly)
     CORRELATOR = "correlator"  # Cross-asset correlation and lead-lag (daily)
+    # ── Phase 4 Scalping + Conviction Agents ────────────────────
+    SCALPER = "scalper"        # Micro-scalping on 1m/5m candles (very frequent)
+    CONVICTION = "conviction"  # Ultra-high confidence trade authorization (rare)
+    MICRO_TREND = "micro_trend" # Micro-trend detection for scalper context (frequent)
 
 
 @dataclass
@@ -139,6 +143,25 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
         role=AgentRole.CORRELATOR,
         max_tokens=1536,
         timeout_s=15.0,
+        required=False,
+    ),
+    # ── Phase 4 Scalping + Conviction Agents ────────────────────
+    AgentRole.SCALPER: AgentConfig(
+        role=AgentRole.SCALPER,
+        max_tokens=1024,  # Fast, lightweight
+        timeout_s=3.0,    # CRITICAL: Must respond in <3 seconds
+        required=False,
+    ),
+    AgentRole.CONVICTION: AgentConfig(
+        role=AgentRole.CONVICTION,
+        max_tokens=1536,  # Detailed reasoning on alignment
+        timeout_s=10.0,
+        required=False,
+    ),
+    AgentRole.MICRO_TREND: AgentConfig(
+        role=AgentRole.MICRO_TREND,
+        max_tokens=768,   # Fast, simple output
+        timeout_s=3.0,    # CRITICAL: Must respond in <3 seconds
         required=False,
     ),
 }

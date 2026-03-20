@@ -62,6 +62,18 @@ try:
 except ImportError:
     _STRATEGIC_AGENTS_AVAILABLE = False
 
+# Phase 4 agents (Scalping + Conviction)
+# These are optional Phase 4 agents
+try:
+    from llm.agents.phase_4_agents import (
+        build_micro_trend_detector,
+        build_scalper,
+        build_conviction,
+    )
+    _PHASE_4_AGENTS_AVAILABLE = True
+except ImportError:
+    _PHASE_4_AGENTS_AVAILABLE = False
+
 # Pipeline extensions: quant engine, agent brains, debate, telemetry
 # These are optional — gracefully degrade if modules not yet built
 try:
@@ -901,6 +913,58 @@ class AgentCoordinator:
         if not _STRATEGIC_AGENTS_AVAILABLE:
             return None
         return build_correlator(self, model_for_trigger)
+
+    # ── Phase 4 Scalping + Conviction Agents ────────────────────
+
+    def get_micro_trend(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Micro-Trend Detector to classify 5m micro-trends.
+        Feeds context into Scalper Agent.
+
+        Returns:
+            Micro-trend classification dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_micro_trend_detector(self, model_for_trigger)
+
+    def get_scalp_signal(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Scalper Agent to find 1m-5m micro-trading opportunities.
+        Runs very frequently (every 1m when enabled).
+
+        Returns:
+            Scalp signal dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_scalper(self, model_for_trigger)
+
+    def get_conviction_analysis(
+        self,
+        regime_out: AgentOutput,
+        trade_out: AgentOutput,
+        quant_out: Optional[AgentOutput] = None,
+        critic_out: Optional[AgentOutput] = None,
+        forecaster_out: Optional[AgentOutput] = None,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Conviction Agent to authorize high-leverage trades when all agents align.
+        Runs per signal (rare, ~5-10/month).
+
+        Returns:
+            Conviction analysis dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_conviction(
+            self, regime_out, trade_out, quant_out, critic_out, forecaster_out, model_for_trigger
+        )
 
     def _build_overseer_input(self) -> str:
         """Build comprehensive system state for the Overseer agent."""
