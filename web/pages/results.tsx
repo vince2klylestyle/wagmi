@@ -1591,9 +1591,7 @@ function CumulativePnlMilestones({ trades }: { trades: TradeRecord[] }) {
   const MILESTONES = [0, 1000, 2500, 5000, 10000];
   const LABELS = ['$0', '$1K', '$2.5K', '$5K', '$10K'];
 
-  const netPnl = trades.length > 0
-    ? trades.reduce((s, t) => s + (t.pnl ?? 0), 0)
-    : 5621; // fallback demo value
+  const netPnl = trades.reduce((s, t) => s + (t.pnl ?? 0), 0);
 
   const clampedPnl = Math.max(0, Math.min(netPnl, GOAL));
   const progressPct = (clampedPnl / GOAL) * 100;
@@ -2226,9 +2224,7 @@ function ProfitAttributionChart({ trades, backtest }: {
     exitRows = Object.entries(exitMap).map(([name, pnl]) => ({ name, pnl })).sort((a, b) => b.pnl - a.pnl);
   }
 
-  const totalPnl = trades.length >= 5
-    ? trades.reduce((s, t) => s + (t.pnl ?? 0), 0)
-    : 5621;
+  const totalPnl = trades.reduce((s, t) => s + (t.pnl ?? 0), 0);
 
   // Color palettes
   const stratColors = [C.info, C.brand, C.bull, C.warn];
@@ -3244,7 +3240,7 @@ export default function Results() {
               {fmtPct(r.total_return_pct)}
             </div>
             <div style={{ fontSize: F.md, color: C.textSub }}>
-              {fmtUsd(r.net_pnl)} net profit on {fmtUsd(cfg?.starting_equity ?? 50000)} starting capital
+              {fmtUsd(r.net_pnl)} net profit{cfg?.starting_equity ? ` on ${fmtUsd(cfg.starting_equity)} starting capital` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>

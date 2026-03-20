@@ -758,29 +758,21 @@ function TradesTab({ trades, loading }: { trades: TradeRecord[]; loading: boolea
 // ─── TradeStreakVisual ────────────────────────────────────────────────────────
 
 function TradeStreakVisual({ trades }: { trades: TradeRecord[] }) {
-  // Seeded fallback: [W,W,L,W,W,W,W,L,W,W,W,L,W,W,W,W,L,W,W,W]
-  const FALLBACK: boolean[] = [
-    true, true, false, true, true, true, true, false,
-    true, true, true, false, true, true, true, true,
-    false, true, true, true,
-  ];
+  if (trades.length === 0) {
+    return <AwaitingResults label="No trade history yet" sub="Trade streak will appear once real trades are recorded." />;
+  }
 
   // Derive win/loss booleans from real trades (newest last → oldest first after slice)
   const isWin = (t: TradeRecord): boolean =>
     t.outcome === 'WIN' || (t.pnl != null && t.pnl > 0);
 
-  const useFallback = trades.length === 0;
-  const last20: boolean[] = useFallback
-    ? FALLBACK
-    : trades.slice(-20).map(isWin);
+  const last20: boolean[] = trades.slice(-20).map(isWin);
 
   // Pad to 20 if fewer than 20 real trades (pad from front with nulls represented as false)
-  const grid: (boolean | null)[] = useFallback
-    ? last20
-    : Array.from({ length: 20 }, (_, i) => {
-        const offset = 20 - last20.length;
-        return i < offset ? null : last20[i - offset];
-      });
+  const grid: (boolean | null)[] = Array.from({ length: 20 }, (_, i) => {
+    const offset = 20 - last20.length;
+    return i < offset ? null : last20[i - offset];
+  });
 
   // Current streak (from the most-recent trade going backwards)
   let streakCount = 0;
