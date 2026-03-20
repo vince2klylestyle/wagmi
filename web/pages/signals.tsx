@@ -3290,7 +3290,10 @@ export default function SignalsPage() {
       }
       if (sigRes.status === 'fulfilled' && sigRes.value.ok) {
         try {
-          setSignalsData(await sigRes.value.json());
+          const newSig = await sigRes.value.json();
+          if (newSig?.signals && Object.keys(newSig.signals).length > 0) {
+            setSignalsData(newSig);
+          }
         } catch { /* non-JSON response, skip */ }
       }
       setFetchError(false);
