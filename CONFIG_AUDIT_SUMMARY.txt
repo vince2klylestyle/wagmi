@@ -1,0 +1,301 @@
+================================================================================
+CONFIGURATION AUDIT SUMMARY - nunuIRL Trading Bot
+================================================================================
+Date: 2026-03-20
+Scope: Environment variables, hardcoded values, configuration safety
+Risk Level: MEDIUM (with quick fixes available)
+
+================================================================================
+CRITICAL FINDINGS
+================================================================================
+
+1. NO STARTUP VALIDATION
+   - Bot starts without checking critical environment variables
+   - Missing API keys cause silent failures (trading continues)
+   - No pre-flight checks before live trading
+   Risk: Accidental paper trades, missing alerts, invalid credentials
+   Fix: 1 hour - Add validate_config() function
+
+2. ENVIRONMENT MODE CAN BE BYPASSED
+   - Paper vs. Live mode set by ENVIRONMENT variable
+   - Can be overridden after bot starts
+   - No immutable "lock" on mode selection
+   Risk: Paper trading config doesn't match actual mode
+   Fix: 2 hours - Add mode validation and locking
+
+3. API KEYS NOT SANITIZED IN LOGS
+   - Anthropic API key loaded without masking
+   - Hyperliquid private key could leak in exceptions
+   - Exception tracebacks logged without redaction
+   Risk: API key leaks in log files or error reports
+   Fix: 1 hour - Add SensitiveRedactor logging filter
+
+4. NO CREDENTIAL FORMAT VALIDATION
+   - Hyperliquid credentials accepted without checking format
+   - Invalid addresses/keys won't fail until submission
+   - No test of credentials before trading
+   Risk: Invalid config discovered at worst time
+   Fix: 1 hour - Add credential validation at startup
+
+5. PROFILE OVERRIDES SILENT
+   - Paper vs. Live profiles silently override env vars
+   - User sets MAX_LEVERAGE=50 but live profile uses 25
+   - No warning about which settings were changed
+   Risk: Configuration doesn't match user expectations
+   Fix: 30 min - Log all profile overrides with warnings
+
+================================================================================
+HIGH-RISK CONFIGURATION ITEMS
+================================================================================
+
+ENVIRONMENT=paper (default)
+  - Default is safe but not validated
+  - Can be overridden: export ENVIRONMENT=production
+
+RISK_PER_TRADE=0.005 (0.5% in paper, 0.02 = 2% in live by .env.production)
+  - Paper: Very aggressive (0.5%)
+  - Live: 4x higher (2%) — dangerous for $400 account
+  
+MAX_LEVERAGE=25.0 (global cap)
+  - Paper: 25x allowed
+  - Live: .env.production uses 10x for $400 account (safer)
+  - Risk tiers: high-risk assets capped at 12x
+
+CIRCUIT_BREAKER_DAILY_LOSS_PCT=0.05 (5% of equity)
+  - $10k account: stops at $500 loss
+  - $400 account: stops at $20 loss
+  - Tight, but appropriate for small accounts
+
+MAX_CONSECUTIVE_LOSSES=5 (paper), 4 (live)
+  - After 4-5 losses, circuit breaker trips for 2 hours
+  - Prevents revenge trading
+
+ENSEMBLE_CONFIDENCE_FLOOR=55.0
+  - Very low floor (trades at 55%+ confidence)
+  - Other gates (R:R, EV, fees) filter quality
+
+LLM_MODE=0 (OFF by default)
+  - Can be 0-5 for increasing autonomy
+  - 0 = OFF, 2 = VETO_ONLY, 5 = FULL AUTO
+  - Default safe (no LLM trading)
+
+================================================================================
+ENVIRONMENT VARIABLES (ALL)
+================================================================================
+
+CRITICAL (MUST SET FOR LIVE):
+  ENVIRONMENT                 - "paper" or "production"
+  HL_API_KEY                  - Hyperliquid wallet address (0x...)
+  HL_API_SECRET               - Hyperliquid private key (0x...)
+  STARTING_EQUITY             - Account balance in USD
+  ANTHROPIC_API_KEY           - Claude API key (if LLM_MODE > 0)
+
+IMPORTANT (SAFETY):
+  RISK_PER_TRADE              - 0.005-0.020 (0.5%-2%)
+  MAX_LEVERAGE                - 2.0-25.0 (1x-25x)
+  MAX_OPEN_POSITIONS          - 1-8 positions
+  CIRCUIT_BREAKER_DAILY_LOSS_PCT - 0.02-0.10 (2%-10%)
+  MAX_CONSECUTIVE_LOSSES      - 3-10 losses
+  CIRCUIT_BREAKER_COOLDOWN_MIN - 60-240 minutes
+
+RECOMMENDED (MONITORING):
+  TELEGRAM_TOKEN              - Telegram bot token
+  TELEGRAM_CHAT_ID            - Telegram chat ID
+  TELEGRAM_ALLOWED_USER_ID    - Your Telegram user ID
+  DISCORD_WEBHOOK             - Discord webhook URL
+
+OPTIONAL (FEATURES):
+  LLM_MODE                    - 0-5 (0=OFF, 2=VETO, 5=FULL)
+  LLM_USAGE_TIER              - CONSERVATIVE/RECOMMENDED/AGGRESSIVE
+  LLM_MULTI_AGENT             - true/false (specialist agents)
+  ENABLE_LEVERAGE             - true/false
+  ENABLE_TRAILING_STOP        - true/false
+
+See CONFIG_AUDIT_REPORT.md for complete list (60+ variables)
+
+================================================================================
+HARDCODED VALUES OF CONCERN
+================================================================================
+
+Location: bot/execution/leverage.py:31-39
+  - Hyperliquid maintenance margin tiers (6 tiers, 0.4%-5%)
+  Risk: If exchange changes tiers, liquidation calcs are wrong
+  Fix: Fetch from API at startup, fall back to hardcoded
+
+Location: bot/trading_config.py:599-610
+  - Regime-conditional risk multipliers (consolidation=1.0, panic=0.3)
+  Risk: Hardcoded profitability assumptions
+  Fix: Make configurable per regime
+
+Location: bot/execution/leverage.py:120-200
+  - Leverage tier rules (60% conf → 1.5x, 90% conf → 5x)
+  Risk: Not configurable
+  Fix: Move to config, but keep conservative defaults
+
+Location: bot/trading_config.py:340-347
+  - Technical indicator periods (ATR=14, EMA=20/50/200, etc.)
+  Risk: Standard values, unlikely to need change
+  Fix: Already configurable (no action needed)
+
+================================================================================
+MISSING VALIDATION
+================================================================================
+
+Missing at startup:
+  ✗ ENVIRONMENT mode validation
+  ✗ API key format validation
+  ✗ Equity sanity checks
+  ✗ Risk parameter range checks
+  ✗ Alert channel configuration checks
+  ✗ Exchange connectivity checks
+  ✗ Data source accessibility checks
+
+Missing at configuration load:
+  ✗ Duplicate position check across symbols
+  ✗ Leverage cap enforcement
+  ✗ Fee adjustment for high liquidity
+  ✗ Credential expiration checks
+
+================================================================================
+PAPER VS. LIVE MODE DIFFERENCES
+================================================================================
+
+Feature           | Paper              | Live              | Risk
+===============================================================================
+Order execution   | Simulated          | Real (exchange)   | HIGH
+Precision         | Rounded            | Rounded           | LOW
+Risk gates        | Applied            | Applied           | LOW
+Circuit breaker   | Applied            | Applied           | LOW
+Alerts            | Discord/Telegram   | Discord/Telegram  | LOW
+Fees              | Simulated          | Real (4 bps)      | LOW
+Position tracking | CSV + memory       | Exchange state    | LOW
+Leverage          | Up to MAX_LEVERAGE | Up to MAX_LEVERAGE| HIGH
+Max open pos      | Same               | Same              | LOW
+Risk per trade    | 0.5%               | 0.5-2%            | HIGH
+
+Profile overrides are IDENTICAL! Paper = Live config.
+  Recommendation: Make paper MORE conservative
+
+================================================================================
+CONFIGURATION SAFETY CHECKLIST
+================================================================================
+
+CRITICAL (must fix immediately):
+  [ ] Add validate_config() function — prevents crashes
+  [ ] Add mode validation — prevents wrong env
+  [ ] Sanitize logging — prevents key leaks
+  [ ] Validate credentials — prevents invalid config
+
+HIGH (do this week):
+  [ ] Separate safety gates from feature flags
+  [ ] Add pre-flight checks — catches unsafe setup
+  [ ] Log profile overrides — shows what changed
+  [ ] Fetch maintenance margins from API
+
+MEDIUM (do this month):
+  [ ] Make cooldown times configurable with bounds
+  [ ] Add environment pre-flight connectivity check
+  [ ] Create immutable config wrapper
+  [ ] Add config audit trail
+
+================================================================================
+GO-LIVE CHECKLIST
+================================================================================
+
+Before switching ENVIRONMENT to "production":
+  [ ] STARTING_EQUITY matches account balance
+  [ ] RISK_PER_TRADE is 1-2% max (0.5% recommended)
+  [ ] MAX_LEVERAGE is appropriate for account size
+  [ ] CIRCUIT_BREAKER_DAILY_LOSS_PCT is 5% or less
+  [ ] TELEGRAM_TOKEN and TELEGRAM_CHAT_ID are set
+  [ ] TELEGRAM_ALLOWED_USER_ID is your user ID (not 0)
+  [ ] HL_API_KEY and HL_API_SECRET are set
+  [ ] ANTHROPIC_API_KEY is set (if LLM_MODE > 0)
+  [ ] All tests pass: pytest tests/ -v
+  [ ] 2+ weeks paper trading with 50+ trades
+  [ ] Go-live gate passed (manual verification)
+  [ ] Recent backtest shows positive edge
+  [ ] Alert channels tested and working
+
+================================================================================
+SAFE CONFIGURATION TEMPLATES
+================================================================================
+
+See CONFIG_SECURITY_FIXES.md for three templates:
+  1. Conservative Paper Trading (Learning Mode)
+  2. Moderate Paper Trading (Testing Mode)
+  3. Live Trading (Small Account - $400)
+
+Each template includes recommended values for all critical settings.
+
+================================================================================
+FILES CREATED
+================================================================================
+
+1. CONFIG_AUDIT_REPORT.md (this directory)
+   - Comprehensive findings and analysis
+   - All environment variables documented
+   - Every hardcoded value listed
+   - Safety recommendations by severity
+
+2. CONFIG_SECURITY_FIXES.md (this directory)
+   - Concrete code fixes with examples
+   - Implementation guide with diffs
+   - Testing instructions
+   - Risk reduction estimates
+
+3. CONFIG_AUDIT_SUMMARY.txt (this file)
+   - Quick reference
+   - Critical findings only
+   - Action items ranked by priority
+
+================================================================================
+RISK MITIGATION ROADMAP
+================================================================================
+
+PHASE 1 (IMMEDIATE - 9 hours)
+  1. Add config validation (1h)
+  2. Lock environment mode (1h)
+  3. Redact sensitive logs (1h)
+  4. Validate credentials (1h)
+  5. Pre-flight checks (1.5h)
+  6. Immutable config (1h)
+  7. Audit trail (1.5h)
+  Result: Risk reduced from MEDIUM to LOW
+
+PHASE 2 (WEEK 1)
+  1. Fetch maintenance margins from API (2h)
+  2. Make cooldowns configurable (1h)
+  3. Document all settings (2h)
+  Result: Better resilience to exchange changes
+
+PHASE 3 (MONTH 1)
+  1. Pre-flight connectivity checks (2h)
+  2. Configuration UI/editor (4h)
+  3. Config versioning/rollback (3h)
+  Result: Operator-friendly configuration
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The WAGMI trading bot has MATURE configuration management with sensible
+defaults. However, CRITICAL VALIDATION GAPS exist:
+
+✓ Environment variables well-documented
+✓ Defaults are conservative (paper mode)
+✓ Safety limits configurable
+✓ Multiple risk gates in place
+
+✗ No startup validation
+✗ Mode can be bypassed
+✗ API keys not sanitized
+✗ Credentials not validated
+
+RECOMMENDATION: Implement Phase 1 fixes (9 hours) before live trading.
+After fixes, risk level drops from MEDIUM to LOW.
+
+For implementation details, see CONFIG_SECURITY_FIXES.md
+For detailed analysis, see CONFIG_AUDIT_REPORT.md
+
+================================================================================

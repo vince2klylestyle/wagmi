@@ -161,6 +161,83 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_rejections_ts ON signal_rejections(timestamp);
         CREATE INDEX IF NOT EXISTS idx_rejections_gate ON signal_rejections(gate);
         CREATE INDEX IF NOT EXISTS idx_rejections_symbol ON signal_rejections(symbol);
+
+        -- Archive tables for old records (prevent unbounded growth)
+        -- Same schema as main tables but with archive_date added
+        CREATE TABLE IF NOT EXISTS signals_archive (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            side TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            entry REAL,
+            sl REAL,
+            tp1 REAL,
+            tp2 REAL,
+            atr REAL,
+            leverage REAL DEFAULT 1.0,
+            traded INTEGER DEFAULT 0,
+            metadata TEXT,
+            archive_date TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS trades_archive (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            action TEXT NOT NULL,
+            side TEXT NOT NULL,
+            price REAL NOT NULL,
+            qty REAL,
+            pnl REAL DEFAULT 0.0,
+            fee REAL DEFAULT 0.0,
+            leverage REAL DEFAULT 1.0,
+            strategy TEXT,
+            metadata TEXT,
+            archive_date TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS signal_outcomes_archive (
+            id INTEGER PRIMARY KEY,
+            signal_id INTEGER,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            side TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            entry_price REAL,
+            exit_price REAL,
+            exit_action TEXT,
+            pnl REAL DEFAULT 0.0,
+            pnl_pct REAL DEFAULT 0.0,
+            hold_time_s REAL DEFAULT 0.0,
+            regime TEXT DEFAULT '',
+            leverage REAL DEFAULT 1.0,
+            win INTEGER DEFAULT 0,
+            score REAL DEFAULT 0.0,
+            archive_date TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS signal_rejections_archive (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            side TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            gate TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            entry REAL DEFAULT 0.0,
+            sl REAL DEFAULT 0.0,
+            metadata TEXT,
+            archive_date TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_archive_signals_ts ON signals_archive(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_archive_trades_ts ON trades_archive(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_archive_outcomes_ts ON signal_outcomes_archive(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_archive_rejections_ts ON signal_rejections_archive(timestamp);
     """)
     # Run any pending schema migrations
     from data.migrations import MigrationRunner
@@ -879,3 +956,86 @@ def get_dashboard_data() -> Dict[str, Any]:
         "health_events": get_health_events(24),
         "performance_history": get_performance_history(30),
     }
+
+
+def archive_old_records(days: int = 30):
+    """Archive records older than N days to prevent unbounded table growth.
+
+    Moves old records from main tables to archive tables, deleting from main.
+    Called periodically (e.g., daily or weekly) to keep main tables lean.
+
+    Args:
+        days: Archive records older than this many days (default 30)
+
+    Returns:
+        Dict with counts of archived records per table
+    """
+    import datetime
+    cutoff_date = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
+    archive_date = datetime.datetime.now().isoformat()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    counts = {}
+
+    try:
+        # Archive signals
+        cursor.execute("""
+            INSERT INTO signals_archive (id, timestamp, symbol, strategy, side, confidence,
+                                        entry, sl, tp1, tp2, atr, leverage, traded, metadata, archive_date)
+            SELECT id, timestamp, symbol, strategy, side, confidence,
+                   entry, sl, tp1, tp2, atr, leverage, traded, metadata, ?
+            FROM signals WHERE timestamp < ?
+        """, (archive_date, cutoff_date))
+        counts["signals"] = cursor.rowcount
+        if counts["signals"] > 0:
+            cursor.execute("DELETE FROM signals WHERE timestamp < ?", (cutoff_date,))
+
+        # Archive trades
+        cursor.execute("""
+            INSERT INTO trades_archive (id, timestamp, symbol, action, side, price, qty, pnl, fee, leverage, strategy, metadata, archive_date)
+            SELECT id, timestamp, symbol, action, side, price, qty, pnl, fee, leverage, strategy, metadata, ?
+            FROM trades WHERE timestamp < ?
+        """, (archive_date, cutoff_date))
+        counts["trades"] = cursor.rowcount
+        if counts["trades"] > 0:
+            cursor.execute("DELETE FROM trades WHERE timestamp < ?", (cutoff_date,))
+
+        # Archive signal outcomes
+        cursor.execute("""
+            INSERT INTO signal_outcomes_archive (id, signal_id, timestamp, symbol, strategy, side, confidence,
+                                               entry_price, exit_price, exit_action, pnl, pnl_pct, hold_time_s, regime, leverage, win, score, archive_date)
+            SELECT id, signal_id, timestamp, symbol, strategy, side, confidence,
+                   entry_price, exit_price, exit_action, pnl, pnl_pct, hold_time_s, regime, leverage, win, score, ?
+            FROM signal_outcomes WHERE timestamp < ?
+        """, (archive_date, cutoff_date))
+        counts["signal_outcomes"] = cursor.rowcount
+        if counts["signal_outcomes"] > 0:
+            cursor.execute("DELETE FROM signal_outcomes WHERE timestamp < ?", (cutoff_date,))
+
+        # Archive signal rejections (can grow very large)
+        cursor.execute("""
+            INSERT INTO signal_rejections_archive (id, timestamp, symbol, strategy, side, confidence, gate, reason, entry, sl, metadata, archive_date)
+            SELECT id, timestamp, symbol, strategy, side, confidence, gate, reason, entry, sl, metadata, ?
+            FROM signal_rejections WHERE timestamp < ?
+        """, (archive_date, cutoff_date))
+        counts["signal_rejections"] = cursor.rowcount
+        if counts["signal_rejections"] > 0:
+            cursor.execute("DELETE FROM signal_rejections WHERE timestamp < ?", (cutoff_date,))
+
+        conn.commit()
+
+        total_archived = sum(counts.values())
+        if total_archived > 0:
+            logger.info(f"[DB] Archived {total_archived} old records (older than {days}d): "
+                       f"signals={counts.get('signals', 0)}, trades={counts.get('trades', 0)}, "
+                       f"outcomes={counts.get('signal_outcomes', 0)}, rejections={counts.get('signal_rejections', 0)}")
+
+        return counts
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"[DB] Archive failed: {e}")
+        return {}
+    finally:
+        conn.close()

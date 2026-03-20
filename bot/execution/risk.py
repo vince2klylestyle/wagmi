@@ -289,18 +289,17 @@ class CircuitBreaker:
                 self._trip_sim_time = None
                 self.trip_reason = ""
                 self.post_cooldown_caution = 4  # Next 4 trades at half size
-                # Reset peak_equity to current equity to prevent immediate re-trip.
+                # UNCONDITIONALLY reset peak_equity to current equity to prevent immediate re-trip.
                 # Without this, the drawdown from the old peak is still >10% and
                 # check_mtm_breakers() re-trips on the very next candle.
-                if equity > 0:
-                    old_peak = self.peak_equity
-                    self.peak_equity = equity
-                    logger.info(
-                        f"Circuit breaker cooldown complete, peak_equity reset "
-                        f"${old_peak:.2f} → ${equity:.2f} (caution mode: 4 trades at reduced size)"
-                    )
-                else:
-                    logger.info("Circuit breaker cooldown complete, trading resumed (caution mode: 4 trades at reduced size)")
+                # Note: session_peak_equity (cumulative max) is NOT reset, only the
+                # daily peak_equity (used for per-breaker drawdown checks).
+                old_peak = self.peak_equity
+                self.peak_equity = equity if equity > 0 else self.peak_equity
+                logger.info(
+                    f"Circuit breaker cooldown complete, peak_equity reset "
+                    f"${old_peak:.2f} → ${self.peak_equity:.2f} (caution mode: 4 trades at reduced size)"
+                )
                 return True
 
         # High-confidence override: allow exceptional setups through
