@@ -316,9 +316,11 @@ async def refresh_signals():
             # Rate-limit friendly: small random delay between requests
             await asyncio.sleep(0.25 * random.uniform(0.8, 1.2))
 
-        state["signals"] = results
-        state["regime"] = compute_regime(results)
-        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        # Only update symbols that successfully refreshed; don't wipe stale-but-valid data
+        if results:
+            state["signals"].update(results)
+            state["regime"] = compute_regime(state["signals"])
+            state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
 
 async def loop_runner():
