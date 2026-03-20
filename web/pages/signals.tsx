@@ -13,7 +13,7 @@ function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return 'https://nunuirl-platform.onrender.com';
+      return 'https://wagmi-production-d376.up.railway.app';
     }
   }
   return 'http://localhost:8000';
