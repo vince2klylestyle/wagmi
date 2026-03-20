@@ -25,6 +25,11 @@ class AgentRole(str, Enum):
     SCOUT = "scout"            # Idle-time preparation and forecasting
     OVERSEER = "overseer"      # System-level meta-optimizer (periodic)
     QUANT = "quant"            # Statistical analysis, probability, prediction
+    # ── Phase 3 Strategic Agents ────────────────────────────────
+    PORTFOLIO = "portfolio"    # Holistic portfolio risk aggregation (daily)
+    FORECASTER = "forecaster"  # Regime shift prediction (daily)
+    HYPOTHESIS = "hypothesis"  # Novel pattern discovery and generation (weekly)
+    CORRELATOR = "correlator"  # Cross-asset correlation and lead-lag (daily)
 
 
 @dataclass
@@ -107,6 +112,31 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
     ),
     AgentRole.QUANT: AgentConfig(
         role=AgentRole.QUANT,
+        max_tokens=1536,
+        timeout_s=15.0,
+        required=False,
+    ),
+    # ── Phase 3 Strategic Agents ────────────────────────────────
+    AgentRole.PORTFOLIO: AgentConfig(
+        role=AgentRole.PORTFOLIO,
+        max_tokens=2048,
+        timeout_s=20.0,
+        required=False,
+    ),
+    AgentRole.FORECASTER: AgentConfig(
+        role=AgentRole.FORECASTER,
+        max_tokens=1536,
+        timeout_s=15.0,
+        required=False,
+    ),
+    AgentRole.HYPOTHESIS: AgentConfig(
+        role=AgentRole.HYPOTHESIS,
+        max_tokens=2048,
+        timeout_s=20.0,
+        required=False,
+    ),
+    AgentRole.CORRELATOR: AgentConfig(
+        role=AgentRole.CORRELATOR,
         max_tokens=1536,
         timeout_s=15.0,
         required=False,

@@ -49,6 +49,19 @@ from llm.agents.consistency_checker import (
 from llm.client import call_llm
 from llm.decision_types import LLMDecision, StrategyWeights
 
+# Strategic agents (Portfolio, Forecaster, Hypothesis, Correlator)
+# These are optional Phase 3 agents
+try:
+    from llm.agents.strategic_agents import (
+        build_portfolio_aggregator,
+        build_regime_forecaster,
+        build_hypothesis_generator,
+        build_correlator,
+    )
+    _STRATEGIC_AGENTS_AVAILABLE = True
+except ImportError:
+    _STRATEGIC_AGENTS_AVAILABLE = False
+
 # Pipeline extensions: quant engine, agent brains, debate, telemetry
 # These are optional — gracefully degrade if modules not yet built
 try:
@@ -830,6 +843,64 @@ class AgentCoordinator:
             f"diagnosis={diagnosis[:80]}"
         )
         return data
+
+    # ── Phase 3 Strategic Agents ────────────────────────────────
+
+    def get_portfolio_intelligence(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Portfolio Aggregator agent for holistic portfolio health analysis.
+        Runs DAILY (not per-trade).
+
+        Returns:
+            Portfolio analysis dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_portfolio_aggregator(self, model_for_trigger)
+
+    def get_regime_forecast(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Regime Forecaster agent to predict regime transitions.
+        Runs DAILY.
+
+        Returns:
+            Regime forecast dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_regime_forecaster(self, model_for_trigger)
+
+    def get_novel_hypotheses(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Hypothesis Generator agent to discover novel trading patterns.
+        Runs WEEKLY.
+
+        Returns:
+            Novel hypotheses dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_hypothesis_generator(self, model_for_trigger)
+
+    def get_correlator_analysis(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Correlator agent to analyze cross-asset relationships.
+        Runs DAILY.
+
+        Returns:
+            Correlation analysis dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_correlator(self, model_for_trigger)
 
     def _build_overseer_input(self) -> str:
         """Build comprehensive system state for the Overseer agent."""
