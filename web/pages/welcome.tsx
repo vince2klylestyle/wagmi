@@ -3,8 +3,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, viewportTrigger, scrollStagger, scrollStaggerWide, magneticHover } from '../src/animations';
 import { GlowOrb } from '../components/ui/GlowOrb';
+import { ParticleField } from '../components/ui/ParticleField';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { Waveform } from '../components/ui/Waveform';
 import { apiFetch } from '../src/api';
 import type { BacktestResult, ActivityEvent, ActivityFeedResponse } from '../src/types';
 
@@ -702,41 +705,66 @@ export default function WelcomePage() {
           background: `radial-gradient(ellipse at 50% 0%, ${C.brand}18 0%, transparent 60%), ${C.bg}`,
           padding: '80px 24px 60px',
           textAlign: 'center',
+          position: 'relative',
+          overflow: 'hidden',
         }}>
-          <div style={{ maxWidth: 780, margin: '0 auto' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '4px 14px', borderRadius: R.pill, background: `${C.bull}15`, border: `1px solid ${C.bull}30` }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.bull, display: 'inline-block' }} />
+          {/* Atmospheric layers */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+            <ParticleField count={20} />
+            <GeometricBG variant="hexagon" opacity={0.015} />
+          </div>
+          <div className="light-beam" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+
+          <motion.div
+            variants={scrollStaggerWide}
+            initial="hidden"
+            animate="show"
+            style={{ maxWidth: 780, margin: '0 auto', position: 'relative', zIndex: 1 }}
+          >
+            <motion.div variants={cinematicReveal} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '4px 14px', borderRadius: R.pill, background: `${C.bull}15`, border: `1px solid ${C.bull}30` }}>
+              <span className="live-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: C.bull, display: 'inline-block' }} />
               <span style={{ fontSize: F.xs, fontWeight: 700, color: C.bull }}>LIVE — analyzing markets now</span>
-            </div>
-            <h1 style={{ margin: '0 0 20px', fontSize: 48, fontWeight: 900, color: C.text, letterSpacing: -1.5, lineHeight: 1.1 }}>
+            </motion.div>
+            <motion.h1 variants={cinematicReveal} style={{ margin: '0 0 20px', fontSize: 52, fontWeight: 900, color: C.text, letterSpacing: -1.5, lineHeight: 1.08 }}>
               The AI That Trades<br />
-              <span className="gradient-text">While You Sleep.</span>
-            </h1>
-            <p style={{ margin: '0 0 36px', fontSize: F.xl, color: C.textSub, lineHeight: 1.6, maxWidth: 600, marginLeft: 'auto', marginRight: 'auto' }}>
+              <span style={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 30%, #06b6d4 60%, #6366f1 100%)',
+                backgroundSize: '200% 200%',
+                animation: 'gradientShift 4s ease infinite',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>While You Sleep.</span>
+            </motion.h1>
+            <motion.p variants={cinematicReveal} style={{ margin: '0 0 36px', fontSize: F.xl, color: C.textSub, lineHeight: 1.6, maxWidth: 600, marginLeft: 'auto', marginRight: 'auto' }}>
               7 AI agents analyze 4 strategies across Hyperliquid in real-time.
               Copy every signal in seconds — with the full reasoning behind it.
-            </p>
-            <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 48 }}>
-              <Link href="/copy-trade" style={{
-                padding: '14px 32px', fontSize: F.lg, fontWeight: 700,
-                background: C.brand, color: '#fff', borderRadius: R.md,
-                textDecoration: 'none', boxShadow: S.glow,
-              }}>
-                Start Copy Trading — Free
-              </Link>
-              <Link href="/about" style={{
-                padding: '14px 32px', fontSize: F.lg, fontWeight: 600,
-                border: `1px solid ${C.border}`, color: C.textSub, borderRadius: R.md, textDecoration: 'none',
-              }}>
-                See How It Works
-              </Link>
-            </div>
+            </motion.p>
+            <motion.div variants={cinematicReveal} style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 48 }}>
+              <motion.div whileHover={{ scale: 1.04, boxShadow: '0 0 32px rgba(99,102,241,0.4)' }} whileTap={{ scale: 0.97 }}>
+                <Link href="/copy-trade" style={{
+                  display: 'inline-block', padding: '14px 32px', fontSize: F.lg, fontWeight: 700,
+                  background: C.brand, color: '#fff', borderRadius: R.md,
+                  textDecoration: 'none', boxShadow: S.glow,
+                }}>
+                  Start Copy Trading — Free
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.03, borderColor: 'rgba(255,255,255,0.2)' }} whileTap={{ scale: 0.97 }}>
+                <Link href="/about" style={{
+                  display: 'inline-block', padding: '14px 32px', fontSize: F.lg, fontWeight: 600,
+                  border: `1px solid ${C.border}`, color: C.textSub, borderRadius: R.md, textDecoration: 'none',
+                }}>
+                  See How It Works
+                </Link>
+              </motion.div>
+            </motion.div>
             {sparkData.length > 1 && (
-              <div style={{ display: 'flex', justifyContent: 'center', opacity: 0.85 }}>
+              <motion.div variants={cinematicReveal} style={{ display: 'flex', justifyContent: 'center', opacity: 0.85 }}>
                 <HeroSparkline data={sparkData} w={320} h={70} />
-              </div>
+              </motion.div>
             )}
-          </div>
+          </motion.div>
         </section>
 
         {/* ── Live Ticker ── */}
@@ -756,11 +784,11 @@ export default function WelcomePage() {
         {/* ── 30-Day Performance Snapshot ── */}
         <section style={{ padding: '72px 24px', background: C.bg }}>
           <div style={{ maxWidth: 960, margin: '0 auto' }}>
-            <div style={{ textAlign: 'center', marginBottom: 40 }}>
-              <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Performance</div>
-              <h2 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>30-Day Performance Snapshot</h2>
-              <p style={{ margin: '8px 0 0', fontSize: F.xs, color: C.muted }}>See <a href="/results" style={{ color: C.brand }}>Track Record</a> for verified results</p>
-            </div>
+            <motion.div {...viewportTrigger} variants={scrollStagger} style={{ textAlign: 'center', marginBottom: 40 }}>
+              <motion.div variants={fadeUp} style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Performance</motion.div>
+              <motion.h2 variants={cinematicReveal} style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>30-Day Performance Snapshot</motion.h2>
+              <motion.p variants={fadeUp} style={{ margin: '8px 0 0', fontSize: F.xs, color: C.muted }}>See <a href="/results" style={{ color: C.brand }}>Track Record</a> for verified results</motion.p>
+            </motion.div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
               {/* Win Rate Ring */}
               <div className="card-hover glass-noise prismatic-border" style={{
@@ -792,26 +820,26 @@ export default function WelcomePage() {
         </section>
 
         {/* ── How It Works ── */}
-        <section style={{ padding: '72px 24px', maxWidth: 1000, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>How It Works</div>
-            <h2 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>Preparation is how you make it.</h2>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 24 }}>
+        <section style={{ padding: '72px 24px', maxWidth: 1000, margin: '0 auto', position: 'relative' }}>
+          <motion.div {...viewportTrigger} variants={scrollStagger} style={{ textAlign: 'center', marginBottom: 48 }}>
+            <motion.div variants={fadeUp} style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>How It Works</motion.div>
+            <motion.h2 variants={cinematicReveal} style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>Preparation is how you make it.</motion.h2>
+          </motion.div>
+          <motion.div {...viewportTrigger} variants={scrollStagger} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 24 }}>
             {HOW_STEPS.map((s, i) => (
-              <div key={s.title} className="card-hover glass-noise" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '28px 24px' }}>
+              <motion.div key={s.title} variants={cinematicReveal} className="card-hover glass-noise refraction-edge" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '28px 24px' }} {...magneticHover}>
                 <div style={{ fontSize: 36, marginBottom: 14 }}>{s.icon}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                   <span style={{ fontSize: F.xs, fontWeight: 700, color: C.muted, background: C.surface, padding: '2px 8px', borderRadius: R.pill }}>Step {i + 1}</span>
                 </div>
                 <h3 style={{ margin: '0 0 8px', fontSize: F.lg, fontWeight: 700, color: C.text }}>{s.title}</h3>
                 <p style={{ margin: 0, fontSize: F.sm, color: C.muted, lineHeight: 1.6 }}>{s.desc}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
-          <div style={{ textAlign: 'center', marginTop: 28 }}>
+          </motion.div>
+          <motion.div {...viewportTrigger} variants={fadeUp} style={{ textAlign: 'center', marginTop: 28 }}>
             <Link href="/ai-decisions" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none' }}>See a real AI decision →</Link>
-          </div>
+          </motion.div>
         </section>
 
         {/* ── Feature Comparison Table ── */}
@@ -829,21 +857,28 @@ export default function WelcomePage() {
         </section>
 
         {/* ── Signal Preview ── */}
-        <section style={{ padding: '40px 24px 72px', background: `linear-gradient(180deg, ${C.bg} 0%, ${C.surface}80 100%)` }}>
-          <div style={{ maxWidth: 1000, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
-            <div>
+        <section style={{ padding: '40px 24px 72px', background: `linear-gradient(180deg, ${C.bg} 0%, ${C.surface}80 100%)`, position: 'relative' }}>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, opacity: 0.04, pointerEvents: 'none' }}>
+            <Waveform speed={0.4} amplitude={8} />
+          </div>
+          <motion.div {...viewportTrigger} variants={scrollStagger} style={{ maxWidth: 1000, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center', position: 'relative' }}>
+            <motion.div variants={cinematicReveal}>
               <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Real Signal</div>
               <h2 style={{ margin: '0 0 16px', fontSize: F['2xl'], fontWeight: 800, color: C.text, lineHeight: 1.2 }}>Not just an arrow.<br />The reasoning too.</h2>
               <p style={{ margin: '0 0 24px', color: C.muted, fontSize: F.base, lineHeight: 1.7 }}>
                 Every signal includes the full AI deliberation — why the bot entered, what could go wrong, and exactly how much it's risking.
                 Transparency is the product.
               </p>
-              <Link href="/copy-trade" style={{ padding: '10px 22px', background: C.brand, color: '#fff', borderRadius: R.md, fontSize: F.sm, fontWeight: 700, textDecoration: 'none' }}>
-                Follow the next signal →
-              </Link>
-            </div>
-            <SignalPreviewCard />
-          </div>
+              <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} style={{ display: 'inline-block' }}>
+                <Link href="/copy-trade" style={{ padding: '10px 22px', background: C.brand, color: '#fff', borderRadius: R.md, fontSize: F.sm, fontWeight: 700, textDecoration: 'none' }}>
+                  Follow the next signal →
+                </Link>
+              </motion.div>
+            </motion.div>
+            <motion.div variants={cinematicReveal}>
+              <SignalPreviewCard />
+            </motion.div>
+          </motion.div>
           <style>{`@media (max-width: 700px) { .signal-grid { grid-template-columns: 1fr !important; } }`}</style>
         </section>
 
@@ -859,16 +894,19 @@ export default function WelcomePage() {
         </section>
 
         {/* ── 7 Agents Section ── */}
-        <section style={{ padding: '72px 24px', background: C.surface, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ maxWidth: 960, margin: '0 auto' }}>
-            <div style={{ textAlign: 'center', marginBottom: 40 }}>
-              <div style={{ fontSize: F.xs, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>AI Architecture</div>
-              <h2 style={{ margin: '0 0 12px', fontSize: F['3xl'], fontWeight: 800, color: C.text }}>7 AIs debate every trade.</h2>
-              <p style={{ margin: 0, color: C.muted, fontSize: F.base, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+        <section style={{ padding: '72px 24px', background: C.surface, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, position: 'relative', overflow: 'hidden' }}>
+          <GeometricBG variant="circuit" opacity={0.02} />
+          <div style={{ maxWidth: 960, margin: '0 auto', position: 'relative' }}>
+            <motion.div {...viewportTrigger} variants={scrollStagger} style={{ textAlign: 'center', marginBottom: 40 }}>
+              <motion.div variants={fadeUp} style={{ fontSize: F.xs, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>AI Architecture</motion.div>
+              <motion.h2 variants={cinematicReveal} style={{ margin: '0 0 12px', fontSize: F['3xl'], fontWeight: 800, color: C.text }}>7 AIs debate every trade.</motion.h2>
+              <motion.p variants={fadeUp} style={{ margin: 0, color: C.muted, fontSize: F.base, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
                 The Critic can veto any trade it doesn't believe in — and it must explain why. Vetoing with no reason is not allowed.
-              </p>
-            </div>
-            <AgentPipeline />
+              </motion.p>
+            </motion.div>
+            <motion.div {...viewportTrigger} variants={cinematicReveal}>
+              <AgentPipeline />
+            </motion.div>
             <div style={{ marginTop: 24, padding: '16px 20px', background: `${C.purple}10`, border: `1px solid ${C.purple}30`, borderRadius: R.md, textAlign: 'center' }}>
               <span style={{ fontSize: F.sm, color: C.textSub }}>
                 The Critic vetoed <strong style={{ color: C.purple }}>23% of signals</strong> in the last 30 days — protecting capital while the rest executed profitably.

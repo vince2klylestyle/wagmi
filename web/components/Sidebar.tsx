@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: IconLightning,
     items: [
       { href: '/', label: 'Dashboard', desc: 'Bot overview & status' },
+      { href: '/charts', label: 'Live Charts', desc: 'Price action & zones' },
       { href: '/signals', label: 'Live Signals', desc: 'Real-time signal feed' },
       { href: '/copy-trade', label: 'Trade This', desc: "Copy the bot's trades" },
     ],

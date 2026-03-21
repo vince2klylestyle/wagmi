@@ -198,6 +198,35 @@ export const tooltipReveal: Variants = {
   },
 };
 
+// ── Scroll-Triggered Viewport Animations ────────────────────────────────────
+
+/**
+ * Spread onto any motion.div to trigger reveal animation when scrolled into view.
+ * Usage: <motion.div {...viewportTrigger} variants={fadeUp}>
+ */
+export const viewportTrigger = {
+  initial: 'hidden' as const,
+  whileInView: 'show' as const,
+  viewport: { once: true, margin: '-60px' },
+};
+
+/**
+ * Orchestrated scroll container — staggers children when section scrolls into view.
+ * Pair with viewportTrigger on the parent and child variants like fadeUp/cinematicReveal.
+ */
+export const scrollStagger: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
+};
+
+/**
+ * Dramatic scroll container — wider stagger for hero/feature sections.
+ */
+export const scrollStaggerWide: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.12, delayChildren: 0.2 } },
+};
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 
 /** Check if user prefers reduced motion */

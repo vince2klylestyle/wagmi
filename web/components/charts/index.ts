@@ -15,3 +15,6 @@ export type { HeatmapProps, HeatmapDatum } from './Heatmap';
 
 export { Sparkline } from './Sparkline';
 export type { SparklineProps } from './Sparkline';
+
+export { TradingChart } from './TradingChart';
+export type { TradingChartProps, TradeMarker, ZoneBand, SignalOverlay } from './TradingChart';

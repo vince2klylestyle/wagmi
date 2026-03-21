@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover, viewportTrigger, scrollStagger } from '../src/animations';
 import { GlowOrb } from '../components/ui/GlowOrb';
 import { ParticleField } from '../components/ui/ParticleField';
 import { GeometricBG } from '../components/ui/GeometricBG';
@@ -619,25 +619,64 @@ function CandleChart({
     })();
   }, [zones, signalLevels]);
 
-  // TradingView widget fallback when OHLCV API is unavailable
-  if (status === 'error') {
+  // TradingView Advanced Chart widget fallback (script-based, reliable)
+  const tvFallbackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status !== 'error' || !tvFallbackRef.current) return;
     const TV_TF: Record<string, string> = { '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
-    const tvSrc = `https://s.tradingview.com/widgetembed/?frameElementId=tv_${symbol}&symbol=${TV_SYMBOLS[symbol] ?? symbol}&interval=${TV_TF[timeframe] ?? '60'}&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&withdateranges=1`;
-    return (
-      <div style={{ width: '100%', height, borderRadius: R.md, overflow: 'hidden', background: '#131722' }}>
-        <iframe
-          src={tvSrc}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          allow="fullscreen"
-          title={`${symbol} Chart`}
-        />
-      </div>
-    );
-  }
+    const tvSym = TV_SYMBOLS[symbol] ?? `BINANCE:${symbol}USDT`;
+    const cId = `tv-dash-${symbol}`;
+
+    tvFallbackRef.current.innerHTML = `<div id="${cId}" style="width:100%;height:100%"></div>`;
+
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      if (typeof (window as any).TradingView !== 'undefined') {
+        new (window as any).TradingView.widget({
+          container_id: cId,
+          autosize: true,
+          symbol: tvSym,
+          interval: TV_TF[timeframe] ?? '60',
+          timezone: 'Etc/UTC',
+          theme: 'dark',
+          style: '1',
+          locale: 'en',
+          toolbar_bg: '#0a0f1e',
+          enable_publishing: false,
+          hide_legend: false,
+          save_image: false,
+          backgroundColor: '#1a2236',
+          gridColor: 'rgba(45,55,72,0.3)',
+        });
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => { try { document.head.removeChild(script); } catch {} };
+  }, [status, symbol, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height, background: C.card, borderRadius: R.md }} />
+      {/* Native chart (hidden when API fails) */}
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height,
+          background: C.card,
+          borderRadius: R.md,
+          display: status === 'error' ? 'none' : 'block',
+        }}
+      />
+      {/* TradingView fallback (shown when API fails) */}
+      {status === 'error' && (
+        <div
+          ref={tvFallbackRef}
+          style={{ width: '100%', height, background: '#1a2236', borderRadius: R.md, overflow: 'hidden' }}
+        />
+      )}
       {status === 'loading' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
           Loading candles…
@@ -1083,10 +1122,26 @@ export default function Home() {
       )}
 
       {/* ── Page header ───────────────────────────────── */}
-      <div style={{ marginBottom: 16 }}>
+      <motion.div
+        variants={orchestratedContainer}
+        initial="hidden"
+        animate="show"
+        style={{ marginBottom: 16 }}
+      >
         <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'flex-end', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: 10 }}>
-          <div>
-            <h1 className="gradient-text" style={{ margin: 0, fontSize: isMobile ? F['2xl'] : F['3xl'], fontWeight: 800, letterSpacing: -0.5 }}>
+          <motion.div variants={cinematicReveal}>
+            <h1 style={{
+              margin: 0,
+              fontSize: isMobile ? F['2xl'] : 36,
+              fontWeight: 900,
+              letterSpacing: -0.5,
+              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 30%, #06b6d4 60%, #6366f1 100%)',
+              backgroundSize: '200% 200%',
+              animation: 'gradientShift 4s ease infinite',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
               Dashboard
             </h1>
             {!isMobile && (
@@ -1094,17 +1149,17 @@ export default function Home() {
                 Live signals · AI analysis · Real-time market intelligence
               </p>
             )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+          </motion.div>
+          <motion.div variants={fadeUp} style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
             <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
               Results →
             </Link>
             <Link href="/copy-trade" style={{ fontSize: F.sm, color: '#fff', fontWeight: 600, textDecoration: 'none', background: C.brand, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
               Copy Trade →
             </Link>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Always Watching Intelligence Bar ──────────── */}
       {llmView && (
@@ -1112,9 +1167,9 @@ export default function Home() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          className="glass-card breathe-glow"
+          className="breathe-glow"
           style={{
-            ...Glass.card,
+            ...Glass.crystal,
             borderRadius: R.lg,
             padding: '14px 20px',
             marginBottom: 24,
@@ -1221,9 +1276,9 @@ export default function Home() {
         />
         {!isMobile && <motion.div
           variants={fadeUp}
-          className="glass-card glass-noise"
+          className="glass-noise"
           style={{
-            ...Glass.card,
+            ...Glass.crystal,
             borderRadius: R.lg,
             padding: '20px 24px',
             display: 'flex',
@@ -1299,7 +1354,7 @@ export default function Home() {
         </div>
 
         {/* Full-width chart */}
-        <div className="glow-border glass-card" style={{ ...Glass.card, borderRadius: R.md, overflow: 'hidden' }}>
+        <div className="glow-border" style={{ ...Glass.crystal, borderRadius: R.md, overflow: 'hidden' }}>
           <CandleChart
             symbol={activeChart}
             apiBase={apiBase}
@@ -1315,7 +1370,7 @@ export default function Home() {
       <div className="stagger-reveal" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
 
         {/* LEFT — Tabbed heatmap section (order: 2 on mobile so AI stance shows first) */}
-        <div className="glass-card" style={{ ...Glass.card, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 2 : 1 }}>
+        <div style={{ ...Glass.crystal, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 2 : 1 }}>
           {/* Tab strip */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, background: '#0f172a' }}>
             {(['market', 'scores', 'correlation', 'regime'] as const).map((tab) => {
