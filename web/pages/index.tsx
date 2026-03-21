@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover, viewportTrigger, scrollStagger } from '../src/animations';
 import { GlowOrb } from '../components/ui/GlowOrb';
 import { ParticleField } from '../components/ui/ParticleField';
 import { GeometricBG } from '../components/ui/GeometricBG';
@@ -1122,10 +1122,26 @@ export default function Home() {
       )}
 
       {/* ── Page header ───────────────────────────────── */}
-      <div style={{ marginBottom: 16 }}>
+      <motion.div
+        variants={orchestratedContainer}
+        initial="hidden"
+        animate="show"
+        style={{ marginBottom: 16 }}
+      >
         <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'flex-end', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: 10 }}>
-          <div>
-            <h1 className="gradient-text" style={{ margin: 0, fontSize: isMobile ? F['2xl'] : F['3xl'], fontWeight: 800, letterSpacing: -0.5 }}>
+          <motion.div variants={cinematicReveal}>
+            <h1 style={{
+              margin: 0,
+              fontSize: isMobile ? F['2xl'] : 36,
+              fontWeight: 900,
+              letterSpacing: -0.5,
+              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 30%, #06b6d4 60%, #6366f1 100%)',
+              backgroundSize: '200% 200%',
+              animation: 'gradientShift 4s ease infinite',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
               Dashboard
             </h1>
             {!isMobile && (
@@ -1133,17 +1149,17 @@ export default function Home() {
                 Live signals · AI analysis · Real-time market intelligence
               </p>
             )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+          </motion.div>
+          <motion.div variants={fadeUp} style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
             <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
               Results →
             </Link>
             <Link href="/copy-trade" style={{ fontSize: F.sm, color: '#fff', fontWeight: 600, textDecoration: 'none', background: C.brand, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
               Copy Trade →
             </Link>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Always Watching Intelligence Bar ──────────── */}
       {llmView && (
