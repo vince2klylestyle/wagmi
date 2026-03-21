@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { C, G, R, F, S, Glass, SP, M, fmtUsd, fmtPct } from '../src/theme';
 import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
+import { GeometricBG } from '../components/ui/GeometricBG';
 import type { TradeRecord, TradeHistoryResponse } from '../src/types';
 import { resolveApiBase } from '../src/api';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -924,7 +925,7 @@ function RegimePerformanceMatrix({ trades }: { trades: TradeRecord[] }) {
   const activeRegimes = REGIMES.filter((r) => stats[r].total > 0);
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24, boxShadow: S.glass }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Performance by Regime</div>
         <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How the bot performs in each market regime — hover cells for detail</div>
@@ -1071,7 +1072,7 @@ function TradeDurationHistogram({ trades }: { trades: TradeRecord[] }) {
   }, 0);
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24, boxShadow: S.glass }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Trade Duration Distribution</div>
         <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>How long trades are held — stacked by win (green) / loss (red)</div>
@@ -1250,7 +1251,7 @@ function MultiSymbolPnlChart({ trades }: { trades: TradeRecord[] }) {
   const yTicks = [minY, 0, maxY / 2, maxY].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24, boxShadow: S.glass }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>Cumulative P&L by Symbol</div>
@@ -1535,7 +1536,7 @@ function SignalQualityFunnel({ trades }: { trades: TradeRecord[] }) {
   }
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24, boxShadow: S.glass }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.crystal, borderRadius: R.xl, padding: '20px 24px', marginBottom: 24 }}>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Signal Quality Funnel</h2>
         <div style={{ fontSize: F.xs, color: C.muted, marginTop: 3 }}>
@@ -3076,6 +3077,7 @@ export default function Forensics() {
 
   return (
     <motion.div className="bg-aurora" style={{ position: 'relative' }} variants={staggerContainerSlow} initial="hidden" animate="show">
+      <GeometricBG variant="diamond" opacity={0.02} />
       <div className="floating-orb orb-cyan" style={{ position: 'fixed', top: '15%', right: '10%' }} />
       {/* Header */}
       <motion.div variants={fadeUp} style={{ marginBottom: 28 }}>

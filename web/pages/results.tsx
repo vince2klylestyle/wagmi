@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, orchestratedContainer } from '../src/animations';
 import type { BacktestResult, TradeRecord, TradeHistoryResponse, EquityCurvePoint } from '../src/types';
 import { resolveApiBase } from '../src/api';
 
@@ -18,8 +18,7 @@ function AwaitingResults({ label = 'Awaiting results', sub }: { label?: string; 
   return (
     <motion.div
       variants={fadeUp} initial="hidden" animate="show"
-      className="glass-card"
-      style={{ ...Glass.card, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, borderRadius: R.lg, color: C.muted }}
+      style={{ ...Glass.crystal, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, borderRadius: R.lg, color: C.muted }}
     >
       <div style={{ fontSize: 22, opacity: 0.4 }}>⏳</div>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{label}</div>
@@ -34,7 +33,7 @@ function KpiBlock({ label, value, sub, color, big }: {
   label: string; value: string; sub?: string; color?: string; big?: boolean;
 }) {
   return (
-    <motion.div variants={fadeUp} className="glass-card glass-noise" style={{ ...Glass.card, padding: big ? '24px 28px' : '18px 20px', borderRadius: R.lg, position: 'relative', overflow: 'hidden', boxShadow: color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.glass }} {...hoverGlow}>
+    <motion.div variants={fadeUp} className="glass-noise" style={{ ...Glass.crystal, padding: big ? '24px 28px' : '18px 20px', borderRadius: R.lg, position: 'relative', overflow: 'hidden', boxShadow: color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.glass }} {...hoverGlow}>
       {color && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.6 }} />}
       <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{label}</div>
       <div className="num" style={{ fontSize: big ? F['3xl'] : F['2xl'], fontWeight: 800, color: color || C.text, lineHeight: 1.1, marginBottom: sub ? 4 : 0, fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>

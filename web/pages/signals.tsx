@@ -2,8 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, G, R, S, F, SP, Glass, fmtUsd, timeAgo } from '../src/theme';
-import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
+import { fadeUp, staggerContainer, staggerContainerSlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
 import { Card, StatCard, Badge, SectionHeader, EmptyState, Grid } from '../components/ui';
+import { GlowOrb } from '../components/ui/GlowOrb';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { DataConstellation } from '../components/ui/DataConstellation';
 import type { ActivityEvent, LlmMarketView } from '../src/types';
 
 // ─── Signal / Heatmap types ───────────────────────────────────────────────────
@@ -3321,6 +3324,10 @@ export default function SignalsPage() {
 
   return (
     <main className="bg-aurora" style={{ padding: '32px 24px', maxWidth: 1140, margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif", position: 'relative' }}>
+      <GeometricBG variant="diamond" opacity={0.02} />
+      <DataConstellation opacity={0.04} pointCount={18} />
+      <GlowOrb color="rgba(99,102,241,0.08)" size={320} top="8%" right="12%" duration={22} />
+      <GlowOrb color="rgba(6,182,212,0.06)" size={260} bottom="20%" left="8%" duration={26} delay={-5} />
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -3365,13 +3372,13 @@ export default function SignalsPage() {
       )}
       {!loading && (
         <motion.div
-          variants={staggerContainer}
+          variants={orchestratedContainer}
           initial="hidden"
           animate="show"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 28 }}
         >
-          <StatCard label="Decisions Made" value={totalAnalyzed.toLocaleString()} sub="recent AI reviews" color={C.brand} />
-          <StatCard label="Would Trade" value={proceed.toString()} sub={`${totalAnalyzed > 0 ? Math.round((proceed / totalAnalyzed) * 100) : 0}% approval rate`} color={C.bull} />
+          <StatCard label="Decisions Made" value={totalAnalyzed.toLocaleString()} sub="recent AI reviews" color={C.brand} crystal />
+          <StatCard label="Would Trade" value={proceed.toString()} sub={`${totalAnalyzed > 0 ? Math.round((proceed / totalAnalyzed) * 100) : 0}% approval rate`} color={C.bull} crystal />
           <StatCard label="AI Vetoed" value={vetoed.toString()} sub="Critic stopped them" color={C.bear} />
           <StatCard label="Missed Wins" value={missedWins.toString()} sub="Gate-blocked but profitable" color="#34d399" />
           <StatCard label="Regime" value={`${REGIME_EMOJI[regime.toLowerCase()] || ''} ${regime}`.trim()} sub={`bias: ${marketView?.overall_bias || '—'}`} color={regimeColor} />

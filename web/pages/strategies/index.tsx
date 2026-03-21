@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, timeAgo } from '../../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../../src/animations';
+import { staggerContainer, orchestratedContainer, fadeUp, hoverGlow, magneticHover } from '../../src/animations';
 import { fmtPnlK } from '../../lib/fmt';
 
 type OpenPosition = {
@@ -29,7 +29,7 @@ type Strategy = {
 
 function RegimeStrategyMatrix() {
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
+    <div style={{ ...Glass.crystal, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28 }}>
       <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>Strategy–Regime Compatibility</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         How well each strategy performs in each market regime
@@ -175,11 +175,10 @@ function StrategyComparisonChart({ strategies }: { strategies: Strategy[] }) {
 
   return (
     <div style={{
-      background: C.surface,
-      border: `1px solid ${C.border}`,
+      ...Glass.card,
       borderRadius: R.lg,
       padding: '16px 18px 12px',
-      boxShadow: S.sm,
+      boxShadow: S.ambient,
     }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 10 }}>
         Strategy PnL Comparison

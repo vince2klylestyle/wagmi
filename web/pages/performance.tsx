@@ -2,8 +2,11 @@ import React, { useEffect, useState, useMemo, useId } from 'react';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { C, G, R, S, F, SP, Glass, fmtUsd, fmtPct } from '../src/theme';
-import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
+import { fadeUp, staggerContainer, staggerContainerSlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
 import { Card, StatCard, SectionHeader, Skeleton as SharedSkeleton, EmptyState, Grid } from '../components/ui';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { GlowOrb } from '../components/ui/GlowOrb';
+import { DataConstellation } from '../components/ui/DataConstellation';
 import { apiFetch } from '../src/api';
 import type { TradeHistoryResponse, TradeRecord, EquityCurveResponse, EquityCurvePoint, BacktestResult } from '../src/types';
 
@@ -129,8 +132,8 @@ function rrHistogram(trades: TradeRecord[]): { label: string; count: number }[] 
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return <StatCard label={label} value={value} sub={sub} color={color} />;
+function KpiCard({ label, value, sub, color, crystal = false }: { label: string; value: string; sub?: string; color?: string; crystal?: boolean }) {
+  return <StatCard label={label} value={value} sub={sub} color={color} crystal={crystal} />;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -2670,7 +2673,12 @@ export default function PerformancePage() {
         <meta name="description" content="Institutional-grade performance metrics: Sharpe, Sortino, Calmar ratios, monthly PnL heatmap, rolling win rate." />
       </Head>
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px', position: 'relative' }}>
+        <GeometricBG variant="diamond" opacity={0.025} />
+        <DataConstellation opacity={0.05} pointCount={20} />
+        <GlowOrb color="rgba(99,102,241,0.1)" size={350} top="5%" left="15%" duration={20} />
+        <GlowOrb color="rgba(6,182,212,0.06)" size={280} bottom="15%" right="10%" duration={24} delay={-6} />
+
         {/* Header */}
         <div className="fade-in" style={{ marginBottom: 32 }}>
           <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text }}>
@@ -2726,18 +2734,20 @@ export default function PerformancePage() {
             ══════════════════════════════════════════════════════════════ */}
             <Section title="Equity & Returns">
               {/* Must-have KPI cards: Total Return, Max Drawdown, Sharpe, Win Rate */}
-              <motion.div variants={staggerContainer} initial="hidden" animate="show" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+              <motion.div variants={orchestratedContainer} initial="hidden" animate="show" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
                 <KpiCard
                   label="Total Return"
                   value={totalReturnPct != null ? fmtPct(totalReturnPct) : '—'}
                   sub="Equity curve, live"
                   color={totalReturnPct != null && totalReturnPct >= 0 ? C.bull : C.bear}
+                  crystal
                 />
                 <KpiCard
                   label="Max Drawdown"
                   value={maxDrawdownPct != null ? fmtPct(maxDrawdownPct) : '—'}
                   sub="Worst peak-to-trough"
                   color={C.bear}
+                  crystal
                 />
                 <KpiCard
                   label="Sharpe Ratio"

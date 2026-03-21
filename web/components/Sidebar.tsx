@@ -283,13 +283,25 @@ export default function Sidebar(): JSX.Element {
           borderRadius: R.md,
           textDecoration: 'none',
           background: active ? G.brandSubtle : 'transparent',
-          borderLeft: active ? `3px solid ${C.brand}` : '3px solid transparent',
+          borderLeft: '3px solid transparent',
           marginBottom: 2,
           position: 'relative',
           transition: 'background 0.15s ease',
         }}
         className="sidebar-nav-item"
       >
+        {active && (
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            top: '15%',
+            bottom: '15%',
+            width: 2,
+            borderRadius: 1,
+            background: C.brand,
+            boxShadow: '0 0 8px rgba(99,102,241,0.3)',
+          }} />
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontSize: 13,
@@ -364,8 +376,16 @@ export default function Sidebar(): JSX.Element {
                 onMouseEnter={() => openHover(group.label)}
                 onMouseLeave={closeHover}
               >
+                {NAV_GROUPS.indexOf(group) > 0 && (
+                  <div style={{
+                    height: 1,
+                    margin: '4px 8px 8px',
+                    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.06) 70%, transparent)',
+                  }} />
+                )}
                 <div
                   style={{
+                    position: 'relative',
                     width: 48,
                     height: 44,
                     margin: '0 auto',
@@ -377,10 +397,22 @@ export default function Sidebar(): JSX.Element {
                     background: groupActive ? C.brandGlow : 'transparent',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    borderLeft: groupActive ? `3px solid ${C.brand}` : '3px solid transparent',
+                    borderLeft: '3px solid transparent',
                   }}
                   className="sidebar-icon-btn"
                 >
+                  {groupActive && (
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: '20%',
+                      bottom: '20%',
+                      width: 2,
+                      borderRadius: 1,
+                      background: C.brand,
+                      boxShadow: '0 0 8px rgba(99,102,241,0.3)',
+                    }} />
+                  )}
                   <GroupIcon />
                 </div>
 
@@ -418,7 +450,15 @@ export default function Sidebar(): JSX.Element {
 
           // Expanded: collapsible groups
           return (
-            <div key={group.label} style={{ marginBottom: 4 }}>
+            <div key={group.label} style={{ marginBottom: 4, position: 'relative' }}>
+              {/* Gradient section divider */}
+              {NAV_GROUPS.indexOf(group) > 0 && (
+                <div style={{
+                  height: 1,
+                  margin: '4px 12px 8px',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0.06) 80%, transparent)',
+                }} />
+              )}
               <button
                 onClick={() => toggleGroup(group.label)}
                 style={{
@@ -479,7 +519,16 @@ export default function Sidebar(): JSX.Element {
       </div>
 
       {/* Bottom section: regime + live + toggle */}
-      <div style={{ flexShrink: 0, padding: isExpanded ? '8px 12px 12px' : '8px 4px 12px', borderTop: `1px solid ${C.border}` }}>
+      <div style={{ flexShrink: 0, padding: isExpanded ? '8px 12px 12px' : '8px 4px 12px', position: 'relative' }}>
+        {/* Gradient divider */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0.06) 80%, transparent)',
+        }} />
         {/* Regime badge */}
         {rc && regime && (
           <div style={{ display: 'flex', justifyContent: isExpanded ? 'flex-start' : 'center', marginBottom: 8, padding: isExpanded ? '0 4px' : 0 }}>
@@ -491,6 +540,7 @@ export default function Sidebar(): JSX.Element {
               background: rc.bg,
               color: rc.text,
               border: `1px solid ${rc.border}`,
+              boxShadow: `0 0 12px ${rc.dot}25`,
               letterSpacing: 0.8,
               textTransform: 'uppercase',
               display: 'flex',
@@ -733,15 +783,18 @@ export default function Sidebar(): JSX.Element {
       {/* Hover styles */}
       <style>{`
         .sidebar-nav-item:hover {
-          background: ${C.surfaceHover} !important;
+          background: rgba(255,255,255,0.05) !important;
+          text-shadow: 0 0 8px rgba(99,102,241,0.2);
         }
         .sidebar-icon-btn:hover {
-          background: ${C.surfaceHover} !important;
+          background: rgba(255,255,255,0.04) !important;
           color: ${C.text} !important;
+          text-shadow: 0 0 8px rgba(99,102,241,0.3);
         }
         .sidebar-group-btn:hover {
-          background: ${C.surfaceHover} !important;
+          background: rgba(255,255,255,0.04) !important;
           color: ${C.text} !important;
+          text-shadow: 0 0 8px rgba(99,102,241,0.3);
         }
         .sidebar-toggle-btn:hover {
           background: ${C.border} !important;

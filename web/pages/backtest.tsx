@@ -1902,9 +1902,9 @@ function NewBacktestForm({ onJobStarted, apiBase }: { onJobStarted: (jobId: stri
         </button>
       ) : (
         <div
-          className="glass-card card-hover glass-noise"
+          className="card-hover glass-noise"
           style={{
-            ...Glass.card,
+            ...Glass.crystal,
             border: `1px solid ${C.brand}40`,
             borderRadius: R.lg,
             padding: '20px',
@@ -2065,7 +2065,7 @@ function JobProgress({ jobId, apiBase, onDone }: { jobId: string; apiBase: strin
   const currentStep = steps.indexOf(job.status);
 
   return (
-    <div className="glass-card card-hover glass-noise" style={{ ...Glass.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
+    <div className="card-hover glass-noise" style={{ ...Glass.crystal, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>
           Backtest Running — {job.symbols}
@@ -2477,7 +2477,7 @@ function BacktestSummaryScorecard({ result }: { result: BacktestResult }) {
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>
         Letter grades for key performance metrics — weighted overall score
       </div>
-      <div className="glass-card card-hover glass-noise" style={{ ...Glass.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+      <div className="card-hover glass-noise" style={{ ...Glass.crystal, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
 
         {/* Metric grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
@@ -3246,7 +3246,6 @@ export default function Backtest() {
 
   return (
     <motion.div className="bg-aurora" style={{ position: 'relative' }} variants={staggerContainerSlow} initial="hidden" animate="show">
-      <div className="floating-orb orb-brand" style={{ position: 'fixed', top: '12%', left: '8%' }} />
       {/* ── Header ───────────────────────────────────── */}
       <motion.div variants={fadeUp} style={{ marginBottom: 24 }}>
         <div style={{ fontSize: F.xs, color: C.brand, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>

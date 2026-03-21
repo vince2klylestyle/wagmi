@@ -3,7 +3,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
+import { Card } from '../components/ui';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer } from '../src/animations';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { GlowOrb } from '../components/ui/GlowOrb';
+import { SignalWaterfall } from '../components/ui/SignalWaterfall';
+import { NeuralNetwork } from '../components/ui/NeuralNetwork';
 
 // ─── Gate Funnel Diagram ──────────────────────────────────────────────────────
 
@@ -671,8 +676,9 @@ export default function AboutPage() {
       </Head>
 
       <div className="bg-aurora" style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px', position: 'relative' }}>
-        <div className="floating-orb orb-brand" style={{ position: 'fixed', top: '10%', right: '15%' }} />
-        <div className="floating-orb orb-purple" style={{ position: 'fixed', bottom: '20%', left: '10%' }} />
+        <GeometricBG variant="diamond" opacity={0.03} />
+        <GlowOrb color="rgba(99,102,241,0.1)" size={350} top="5%" right="10%" duration={22} />
+        <GlowOrb color="rgba(168,85,247,0.07)" size={300} bottom="20%" left="15%" duration={26} delay={-8} />
 
         {/* ── Hero ── */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
@@ -914,6 +920,15 @@ export default function AboutPage() {
             </div>
           </div>
 
+          {/* ── Neural Network Architecture ── */}
+          <Card variant="crystal" refraction>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Agent Pipeline Architecture</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 16 }}>9 specialist agents with real-time data flow</div>
+              <NeuralNetwork height={280} />
+            </div>
+          </Card>
+
           {/* ── Safety Stats Strip ── */}
           <SafetyStats />
 
@@ -954,6 +969,7 @@ export default function AboutPage() {
             <GateStep n={6} title="Position Sizing" desc="Final size = 1.5% of current equity ÷ stop distance. Never more than 1.5% of capital at risk on any single trade." />
           </div>
           <GateFunnelChart />
+          <SignalWaterfall />
           <div style={{ background: `${C.bull}08`, border: `1px solid ${C.bull}25`, borderRadius: R.lg, padding: '14px 18px', fontSize: F.sm, color: C.textSub, marginTop: 20 }}>
             <strong style={{ color: C.bull }}>The result:</strong> Even in the worst realistic scenario — all open positions hit their stops simultaneously — you lose at most 4.5% of capital in one session. The daily loss circuit breaker triggers long before that.
           </div>

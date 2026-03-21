@@ -94,10 +94,10 @@ export default function Document() {
           }
           .skip-to-content:focus { top: 0; outline: none; }
 
-          /* Focus-visible ring for keyboard navigation */
+          /* Focus-visible — luminous ring */
           :focus-visible {
-            outline: 2px solid var(--color-brand);
-            outline-offset: 2px;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(99,102,241,0.5), 0 0 12px rgba(99,102,241,0.15);
           }
           /* Suppress focus ring for mouse/touch interactions */
           :focus:not(:focus-visible) { outline: none; }
@@ -339,16 +339,6 @@ export default function Document() {
           }
           .slide-down { animation: slideDown 0.2s ease both; }
 
-          /* Card hover lift */
-          .card-hover {
-            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-          }
-          .card-hover:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 28px rgba(0,0,0,.45);
-            border-color: var(--color-border-bright) !important;
-          }
-
           /* Pill badge */
           .badge {
             display: inline-flex; align-items: center; gap: 4px;
@@ -369,14 +359,19 @@ export default function Document() {
           }
           .section-label::after {
             content: ''; flex: 1; height: 1px;
-            background: linear-gradient(to right, var(--color-border), transparent);
+            background: linear-gradient(to right, var(--color-border), rgba(99,102,241,0.08) 40%, transparent);
           }
 
-          /* Scrollbar styling */
-          ::-webkit-scrollbar { width: 6px; height: 6px; }
-          ::-webkit-scrollbar-track { background: transparent; }
-          ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-          ::-webkit-scrollbar-thumb:hover { background: var(--color-border-bright); }
+          /* Scrollbar — luminous gradient track */
+          ::-webkit-scrollbar { width: 5px; height: 5px; }
+          ::-webkit-scrollbar-track { background: rgba(17,24,39,0.3); }
+          ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(99,102,241,0.25), rgba(168,85,247,0.15));
+            border-radius: 10px;
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, rgba(99,102,241,0.45), rgba(168,85,247,0.3));
+          }
 
           /* Table base */
           table { border-collapse: collapse; width: 100%; }
@@ -384,6 +379,235 @@ export default function Document() {
 
           /* Number font for data */
           .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+          /* ── Architectural Grid Background ───────────────── */
+          .bg-grid {
+            background-image:
+              linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+          }
+          .bg-grid-fine {
+            background-image:
+              linear-gradient(rgba(99,102,241,0.015) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(99,102,241,0.015) 1px, transparent 1px);
+            background-size: 20px 20px;
+          }
+
+          /* ── Light Beam Sweep ────────────────────────────── */
+          @keyframes lightSweep {
+            0%   { transform: translateX(-100%) rotate(15deg); }
+            100% { transform: translateX(200%) rotate(15deg); }
+          }
+          .light-beam {
+            position: relative;
+            overflow: hidden;
+          }
+          .light-beam::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 50%;
+            height: 200%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.02), transparent);
+            transform: rotate(15deg);
+            animation: lightSweep 8s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 1;
+          }
+
+          /* ── Chromatic Aberration on Hover ────────────────── */
+          .chromatic-hover {
+            transition: text-shadow 0.3s ease;
+          }
+          .chromatic-hover:hover {
+            text-shadow: -1px 0 rgba(99,102,241,0.3), 1px 0 rgba(236,72,153,0.3);
+          }
+
+          /* ── Subtle CRT Scan Lines ───────────────────────── */
+          .scanlines {
+            position: relative;
+          }
+          .scanlines::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+              0deg,
+              transparent,
+              transparent 2px,
+              rgba(0,0,0,0.03) 2px,
+              rgba(0,0,0,0.03) 4px
+            );
+            pointer-events: none;
+            z-index: 2;
+            border-radius: inherit;
+          }
+
+          /* ── Prismatic Border Animation ──────────────────── */
+          @keyframes prismaticShift {
+            0%   { --prism-angle: 0deg; }
+            100% { --prism-angle: 360deg; }
+          }
+          @property --prism-angle {
+            syntax: '<angle>';
+            initial-value: 0deg;
+            inherits: false;
+          }
+          .prismatic-border {
+            position: relative;
+            overflow: hidden;
+          }
+          .prismatic-border::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: conic-gradient(
+              from var(--prism-angle),
+              rgba(99,102,241,0.4),
+              rgba(6,182,212,0.3),
+              rgba(168,85,247,0.3),
+              rgba(236,72,153,0.25),
+              rgba(99,102,241,0.4)
+            );
+            animation: prismaticShift 6s linear infinite;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            z-index: 1;
+          }
+
+          /* ── Refraction Edge (light along glass edges) ───── */
+          .refraction-edge {
+            position: relative;
+          }
+          .refraction-edge::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg,
+              transparent,
+              rgba(99,102,241,0.3) 20%,
+              rgba(6,182,212,0.4) 40%,
+              rgba(168,85,247,0.3) 60%,
+              rgba(236,72,153,0.2) 80%,
+              transparent);
+            opacity: 0.6;
+            z-index: 2;
+            border-radius: inherit;
+          }
+          .refraction-edge::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg,
+              transparent 10%,
+              rgba(255,255,255,0.05) 50%,
+              transparent 90%);
+            z-index: 2;
+          }
+
+          /* ── Liquid Morphing Blob ────────────────────────── */
+          @keyframes blobMorph {
+            0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+            25%      { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+            50%      { border-radius: 50% 60% 30% 60% / 30% 40% 70% 60%; }
+            75%      { border-radius: 60% 30% 60% 40% / 70% 60% 40% 30%; }
+          }
+          .morphing-blob {
+            position: absolute;
+            filter: blur(80px);
+            animation: blobMorph 15s ease-in-out infinite;
+            pointer-events: none;
+          }
+
+          /* ── Ambient Particle Drift ──────────────────────── */
+          @keyframes particleDrift {
+            0%   { transform: translateY(0) scale(1); opacity: 0; }
+            10%  { opacity: 0.4; }
+            90%  { opacity: 0.3; }
+            100% { transform: translateY(-100vh) scale(0.5); opacity: 0; }
+          }
+          .particle-field {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+          }
+          .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            border-radius: 50%;
+            background: rgba(99,102,241,0.4);
+            animation: particleDrift var(--duration, 12s) linear infinite;
+            animation-delay: var(--delay, 0s);
+          }
+
+          /* ── Vignette (darkened edges for focus) ─────────── */
+          .vignette::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.25) 100%);
+            pointer-events: none;
+            z-index: 9998;
+          }
+
+          /* ── Text Selection ──────────────────────────────── */
+          ::selection {
+            background: rgba(99,102,241,0.3);
+            color: #f1f5f9;
+          }
+
+          /* ── Glass Crystal Surface ───────────────────────── */
+          .glass-crystal {
+            background: rgba(26,34,54,0.35);
+            backdrop-filter: blur(40px) saturate(1.8);
+            -webkit-backdrop-filter: blur(40px) saturate(1.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(255,255,255,0.02);
+          }
+          .glass-diamond {
+            background: rgba(26,34,54,0.25);
+            backdrop-filter: blur(48px) saturate(2) brightness(1.02);
+            -webkit-backdrop-filter: blur(48px) saturate(2) brightness(1.02);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 12px 48px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(255,255,255,0.04);
+          }
+          .glass-frosted {
+            background: rgba(17,24,39,0.45);
+            backdrop-filter: blur(60px) saturate(2);
+            -webkit-backdrop-filter: blur(60px) saturate(2);
+            border: 1px solid rgba(255,255,255,0.04);
+            box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+          }
+
+          /* ── Magnetic Card Hover ─────────────────────────── */
+          .magnetic-hover {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        box-shadow 0.3s ease,
+                        border-color 0.3s ease;
+          }
+          .magnetic-hover:hover {
+            transform: translateY(-4px) scale(1.01);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 30px rgba(99,102,241,0.1);
+            border-color: rgba(255,255,255,0.12) !important;
+          }
+
+          /* ── Breathing Glow Variants ─────────────────────── */
+          @keyframes breatheSlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(99,102,241,0.06), inset 0 1px 0 rgba(255,255,255,0.03); }
+            50%      { box-shadow: 0 0 35px rgba(99,102,241,0.12), inset 0 1px 0 rgba(255,255,255,0.06); }
+          }
+          .breathe-slow { animation: breatheSlow 4s ease-in-out infinite; }
         `}</style>
       </Head>
       <body>

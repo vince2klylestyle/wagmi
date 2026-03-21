@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
+import { GlowOrb } from '../components/ui/GlowOrb';
+import { ParticleField } from '../components/ui/ParticleField';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { Waveform } from '../components/ui/Waveform';
 import type { BacktestResult, ActivityEvent, LlmMarketView } from '../src/types';
 import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from 'lightweight-charts';
 import { resolveApiBase } from '../src/api';
@@ -64,8 +68,8 @@ function GlassSection({ children, style }: { children: React.ReactNode; style?: 
       variants={fadeUp}
       initial="hidden"
       animate="show"
-      className="glass-card"
-      style={{ borderRadius: R.lg, padding: SP[5], ...style }}
+      className="refraction-edge"
+      style={{ ...Glass.crystal, borderRadius: R.lg, padding: SP[5], ...style }}
     >
       {children}
     </motion.div>
@@ -87,13 +91,13 @@ function KpiCard({
   color?: string;
   loading?: boolean;
 }) {
-  const glowShadow = color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.glass;
+  const glowShadow = color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.ambient;
   return (
     <motion.div
       variants={fadeUp}
-      className="glass-card glass-noise"
+      className="refraction-edge"
       style={{
-        ...Glass.card,
+        ...Glass.crystal,
         borderRadius: R.lg,
         padding: '20px 24px',
         boxShadow: glowShadow,
@@ -102,10 +106,10 @@ function KpiCard({
         position: 'relative',
         overflow: 'hidden',
       }}
-      {...hoverGlow}
+      {...magneticHover}
     >
-      {color && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.6 }} />}
-      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {color && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.7 }} />}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
         {label}
       </div>
       {loading ? (
@@ -115,7 +119,16 @@ function KpiCard({
         </>
       ) : (
         <>
-          <div style={{ fontSize: F['2xl'], fontWeight: 800, color: color || C.text, lineHeight: 1.2, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{
+            fontSize: F['2xl'],
+            fontWeight: 800,
+            color: color || C.text,
+            lineHeight: 1.2,
+            marginBottom: 4,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontVariantNumeric: 'tabular-nums',
+            textShadow: color ? `0 0 16px ${color}33` : undefined,
+          }}>
             {value}
           </div>
           <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>
@@ -1034,11 +1047,14 @@ export default function Home() {
     : [];
 
   return (
-    <div className="bg-aurora" style={{ position: 'relative', overflow: 'hidden' }}>
-      {/* Floating orbs for depth */}
-      <div className="floating-orb orb-brand" style={{ position: 'fixed', top: '5%', left: '10%' }} />
-      <div className="floating-orb orb-purple" style={{ position: 'fixed', top: '60%', right: '5%' }} />
-      <div className="floating-orb orb-cyan" style={{ position: 'fixed', bottom: '10%', left: '40%' }} />
+    <div className="bg-aurora vignette" style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Atmospheric background layers */}
+      <GeometricBG variant="hexagon" opacity={0.03} />
+      <GlowOrb color="rgba(99,102,241,0.12)" size={400} top="-10%" left="10%" duration={18} />
+      <GlowOrb color="rgba(168,85,247,0.08)" size={350} top="30%" right="-5%" duration={22} delay={-5} />
+      <GlowOrb color="rgba(6,182,212,0.06)" size={300} bottom="10%" left="40%" duration={20} delay={-10} />
+      <ParticleField count={25} />
+      <Waveform opacity={0.08} height={60} />
 
       {/* ── API offline banner ─────────────────────────── */}
       {apiError && !loading && (
@@ -1170,7 +1186,7 @@ export default function Home() {
 
       {/* ── KPI Hero Row ──────────────────────────────── */}
       <motion.div
-        variants={staggerContainer}
+        variants={orchestratedContainer}
         initial="hidden"
         animate="show"
         style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}

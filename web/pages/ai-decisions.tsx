@@ -19,8 +19,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, SP, Glass, timeAgo } from '../src/theme';
-import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
+import { fadeUp, staggerContainer, staggerContainerSlow, orchestratedContainer } from '../src/animations';
 import { Card, StatCard, Badge, SectionHeader, EmptyState, Grid } from '../components/ui';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { GlowOrb } from '../components/ui/GlowOrb';
 import { apiFetch } from '../src/api';
 import type { LlmDecision, LlmFeedResponse } from '../src/types';
 
@@ -1251,7 +1253,9 @@ export default function AiDecisionsPage() {
         @keyframes pipelineDot { 0% { left: 0; opacity: 1; } 80% { left: 36px; opacity: 1; } 100% { left: 40px; opacity: 0; } }
       `}</style>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative' }}>
+        <GeometricBG variant="circuit" opacity={0.02} />
+        <GlowOrb color="rgba(99,102,241,0.08)" size={500} top="10%" right="5%" blur={120} />
 
         {/* ── Header ── */}
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -1291,7 +1295,7 @@ export default function AiDecisionsPage() {
 
         {/* ── KPI Strip ── */}
         <motion.div
-          variants={staggerContainer}
+          variants={orchestratedContainer}
           initial="hidden"
           animate="show"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}

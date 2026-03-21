@@ -34,7 +34,7 @@ export function SectionHeader({ label, action }: SectionHeaderProps) {
         style={{
           flex: 1,
           height: 1,
-          background: `linear-gradient(90deg, ${C.border} 0%, transparent 100%)`,
+          background: `linear-gradient(90deg, ${C.border} 0%, rgba(99,102,241,0.08) 40%, transparent 100%)`,
         }}
       />
       {action && <div style={{ flexShrink: 0 }}>{action}</div>}

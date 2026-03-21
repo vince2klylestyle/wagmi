@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
-import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
+import { staggerContainer, fadeUp, hoverGlow, orchestratedContainer } from '../src/animations';
 import { apiFetch } from '../src/api';
 import type { Strategy, TradeHistoryResponse, TradeRecord } from '../src/types';
 
@@ -18,7 +18,6 @@ function AwaitingResults({ label = 'Awaiting results', sub }: { label?: string; 
       variants={fadeUp}
       initial="hidden"
       animate="show"
-      className="glass-card"
       style={{ ...Glass.card, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, borderRadius: R.lg, color: C.muted }}
     >
       <div style={{ fontSize: 22, opacity: 0.4 }}>⏳</div>
@@ -46,7 +45,7 @@ function StrategyPnlLadder({ strategies }: { strategies: Strategy[] }) {
   const total = items.reduce((a, s) => a + s.pnl, 0);
 
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" className="glass-card" style={{ ...Glass.card, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ ...Glass.crystal, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Strategy P&L Contribution</span>
         <span style={{ fontSize: F.xs, fontWeight: 700, color: pnlColor(total) }}>Total: {fmtUsd(total)}</span>
@@ -209,7 +208,7 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
       </div>
 
       <div className="stagger-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
-        <div className="glass-card" style={{ ...Glass.card, borderRadius: R.sm, padding: '8px 12px' }}>
+        <div style={{ ...Glass.card, borderRadius: R.sm, padding: '8px 12px' }}>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Entry</div>
           <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{entry != null ? fmtUsd(entry) : '—'}</div>
         </div>
@@ -1477,21 +1476,21 @@ export default function PortfolioPage() {
         ) : (
           <>
             {/* ── Summary KPIs ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
+            <motion.div variants={orchestratedContainer} initial="hidden" animate="show" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
               {[
                 { label: 'UNREALIZED P&L', value: fmtUsd(totalUnrealPnl), sub: `${openPositions.length} open position${openPositions.length !== 1 ? 's' : ''}`, color: pnlColor(totalUnrealPnl) },
                 { label: 'REALIZED P&L', value: fmtUsd(totalRealizedPnl), sub: 'All-time closed trades', color: pnlColor(totalRealizedPnl) },
                 { label: 'RECENT 10 TRADES', value: fmtUsd(recentClosedPnl), sub: 'Last 10 closed', color: pnlColor(recentClosedPnl) },
                 { label: 'ACTIVE STRATEGIES', value: String(strategies.length), sub: `${strategies.filter((s) => s.lastHeartbeat && (Date.now() - new Date(s.lastHeartbeat).getTime()) < 300_000).length} live`, color: C.brand },
               ].map(({ label, value, sub, color }) => (
-                <div key={label} className="card-hover fade-in" style={{ ...Glass.card, borderRadius: R.lg, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+                <motion.div key={label} variants={fadeUp} className="card-hover" style={{ ...Glass.crystal, borderRadius: R.lg, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.5 }} />
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{label}</div>
                   <div className="num" style={{ fontSize: F['2xl'], fontWeight: 800, color, lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
                   <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
 
             {/* ── Allocation & Risk Overview ── */}
             <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>

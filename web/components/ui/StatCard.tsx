@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { C, F, SP, S } from '../../src/theme';
+import { C, F, SP, S, alpha } from '../../src/theme';
 import { Card } from './Card';
 import { Skeleton } from './Skeleton';
 
@@ -13,6 +13,10 @@ export interface StatCardProps {
   loading?: boolean;
   big?: boolean;
   trend?: 'up' | 'down' | 'flat';
+  /** Use premium crystal glass variant */
+  crystal?: boolean;
+  /** Add breathing glow animation */
+  breathe?: boolean;
 }
 
 const trendArrows: Record<string, string> = {
@@ -33,20 +37,58 @@ function pnlGlow(color?: string): string | undefined {
   return undefined;
 }
 
-export function StatCard({ label, value, sub, color, loading = false, big = false, trend }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  sub,
+  color,
+  loading = false,
+  big = false,
+  trend,
+  crystal = false,
+  breathe = false,
+}: StatCardProps) {
   const glow = pnlGlow(color);
+
+  // Contextual halo glow behind the value
+  const haloColor = color === C.bull
+    ? alpha('#16a34a', 0.06)
+    : color === C.bear
+      ? alpha('#dc2626', 0.06)
+      : undefined;
 
   return (
     <Card
-      glass
+      variant={crystal ? 'crystal' : 'glass'}
       accent={color}
+      hover="magnetic"
+      breathe={breathe}
+      refraction={crystal}
       style={{
         padding: `${SP[4]}px ${SP[5]}px`,
         ...(glow ? { boxShadow: glow } : {}),
       }}
     >
+      {/* Contextual halo glow */}
+      {haloColor && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            width: '80%',
+            height: '80%',
+            transform: 'translate(-50%, -50%)',
+            background: `radial-gradient(circle, ${haloColor} 0%, transparent 70%)`,
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}
+        />
+      )}
+
       {loading ? (
-        <>
+        <div style={{ position: 'relative', zIndex: 1 }}>
           <Skeleton w="60%" h={12} />
           <div style={{ height: SP[2] }} />
           <Skeleton w="80%" h={big ? 28 : 22} />
@@ -56,9 +98,9 @@ export function StatCard({ label, value, sub, color, loading = false, big = fals
               <Skeleton w="50%" h={11} />
             </>
           )}
-        </>
+        </div>
       ) : (
-        <>
+        <div style={{ position: 'relative', zIndex: 1 }}>
           <div
             style={{
               fontSize: F.xs,
@@ -86,6 +128,9 @@ export function StatCard({ label, value, sub, color, loading = false, big = fals
                 fontFamily: "'JetBrains Mono', monospace",
                 fontVariantNumeric: 'tabular-nums',
                 lineHeight: 1.1,
+                textShadow: color
+                  ? `0 0 20px ${alpha(color.startsWith('#') ? color : C.brand, 0.15)}`
+                  : undefined,
               }}
             >
               {value}
@@ -115,7 +160,7 @@ export function StatCard({ label, value, sub, color, loading = false, big = fals
               {sub}
             </div>
           )}
-        </>
+        </div>
       )}
     </Card>
   );

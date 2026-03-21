@@ -25,8 +25,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, SP, Glass, timeAgo } from '../src/theme';
-import { fadeUp, staggerContainer, staggerContainerSlow, hoverLift, hoverGlow } from '../src/animations';
+import { fadeUp, staggerContainer, staggerContainerSlow, hoverLift, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover, etherealFloat } from '../src/animations';
 import { apiFetch } from '../src/api';
+
+import { NeuralNetwork } from '../components/ui/NeuralNetwork';
+import { ConfidenceRing } from '../components/ui/ConfidenceRing';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { GlowOrb } from '../components/ui/GlowOrb';
 
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -119,7 +124,7 @@ function AgentCard({ agent, onClick, delay }: { agent: AgentOverview; onClick: (
   const icon = roleIcon(agent.role);
 
   return (
-    <Card glass hover delay={delay} accent={color} style={{ padding: SP[4], cursor: 'pointer' }}>
+    <Card variant="crystal" hover="magnetic" refraction delay={delay} accent={color} style={{ padding: SP[4], cursor: 'pointer' }}>
       <div onClick={onClick}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -143,7 +148,7 @@ function AgentCard({ agent, onClick, delay }: { agent: AgentOverview; onClick: (
           <div>
             <div style={{ fontSize: F.xs, color: C.muted }}>Accuracy</div>
             {agent.accuracy !== null ? (
-              pctBar(agent.accuracy, agent.accuracy >= 0.6 ? C.bull : agent.accuracy >= 0.5 ? C.warn : C.bear)
+              <ConfidenceRing value={Math.round(agent.accuracy * 100)} size={64} label="accuracy" />
             ) : (
               <div style={{ fontSize: F.sm, color: C.muted }}>---</div>
             )}
@@ -298,8 +303,13 @@ export default function AgentIntelligence() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        style={{ background: C.bg, minHeight: '100vh', padding: '24px 16px', maxWidth: 1200, margin: '0 auto' }}
+        style={{ background: C.bg, minHeight: '100vh', padding: '24px 16px', maxWidth: 1200, margin: '0 auto', position: 'relative', overflow: 'hidden' }}
       >
+
+        {/* Neural cathedral atmosphere */}
+        <GeometricBG variant="circuit" opacity={0.03} />
+        <GlowOrb color="rgba(99,102,241,0.1)" size={350} top="-5%" right="20%" duration={20} />
+        <GlowOrb color="rgba(168,85,247,0.07)" size={280} bottom="10%" left="10%" duration={25} delay={-8} />
 
         {/* Header */}
         <motion.div
@@ -319,6 +329,19 @@ export default function AgentIntelligence() {
           <Link href="/ai-decisions" style={{ fontSize: F.sm, color: C.brand, textDecoration: 'none' }}>
             Decision Feed &rarr;
           </Link>
+        </motion.div>
+
+        {/* Agent Neural Network Visualization */}
+        <motion.div variants={cinematicReveal} initial="hidden" animate="show" style={{ marginBottom: 32 }}>
+          <Card variant="crystal" refraction>
+            <div style={{ padding: '24px 20px 16px' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Agent Neural Network</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>9 specialist agents orchestrated in real-time</div>
+              <NeuralNetwork height={320} agentData={
+                agents.length > 0 ? Object.fromEntries(agents.map(a => [a.role, { accuracy: a.accuracy, total_decisions: a.total_decisions }])) : undefined
+              } />
+            </div>
+          </Card>
         </motion.div>
 
         {/* Team Calibration Summary */}
@@ -346,7 +369,7 @@ export default function AgentIntelligence() {
         {/* Agent Grid */}
         <SectionHeader label="Agent Overview" />
         <motion.div
-          variants={staggerContainer}
+          variants={orchestratedContainer}
           initial="hidden"
           animate="show"
           style={{
@@ -470,7 +493,7 @@ export default function AgentIntelligence() {
             />
           ) : (
             <motion.div
-              variants={staggerContainerSlow}
+              variants={orchestratedContainer}
               initial="hidden"
               animate="show"
               style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
