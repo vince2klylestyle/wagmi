@@ -116,7 +116,7 @@ function Pill({ label, color }: { label: string; color: string }) {
   return (
     <span style={{
       fontSize: F.xs, fontWeight: 700, color,
-      background: `${color}20`, padding: '2px 8px', borderRadius: R.full,
+      background: `${color}20`, padding: '2px 8px', borderRadius: R.pill,
       border: `1px solid ${color}40`,
     }}>
       {label}
@@ -285,13 +285,13 @@ export default function AgentIntelligence() {
   // Load overview
   useEffect(() => {
     Promise.all([
-      apiFetch('/v1/agents/overview').then(r => r.json()).catch(() => ({ agents: [] })),
-      apiFetch('/v1/agents/debate/history?limit=10').then(r => r.json()).catch(() => ({ items: [] })),
-      apiFetch('/v1/agents/team/calibration').then(r => r.json()).catch(() => ({ agents: {} })),
+      apiFetch<any>('/v1/agents/overview'),
+      apiFetch<any>('/v1/agents/debate/history?limit=10'),
+      apiFetch<any>('/v1/agents/team/calibration'),
     ]).then(([overview, debateHistory, team]) => {
-      setAgents(overview.agents || []);
-      setDebates(debateHistory.items || []);
-      setTeamCal(team.agents || null);
+      setAgents(overview?.agents || []);
+      setDebates(debateHistory?.items || []);
+      setTeamCal(team?.agents || null);
       setLoading(false);
     });
   }, []);
@@ -300,8 +300,8 @@ export default function AgentIntelligence() {
   useEffect(() => {
     if (!selectedAgent) return;
     Promise.all([
-      apiFetch(`/v1/agents/${selectedAgent}/performance`).then(r => r.json()).catch(() => null),
-      apiFetch(`/v1/agents/${selectedAgent}/calibration`).then(r => r.json()).catch(() => null),
+      apiFetch<any>(`/v1/agents/${selectedAgent}/performance`),
+      apiFetch<any>(`/v1/agents/${selectedAgent}/calibration`),
     ]).then(([perf, cal]) => {
       setAgentPerf(perf);
       setCalibration(cal?.curve || null);

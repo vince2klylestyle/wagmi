@@ -39,6 +39,11 @@ function KpiBlock({ label, value, sub, color, big }: {
 
 // ─── SMA Helper ───────────────────────────────────────────────────────────────
 
+function sideColor(side: string | undefined): string {
+  const s = (side || '').toLowerCase();
+  return s === 'buy' ? C.bull : s === 'sell' ? C.bear : C.muted;
+}
+
 function calcSMA(data: number[], period: number): (number | null)[] {
   return data.map((_, i) => {
     if (i < period - 1) return null;
