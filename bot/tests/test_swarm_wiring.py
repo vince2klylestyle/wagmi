@@ -8,12 +8,12 @@ import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
 
-from bot.llm.agents.swarm_optimizer import (
+from llm.agents.swarm_optimizer import (
     SwarmOptimizer,
     Recommendation,
     SwarmRecommendations,
 )
-from bot.llm.agents.swarm_agent_prompts import SWARM_AGENT_PROMPTS
+from llm.agents.swarm_agent_prompts import SWARM_AGENT_PROMPTS
 
 
 @pytest.fixture

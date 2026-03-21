@@ -9,11 +9,11 @@ import json
 import tempfile
 from pathlib import Path
 
-from bot.feedback.swarm_feedback_loop import (
+from feedback.swarm_feedback_loop import (
     SwarmFeedbackLoop,
     PromotedRule,
 )
-from bot.llm.agents.swarm_optimizer import Recommendation
+from llm.agents.swarm_optimizer import Recommendation
 
 
 @pytest.fixture

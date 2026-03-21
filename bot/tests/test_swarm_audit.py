@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 import json
 
-from bot.feedback.single_signal_audit import (
+from feedback.single_signal_audit import (
     SingleSignalAudit,
     SingleSignalTrade,
     PerformanceMetrics,
