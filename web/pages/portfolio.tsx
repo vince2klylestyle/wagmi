@@ -185,7 +185,7 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
 
   return (
     <div style={{
-      background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
+      ...Glass.card, borderRadius: R.lg,
       padding: '18px 20px', boxShadow: S.sm,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -208,8 +208,8 @@ function PositionCard({ strategy }: { strategy: Strategy }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
-        <div style={{ background: C.surface, borderRadius: R.sm, padding: '8px 12px' }}>
+      <div className="stagger-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+        <div className="glass-card" style={{ ...Glass.card, borderRadius: R.sm, padding: '8px 12px' }}>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 2 }}>Entry</div>
           <div style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{entry != null ? fmtUsd(entry) : '—'}</div>
         </div>
@@ -285,7 +285,7 @@ function AllocationDonut({ positions }: { positions: Array<{ symbol: string; val
   });
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Allocation</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         <svg width={W} height={W} style={{ flexShrink: 0 }}>
@@ -361,7 +361,7 @@ function PortfolioHealthScore({ trades }: { trades: TradeRecord[] }) {
 
   if (relevant.length === 0) {
     return (
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+      <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px' }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 12 }}>Portfolio Health Score</div>
         <div style={{ color: C.muted, fontSize: F.sm }}>No trade data yet.</div>
       </div>
@@ -401,7 +401,7 @@ function PortfolioHealthScore({ trades }: { trades: TradeRecord[] }) {
   const dashOffset = circumference * (1 - score / 100);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px' }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px' }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Portfolio Health Score</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         {/* Circular score ring */}
@@ -489,7 +489,7 @@ function CorrelationWarning({ symbols }: { symbols?: string[] }) {
   const gridH = LABEL_W + SYMBOLS.length * (CELL + PAD) + PAD;
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
+    <div style={{ ...Glass.card, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>Asset Correlation Heatmap</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         Pairwise correlation between open position symbols. High correlation means positions may not provide true diversification.
@@ -576,7 +576,7 @@ function arcPath(
 
 function PortfolioSunburst() {
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 300 }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 300 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Allocation Sunburst</div>
       <AwaitingResults label="No open positions" sub="Portfolio sunburst will appear once the bot has open positions" />
     </div>
@@ -587,7 +587,7 @@ function PortfolioSunburst() {
 
 function RiskBudgetMeter() {
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 260 }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 260 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Risk Budget Used</div>
       <AwaitingResults label="Awaiting risk data" sub="Risk budget data will populate once the bot is active" />
     </div>
@@ -617,7 +617,7 @@ function PositionBubbleChart({ positions }: { positions: Strategy[] }) {
   const hasPosData = positions.length > 0;
   if (!hasPosData) {
     return (
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
+      <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
         <div style={{ fontWeight: 700, color: C.textSub, marginBottom: 6 }}>Position Risk Map</div>
         No open positions
       </div>
@@ -800,7 +800,7 @@ function ThesisValidityBars({ positions }: { positions: Strategy[] }) {
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 padding: '2px 9px', borderRadius: R.pill,
-                background: G.card, border: `1px solid ${C.border}`,
+                ...Glass.card,
                 fontSize: F.xs, fontWeight: 700, color: C.text,
                 minWidth: 44, flexShrink: 0, textAlign: 'center',
               }}>
@@ -876,7 +876,7 @@ function CorrelationNetwork() {
   const highCorrEdges = edges.filter((e) => e.corr > 0.8);
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
+    <div style={{ ...Glass.card, borderRadius: R.lg, padding: '20px 22px', marginTop: 20, marginBottom: 20 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 4 }}>Portfolio Correlation Network</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 16 }}>
         Force-directed graph of pairwise correlations. Line thickness = |correlation|. Green = positive, red = negative.
@@ -993,7 +993,7 @@ function CorrelationNetwork() {
 
 function DrawdownRecoveryChart() {
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
       <div style={{ fontWeight: 700, color: C.textSub, marginBottom: 6 }}>Drawdown & Recovery</div>
       No equity data yet — populates once the bot has trade history
     </div>
@@ -1086,7 +1086,7 @@ function EfficiencyFrontierChart() {
   const xTicks = [0, 5, 10, 15, 20, 25, 30];
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 320 }}>
+    <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', flex: 1, minWidth: 320 }}>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub, marginBottom: 16 }}>Risk-Return Efficiency Frontier</div>
 
       <svg width="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{ display: 'block', overflow: 'visible' }}>
@@ -1196,7 +1196,7 @@ function PositionPnlWaterfall({ positions }: { positions: Strategy[] }) {
 
   if (!hasPosData) {
     return (
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
+      <div style={{ ...Glass.card, borderRadius: R.xl, padding: '20px 24px', marginBottom: 28, color: C.muted, fontSize: F.sm }}>
         <div style={{ fontWeight: 700, color: C.textSub, marginBottom: 6 }}>Position P&L Breakdown</div>
         No open positions
       </div>
@@ -1236,7 +1236,7 @@ function PositionPnlWaterfall({ positions }: { positions: Strategy[] }) {
 
   if (!hasPosData && rows.every((r) => r.pnl === 0)) {
     return (
-      <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px' }}>
+      <div style={{ ...Glass.card, borderRadius: R.lg, padding: '16px 20px' }}>
         <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 8 }}>Open Position P&amp;L</div>
         <div style={{ color: C.muted, fontSize: F.sm, textAlign: 'center', padding: '20px 0' }}>
           No open positions — bot is flat
@@ -1246,7 +1246,7 @@ function PositionPnlWaterfall({ positions }: { positions: Strategy[] }) {
   }
 
   return (
-    <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
+    <div style={{ ...Glass.card, borderRadius: R.lg, padding: '16px 20px', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Open Position P&amp;L</span>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: pnlColor(totalPnl) }}>
@@ -1407,7 +1407,7 @@ export default function PortfolioPage() {
         <meta name="description" content="Live portfolio view: open positions, exposure, unrealized P&L, and recent trade waterfall." />
       </Head>
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px' }}>
+      <div className="bg-aurora" style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px', position: 'relative' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -1444,7 +1444,7 @@ export default function PortfolioPage() {
             {/* KPI skeleton row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px' }}>
+                <div key={i} style={{ ...Glass.card, borderRadius: R.lg, padding: '18px 20px' }}>
                   <Skeleton h={11} w="55%" />
                   <div style={{ marginTop: 12 }}><Skeleton h={30} w="75%" /></div>
                   <div style={{ marginTop: 8 }}><Skeleton h={10} w="45%" /></div>
@@ -1454,12 +1454,12 @@ export default function PortfolioPage() {
             {/* Section header skeletons */}
             <Skeleton h={18} w="32%" />
             {/* Card skeleton with inner table rows */}
-            <div style={{ marginTop: 14, marginBottom: 32, background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px' }}>
+            <div style={{ marginTop: 14, marginBottom: 32, ...Glass.card, borderRadius: R.lg, padding: '20px 24px' }}>
               <Skeleton h={160} />
             </div>
             <Skeleton h={18} w="28%" />
             {/* Table skeleton */}
-            <div style={{ marginTop: 14, marginBottom: 32, background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+            <div style={{ marginTop: 14, marginBottom: 32, ...Glass.card, borderRadius: R.lg, overflow: 'hidden' }}>
               <div style={{ background: C.surface, padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>
                 <Skeleton h={10} w="80%" />
               </div>
@@ -1484,7 +1484,7 @@ export default function PortfolioPage() {
                 { label: 'RECENT 10 TRADES', value: fmtUsd(recentClosedPnl), sub: 'Last 10 closed', color: pnlColor(recentClosedPnl) },
                 { label: 'ACTIVE STRATEGIES', value: String(strategies.length), sub: `${strategies.filter((s) => s.lastHeartbeat && (Date.now() - new Date(s.lastHeartbeat).getTime()) < 300_000).length} live`, color: C.brand },
               ].map(({ label, value, sub, color }) => (
-                <div key={label} className="card-hover fade-in" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+                <div key={label} className="card-hover fade-in" style={{ ...Glass.card, borderRadius: R.lg, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.5 }} />
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{label}</div>
                   <div className="num" style={{ fontSize: F['2xl'], fontWeight: 800, color, lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
@@ -1528,7 +1528,7 @@ export default function PortfolioPage() {
 
             {/* ── Exposure gauge ── */}
             {totalExposure > 0 && (
-              <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '4px 20px 16px', marginBottom: 24, boxShadow: S.sm }}>
+              <div style={{ ...Glass.card, borderRadius: R.lg, padding: '4px 20px 16px', marginBottom: 24, boxShadow: S.sm }}>
                 <ExposureGauge used={totalExposure} total={50000} />
               </div>
             )}
@@ -1575,7 +1575,7 @@ export default function PortfolioPage() {
 
               {openPositions.length === 0 ? (
                 <div style={{
-                  background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
+                  ...Glass.card, borderRadius: R.lg,
                   padding: '24px 24px', textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 8 }}>💤</div>
@@ -1605,7 +1605,7 @@ export default function PortfolioPage() {
               <h2 style={{ margin: '0 0 14px', fontSize: F.lg, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
                 All Strategies ({strategies.length})
               </h2>
-              <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+              <div style={{ ...Glass.card, borderRadius: R.lg, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: F.sm }}>
                   <thead>
                     <tr style={{ background: C.surface }}>
@@ -1664,7 +1664,7 @@ export default function PortfolioPage() {
               </h2>
               {recentTrades.length === 0 ? (
                 <div style={{
-                  background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
+                  ...Glass.card, borderRadius: R.lg,
                   padding: '32px 24px', textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.5 }}>📋</div>
@@ -1676,7 +1676,7 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '20px 24px', overflowX: 'auto' }}>
+                <div style={{ ...Glass.card, borderRadius: R.lg, padding: '20px 24px', overflowX: 'auto' }}>
                   {/* Daily waterfall chart — capped at 600px to prevent overflow */}
                   <div style={{ maxWidth: 600, overflow: 'hidden' }}>
                     <DailyWaterfall trades={[...recentTrades].reverse()} />

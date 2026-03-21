@@ -1034,7 +1034,12 @@ export default function Home() {
     : [];
 
   return (
-    <div className="bg-mesh">
+    <div className="bg-aurora" style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Floating orbs for depth */}
+      <div className="floating-orb orb-brand" style={{ position: 'fixed', top: '5%', left: '10%' }} />
+      <div className="floating-orb orb-purple" style={{ position: 'fixed', top: '60%', right: '5%' }} />
+      <div className="floating-orb orb-cyan" style={{ position: 'fixed', bottom: '10%', left: '40%' }} />
+
       {/* ── API offline banner ─────────────────────────── */}
       {apiError && !loading && (
         <div
@@ -1087,17 +1092,22 @@ export default function Home() {
 
       {/* ── Always Watching Intelligence Bar ──────────── */}
       {llmView && (
-        <div style={{
-          background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
-          border: `1px solid ${C.border}`,
-          borderRadius: R.lg,
-          padding: '14px 20px',
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0,
-          flexWrap: 'wrap',
-        }}>
+        <motion.div
+          variants={fadeUp}
+          initial="hidden"
+          animate="show"
+          className="glass-card breathe-glow"
+          style={{
+            ...Glass.card,
+            borderRadius: R.lg,
+            padding: '14px 20px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0,
+            flexWrap: 'wrap',
+          }}
+        >
           {/* Live pulse — hidden on mobile to save space */}
           {!isMobile && (
             <>
@@ -1154,12 +1164,17 @@ export default function Home() {
           }}>
             {isMobile ? 'Signals →' : 'View Signal Feed →'}
           </Link>
-        </div>
+        </motion.div>
       )}
       <style>{`@keyframes ripplePulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }`}</style>
 
       {/* ── KPI Hero Row ──────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="show"
+        style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}
+      >
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
@@ -1188,16 +1203,18 @@ export default function Home() {
           color={btRes && btRes.max_drawdown_pct < 15 ? C.warn : C.bear}
           loading={loading}
         />
-        {!isMobile && <div
-          className="fade-in"
+        {!isMobile && <motion.div
+          variants={fadeUp}
+          className="glass-card glass-noise"
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
+            ...Glass.card,
             borderRadius: R.lg,
             padding: '20px 24px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
           <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
@@ -1213,14 +1230,14 @@ export default function Home() {
               </div>
             </>
           )}
-        </div>}
-      </div>
+        </motion.div>}
+      </motion.div>
 
       {/* ── Activity ticker ───────────────────────────── */}
       <ActivityTicker events={activity} />
 
       {/* ── Full-width Chart ──────────────────────────── */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="fade-in" style={{ marginBottom: 16 }}>
         {/* Controls row */}
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isMobile ? 8 : 0, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible' }}>
@@ -1266,7 +1283,7 @@ export default function Home() {
         </div>
 
         {/* Full-width chart */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card }}>
+        <div className="glow-border glass-card" style={{ ...Glass.card, borderRadius: R.md, overflow: 'hidden' }}>
           <CandleChart
             symbol={activeChart}
             apiBase={apiBase}
@@ -1279,10 +1296,10 @@ export default function Home() {
       </div>
 
       {/* ── Below-chart 3-column panel ────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
+      <div className="stagger-reveal" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
 
         {/* LEFT — Tabbed heatmap section (order: 2 on mobile so AI stance shows first) */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 2 : 1 }}>
+        <div className="glass-card" style={{ ...Glass.card, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 2 : 1 }}>
           {/* Tab strip */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, background: '#0f172a' }}>
             {(['market', 'scores', 'correlation', 'regime'] as const).map((tab) => {

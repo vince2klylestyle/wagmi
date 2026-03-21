@@ -165,6 +165,125 @@ export default function Document() {
               var(--color-bg);
           }
 
+          /* ── Futuristic Aurora Background ──────────────────── */
+          @keyframes auroraShift {
+            0%   { background-position: 0% 50%, 100% 50%, 50% 100%; }
+            25%  { background-position: 100% 50%, 0% 100%, 50% 0%; }
+            50%  { background-position: 50% 100%, 50% 0%, 100% 50%; }
+            75%  { background-position: 0% 100%, 100% 0%, 0% 50%; }
+            100% { background-position: 0% 50%, 100% 50%, 50% 100%; }
+          }
+          .bg-aurora {
+            background:
+              radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.1) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.07) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 80%, rgba(6,182,212,0.06) 0%, transparent 50%),
+              var(--color-bg);
+            background-size: 200% 200%, 200% 200%, 200% 200%;
+            animation: auroraShift 20s ease-in-out infinite;
+          }
+
+          /* ── Floating Orb Glow ─────────────────────────────── */
+          @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+            25%  { transform: translate(30px, -20px) scale(1.1); opacity: 0.6; }
+            50%  { transform: translate(-15px, 15px) scale(0.95); opacity: 0.3; }
+            75%  { transform: translate(20px, 10px) scale(1.05); opacity: 0.5; }
+          }
+          .floating-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            animation: orbFloat 12s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+          }
+          .orb-brand { background: rgba(99,102,241,0.15); width: 300px; height: 300px; }
+          .orb-purple { background: rgba(168,85,247,0.1); width: 250px; height: 250px; animation-delay: -4s; }
+          .orb-cyan { background: rgba(6,182,212,0.08); width: 200px; height: 200px; animation-delay: -8s; }
+
+          /* ── Glow border animation (for featured cards) ───── */
+          @keyframes glowBorderRotate {
+            0%   { --glow-angle: 0deg; }
+            100% { --glow-angle: 360deg; }
+          }
+          @property --glow-angle {
+            syntax: '<angle>';
+            initial-value: 0deg;
+            inherits: false;
+          }
+          .glow-border {
+            position: relative;
+            overflow: hidden;
+          }
+          .glow-border::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: conic-gradient(from var(--glow-angle), transparent 60%, rgba(99,102,241,0.4) 75%, rgba(168,85,247,0.3) 85%, transparent 95%);
+            animation: glowBorderRotate 4s linear infinite;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            z-index: 1;
+          }
+
+          /* ── Breathing glow for live elements ──────────────── */
+          @keyframes breatheGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.03); }
+            50%      { box-shadow: 0 0 25px rgba(99,102,241,0.15), inset 0 1px 0 rgba(255,255,255,0.06); }
+          }
+          .breathe-glow {
+            animation: breatheGlow 3s ease-in-out infinite;
+          }
+
+          /* ── Data pulse (for live values) ──────────────────── */
+          @keyframes dataPulse {
+            0% { background-color: rgba(99,102,241,0.15); }
+            100% { background-color: transparent; }
+          }
+          .data-flash {
+            animation: dataPulse 0.6s ease-out;
+          }
+
+          /* ── Upgraded card-hover with glass depth ──────────── */
+          .card-hover {
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        box-shadow 0.25s ease,
+                        border-color 0.25s ease,
+                        backdrop-filter 0.25s ease;
+          }
+          .card-hover:hover {
+            transform: translateY(-3px) scale(1.005);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 20px rgba(99,102,241,0.08);
+            border-color: rgba(255,255,255,0.1) !important;
+          }
+
+          /* ── Stagger reveal for lists ──────────────────────── */
+          .stagger-reveal > * {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: fadeInUp 0.35s cubic-bezier(.22,.68,0,1.2) both;
+          }
+          .stagger-reveal > *:nth-child(1) { animation-delay: 0.05s; }
+          .stagger-reveal > *:nth-child(2) { animation-delay: 0.10s; }
+          .stagger-reveal > *:nth-child(3) { animation-delay: 0.15s; }
+          .stagger-reveal > *:nth-child(4) { animation-delay: 0.20s; }
+          .stagger-reveal > *:nth-child(5) { animation-delay: 0.25s; }
+          .stagger-reveal > *:nth-child(6) { animation-delay: 0.30s; }
+          .stagger-reveal > *:nth-child(7) { animation-delay: 0.35s; }
+          .stagger-reveal > *:nth-child(8) { animation-delay: 0.40s; }
+          .stagger-reveal > *:nth-child(n+9) { animation-delay: 0.45s; }
+
+          /* ── Glassmorphism upgrade for card-hover ───────────── */
+          .glass-card.card-hover:hover {
+            backdrop-filter: blur(20px) saturate(1.6);
+            -webkit-backdrop-filter: blur(20px) saturate(1.6);
+          }
+
           /* Reduced motion: disable all animations */
           @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
