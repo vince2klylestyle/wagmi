@@ -334,22 +334,52 @@ export function TradingChart({
     })();
   }, [zones, signalLevels, chartReady]);
 
-  // ── TradingView fallback ───────────────────────────────────────────────────
-  const renderFallbackChart = useCallback(() => {
+  // ── TradingView Advanced Chart widget (script-based, reliable) ──────────────
+  const tvContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (status !== 'error' || !tvContainerRef.current) return;
+
     const TV_TF: Record<string, string> = { '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
     const tvSymbol = TV_SYMBOLS[symbol] ?? `BINANCE:${symbol}USDT`;
-    const tvSrc = `https://s.tradingview.com/widgetembed/?frameElementId=tv_${uid}&symbol=${tvSymbol}&interval=${TV_TF[tf] ?? '60'}&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&withdateranges=1`;
-    return (
-      <iframe
-        src={tvSrc}
-        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-        allow="fullscreen"
-        title={`${symbol} Chart`}
-      />
-    );
-  }, [symbol, tf, uid]);
+    const containerId = `tv-widget-${uid.replace(/:/g, '')}`;
+
+    // Clear previous widget
+    tvContainerRef.current.innerHTML = `<div id="${containerId}" style="width:100%;height:100%"></div>`;
+
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      if (typeof (window as any).TradingView !== 'undefined') {
+        new (window as any).TradingView.widget({
+          container_id: containerId,
+          autosize: true,
+          symbol: tvSymbol,
+          interval: TV_TF[tf] ?? '60',
+          timezone: 'Etc/UTC',
+          theme: 'dark',
+          style: '1',
+          locale: 'en',
+          toolbar_bg: '#0a0f1e',
+          enable_publishing: false,
+          hide_legend: false,
+          save_image: false,
+          backgroundColor: '#0a0f1e',
+          gridColor: 'rgba(45,55,72,0.3)',
+          studies: ['MASimple@tv-basicstudies'],
+        });
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      try { document.head.removeChild(script); } catch {}
+    };
+  }, [status, symbol, tf, uid]);
 
   const isPositive = (priceChange ?? 0) >= 0;
+  // Note: TradingView widget is initialized via useEffect above when status === 'error'
 
   return (
     <motion.div
@@ -519,14 +549,21 @@ export function TradingChart({
 
       {/* ── Chart canvas ─────────────────────────────────────────────────── */}
       <div style={{ position: 'relative' }}>
-        {status === 'error' ? (
-          <div style={{ width: '100%', height, borderRadius: 0, overflow: 'hidden', background: '#131722' }}>
-            {renderFallbackChart()}
-          </div>
-        ) : (
+        {/* lightweight-charts canvas (hidden when API fails) */}
+        <div
+          ref={containerRef}
+          style={{
+            width: '100%',
+            height,
+            background: 'transparent',
+            display: status === 'error' ? 'none' : 'block',
+          }}
+        />
+        {/* TradingView widget fallback (shown when API fails) */}
+        {status === 'error' && (
           <div
-            ref={containerRef}
-            style={{ width: '100%', height, background: 'transparent' }}
+            ref={tvContainerRef}
+            style={{ width: '100%', height, background: '#0a0f1e', overflow: 'hidden' }}
           />
         )}
 

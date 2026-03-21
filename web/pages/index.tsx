@@ -619,25 +619,64 @@ function CandleChart({
     })();
   }, [zones, signalLevels]);
 
-  // TradingView widget fallback when OHLCV API is unavailable
-  if (status === 'error') {
+  // TradingView Advanced Chart widget fallback (script-based, reliable)
+  const tvFallbackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status !== 'error' || !tvFallbackRef.current) return;
     const TV_TF: Record<string, string> = { '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
-    const tvSrc = `https://s.tradingview.com/widgetembed/?frameElementId=tv_${symbol}&symbol=${TV_SYMBOLS[symbol] ?? symbol}&interval=${TV_TF[timeframe] ?? '60'}&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&withdateranges=1`;
-    return (
-      <div style={{ width: '100%', height, borderRadius: R.md, overflow: 'hidden', background: '#131722' }}>
-        <iframe
-          src={tvSrc}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          allow="fullscreen"
-          title={`${symbol} Chart`}
-        />
-      </div>
-    );
-  }
+    const tvSym = TV_SYMBOLS[symbol] ?? `BINANCE:${symbol}USDT`;
+    const cId = `tv-dash-${symbol}`;
+
+    tvFallbackRef.current.innerHTML = `<div id="${cId}" style="width:100%;height:100%"></div>`;
+
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      if (typeof (window as any).TradingView !== 'undefined') {
+        new (window as any).TradingView.widget({
+          container_id: cId,
+          autosize: true,
+          symbol: tvSym,
+          interval: TV_TF[timeframe] ?? '60',
+          timezone: 'Etc/UTC',
+          theme: 'dark',
+          style: '1',
+          locale: 'en',
+          toolbar_bg: '#0a0f1e',
+          enable_publishing: false,
+          hide_legend: false,
+          save_image: false,
+          backgroundColor: '#1a2236',
+          gridColor: 'rgba(45,55,72,0.3)',
+        });
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => { try { document.head.removeChild(script); } catch {} };
+  }, [status, symbol, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height, background: C.card, borderRadius: R.md }} />
+      {/* Native chart (hidden when API fails) */}
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height,
+          background: C.card,
+          borderRadius: R.md,
+          display: status === 'error' ? 'none' : 'block',
+        }}
+      />
+      {/* TradingView fallback (shown when API fails) */}
+      {status === 'error' && (
+        <div
+          ref={tvFallbackRef}
+          style={{ width: '100%', height, background: '#1a2236', borderRadius: R.md, overflow: 'hidden' }}
+        />
+      )}
       {status === 'loading' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
           Loading candles…
