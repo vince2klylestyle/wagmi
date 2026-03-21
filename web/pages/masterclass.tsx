@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
-import { C, R, S, F, G } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP } from '../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
 
 // ── Types ──
 type CoursePage =

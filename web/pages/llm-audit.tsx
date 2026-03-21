@@ -12,7 +12,9 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { C, R, F, S, G, fmtPct } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, F, S, G, Glass, SP, fmtPct } from '../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
 import type { LlmDecision, LlmFeedResponse } from '../src/types';
 import { resolveApiBase } from '../src/api';
 

@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { C, R, S, F, G, fmtUsd, timeAgo } from '../../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP, fmtUsd, timeAgo } from '../../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../../src/animations';
 import { fmtPnlK } from '../../lib/fmt';
 
 type OpenPosition = {

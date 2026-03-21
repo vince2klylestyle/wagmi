@@ -2,7 +2,9 @@
 
 import React, { useState, useId } from 'react';
 import Link from 'next/link';
-import { C, R, S, F, G } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP } from '../src/theme';
+import { staggerContainer, fadeUp } from '../src/animations';
 
 // ─── Accordion Card ───────────────────────────────────────────────────────────
 

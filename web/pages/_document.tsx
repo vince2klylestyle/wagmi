@@ -102,15 +102,76 @@ export default function Document() {
           /* Suppress focus ring for mouse/touch interactions */
           :focus:not(:focus-visible) { outline: none; }
 
-          /* Skeleton pulse animation */
-          @keyframes skeletonPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+          /* Skeleton shimmer animation (upgraded from pulse) */
+          @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
           }
           .skeleton {
-            background: var(--color-surface-hover);
+            background: linear-gradient(
+              90deg,
+              var(--color-surface-hover) 25%,
+              var(--color-card) 50%,
+              var(--color-surface-hover) 75%
+            );
+            background-size: 200% 100%;
             border-radius: var(--radius-sm);
-            animation: skeletonPulse 1.4s ease-in-out infinite;
+            animation: shimmer 1.5s ease-in-out infinite;
+          }
+
+          /* Glass noise texture overlay */
+          .glass-noise {
+            position: relative;
+          }
+          .glass-noise::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E") repeat;
+            opacity: 0.03;
+            pointer-events: none;
+            border-radius: inherit;
+            z-index: 0;
+          }
+          .glass-noise > * { position: relative; z-index: 1; }
+
+          /* Glass surface utility */
+          .glass-card {
+            background: rgba(26,34,54,0.55);
+            backdrop-filter: blur(16px) saturate(1.4);
+            -webkit-backdrop-filter: blur(16px) saturate(1.4);
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04);
+          }
+          .glass-elevated {
+            background: rgba(26,34,54,0.7);
+            backdrop-filter: blur(24px) saturate(1.6);
+            -webkit-backdrop-filter: blur(24px) saturate(1.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+          }
+
+          /* PnL glow effects */
+          .glow-bull { box-shadow: 0 0 20px rgba(22,163,74,0.15), 0 4px 12px rgba(0,0,0,0.2); }
+          .glow-bear { box-shadow: 0 0 20px rgba(220,38,38,0.15), 0 4px 12px rgba(0,0,0,0.2); }
+          .glow-brand { box-shadow: 0 0 24px rgba(99,102,241,0.2), 0 4px 12px rgba(0,0,0,0.2); }
+
+          /* Gradient mesh background */
+          .bg-mesh {
+            background:
+              radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.08) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.05) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 80%, rgba(6,182,212,0.04) 0%, transparent 50%),
+              var(--color-bg);
+          }
+
+          /* Reduced motion: disable all animations */
+          @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+              animation-duration: 0.01ms !important;
+              animation-iteration-count: 1 !important;
+              transition-duration: 0.01ms !important;
+            }
           }
 
           /* Activity ticker scroll */

@@ -3,25 +3,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
 import type { BacktestResult, ActivityEvent, LlmMarketView } from '../src/types';
 import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from 'lightweight-charts';
-
-// ─── API helper ───────────────────────────────────────────────────────────────
-
-function resolveApiBase(): string {
-  const envVal =
-    (process.env.NEXT_PUBLIC_API_URL as string | undefined) ||
-    (process.env.NEXT_PUBLIC_API_BASE_URL as string | undefined);
-  if (envVal && envVal.trim().length > 0) return envVal;
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return 'https://wagmi-production-d376.up.railway.app';
-    }
-  }
-  return 'http://localhost:8000';
-}
+import { resolveApiBase } from '../src/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +57,21 @@ function Skeleton({ w, h, style = {} }: { w?: string | number; h?: string | numb
   );
 }
 
+// ─── Glass wrapper for sections ──────────────────────────────────────────────
+function GlassSection({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className="glass-card"
+      style={{ borderRadius: R.lg, padding: SP[5], ...style }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
@@ -85,20 +87,25 @@ function KpiCard({
   color?: string;
   loading?: boolean;
 }) {
+  const glowShadow = color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.glass;
   return (
-    <div
-      className="fade-in"
+    <motion.div
+      variants={fadeUp}
+      className="glass-card glass-noise"
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
+        ...Glass.card,
         borderRadius: R.lg,
         padding: '20px 24px',
-        boxShadow: S.sm,
+        boxShadow: glowShadow,
         flex: '1 1 180px',
         minWidth: 160,
+        position: 'relative',
+        overflow: 'hidden',
       }}
+      {...hoverGlow}
     >
-      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+      {color && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.6 }} />}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
         {label}
       </div>
       {loading ? (
@@ -108,13 +115,13 @@ function KpiCard({
         </>
       ) : (
         <>
-          <div style={{ fontSize: F['2xl'], fontWeight: 800, color: color || C.text, lineHeight: 1.2, marginBottom: 4 }}>
+          <div style={{ fontSize: F['2xl'], fontWeight: 800, color: color || C.text, lineHeight: 1.2, marginBottom: 4, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>
             {value}
           </div>
           <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>
         </>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1027,7 +1034,7 @@ export default function Home() {
     : [];
 
   return (
-    <div>
+    <div className="bg-mesh">
       {/* ── API offline banner ─────────────────────────── */}
       {apiError && !loading && (
         <div
@@ -1058,7 +1065,7 @@ export default function Home() {
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'flex-end', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: 10 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: isMobile ? F['2xl'] : F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
+            <h1 className="gradient-text" style={{ margin: 0, fontSize: isMobile ? F['2xl'] : F['3xl'], fontWeight: 800, letterSpacing: -0.5 }}>
               Dashboard
             </h1>
             {!isMobile && (

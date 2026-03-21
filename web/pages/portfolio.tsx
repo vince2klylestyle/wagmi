@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Head from 'next/head';
-import { C, R, S, F, G, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../src/animations';
 import { apiFetch } from '../src/api';
 import type { Strategy, TradeHistoryResponse, TradeRecord } from '../src/types';
 
@@ -12,11 +14,17 @@ function Skeleton({ h = 16, w = '100%' }: { h?: number; w?: string | number }) {
 
 function AwaitingResults({ label = 'Awaiting results', sub }: { label?: string; sub?: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, color: C.muted }}>
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className="glass-card"
+      style={{ ...Glass.card, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, borderRadius: R.lg, color: C.muted }}
+    >
       <div style={{ fontSize: 22, opacity: 0.4 }}>⏳</div>
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{label}</div>
       {sub && <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', maxWidth: 320 }}>{sub}</div>}
-    </div>
+    </motion.div>
   );
 }
 
@@ -38,7 +46,7 @@ function StrategyPnlLadder({ strategies }: { strategies: Strategy[] }) {
   const total = items.reduce((a, s) => a + s.pnl, 0);
 
   return (
-    <div className="fade-in" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" className="glass-card" style={{ ...Glass.card, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>Strategy P&L Contribution</span>
         <span style={{ fontSize: F.xs, fontWeight: 700, color: pnlColor(total) }}>Total: {fmtUsd(total)}</span>
@@ -66,7 +74,7 @@ function StrategyPnlLadder({ strategies }: { strategies: Strategy[] }) {
         })}
       </div>
       <div style={{ marginTop: 10, fontSize: 10, color: C.muted, textAlign: 'center' }}>← losses · center = $0 · profits →</div>
-    </div>
+    </motion.div>
   );
 }
 

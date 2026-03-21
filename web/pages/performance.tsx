@@ -1,23 +1,20 @@
 import React, { useEffect, useState, useMemo, useId } from 'react';
 import Head from 'next/head';
-import { C, G, R, S, F, fmtUsd, fmtPct } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, G, R, S, F, SP, Glass, fmtUsd, fmtPct } from '../src/theme';
+import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
+import { Card, StatCard, SectionHeader, Skeleton as SharedSkeleton, EmptyState, Grid } from '../components/ui';
 import { apiFetch } from '../src/api';
 import type { TradeHistoryResponse, TradeRecord, EquityCurveResponse, EquityCurvePoint, BacktestResult } from '../src/types';
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton({ h = 16, w = '100%' }: { h?: number; w?: string | number }) {
-  return <div className="skeleton" style={{ height: h, width: w, borderRadius: R.sm }} />;
+  return <SharedSkeleton h={h} w={typeof w === 'number' ? `${w}px` : w} />;
 }
 
 function AwaitingResults({ label = 'Awaiting results', sub }: { label?: string; sub?: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', gap: 8, background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, color: C.muted }}>
-      <div style={{ fontSize: 22, opacity: 0.4 }}>⏳</div>
-      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.textSub }}>{label}</div>
-      {sub && <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', maxWidth: 320 }}>{sub}</div>}
-    </div>
-  );
+  return <EmptyState icon="&#9203;" title={label} subtitle={sub} />;
 }
 
 // ─── EMA Helper ───────────────────────────────────────────────────────────────
@@ -133,26 +130,15 @@ function rrHistogram(trades: TradeRecord[]): { label: string; count: number }[] 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div className="card-hover" style={{
-      background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
-      padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 6,
-      boxShadow: S.sm, position: 'relative', overflow: 'hidden',
-    }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color ?? C.brand, borderRadius: `${R.lg}px ${R.lg}px 0 0` }} />
-      <div style={{ fontSize: F.sm, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div className="num" style={{ fontSize: F['2xl'], fontWeight: 700, color: color ?? C.text }}>{value}</div>
-      {sub && <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>}
-    </div>
-  );
+  return <StatCard label={label} value={value} sub={sub} color={color} />;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="fade-in" style={{ marginBottom: 32 }}>
-      <h2 className="section-label" style={{ margin: '0 0 16px' }}>{title}</h2>
+    <motion.div variants={fadeUp} initial="hidden" animate="show" style={{ marginBottom: 32 }}>
+      <SectionHeader label={title} />
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -2740,7 +2726,7 @@ export default function PerformancePage() {
             ══════════════════════════════════════════════════════════════ */}
             <Section title="Equity & Returns">
               {/* Must-have KPI cards: Total Return, Max Drawdown, Sharpe, Win Rate */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+              <motion.div variants={staggerContainer} initial="hidden" animate="show" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
                 <KpiCard
                   label="Total Return"
                   value={totalReturnPct != null ? fmtPct(totalReturnPct) : '—'}
@@ -2765,21 +2751,21 @@ export default function PerformancePage() {
                   sub={`${wins}W / ${losses}L`}
                   color={winRate != null && winRate >= 50 ? C.bull : C.bear}
                 />
-              </div>
+              </motion.div>
 
               {/* Equity curve with EMA overlays */}
               {filteredCurve.length > 1 && (
-                <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto', marginBottom: 16 }}>
+                <Card glass style={{ padding: SP[5], overflowX: 'auto', marginBottom: SP[4] }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                     Equity Curve with EMA-9 / EMA-21
                   </div>
                   <EquityChart points={filteredCurve} trades={filteredTrades} width={860} height={200} />
-                </div>
+                </Card>
               )}
 
               {/* Monthly PnL bars */}
               {filteredTrades.length >= 5 && (
-                <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto' }}>
+                <Card glass style={{ padding: SP[5], overflowX: 'auto' }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                     P&L by Period (every 5 trades)
                   </div>
@@ -2787,7 +2773,7 @@ export default function PerformancePage() {
                   <div style={{ fontSize: F.xs, color: C.muted, marginTop: 10 }}>
                     Green = net positive period, red = net negative. Dashed line = cumulative PnL.
                   </div>
-                </div>
+                </Card>
               )}
             </Section>
 
@@ -2822,10 +2808,7 @@ export default function PerformancePage() {
                 <div style={{ flex: '0 0 auto' }}>
                   <ProfitFactorGauge trades={filteredTrades} />
                 </div>
-                <div className="card-hover" style={{
-                  flex: '0 0 260px', background: G.card, border: `1px solid ${C.border}`,
-                  borderRadius: R.lg, padding: '16px 8px', boxShadow: S.sm,
-                }}>
+                <Card glass style={{ flex: '0 0 260px', padding: `${SP[4]}px ${SP[2]}px` }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', marginBottom: 8 }}>
                     Performance Radar
                   </div>
@@ -2839,7 +2822,7 @@ export default function PerformancePage() {
                   <div style={{ fontSize: F.xs, color: C.muted, textAlign: 'center', marginTop: 6 }}>
                     Dashed pentagon = 0.7× target
                   </div>
-                </div>
+                </Card>
               </div>
               <div style={{ fontSize: F.xs, color: C.muted, marginTop: 10 }}>
                 Sharpe &gt; 1.0 = good · &gt; 2.0 = excellent · Calmar &gt; 1.0 = acceptable · &gt; 3.0 = strong
@@ -2852,15 +2835,12 @@ export default function PerformancePage() {
             ══════════════════════════════════════════════════════════════ */}
             <Section title="Drawdown Analysis">
               {filteredCurve.length > 1 && (
-                <div className="card-hover" style={{
-                  background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg,
-                  padding: '16px 20px', overflowX: 'auto', marginBottom: 16,
-                }}>
+                <Card glass style={{ padding: `${SP[4]}px ${SP[5]}px`, overflowX: 'auto', marginBottom: SP[4] }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                     Drawdown Depth Timeline
                   </div>
                   <DrawdownTimeline points={filteredCurve} />
-                </div>
+                </Card>
               )}
 
               <StreakAnalysisChart trades={filteredTrades} />
@@ -2873,7 +2853,7 @@ export default function PerformancePage() {
             <Section title="Benchmarks">
               {/* ── Benchmark Comparison ── */}
               {filteredTrades.length > 0 && (
-              <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: '16px 20px', marginBottom: 20, overflowX: 'auto' }}>
+              <Card glass style={{ padding: `${SP[4]}px ${SP[5]}px`, marginBottom: SP[5], overflowX: 'auto' }}>
                 <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                   Performance vs. Benchmarks
                 </div>
@@ -2881,7 +2861,7 @@ export default function PerformancePage() {
                 <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8 }}>
                   Horizontal bars show bot metrics vs. excellence thresholds. Green = above benchmark, red = below. Values shown: bot / target.
                 </div>
-              </div>
+              </Card>
             )}
 
               {/* ── Fee Drag Analysis ── */}
@@ -2904,12 +2884,12 @@ export default function PerformancePage() {
               </div>
 
               {/* Rolling win rate chart */}
-              <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, overflowX: 'auto', marginBottom: 16 }}>
+              <Card glass style={{ padding: SP[5], overflowX: 'auto', marginBottom: SP[4] }}>
                 <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                   Rolling Win Rate (10-trade window)
                 </div>
                 <RollingWinRateChart data={rollingWR} width={860} height={130} />
-              </div>
+              </Card>
 
               {/* Trade Quality Matrix */}
               <div style={{ marginBottom: 16 }}>
@@ -2925,7 +2905,7 @@ export default function PerformancePage() {
               )}
 
               {/* R:R Histogram */}
-              <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, marginBottom: 16 }}>
+              <Card glass style={{ padding: SP[5], marginBottom: SP[4] }}>
                 <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                   R:R Achieved Distribution
                 </div>
@@ -2933,7 +2913,7 @@ export default function PerformancePage() {
                 <div style={{ fontSize: F.xs, color: C.muted, marginTop: 12 }}>
                   Distribution of actual risk-reward ratios at close. A strong system clusters in the 1–3 bucket.
                 </div>
-              </div>
+              </Card>
             </Section>
 
             {/* ══════════════════════════════════════════════════════════════
@@ -2943,12 +2923,12 @@ export default function PerformancePage() {
             <Section title="Attribution">
               {/* By Strategy bars */}
               {Object.keys(byStrategy).length > 0 && (
-                <div className="card-hover" style={{ background: G.card, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: 20, marginBottom: 16 }}>
+                <Card glass style={{ padding: SP[5], marginBottom: SP[4] }}>
                   <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                     PnL by Strategy
                   </div>
                   <StrategyBars data={byStrategy} />
-                </div>
+                </Card>
               )}
 
               {/* Performance Attribution Treemap */}
@@ -2956,14 +2936,11 @@ export default function PerformancePage() {
             </Section>
 
             {/* ── Methodology Note ── */}
-            <div style={{
-              background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg,
-              padding: '16px 20px', fontSize: F.sm, color: C.muted, lineHeight: 1.6,
-            }}>
+            <Card glass style={{ padding: `${SP[4]}px ${SP[5]}px`, fontSize: F.sm, color: C.muted, lineHeight: 1.6 }}>
               <strong style={{ color: C.textSub }}>Methodology:</strong> Sharpe and Sortino are annualised using daily equity curve returns with a 0% risk-free rate.
               Calmar = total return % ÷ max drawdown %. All metrics are derived from live paper-trading data and should be interpreted accordingly.
               Past performance does not guarantee future results.
-            </div>
+            </Card>
           </>
         )}
       </div>

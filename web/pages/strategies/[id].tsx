@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useId } from 'react';
 import { useRouter } from 'next/router';
-import { C, R, S, F, G, fmtUsd, fmtPct, timeAgo } from '../../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../../src/theme';
+import { staggerContainer, fadeUp, hoverGlow } from '../../src/animations';
 import type { TradeRecord } from '../../src/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
