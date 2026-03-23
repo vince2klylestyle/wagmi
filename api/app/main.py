@@ -10,6 +10,7 @@ from .routes_ingest import router as ingest_router
 from .routes_read import router as read_router
 from .routes_metrics import router as metrics_router
 from .routes_copy import router as copy_router
+from .routes_edge import router as edge_router
 from .middleware import metrics_middleware
 from .services.signals import state as signals_state, loop_runner, refresh_signals
 
@@ -113,6 +114,7 @@ app.include_router(activity_router)
 app.include_router(trades_router)
 app.include_router(backtest_router)
 app.include_router(sniper_router)
+app.include_router(edge_router)
 
 if __name__ == "__main__":
     import uvicorn

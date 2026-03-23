@@ -369,6 +369,18 @@ class ConfidenceScorerStrategy(BaseStrategy):
         # Total confidence
         confidence = float(adx_score + macd_score + squeeze_score + rsi_score)
 
+        # Momentum exhaustion penalty: when ADX is very high AND RSI extreme,
+        # the move is often extended/overheated. High confidence paradoxically
+        # means "everything is maxed = move may be exhausting".
+        # 90d backtest: 80-89% conf = 22% WR vs <60% conf = 67% WR.
+        if adx > 35 and ((di_bullish and rsi_val > 70) or (not di_bullish and rsi_val < 30)):
+            exhaustion_penalty = 15  # Significant penalty for overheated signals
+            confidence -= exhaustion_penalty
+            logger.info(
+                f"[{symbol}] Momentum exhaustion: ADX={adx:.0f} RSI={rsi_val:.0f} "
+                f"-> penalty -{exhaustion_penalty}, conf now {confidence:.0f}"
+            )
+
         # 6h regime filter: reject signals that contradict higher-timeframe regime
         df_6h = data.get("6h")
         if df_6h is None or len(df_6h) < 10:

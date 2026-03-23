@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python run.py backtest --symbols BTC,SOL,HYPE --days 30 --equity 10000 --csv data/baseline_30d.csv --output data/baseline_30d.json)",
+      "Bash(python run.py backtest --symbols BTC,SOL,HYPE --days 30 --equity 10000 --csv data/optimized_30d.csv --output data/optimized_30d.json)",
+      "Bash(python -c)"
+    ]
+  }
+}

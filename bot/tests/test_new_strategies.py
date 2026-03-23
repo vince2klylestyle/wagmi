@@ -185,7 +185,7 @@ class TestBollingerSqueezeStrategy:
         if sig:
             assert sig.strategy == "bollinger_squeeze"
             assert sig.is_valid
-            assert sig.metadata.get("signal_type") in ("squeeze_breakout", "bandwalk")
+            assert sig.metadata.get("signal_type") in ("squeeze_breakout", "bandwalk", "pre_breakout")
 
     def test_trending_data_bandwalk(self):
         """Strongly trending data should produce bandwalk signals."""

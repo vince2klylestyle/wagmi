@@ -1419,6 +1419,16 @@ class AgentCoordinator:
         except Exception as e:
             logger.info(f"[MULTI-AGENT] Brain context injection error: {e}")
 
+        # Inject Scout Agent findings (rename from agent_outputs.scout to scout_preparation
+        # so Trade Agent prompt can find it by the documented key name)
+        try:
+            scratchpad = get_pipeline_scratchpad()
+            scout_data = scratchpad.read("scout")
+            if scout_data:
+                trade_data["scout_preparation"] = scout_data
+        except Exception:
+            pass
+
         return json.dumps(trade_data, separators=(",", ":"))
 
     def _build_risk_input(

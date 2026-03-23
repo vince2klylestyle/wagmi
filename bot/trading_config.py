@@ -597,17 +597,34 @@ REGIME_SL_TP_SCALARS = {
 # Regime-aware risk sizing: bet bigger where edge is proven, smaller where it isn't.
 # 30-day backtest: consolidation 78% WR (+$3.2k), trending_bull 40% WR (-$4k).
 REGIME_RISK_MULTIPLIERS = {
-    "trending_bull":    0.7,    # unproven edge — reduce size
-    "trending_bear":    0.7,
-    "trend":            0.8,
-    "consolidation":    1.0,    # was 1.3: 30d showed 78% WR but 70d shows 35% — noisy sample
-    "range":            0.8,
-    "high_volatility":  0.7,    # was 0.5: too punitive for HYPE which has tradeable edge
-    "panic":            0.3,
-    "low_liquidity":    0.5,
-    "news_dislocation": 0.4,
-    "unknown":          0.8,
+    "trending_bull":    0.12,   # 16.7% WR in 90d. Keep minimal exposure for learning, near-skip.
+    "trending_bear":    0.15,   # Worst regime. Minimal exposure, not zero — allows learning.
+    "trend":            0.7,    # generic trend, moderate caution
+    "consolidation":    1.0,    # best regime: 47% WR, +$4k PnL — full size
+    "range":            0.6,    # 50% WR but losses > wins. Moderate reduction.
+    "high_volatility":  0.3,    # 0% WR in recent data. Near-skip.
+    "panic":            0.2,    # extreme conditions — minimal exposure
+    "low_liquidity":    0.3,    # 0% WR in live trades — near-skip
+    "news_dislocation": 0.3,
+    "unknown":          0.3,    # no edge data — be cautious
 }
+
+
+# Symbol-specific risk scaling: size based on validated edge per symbol.
+# BTC: PF=12.64, 75% WR over 150d — full conviction
+# SOL: PF=0.67, 33% WR over 90d — marginal, reduce
+# HYPE: PF=0.0, 0% WR over 90d — minimal until more data
+SYMBOL_RISK_MULTIPLIERS = {
+    "BTC":  1.0,   # proven edge — full size
+    "SOL":  0.5,   # marginal edge — half size
+    "HYPE": 0.25,  # Negative EV (-$6/trade) at 33% WR. Minimal exposure until edge proven.
+}
+
+def get_symbol_risk_mult(symbol: str) -> float:
+    """Return position-size multiplier for the given symbol."""
+    # Strip common suffixes to match base symbol
+    base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
+    return SYMBOL_RISK_MULTIPLIERS.get(base, 0.6)  # default cautious for unknown symbols
 
 
 def get_regime_risk_mult(regime: str) -> float:

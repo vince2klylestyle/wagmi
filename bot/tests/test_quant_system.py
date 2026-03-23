@@ -156,10 +156,10 @@ class TestRegimeMinVotes:
     extreme regimes where the tighter gate is worth the signal loss.
     """
 
-    def test_bear_regime_requires_2(self):
-        """Bear: 2-agree with reduced size; EV gate handles quality."""
+    def test_bear_regime_requires_3(self):
+        """Bear: require 3-agree conviction — worst regime (10-20% WR)."""
         from strategies.ensemble import EnsembleStrategy
-        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bear") == 2
+        assert EnsembleStrategy.REGIME_MIN_VOTES.get("trending_bear") == 3
 
     def test_bull_regime_requires_2(self):
         """Bull: 2-agree; trend direction provides directional conviction."""

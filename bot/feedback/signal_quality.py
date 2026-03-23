@@ -45,6 +45,8 @@ class QualityFeatures:
     volatility: float = 0.0
     rr1: float = 1.0
     trend_alignment: float = 0.0
+    # Strategy attribution
+    strategy: str = ""  # Primary driving strategy (for per-strategy weight learning)
     # LLM decision data (for tracking LLM agreement → outcome correlation)
     llm_action: str = ""              # "go", "skip", "flip", "" (no LLM)
     llm_confidence: float = 0.0
@@ -128,6 +130,10 @@ class SignalQualityScorer:
                 d["recent"] = d["recent"][-50:]
 
         _update(self.by_symbol, features.symbol)
+
+        # Strategy tracking (was missing — weights never learned from performance)
+        if features.strategy:
+            _update(self.by_strategy, features.strategy)
 
         # Regime tracking
         if features.regime:

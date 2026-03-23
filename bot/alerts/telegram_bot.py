@@ -206,6 +206,9 @@ class TelegramCommandBot:
             "/rl": self._cmd_rl,
             "/survival": self._cmd_survival,
             "/learn": self._cmd_learn,
+            "/edge": lambda: self._cmd_edge(args),
+            "/signal": lambda: self._cmd_submit_signal(args),
+            "/thesis": self._cmd_thesis,
             "/help": self._cmd_help,
         }
         handler = handlers.get(command)
@@ -785,6 +788,230 @@ class TelegramCommandBot:
             return "\n".join(lines)
         except Exception as e:
             return f"Learning mode: {e}"
+
+    def _cmd_edge(self, args: str = "") -> str:
+        """Show setup profitability from trade history.
+
+        Usage: /edge [setup_type] [symbol] [regime]
+        Examples: /edge, /edge mean_reversion, /edge trend_follow BTC
+        """
+        try:
+            import json
+            from pathlib import Path
+
+            # Load trade DNA
+            dna_path = Path("data/llm/deep_memory/trade_dna.json")
+            if not dna_path.exists():
+                # Fall back to trade outcomes
+                outcomes_path = Path("data/analysis/trade_outcomes.csv")
+                if not outcomes_path.exists():
+                    return "No trade data found. Run some trades first."
+                import csv
+                trades = []
+                with open(outcomes_path) as f:
+                    for row in csv.DictReader(f):
+                        trades.append(row)
+            else:
+                with open(dna_path) as f:
+                    data = json.load(f)
+                trades = data.get("trades", [])
+
+            if not trades:
+                return "No trade history available."
+
+            # Parse filter args
+            parts = args.strip().split() if args else []
+            filter_setup = parts[0] if len(parts) > 0 else None
+            filter_symbol = parts[1].upper() if len(parts) > 1 else None
+            filter_regime = parts[2] if len(parts) > 2 else None
+
+            # Group by setup type (or entry_type as fallback)
+            from collections import defaultdict
+            setups: dict = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0})
+            for t in trades:
+                setup = t.get("setup_type") or t.get("entry_type", "unknown")
+                sym = t.get("symbol", "")
+                regime = t.get("regime", "")
+                if filter_setup and setup != filter_setup:
+                    continue
+                if filter_symbol and filter_symbol not in sym:
+                    continue
+                if filter_regime and regime != filter_regime:
+                    continue
+                s = setups[setup]
+                s["trades"] += 1
+                outcome = t.get("outcome", "")
+                pnl = float(t.get("pnl", 0) or 0)
+                if outcome == "WIN" or pnl > 0:
+                    s["wins"] += 1
+                s["pnl"] += pnl
+
+            if not setups:
+                return f"No trades match filters: setup={filter_setup} symbol={filter_symbol} regime={filter_regime}"
+
+            lines = ["*Edge Map*"]
+            if filter_symbol:
+                lines.append(f"Symbol: {filter_symbol}")
+            if filter_regime:
+                lines.append(f"Regime: {filter_regime}")
+            lines.append("")
+
+            for setup in sorted(setups.keys(), key=lambda k: -setups[k]["pnl"]):
+                s = setups[setup]
+                t = s["trades"]
+                wr = s["wins"] / t * 100 if t > 0 else 0
+                pnl = s["pnl"]
+                verdict = "EDGE" if pnl > 0 and wr > 50 else "AVOID" if pnl < 0 else "NEUTRAL"
+                lines.append(
+                    f"{setup}: {wr:.0f}% WR ({t} trades) ${pnl:+,.0f} [{verdict}]"
+                )
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Edge analysis error: {e}"
+
+    def _cmd_thesis(self) -> str:
+        """Show recent thesis predictions with outcome tracking."""
+        try:
+            from llm.thesis_tracker import get_thesis_tracker
+            tracker = get_thesis_tracker()
+            summary = tracker.get_accuracy_summary()
+            recent = tracker.get_recent(limit=5)
+
+            lines = ["*Thesis Tracking*"]
+            total = summary.get("total", 0)
+            if total > 0:
+                correct = summary.get("correct", 0)
+                acc = correct / total * 100
+                lines.append(f"Accuracy: {acc:.0f}% ({correct}/{total})")
+                lines.append(f"Avg confidence: {summary.get('avg_confidence', 0):.0%}")
+                lines.append(f"By regime: {summary.get('by_regime', {})}")
+            else:
+                lines.append("No theses tracked yet. Enable LLM_MODE >= 2.")
+
+            if recent:
+                lines.append("\n*Recent Theses:*")
+                for t in recent[:5]:
+                    status = "CORRECT" if t.get("correct") else "WRONG" if t.get("resolved") else "PENDING"
+                    lines.append(
+                        f"  {t.get('symbol', '?')} {t.get('side', '?')} "
+                        f"conf={t.get('confidence', 0):.0%} [{status}]"
+                    )
+                    if t.get("thesis"):
+                        lines.append(f"    {t['thesis'][:80]}")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Thesis tracking: {e}"
+
+    def _cmd_submit_signal(self, args: str = "") -> str:
+        """Submit a manual trade signal for risk-gated execution.
+
+        Usage: /signal BTC LONG 85000 SL 84000 TP 87000 [TP2 89000]
+        The signal goes through the same RiskFilterChain as automated signals.
+        """
+        if not args or not args.strip():
+            return (
+                "*Manual Signal Submission*\n\n"
+                "Usage: /signal SYMBOL SIDE ENTRY SL STOP TP TARGET [TP2 TARGET2]\n"
+                "Example: /signal BTC LONG 85000 SL 84000 TP 87000\n"
+                "Example: /signal SOL SHORT 145 SL 148 TP 138 TP2 132\n\n"
+                "Signal goes through all risk gates before execution."
+            )
+
+        try:
+            parts = args.strip().upper().split()
+            if len(parts) < 6:
+                return "Need at least: SYMBOL SIDE ENTRY SL price TP price"
+
+            symbol = parts[0]
+            side = parts[1]
+            if side not in ("LONG", "SHORT", "BUY", "SELL"):
+                return f"Invalid side: {side}. Use LONG/SHORT or BUY/SELL."
+            # Normalize
+            if side == "LONG":
+                side = "BUY"
+            elif side == "SHORT":
+                side = "SELL"
+
+            entry = float(parts[2])
+
+            # Parse SL and TP
+            sl = tp1 = tp2 = 0
+            i = 3
+            while i < len(parts):
+                if parts[i] == "SL" and i + 1 < len(parts):
+                    sl = float(parts[i + 1])
+                    i += 2
+                elif parts[i] == "TP" and i + 1 < len(parts):
+                    tp1 = float(parts[i + 1])
+                    i += 2
+                elif parts[i] == "TP2" and i + 1 < len(parts):
+                    tp2 = float(parts[i + 1])
+                    i += 2
+                else:
+                    i += 1
+
+            if sl == 0 or tp1 == 0:
+                return "Missing SL or TP. Use: /signal BTC LONG 85000 SL 84000 TP 87000"
+            if tp2 == 0:
+                # Auto-compute TP2 at 2x the TP1 distance
+                tp2 = entry + 2 * (tp1 - entry)
+
+            # Validate direction
+            if side == "BUY" and sl >= entry:
+                return f"SL ({sl}) must be below entry ({entry}) for LONG"
+            if side == "SELL" and sl <= entry:
+                return f"SL ({sl}) must be above entry ({entry}) for SHORT"
+
+            risk = abs(entry - sl)
+            reward1 = abs(tp1 - entry)
+            rr = reward1 / risk if risk > 0 else 0
+
+            lines = [
+                "*Manual Signal Received*",
+                f"Symbol: {symbol} {side}",
+                f"Entry: ${entry:,.2f}",
+                f"SL: ${sl:,.2f} (risk: ${risk:,.2f})",
+                f"TP1: ${tp1:,.2f} (R:R {rr:.1f}x)",
+                f"TP2: ${tp2:,.2f}",
+                "",
+                "Status: QUEUED for risk gate evaluation",
+                "The bot will evaluate this signal on the next scan cycle.",
+            ]
+
+            # Store the manual signal for the main loop to pick up
+            try:
+                import json
+                from pathlib import Path
+                queue_file = Path("data/manual_signals.json")
+                queue_file.parent.mkdir(parents=True, exist_ok=True)
+                queue = []
+                if queue_file.exists():
+                    with open(queue_file) as f:
+                        queue = json.load(f)
+                queue.append({
+                    "symbol": symbol,
+                    "side": side,
+                    "entry": entry,
+                    "sl": sl,
+                    "tp1": tp1,
+                    "tp2": tp2,
+                    "confidence": 70.0,  # Manual signals get moderate confidence
+                    "source": "telegram_manual",
+                    "timestamp": __import__("time").time(),
+                })
+                with open(queue_file, "w") as f:
+                    json.dump(queue, f, indent=2)
+                lines.append(f"Queued successfully. R:R = {rr:.1f}x")
+            except Exception as e:
+                lines.append(f"Warning: queue write failed: {e}")
+
+            return "\n".join(lines)
+        except ValueError as e:
+            return f"Parse error: {e}. Use numbers for prices."
+        except Exception as e:
+            return f"Signal submission error: {e}"
 
     def _cmd_rl(self) -> str:
         """RL system status: buffer stats + policy state."""

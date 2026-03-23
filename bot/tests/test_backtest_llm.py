@@ -1297,6 +1297,8 @@ class TestBug11TradeTimeline:
         close_event.leverage = 1.0
         close_event.fee = 1.0
         close_event.entry_price = 3100.0
+        close_event.qty = 1.0
+        close_event.metadata = {"entry": 3100.0, "sl": 3050.0, "tp1": 3200.0, "tp2": 3300.0, "confidence": 80}
 
         engine._CLOSE_ACTIONS = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                                  "EMERGENCY", "BACKTEST_END", "HOLD_LIMIT",

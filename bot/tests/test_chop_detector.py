@@ -149,7 +149,7 @@ class TestEnsembleChopIntegration:
     """Test chop detector integration with ensemble."""
 
     def test_chop_detector_blocks_signal(self):
-        """When chop detector says choppy, ensemble returns None."""
+        """When chop detector says choppy, low-confidence signals get blocked."""
         from strategies.ensemble import EnsembleStrategy
 
         mock_chop = MagicMock()
@@ -159,7 +159,7 @@ class TestEnsembleChopIntegration:
         mock_strategy.name = "test_strat"
         mock_signal = MagicMock()
         mock_signal.side = "BUY"
-        mock_signal.confidence = 80.0
+        mock_signal.confidence = 55.0  # Well below chop-elevated floor (~77.5%)
         mock_signal.metadata = {}
         mock_strategy.evaluate.return_value = mock_signal
 

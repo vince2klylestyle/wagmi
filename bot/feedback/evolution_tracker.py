@@ -966,6 +966,26 @@ class EvolutionTracker:
             except Exception as e:
                 logger.warning(f"[EVOLUTION→TUNER] Failed to apply lessons: {e}")
 
+            # Also sync strategy edge data directly to StrategyWeightManager
+            # (tuner is a separate system — weight manager needs direct updates too)
+            if strategy_suggestions:
+                try:
+                    from data.strategy_weights import StrategyWeightManager
+                    mgr = StrategyWeightManager()
+                    for strategy, target_wr in strategy_suggestions.items():
+                        current = mgr.get_weight(strategy)
+                        gap = abs(target_wr - current)
+                        if gap > 0.08:  # Only adjust if meaningful divergence
+                            adjustment = max(3, int(gap * 20))
+                            for _ in range(adjustment):
+                                mgr.record_outcome(strategy, win=(target_wr > current))
+                            logger.info(
+                                f"[EVOLUTION→WEIGHTS] {strategy}: "
+                                f"{current:.2f} → {target_wr:.2f} ({adjustment} adjustments)"
+                            )
+                except Exception as e:
+                    logger.debug(f"[EVOLUTION→WEIGHTS] Sync failed: {e}")
+
         return applied
 
     @staticmethod
