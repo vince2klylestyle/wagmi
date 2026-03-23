@@ -58,6 +58,17 @@ def format_signal_telegram(
     win_rate_strategy: float = 0,
     total_trades_symbol: int = 0,
     signal_score: float = 0,
+    # New quant fields
+    ev_per_dollar: float = 0,
+    fee_drag_pct: float = 0,
+    regime_confidence: float = 0,
+    chop_score: float = 0,
+    setup_type: str = "",
+    setup_wr: float = 0,
+    setup_trades: int = 0,
+    combo_edge: str = "",
+    magnitude_bypass: bool = False,
+    solo_trade: bool = False,
 ) -> str:
     """Format a trading signal as an actionable Telegram message."""
 
@@ -108,7 +119,30 @@ def format_signal_telegram(
     ]
 
     if regime:
-        lines.append(f"Regime:     {regime}")
+        regime_str = regime
+        if regime_confidence > 0:
+            regime_str += f" ({regime_confidence:.0%} conf)"
+        lines.append(f"Regime:     {regime_str}")
+
+    if chop_score > 0.35:
+        lines.append(f"Chop:       {chop_score:.2f} {'(choppy!)' if chop_score > 0.55 else '(moderate)'}")
+
+    # Quant edge metrics
+    if ev_per_dollar > 0:
+        lines.append(f"EV/dollar:  +{ev_per_dollar:.3f} (positive edge)")
+    if fee_drag_pct > 0:
+        lines.append(f"Fee drag:   {fee_drag_pct:.0f}%")
+
+    if setup_type and setup_trades > 0:
+        lines.append(f"Setup:      {setup_type} ({setup_wr:.0%} WR, {setup_trades} trades)")
+
+    if combo_edge:
+        lines.append(f"Combo:      {combo_edge}")
+
+    if magnitude_bypass:
+        lines.append(f"Note:       Magnitude bypass (high R:R, reduced size)")
+    if solo_trade:
+        lines.append(f"Note:       Solo strategy signal (half size)")
 
     lines.extend([
         f"",

@@ -46,8 +46,8 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.2,  # Lowered from 1.5: fee-drag + EV gates handle quality
         chop_detector=None,
-        confidence_floor: float = 75.0,  # Raised from 65: minimum viable signal quality
-        ranging_confidence_floor: float = 80.0,  # Lowered from 88: 88% was nearly impossible
+        confidence_floor: float = 69.0,  # Data: sweet spot between filtering noise and capturing edge
+        ranging_confidence_floor: float = 68.0,  # Synced with TradingConfig: allows clear breakouts while filtering noise
         ic_tracker=None,
     ):
         self.strategies = strategies
@@ -154,7 +154,7 @@ class EnsembleStrategy:
     # kills almost all signals. Lowered to 2 for regimes with 4+ active strategies.
     # High-risk regimes (panic, low_liquidity, news_dislocation) stay at 3.
     REGIME_MIN_VOTES = {
-        'trending_bear':   2,
+        'trending_bear':   3,  # Worst regime (10-20% WR): require conviction
         'trending_bull':   2,
         'trend':           2,
         'consolidation':   2,
@@ -538,12 +538,37 @@ class EnsembleStrategy:
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
 
         if result.confidence < effective_floor:
-            logger.info(
-                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
-                f"< {effective_floor:.0f}% floor (chop={chop_score:.2f})"
+            # Magnitude bypass: high-R:R signals on volatile assets get a second chance.
+            # Data: HYPE BUY signals at 55-65% conf routinely produce 15-22% moves.
+            # Allow if: (1) R:R > 2.5, (2) high-vol asset, (3) confidence within 10% of floor.
+            try:
+                _rr = float(result.risk_reward_tp1) if hasattr(result, 'risk_reward_tp1') else 0
+            except (TypeError, ValueError):
+                _rr = 0
+            _vol_prof = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
+            _gap = effective_floor - result.confidence
+            _magnitude_bypass = (
+                _rr >= 2.5
+                and _vol_prof in ("high", "medium")
+                and _gap <= 10.0  # within 10 points of floor
+                and result.confidence >= 55.0  # absolute minimum
             )
-            self._record_counterfactual(result, f"confidence_floor_{effective_floor:.0f}")
-            return None
+            if _magnitude_bypass:
+                # Let it through but mark for reduced sizing
+                result.metadata["magnitude_bypass"] = True
+                result.metadata["risk_mult_override"] = 0.4  # 40% size — small speculative bet
+                logger.info(
+                    f"[{symbol}] Magnitude bypass: conf {result.confidence:.0f}% < floor "
+                    f"{effective_floor:.0f}% but R:R={_rr:.1f} on {_vol_prof}-vol asset — "
+                    f"allowing at 40% size"
+                )
+            else:
+                logger.info(
+                    f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
+                    f"< {effective_floor:.0f}% floor (chop={chop_score:.2f})"
+                )
+                self._record_counterfactual(result, f"confidence_floor_{effective_floor:.0f}")
+                return None
 
         # 2. Trend alignment: FLIP counter-trend signals to ride the trend
         # Use duration-aware weights: short-term strategies don't get killed
@@ -1121,18 +1146,53 @@ class EnsembleStrategy:
         sell_signals = [s for s in signals if s.side == "SELL"]
 
         # Require at least min_votes strategies agreeing on the same direction.
-        # Single-strategy trades (1-agree) require 80%+ confidence from a proven strategy.
+        # Exceptions for proven edge cases (data-validated):
+        #   1. Proven solo strategies at high confidence (any symbol)
+        #   2. Symbol+regime combos with validated edge (e.g., BTC ranging = 77% WR)
+        _PROVEN_SOLO_STRATEGIES = {"probability_engine", "confidence_scorer", "bollinger_squeeze"}  # regime_trend removed: PF=0.49 as solo
+        _SOLO_CONF_THRESHOLD = 68.0  # Slightly above floor — allow more solo signals through
+        # Symbol+regime combos where solo signals have validated edge
+        _SYMBOL_REGIME_SOLO = {
+            ("BTC", "ranging"):        {"min_conf": 58.0, "risk_mult": 0.35},  # Strong BTC edge across regimes
+            ("BTC", "consolidation"):  {"min_conf": 58.0, "risk_mult": 0.35},  # BTC consolidation is our #1 edge
+            ("BTC", "trend"):          {"min_conf": 62.0, "risk_mult": 0.3},   # BTC trend signals at lower threshold
+            ("SOL", "consolidation"):  {"min_conf": 65.0, "risk_mult": 0.3},   # SOL R:R=2.95, cautious
+            ("SOL", "ranging"):        {"min_conf": 65.0, "risk_mult": 0.3},   # SOL ranging cautious
+            ("HYPE", "consolidation"): {"min_conf": 65.0, "risk_mult": 0.2},   # HYPE tiny size, capture big moves
+        }
+
         if len(buy_signals) < min_v and len(sell_signals) < min_v:
-            # Check for single-strategy high-conviction trade (quant cherry-pick mode)
-            single_conf_threshold = 80.0
             lone_signals = buy_signals or sell_signals
-            if min_v <= 1 and len(lone_signals) == 1 and lone_signals[0].confidence >= single_conf_threshold:
+            _allowed = False
+
+            # Path 1: Proven strategy solo (any symbol)
+            if (lone_signals and len(lone_signals) == 1
+                    and lone_signals[0].strategy in _PROVEN_SOLO_STRATEGIES
+                    and lone_signals[0].confidence >= _SOLO_CONF_THRESHOLD):
+                lone_signals[0].metadata["solo_proven"] = True
+                lone_signals[0].metadata["risk_mult_override"] = 0.5
                 logger.info(
-                    f"[{symbol}] Single-strategy high-conviction {lone_signals[0].side}: "
-                    f"{lone_signals[0].strategy} conf={lone_signals[0].confidence:.0f}% (quant cherry-pick)"
+                    f"[{symbol}] Proven solo trade: {lone_signals[0].strategy} "
+                    f"conf={lone_signals[0].confidence:.0f}% (half-size)"
                 )
-                # Allow it through — EV gate + half-size risk_mult will handle safety
-            else:
+                _allowed = True
+
+            # Path 2: Symbol+regime edge (solo signals in validated combos)
+            if not _allowed and lone_signals:
+                _regime = self._current_regime.get(symbol, "unknown")
+                _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+                _combo = (_base_sym, _regime)
+                _edge = _SYMBOL_REGIME_SOLO.get(_combo)
+                if _edge and lone_signals[0].confidence >= _edge["min_conf"]:
+                    lone_signals[0].metadata["symbol_regime_solo"] = True
+                    lone_signals[0].metadata["risk_mult_override"] = _edge["risk_mult"]
+                    logger.info(
+                        f"[{symbol}] Symbol+regime solo: {_base_sym}/{_regime} "
+                        f"conf={lone_signals[0].confidence:.0f}% (risk_mult={_edge['risk_mult']})"
+                    )
+                    _allowed = True
+
+            if not _allowed:
                 if buy_signals:
                     logger.info(f"[{symbol}] Only {len(buy_signals)} BUY signal(s), need {min_v}+ same-side")
                 elif sell_signals:
@@ -1142,8 +1202,6 @@ class EnsembleStrategy:
                         symbol=symbol, signals=signals, reason="insufficient_votes"
                     )
                 # Sniper hook: route single-strategy signals to LLM for evaluation.
-                # Runs in background thread — never blocks the scan loop.
-                # Only fires when exactly 1 strategy voted (lone signal).
                 if self._sniper_callback is not None:
                     _lone = buy_signals or sell_signals
                     if _lone:
@@ -1152,6 +1210,40 @@ class EnsembleStrategy:
                         except Exception as _se:
                             logger.debug(f"[{symbol}] Sniper callback error: {_se}")
                 return None
+
+        # Redundant strategy clusters: strategies using the same core indicators
+        # (MACD + BB + RSI) should not count as independent votes.
+        # When ONLY a redundant cluster agrees, apply heavy penalty (effectively
+        # requires 85%+ raw confidence to pass the 72% floor). This lets high-conviction
+        # signals through while filtering the noise majority.
+        # When a 3rd+ strategy also agrees, apply moderate penalty.
+        _REDUNDANT_CLUSTERS = {
+            frozenset({"bollinger_squeeze", "confidence_scorer"}): 0.78,  # Was PF=0.48 at 0.82; 0.65 killed too many. 22% penalty balances frequency vs quality.
+            frozenset({"confidence_scorer", "vmc_cipher"}): 0.82,  # 70% overlap
+        }
+        for side_signals in [buy_signals, sell_signals]:
+            signal_names = frozenset(s.strategy for s in side_signals)
+            for cluster, solo_penalty_mult in _REDUNDANT_CLUSTERS.items():
+                if cluster.issubset(signal_names):
+                    if signal_names == cluster:
+                        # ONLY the redundant pair voted — per-cluster penalty
+                        for s in side_signals:
+                            s.confidence *= solo_penalty_mult
+                        _pct = int((1 - solo_penalty_mult) * 100)
+                        logger.info(
+                            f"[{symbol}] Redundant-only cluster {sorted(cluster)}: "
+                            f"confidence penalized {_pct}%"
+                        )
+                    else:
+                        # 3rd+ strategy also agrees — light penalty
+                        for s in side_signals:
+                            if s.strategy in cluster:
+                                s.confidence *= 0.93
+                        logger.info(
+                            f"[{symbol}] Redundant cluster {sorted(cluster)} + "
+                            f"{sorted(signal_names - cluster)}: confidence penalized 7%"
+                        )
+                    break
 
         # Block known-losing combos (backtest-validated toxic combinations).
         # Only block when 3+ strategies agree and the toxic pair is a subset —
@@ -1188,18 +1280,22 @@ class EnsembleStrategy:
         else:
             return None  # tied or empty
 
-        # Weighted veto: chosen side must be meaningfully stronger
+        # Soft veto: instead of hard-blocking when opposition is strong,
+        # reduce position size. Data: hard veto was 29% accurate (vetoed 37 winners
+        # vs 15 losers). Convert to size reduction instead of rejection.
         if opposition and chosen_strength < oppose_strength * self.veto_ratio:
+            # Mark for size reduction instead of blocking
+            _veto_severity = oppose_strength / max(chosen_strength, 0.01)
+            _size_penalty = max(0.3, 1.0 - (_veto_severity - 1.0) * 0.5)  # 0.3-1.0x
+            for s in chosen:
+                s.metadata["opposition_size_reduction"] = round(_size_penalty, 2)
+                s.metadata.setdefault("risk_mult_override", 1.0)
+                s.metadata["risk_mult_override"] *= _size_penalty
             logger.info(
-                f"[{symbol}] Weighted veto: {chosen[0].side} strength={chosen_strength:.1f} "
-                f"< {opposition[0].side} strength={oppose_strength:.1f} * {self.veto_ratio} "
-                f"= {oppose_strength * self.veto_ratio:.1f}"
+                f"[{symbol}] Soft veto: {chosen[0].side} strength={chosen_strength:.1f} "
+                f"< {opposition[0].side} {oppose_strength:.1f} × {self.veto_ratio} "
+                f"— size reduced to {_size_penalty:.0%} (not blocked)"
             )
-            if self._missed_trade_tracker is not None:
-                self._missed_trade_tracker.record_ensemble_rejection(
-                    symbol=symbol, signals=signals, reason="opposition_veto"
-                )
-            return None
 
         merged = self._merge_signals(symbol, chosen)
         if merged is None:
@@ -1240,6 +1336,9 @@ class EnsembleStrategy:
                 if opp_strength_scale < 0.55:
                     opp_strength_scale *= 0.3  # Weak opposition: 70% penalty reduction
                 penalty += capped_weight * 5 * (s.confidence / 100) * tf_discount * penalty_intensity * min(1.0, opp_strength_scale / 0.55)
+            # Cap opposition penalty at 3 points. Data: 31% veto accuracy means
+            # opposition is WRONG 69% of the time. Large penalties destroy good trades.
+            penalty = min(penalty, 3.0)
             merged.confidence = max(0, merged.confidence - penalty)
             merged.metadata["opposition_penalty"] = round(penalty, 1)
             opp_names = [s.strategy for s in opposition]
@@ -1316,23 +1415,74 @@ class EnsembleStrategy:
         else:
             weighted_conf = sum(s.confidence for s in signals) / len(signals)
 
-        # Consensus bonus: reward genuine multi-strategy agreement.
-        # Regime-aware: trending regimes justify higher consensus bonus (WR jumps
-        # from 40% at 2-agree to 86% at 3-agree in consolidation).
-        # Exponential instead of flat 3% per strategy.
+        # Combo-specific edge bonus: data-validated strategy combinations.
+        # Applied BEFORE consensus multiplier so the floor check uses the boosted value.
+        signal_names = frozenset(s.strategy for s in signals)
+        # Data-validated combo bonuses. Strategy independence analysis:
+        # probability_engine = 95% independent (Monte Carlo, unique methodology)
+        # regime_trend = 60% independent (multi-TF confirmation)
+        # Best combos combine genuinely independent signal sources.
+        _COMBO_EDGE = {
+            frozenset({"confidence_scorer", "probability_engine"}): 1.08,  # PF=4+ in 90d
+            frozenset({"probability_engine", "regime_trend"}): 1.10,  # EV + multi-TF = highest quality
+            frozenset({"probability_engine", "bollinger_squeeze"}): 1.08,  # EV + volatility regime
+            frozenset({"confidence_scorer", "regime_trend"}): 1.06,  # Oscillator + multi-TF
+            frozenset({"bollinger_squeeze", "confidence_scorer", "probability_engine"}): 1.12,  # 3-way: max independence
+        }
+        _combo_mult = _COMBO_EDGE.get(signal_names, 1.0)
+        if _combo_mult != 1.0:
+            weighted_conf *= _combo_mult
+            logger.info(f"[{symbol}] Combo edge bonus: {sorted(signal_names)} → {_combo_mult:.0%}")
+
+        # Consensus bonus: reward genuine INDEPENDENT multi-strategy agreement.
+        # 90d backtest: "strong_confluence" (4+ agree) = 0% WR because redundant
+        # oscillator strategies all fire together at exhaustion points.
+        # Solution: count INDEPENDENT votes, not total votes.
         n_agree = len(signals)
         _regime = self._current_regime.get(symbol, "unknown")
+
+        # Count independent votes (strategies in different methodology groups)
+        _METHODOLOGY_GROUPS = {
+            "oscillator": {"confidence_scorer", "vmc_cipher"},  # RSI+MACD based
+            "volatility": {"bollinger_squeeze"},  # BB/KC compression
+            "probability": {"probability_engine"},  # Monte Carlo
+            "multi_tf": {"regime_trend"},  # Multi-timeframe alignment
+            "zones": {"monte_carlo_zones"},  # Statistical zones
+            "derivatives": {"funding_rate", "oi_delta", "liquidation_cascade"},
+            "multi_tier": {"multi_tier_quality"},  # 5m+1h
+            "lead_lag": {"lead_lag"},  # Cross-asset
+        }
+        _groups_present = set()
+        for s in signals:
+            _found_group = False
+            for group, members in _METHODOLOGY_GROUPS.items():
+                if s.strategy in members:
+                    _groups_present.add(group)
+                    _found_group = True
+                    break
+            if not _found_group:
+                _groups_present.add(f"_unknown_{s.strategy}")  # Unknown = independent
+        n_independent = len(_groups_present)
+
         _CONSENSUS_MULT = {
             "trending_bull":    {2: 1.06, 3: 1.14, 4: 1.20},
             "trending_bear":    {2: 1.04, 3: 1.10, 4: 1.15},
-            "consolidation":    {2: 1.08, 3: 1.18, 4: 1.28},
+            "consolidation":    {2: 1.06, 3: 1.10, 4: 1.15},
             "range":            {2: 1.03, 3: 1.06, 4: 1.10},
             "high_volatility":  {2: 1.02, 3: 1.04, 4: 1.06},
             "panic":            {2: 1.01, 3: 1.02, 4: 1.03},
         }
         _default_mult = {2: 1.04, 3: 1.08, 4: 1.12}
         _regime_mults = _CONSENSUS_MULT.get(_regime, _default_mult)
-        consensus_mult = _regime_mults.get(n_agree, 1.0) if n_agree >= 2 else 1.0
+        # Use INDEPENDENT group count for consensus bonus, not raw strategy count
+        consensus_mult = _regime_mults.get(n_independent, 1.0) if n_independent >= 2 else 1.0
+        # If 4+ strategies agree but only 1-2 independent groups: penalize (exhaustion signal)
+        if n_agree >= 4 and n_independent <= 2:
+            consensus_mult = 0.92  # Penalty: redundant agreement = likely exhausted move
+            logger.info(
+                f"[{symbol}] Redundant 4+ agree: {n_agree} strategies but only "
+                f"{n_independent} independent groups — consensus penalty applied"
+            )
         # Cap ensemble confidence — raised to 92% so genuine unanimous signals pass
         try:
             from trading_config import TradingConfig

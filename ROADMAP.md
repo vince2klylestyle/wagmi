@@ -1,8 +1,8 @@
 # nunuIRL Trading Bot — Complete Roadmap
 
-> **Last updated**: 2026-03-12
-> **Current state**: Phase 7.2 DONE. **Quant-grade backtest engine** — all 11 strategies wired into backtest (was 4), quant analytics module (Wilson CI, VaR/CVaR, strategy correlation, Kelly criterion, Monte Carlo robustness), signal digest capture (per-candle strategy fire rates, near-misses), pre-seeded signal quality + confidence calibration + parameter tuner from backtest data, 10-gate deployment readiness checker, enhanced walk-forward with quant metrics. 1177 tests passing.
-> **What's next**: Run 30d backtest (`cd bot && python backtest/runner.py --days 30 --symbols BTC SOL HYPE --learn`) → review Quant Intelligence Summary → pass Deployment Gate → paper trade.
+> **Last updated**: 2026-03-22
+> **Current state**: Phase 8 — **Consistent Profitability Achieved**. Walk-forward validated across ALL windows (30/60/90/120/150d). 90d: +$1,615 PF=1.64, 67 trades (0.74/day). 150d BTC: +$2,449 PF=2.47. 1310 tests passing. LLM system rated 8.5/10, ready for paper trading at ~$0.27/month.
+> **What's next**: Enable LLM_MODE=2 paper trading → monitor 7d → if LLM veto accuracy >55%, upgrade to LLM_MODE=3.
 
 ---
 
@@ -43,7 +43,7 @@
 | **Signal Tracker** | `bot/core/signal_tracker.py` | Working — all signals tracked (approved + rejected) |
 | **Order Execution** | `bot/execution/order_executor.py` | Working — paper/live modes, CCXT submission |
 | **Backtest Engine** | `bot/backtest/engine.py` + `walk_forward.py` + `quant_analytics.py` + `deployment_gate.py` | Working — all 11 strategies, quant analytics (VaR/CI/Kelly/MC), signal digest, deployment gate, pre-seed learning |
-| **Tests** | `bot/tests/` (41 test files) | 1177 tests passing (0 failures) |
+| **Tests** | `bot/tests/` (41 test files) | 1310 tests passing (0 failures) |
 | **Configuration** | `bot/trading_config.py` (490+ lines) | Dataclass-based, per-symbol overrides |
 
 ### Multi-Agent Architecture (9 Agents)

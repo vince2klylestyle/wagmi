@@ -375,6 +375,10 @@ class PositionManager:
             fee=fee,
             leverage=leverage,
             strategy=strategy,
+            metadata={
+                "entry_reasons": entry_reasons or {},
+                "confidence": confidence,
+            },
         )
         self.trade_log.append(event)
 
@@ -412,13 +416,14 @@ class PositionManager:
         return pos
 
     def update_price(
-        self, symbol: str, current_price: float, df_5m=None
+        self, symbol: str, current_price: float, df_5m=None, sim_now: datetime = None
     ) -> List[TradeEvent]:
         """
         Process a price update for a position.
         Checks SL, early exit, TP1, trailing stop, TP2 in order.
         SL is checked first to prevent early exit from closing at a worse price.
         df_5m: optional 5m DataFrame for momentum-based early exit.
+        sim_now: simulated current time (for backtest; uses datetime.now(UTC) if None).
         """
         if symbol not in self.positions:
             return []
@@ -426,6 +431,9 @@ class PositionManager:
         pos = self.positions[symbol]
         if pos.state == CLOSED:
             return []
+
+        # Store sim_now for internal methods (time stop, TP1 speed calc)
+        self._sim_now = sim_now
 
         events = []
         is_long = pos.side == "LONG"
@@ -450,7 +458,8 @@ class PositionManager:
         # Avg hold: 15.5h. An 8h time stop converts slow bleeders into controlled exits.
         # Does NOT affect positions that hit TP1 — those trail profitably (100% WR).
         if pos.state == OPEN:
-            hold_hours = (datetime.now(timezone.utc) - pos.open_time).total_seconds() / 3600
+            _now = sim_now or datetime.now(timezone.utc)
+            hold_hours = (_now - pos.open_time).total_seconds() / 3600
             time_stop_hours = getattr(self, '_time_stop_hours', 8)
             if hold_hours >= time_stop_hours:
                 logger.info(
@@ -594,7 +603,8 @@ class PositionManager:
 
             # Speed: fast move to TP1 -> let it run; slow grind -> take profits
             # Only apply speed scaling if position was open > 60s (avoids test artifacts)
-            time_to_tp1_s = (datetime.now(timezone.utc) - pos.open_time).total_seconds()
+            _now_for_speed = getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
+            time_to_tp1_s = (_now_for_speed - pos.open_time).total_seconds()
             if time_to_tp1_s > 60:
                 if time_to_tp1_s < 1800:  # < 30 min -- fast runner
                     dynamic_close_pct *= 0.85

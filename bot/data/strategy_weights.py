@@ -116,8 +116,8 @@ class StrategyWeightManager:
             last_5 = recent[-5:] if len(recent) >= 5 else []
             recovering = len(last_5) == 5 and sum(last_5) == 5
 
-            if len(recent) >= 15 and rolling_wr < 0.30 and long_term_weight < 0.35:
-                # Hard mute floor raised from 0.05 to 0.20 — strategy always gets a voice
+            if len(recent) >= 30 and rolling_wr < 0.20 and long_term_weight < 0.25:
+                # Hard mute: requires 30+ trades at <20% WR to trigger (prevents stale data muting)
                 mute_weight = 0.30 if recovering else 0.20
                 dynamic[name] = mute_weight
                 logger.warning(
@@ -126,7 +126,7 @@ class StrategyWeightManager:
                     + (" (recovering: 5 consecutive wins)" if recovering else "")
                 )
                 continue
-            if len(recent) >= 15 and rolling_wr < 0.30:
+            if len(recent) >= 30 and rolling_wr < 0.20:
                 # Recent is bad but long-term is decent — demote, don't mute
                 dynamic[name] = 0.25 if recovering else 0.15
                 logger.info(

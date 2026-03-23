@@ -295,6 +295,45 @@ class BollingerSqueezeStrategy(BaseStrategy):
                 if (side == "BUY" and momentum_up) or (side == "SELL" and not momentum_up):
                     confidence += 5.0
 
+        # SIGNAL TYPE 3: Pre-breakout positioning (squeeze building, near release)
+        # When squeeze duration is long AND BB width is near historical minimum,
+        # a breakout is imminent. Position early with tight risk to capture the full move.
+        # Data: BTC consolidation 100% WR — this is the pre-positioning edge.
+        if signal_type is None and squeeze["currently_squeezed"]:
+            squeeze_dur = squeeze["squeeze_duration"]
+            bb_w = squeeze["bb_width"]
+            # Only fire on extended squeezes (6+ bars = serious compression)
+            if squeeze_dur >= 6 and len(bb_w) > 20:
+                # BB width relative to recent history (lower = tighter compression)
+                recent_bb_w = bb_w.iloc[-20:]
+                bb_w_current = float(bb_w.iloc[-1])
+                bb_w_pct = (bb_w_current - float(recent_bb_w.min())) / max(
+                    float(recent_bb_w.max() - recent_bb_w.min()), 1e-12
+                )
+                # Fire when BB width is in the bottom 30% of recent range (very tight)
+                if bb_w_pct <= 0.30:
+                    signal_type = "pre_breakout"
+                    # Direction from MACD histogram (momentum leading into squeeze)
+                    side = "BUY" if momentum_up else "SELL"
+                    confidence = 60.0
+
+                    # Longer squeeze = more explosive breakout
+                    squeeze_bonus = min(12.0, (squeeze_dur - 6) * 2.0)
+                    confidence += squeeze_bonus
+
+                    # Volume drying up confirms compression (low vol = coil tightening)
+                    if vol_ratio < 0.8:
+                        confidence += 5.0  # Volume contraction = breakout imminent
+
+                    # EMA alignment gives direction conviction
+                    if (side == "BUY" and ema20 > ema50) or (side == "SELL" and ema20 < ema50):
+                        confidence += 5.0
+
+                    logger.info(
+                        f"[{symbol}] Pre-breakout: squeeze {squeeze_dur} bars, "
+                        f"BB width percentile {bb_w_pct:.0%}, conf={confidence:.0f}%"
+                    )
+
         if signal_type is None or side is None:
             return None
 
@@ -312,6 +351,11 @@ class BollingerSqueezeStrategy(BaseStrategy):
             sl_mult = 2.0   # was 1.5: wider stop, fee drag drops from 11.6% to 8.7%
             tp1_mult = 2.5   # was 2.0: proportional to maintain R:R
             tp2_mult = 6.0 if _high_vol else 5.0   # high-vol: let breakouts run further
+        elif signal_type == "pre_breakout":
+            # Pre-breakout: tighter SL (still inside compression), wide TPs (expecting explosion)
+            sl_mult = 2.5   # Wider than breakout — need room for fake-outs within squeeze
+            tp1_mult = 3.0   # Expecting full breakout move
+            tp2_mult = 7.0 if _high_vol else 6.0   # Explosive moves after long squeezes
         else:  # bandwalk
             sl_mult = 1.8   # was 1.2: #1 profit killer, way too tight for crypto
             tp1_mult = 2.2   # was 1.5: proportional to wider stop

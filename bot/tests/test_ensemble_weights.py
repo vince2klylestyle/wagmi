@@ -341,8 +341,10 @@ class TestWeightedVeto:
         ]
 
         result = ensemble._weighted_veto("BTC", signals)
-        # BUY strength=134, SELL strength=131, 131*1.1=144.1 > 134 -> vetoed
-        assert result is None, "Close 2v2 should be vetoed"
+        # BUY strength=134, SELL strength=131, 131*1.1=144.1 > 134
+        # Soft veto: not blocked but size-reduced (opposition_size_reduction in metadata)
+        assert result is not None, "Close 2v2 should soft-veto (reduce size), not hard-block"
+        assert result.metadata.get("opposition_penalty", 0) > 0, "Should have opposition penalty"
 
     def test_2v2_passes_with_strong_chosen(self):
         """When chosen side has much higher confidence, 2v2 passes."""

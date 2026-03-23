@@ -206,6 +206,34 @@ class AlertRouter:
         self._send_discord(msg)
         self._send_telegram(msg)
 
+    def send_missed_opportunity(self, symbol: str, side: str, confidence: float,
+                                gate: str, potential_pct: float):
+        """Alert when a blocked signal would have been profitable.
+
+        Helps calibrate gate strictness. Only sends if potential > 3%.
+        """
+        if potential_pct < 3.0:
+            return  # Don't spam for small misses
+
+        msg = (
+            f"[MISSED OPPORTUNITY]\n"
+            f"{symbol} {side} | Conf {confidence:.0f}%\n"
+            f"Blocked by: {gate}\n"
+            f"Would have gained: +{potential_pct:.1f}%\n"
+            f"Review gate settings if this happens often."
+        )
+        # Rate limit: max 1 missed opportunity alert per symbol per hour
+        _key = f"missed_{symbol}"
+        _now = time.time()
+        _last = self._last_alert_time.get(_key, 0)
+        if _now - _last < 3600:
+            return
+        self._last_alert_time[_key] = _now
+        self._send_discord(msg)
+        # Only send to Telegram for big misses (>5%)
+        if potential_pct >= 5.0:
+            self._send_telegram(msg)
+
     def send_circuit_breaker(self, reason: str):
         """Alert when circuit breaker triggers."""
         msg = f"CIRCUIT BREAKER TRIPPED\nReason: {reason}\nTrading halted until cooldown expires."

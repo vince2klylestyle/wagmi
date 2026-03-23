@@ -170,9 +170,9 @@ class RiskFilterChain:
         ev = signal.metadata.get("ev_per_dollar") if signal.metadata else None
         min_ev = getattr(self.config, "min_signal_ev", 0.10)
         if stop_pct > 0 and stop_pct < 0.004:
-            min_ev = max(min_ev, 0.22)  # Tight stops: fees eat most of the risk
+            min_ev = max(min_ev, 0.16)  # Tight stops: fee-drag filter handles worst cases separately
         elif stop_pct > 0 and stop_pct < 0.006:
-            min_ev = max(min_ev, 0.18)  # Medium-tight stops: moderate EV bump
+            min_ev = max(min_ev, 0.14)  # Medium-tight: moderate bump, not double-filtering with fee-drag
         if ev is not None and ev < min_ev:
             _reason = f"EV {ev:.3f} < min {min_ev:.2f} (low expected value)"
             _log_rejection(signal, "ev_floor", _reason)
@@ -342,11 +342,65 @@ class RiskFilterChain:
             from trading_config import get_regime_risk_mult
             _regime = signal.metadata.get("regime", "unknown")
             _regime_rm = get_regime_risk_mult(_regime)
+            if _regime_rm <= 0:
+                _reason = f"Regime '{_regime}' has 0 risk multiplier — blocked by data"
+                _log_rejection(signal, "regime_block", _reason)
+                return FilterResult(
+                    approved=False, signal=signal,
+                    rejection_reason=_reason,
+                    metadata=meta,
+                )
             if _regime_rm != 1.0:
                 risk_mult *= _regime_rm
                 meta["regime_risk_mult"] = _regime_rm
         except ImportError:
             pass
+
+        # Apply symbol-specific risk scaling (data-driven per-symbol edge)
+        try:
+            from trading_config import get_symbol_risk_mult
+            _sym_rm = get_symbol_risk_mult(signal.symbol)
+            if _sym_rm != 1.0:
+                risk_mult *= _sym_rm
+                meta["symbol_risk_mult"] = _sym_rm
+        except ImportError:
+            pass
+
+        # Apply solo proven strategy size override (half size for safety)
+        _solo_rm = signal.metadata.get("risk_mult_override")
+        if _solo_rm is not None:
+            risk_mult *= _solo_rm
+            meta["solo_risk_mult"] = _solo_rm
+
+        # Confidence-based sizing: bet bigger on high-conviction signals.
+        # Data: 80-89% confidence = PF 7.89 (60% WR, +$2,202).
+        # 70-79% = PF 0.70 (losing). Below 70% = PF 0.0.
+        _conf = signal.confidence
+        _regime = signal.metadata.get("regime", "unknown")
+        # Confidence-based sizing with regime awareness.
+        # Data: 80-89% = PF 9.77. 90%+ in trending = 12% WR (exhaustion).
+        if _conf >= 90 and _regime in ("trending_bull", "trending_bear", "trend"):
+            risk_mult *= 0.0  # 90%+ in trend = exhaustion signal. 12-14% WR. Skip entirely.
+            meta["confidence_sizing"] = "exhaustion_blocked"
+        elif _conf >= 85:
+            risk_mult *= 1.3  # High conviction — size up 30%
+            meta["confidence_sizing"] = "high_conviction_1.3x"
+        elif _conf >= 80:
+            # 80-89% in ranging is 0% WR (-$265). Only boost in consolidation.
+            if _regime in ("range", "ranging"):
+                risk_mult *= 0.5  # Ranging high-conf = trap
+                meta["confidence_sizing"] = "ranging_trap_0.5x"
+            else:
+                risk_mult *= 1.15  # Strong conviction in other regimes
+                meta["confidence_sizing"] = "strong_1.15x"
+        elif _conf >= 75:
+            pass  # 75-79% stays at 1.0x (neutral zone)
+        elif _conf >= 70:
+            risk_mult *= 0.7  # 70-74%: marginal — reduce size 30%
+            meta["confidence_sizing"] = "marginal_0.7x"
+        else:
+            risk_mult *= 0.5  # Below 70% — reduce size 50%
+            meta["confidence_sizing"] = "low_conviction_0.5x"
 
         meta["leverage"] = leverage
         meta["leverage_tier"] = lev_decision.tier
@@ -607,11 +661,30 @@ class RiskFilterChain:
             from trading_config import get_regime_risk_mult
             _regime = signal.metadata.get("regime", "unknown")
             _regime_rm = get_regime_risk_mult(_regime)
+            if _regime_rm <= 0:
+                result.add("regime_block", False, f"Regime '{_regime}' blocked (0 risk mult)")
+                return result
             if _regime_rm != 1.0:
                 risk_mult *= _regime_rm
                 meta["regime_risk_mult"] = _regime_rm
         except ImportError:
             pass
+
+        # Apply symbol-specific risk scaling (annotated path)
+        try:
+            from trading_config import get_symbol_risk_mult
+            _sym_rm = get_symbol_risk_mult(signal.symbol)
+            if _sym_rm != 1.0:
+                risk_mult *= _sym_rm
+                meta["symbol_risk_mult"] = _sym_rm
+        except ImportError:
+            pass
+
+        # Apply solo proven strategy size override (half size for safety)
+        _solo_rm = signal.metadata.get("risk_mult_override")
+        if _solo_rm is not None:
+            risk_mult *= _solo_rm
+            meta["solo_risk_mult"] = _solo_rm
 
         meta["leverage"] = leverage
         meta["leverage_tier"] = lev_decision.tier

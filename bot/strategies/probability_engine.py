@@ -327,11 +327,13 @@ class ProbabilityEngineStrategy(BaseStrategy):
         # Confidence from probability + EV
         confidence = 50.0
 
-        # Probability contribution
-        confidence += (probs["prob_tp1"] - 0.45) * 50  # 0.45→50, 0.70→62.5, 0.95→75
+        # Probability contribution — scale nonlinearly to reward high probabilities more
+        # Old: linear (0.45→50, 0.70→62.5). New: steeper above 0.60 to reflect edge quality.
+        prob_excess = probs["prob_tp1"] - 0.45
+        confidence += prob_excess * 55 + max(0, prob_excess - 0.15) * 20  # bonus for >0.60
 
-        # EV contribution
-        confidence += min(15.0, ev * 30)
+        # EV contribution — slightly higher weight (EV is the true edge metric)
+        confidence += min(18.0, ev * 35)
 
         # Regime bonus
         if regime["regime"] == "trending" and (

@@ -98,6 +98,15 @@ class BacktestEngine:
             max_leverage=self.config.max_leverage,
         )
 
+        # Portfolio risk engine: correlation guard for multi-symbol backtests.
+        # Prevents clustered same-direction positions from creating cascade risk.
+        self._portfolio_risk_engine = None
+        try:
+            from analytics.portfolio_risk import PortfolioRiskEngine
+            self._portfolio_risk_engine = PortfolioRiskEngine(data_dir="data/portfolio_risk")
+        except Exception:
+            pass
+
         # Circuit breaker settings: default to LIVE settings for realistic backtests.
         # Use --relaxed-cb (or env vars) to widen for analysis/learning mode.
         if self._relaxed_cb:
@@ -134,6 +143,23 @@ class BacktestEngine:
 
         # Last prices per symbol for cross-symbol MTM equity calculation
         self._last_prices: Dict[str, float] = {}
+
+        # Pending limit orders: when entry price differs from current price by > slippage,
+        # queue for fill on future candle (matches paper trading behavior).
+        # Dict: symbol -> {"signal": Signal, "expiry_candle": int, "sim_dt": datetime}
+        self._pending_orders: Dict[str, Dict] = {}
+
+        # Adaptive confidence floor: full production system from paper trading.
+        # Learns per-strategy/symbol/regime floors from trade outcomes.
+        self._adaptive_floor = None
+        try:
+            from feedback.adaptive_confidence import AdaptiveConfidenceFloor
+            self._adaptive_floor = AdaptiveConfidenceFloor(data_dir="data/feedback")
+        except Exception:
+            pass
+        # Simpler rolling fallback (kept for compatibility)
+        self._recent_outcomes: List[bool] = []  # Rolling window of win/loss
+        self._dynamic_floor_adj: float = 0.0  # Additive adjustment to confidence floor
 
         # Raw mode: disable all risk gates for pure strategy analysis
         self._raw_mode = False
@@ -190,6 +216,15 @@ class BacktestEngine:
             if sym_overrides and hasattr(sym_overrides, "volatility_profile"):
                 chop.set_symbol_profile(sym, sym_overrides.volatility_profile)
 
+        # Initialize strategy weight manager for adaptive voting weights
+        _weight_mgr = None
+        try:
+            from data.strategy_weights import StrategyWeightManager
+            _weight_mgr = StrategyWeightManager()
+        except Exception:
+            pass
+        self._weight_mgr = _weight_mgr  # Store for feedback in _record_trade_outcome
+
         ensemble = EnsembleStrategy(
             strategies=active_strategies,
             mode=self.config.ensemble_mode,
@@ -197,6 +232,7 @@ class BacktestEngine:
             veto_ratio=self.config.veto_ratio,
             chop_detector=chop,
             confidence_floor=self.config.ensemble_confidence_floor,
+            weight_manager=_weight_mgr,
         )
         # Wire missed trade tracker into ensemble for rejection feedback
         ensemble.set_missed_trade_tracker(self.missed_trade_tracker)
@@ -559,28 +595,32 @@ class BacktestEngine:
                     # 1. Check SL side (worst price with slippage)
                     worst_5m = l5 if is_long else h5
                     worst_5m_slip = worst_5m * (1 - exit_slip) if is_long else worst_5m * (1 + exit_slip)
-                    sub_events = self.pos_mgr.update_price(symbol, worst_5m_slip)
+                    sub_events = self.pos_mgr.update_price(symbol, worst_5m_slip, sim_now=sim_dt)
                     if not sub_events:
                         # 2. Check TP side (best price, no slippage — limit orders)
                         best_5m = h5 if is_long else l5
-                        sub_events = self.pos_mgr.update_price(symbol, best_5m)
+                        sub_events = self.pos_mgr.update_price(symbol, best_5m, sim_now=sim_dt)
                     if not sub_events:
-                        # 3. Settle on 5m close for trailing updates
-                        sub_events = self.pos_mgr.update_price(symbol, c5)
+                        # 3. Settle on 5m close for trailing updates + early exit check
+                        # Pass df_5m so position_manager can detect momentum reversals
+                        # heading toward SL (early exit), matching paper trading behavior
+                        sub_events = self.pos_mgr.update_price(symbol, c5, df_5m=intra_5m, sim_now=sim_dt)
                     events.extend(sub_events)
             elif pos and pos.state != "CLOSED":
                 # ── Fallback: hourly worst→best→close heuristic ──
                 is_long = pos.side == "LONG"
                 worst_price = candle_low if is_long else candle_high
                 worst_with_slip = worst_price * (1 - exit_slip) if is_long else worst_price * (1 + exit_slip)
-                events = self.pos_mgr.update_price(symbol, worst_with_slip)
+                events = self.pos_mgr.update_price(symbol, worst_with_slip, sim_now=sim_dt)
                 if not events:
                     best_price = candle_high if is_long else candle_low
-                    events = self.pos_mgr.update_price(symbol, best_price)
+                    events = self.pos_mgr.update_price(symbol, best_price, sim_now=sim_dt)
                 if not events:
-                    events = self.pos_mgr.update_price(symbol, current_price)
+                    # Pass available 5m data for early exit momentum detection
+                    _5m_for_exit = intra_5m if not intra_5m.empty else None
+                    events = self.pos_mgr.update_price(symbol, current_price, df_5m=_5m_for_exit, sim_now=sim_dt)
             else:
-                events = self.pos_mgr.update_price(symbol, current_price)
+                events = self.pos_mgr.update_price(symbol, current_price, sim_now=sim_dt)
             for event in events:
                 # Tag close events with simulated time for hold duration calculation
                 if event.action in self._CLOSE_ACTIONS:
@@ -681,6 +721,25 @@ class BacktestEngine:
             if i <= last_close_idx + re_entry_gap:
                 continue  # Let the market breathe after a close
 
+            # Check pending limit orders: fill if price crosses entry level
+            _pending = self._pending_orders.get(symbol)
+            if _pending and not pos:
+                _psig = _pending["signal"]
+                _pentry = _psig.entry
+                # Check if current candle's range crosses the pending entry
+                _fill = False
+                if _psig.side == "BUY" and candle_low <= _pentry:
+                    _fill = True
+                elif _psig.side == "SELL" and candle_high >= _pentry:
+                    _fill = True
+                if _fill:
+                    logger.info(f"[{symbol}] Pending order filled at ${_pentry:.2f}")
+                    self._execute_signal(_psig, _pentry, sim_dt=sim_dt)
+                    del self._pending_orders[symbol]
+                elif i >= _pending["expiry_candle"]:
+                    logger.debug(f"[{symbol}] Pending order expired")
+                    del self._pending_orders[symbol]
+
             # Try to generate signal — track CB blocks
             self.candle_stats["total"] += 1
             cb_blocked = not self.risk_mgr.can_open_position(self.pos_mgr.get_open_count(), sim_time=sim_dt)
@@ -714,6 +773,11 @@ class BacktestEngine:
                 except Exception:
                     ensemble.set_disabled_strategies(set())
                     ensemble.set_regime(symbol, "unknown")
+
+                # Dynamic feedback floor: adjust ensemble confidence floor
+                # based on recent trade performance (mirrors paper trading feedback loop)
+                if self._dynamic_floor_adj != 0:
+                    ensemble.confidence_floor = self.config.ensemble_confidence_floor + self._dynamic_floor_adj
 
                 signal = ensemble.evaluate(symbol, windowed)
                 if signal and not signal.is_valid:
@@ -760,6 +824,33 @@ class BacktestEngine:
                     # still fire in range/consolidation). Removed to match live
                     # trading behavior.
 
+                    # Classify setup type from strategy agreement + regime
+                    _strats = signal.metadata.get("strategies_agree", [signal.strategy])
+                    _strat_set = set(_strats) if isinstance(_strats, list) else {signal.strategy}
+                    _sig_regime = signal.metadata.get("regime", "unknown")
+                    if "probability_engine" in _strat_set and "regime_trend" in _strat_set:
+                        _setup = "trend_with_ev"
+                    elif "probability_engine" in _strat_set and "bollinger_squeeze" in _strat_set:
+                        _setup = "squeeze_with_ev"
+                    elif "bollinger_squeeze" in _strat_set and signal.metadata.get("signal_type") == "pre_breakout":
+                        _setup = "pre_breakout"
+                    elif "bollinger_squeeze" in _strat_set and signal.metadata.get("signal_type") == "squeeze_breakout":
+                        _setup = "squeeze_breakout"
+                    elif len(_strat_set) >= 3:
+                        _setup = "strong_confluence"
+                    elif _sig_regime in ("consolidation", "range") and len(_strat_set) >= 2:
+                        _setup = "mean_reversion"
+                    elif _sig_regime in ("trending_bull", "trending_bear", "trend"):
+                        _setup = "trend_follow"
+                    elif signal.metadata.get("solo_proven") or signal.metadata.get("symbol_regime_solo"):
+                        _setup = "solo_conviction"
+                    else:
+                        _setup = "standard"
+                        # Standard (unclassified) trades have -$795 PnL, 44% WR in 90d.
+                        # Reduce size to limit damage from unproven setups.
+                        signal.metadata.setdefault("risk_mult_override", 0.6)
+                    signal.metadata["setup_type"] = _setup
+
                     # Create candidate for dual-world tracking
                     candidate = self._create_candidate(signal, sim_dt)
 
@@ -774,7 +865,7 @@ class BacktestEngine:
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
                         signal.metadata["sim_time"] = str(sim_dt)
-                        self._execute_signal(signal, current_price)
+                        self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         # LLM vetoed — log candidate with flat action
                         candidate.llm_action = "flat"
@@ -812,6 +903,14 @@ class BacktestEngine:
             })
             # Track last price per symbol for cross-symbol MTM
             self._last_prices[symbol] = current_price
+            # Feed price to portfolio risk engine for correlation computation
+            if self._portfolio_risk_engine:
+                try:
+                    self._portfolio_risk_engine.record_price(
+                        symbol, current_price, timestamp=sim_dt.timestamp()
+                    )
+                except Exception:
+                    pass
 
             # LLM: checkpoint and progress
             if self.llm:
@@ -892,15 +991,15 @@ class BacktestEngine:
                 is_long = pos.side == "LONG"
                 worst_price = candle_low if is_long else candle_high
                 worst_with_slip = worst_price * (1 - exit_slip) if is_long else worst_price * (1 + exit_slip)
-                events = self.pos_mgr.update_price(symbol, worst_with_slip)
+                events = self.pos_mgr.update_price(symbol, worst_with_slip, sim_now=sim_dt)
                 if not events:
                     # TP exits are limit orders — no adverse slippage
                     best_price = candle_high if is_long else candle_low
-                    events = self.pos_mgr.update_price(symbol, best_price)
+                    events = self.pos_mgr.update_price(symbol, best_price, sim_now=sim_dt)
                 if not events:
-                    events = self.pos_mgr.update_price(symbol, current_price)
+                    events = self.pos_mgr.update_price(symbol, current_price, sim_now=sim_dt)
             else:
-                events = self.pos_mgr.update_price(symbol, current_price)
+                events = self.pos_mgr.update_price(symbol, current_price, sim_now=sim_dt)
             for event in events:
                 if event.action in self._CLOSE_ACTIONS:
                     event.metadata["close_sim_time"] = str(sim_dt)
@@ -1070,7 +1169,7 @@ class BacktestEngine:
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
                         signal.metadata["sim_time"] = str(sim_dt)
-                        self._execute_signal(signal, current_price)
+                        self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         candidate.llm_action = "flat"
                         self._candidate_logger.log_candidate(candidate)
@@ -1350,6 +1449,42 @@ class BacktestEngine:
                 regime=meta.get("regime", ""),
             )
 
+            # Adaptive confidence floor: feed outcome to production-grade system.
+            # Learns per-strategy/symbol/regime floors from trade results.
+            if self._adaptive_floor:
+                try:
+                    _strategy = event.strategy or ""
+                    _regime = (event.metadata or {}).get("regime", "")
+                    self._adaptive_floor.record_outcome(
+                        confidence=pos.confidence if pos else 0,
+                        win=(outcome == "WIN"),
+                        pnl=pnl,
+                        strategy=_strategy,
+                        symbol=event.symbol,
+                        regime=_regime,
+                    )
+                    self._dynamic_floor_adj = self._adaptive_floor.current_floor - self.config.ensemble_confidence_floor
+                except Exception:
+                    pass  # Adaptive floor is best-effort
+
+            # Feed strategy weight manager with trade outcome
+            if self._weight_mgr and event.strategy:
+                try:
+                    # Record outcome for the primary strategy
+                    self._weight_mgr.record_outcome(event.strategy, win=(outcome == "WIN"))
+                    # Also record for each contributing strategy (from entry_reasons)
+                    _strategies_agree = (event.metadata or {}).get("entry_reasons", {}).get("strategies_agree", [])
+                    for _strat in _strategies_agree:
+                        if _strat != event.strategy:
+                            self._weight_mgr.record_outcome(_strat, win=(outcome == "WIN"))
+                except Exception:
+                    pass
+
+            # Simple rolling fallback
+            self._recent_outcomes.append(outcome == "WIN")
+            if len(self._recent_outcomes) > 10:
+                self._recent_outcomes = self._recent_outcomes[-10:]
+
             # Also update self-teaching system's trade counter
             try:
                 from llm.learning_mode import record_trade_observed
@@ -1393,27 +1528,55 @@ class BacktestEngine:
                 self._record_trade_outcome(event, last_price)
                 logger.info(f"[{symbol}] Force-closed at backtest end: PnL={event.pnl:.2f}")
 
-    def _execute_signal(self, signal: Signal, current_price: float):
+    def _execute_signal(self, signal: Signal, current_price: float, sim_dt: datetime = None):
         """Execute a signal in backtest mode with slippage simulation."""
         from execution.trade_profile import classify_trade, apply_profile_to_signal
         from core.signal_pipeline import RiskFilterChain
 
-        # Apply slippage: shift entry by slippage bps, then shift SL/TP by
-        # the same ABSOLUTE amount (not multiplicative — preserves R:R ratios).
+        # Pending order check: if entry is far from current_price (>1.5% slippage),
+        # queue as pending limit order instead of filling at worse price.
+        # Matches paper trading behavior (multi_strategy_main.py:3706-3745).
+        max_entry_slip = getattr(self.config, "max_entry_slippage_pct", 1.5) / 100.0
+        if current_price > 0 and signal.entry > 0:
+            slip_from_market = abs(signal.entry - current_price) / current_price
+            if slip_from_market > max_entry_slip:
+                # Queue as pending — will fill if price retraces within expiry window
+                _profile = signal.metadata.get("setup_type", "standard")
+                _expiry_candles = {"solo_conviction": 6, "mean_reversion": 12,
+                                   "trend_follow": 20, "standard": 10}.get(_profile, 10)
+                _candle_idx = getattr(self, '_current_candle_idx', 0)
+                self._pending_orders[signal.symbol] = {
+                    "signal": signal,
+                    "expiry_candle": _candle_idx + _expiry_candles,
+                    "sim_dt": sim_dt,
+                }
+                logger.info(
+                    f"[{signal.symbol}] Pending order: entry ${signal.entry:.2f} "
+                    f"vs market ${current_price:.2f} (slip {slip_from_market:.1%} > {max_entry_slip:.1%}). "
+                    f"Expires in {_expiry_candles} candles."
+                )
+                return
+
+        # Apply slippage: shift entry by slippage bps, then PROPORTIONALLY
+        # rescale SL/TP to maintain R:R ratio (matches paper trading behavior).
+        # Paper trading does: qty * (snapshot_sl_dist / live_sl_dist) to preserve $ risk.
         slippage_bps = getattr(self.config, "slippage_bps", 0)
         slip_mult = slippage_bps / 10000.0
         if signal.side == "BUY":
-            slip_amount = signal.entry * slip_mult
-            fill_price = signal.entry + slip_amount      # Buy higher (worse)
-            signal.sl = signal.sl + slip_amount           # SL shifts by same $ amount
-            signal.tp1 = signal.tp1 + slip_amount         # TP1 shifts
-            signal.tp2 = signal.tp2 + slip_amount         # TP2 shifts
+            fill_price = signal.entry * (1 + slip_mult)   # Buy higher (worse)
+            # Proportional rescale: maintain distance ratios from entry
+            if signal.entry > 0:
+                ratio = fill_price / signal.entry
+                signal.sl = signal.sl * ratio
+                signal.tp1 = signal.tp1 * ratio
+                signal.tp2 = signal.tp2 * ratio
         else:
-            slip_amount = signal.entry * slip_mult
-            fill_price = signal.entry - slip_amount      # Sell lower (worse)
-            signal.sl = signal.sl - slip_amount           # SL shifts
-            signal.tp1 = signal.tp1 - slip_amount         # TP1 shifts
-            signal.tp2 = signal.tp2 - slip_amount         # TP2 shifts
+            fill_price = signal.entry * (1 - slip_mult)   # Sell lower (worse)
+            if signal.entry > 0:
+                ratio = fill_price / signal.entry
+                signal.sl = signal.sl * ratio
+                signal.tp1 = signal.tp1 * ratio
+                signal.tp2 = signal.tp2 * ratio
 
         signal.entry = fill_price  # Update entry for downstream consumers
 
@@ -1461,6 +1624,7 @@ class BacktestEngine:
                 current_extreme_count=extreme_count,
                 risk_tier=risk_tier,
                 open_positions=self.pos_mgr.get_open_positions(),
+                portfolio_risk_engine=self._portfolio_risk_engine,
             )
 
             if not result.approved:
@@ -1559,10 +1723,18 @@ class BacktestEngine:
                 "strategies_agree": signal.metadata.get("strategies_agree", [signal.strategy]),
                 "sim_time": signal.metadata.get("sim_time", ""),
                 "regime": signal.metadata.get("regime", "unknown"),
+                "setup_type": signal.metadata.get("setup_type", "standard"),
             },
             trade_profile=trade_prof,
             notes=position_notes,
         )
+
+        # Patch open_time with simulated time for accurate hold time calculations.
+        # Position.__init__ uses datetime.now(UTC) which is wall clock, not sim time.
+        if sim_dt:
+            _opened = self.pos_mgr.positions.get(signal.symbol)
+            if _opened and _opened.state != "CLOSED":
+                _opened.open_time = sim_dt
 
         llm_tag = signal.metadata.get("llm_status", "unknown")
         logger.info(
@@ -1660,6 +1832,9 @@ class BacktestEngine:
             "risk_metrics": self._report_risk_metrics(max_drawdown, max_dd_duration),
             "trailing_analysis": self._report_trailing_analysis(),
             "by_regime": self._report_by_regime(),
+            "by_hour": self._report_by_hour(),
+            "hold_time_analysis": self._report_hold_time_analysis(),
+            "by_setup_type": self._report_by_setup_type(),
             "conf_regime_crosstab": self._report_confidence_regime_crosstab(),
             "symbol_pnl": self.symbol_pnl,
             "recommendations": self._generate_recommendations(),
@@ -2401,6 +2576,129 @@ class BacktestEngine:
 
         return regime_stats
 
+    def _report_by_hour(self) -> Dict[str, Any]:
+        """Performance breakdown by hour of day (UTC) at entry."""
+        hour_stats: Dict[int, Dict] = {}
+        # Build FIFO queue of OPEN hours per symbol
+        from collections import defaultdict
+        open_queues: Dict[str, list] = defaultdict(list)
+        open_cursors: Dict[str, int] = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action == "OPEN":
+                # Extract hour from event timestamp or metadata
+                hour = 0
+                meta = event.metadata or {}
+                # Try entry_reasons.sim_time first
+                sim_str = (meta.get("entry_reasons") or {}).get("sim_time", "")
+                if isinstance(sim_str, str) and len(sim_str) >= 13:
+                    try:
+                        hour = int(sim_str[11:13])
+                    except Exception:
+                        pass
+                open_queues[event.symbol].append(hour)
+            elif event.action in self._CLOSE_ACTIONS:
+                # FIFO match: consume oldest unmatched open hour
+                cursor = open_cursors.get(event.symbol, 0)
+                sym_hours = open_queues.get(event.symbol, [])
+                if cursor >= len(sym_hours):
+                    continue
+                hour = sym_hours[cursor]
+                open_cursors[event.symbol] = cursor + 1
+                if hour not in hour_stats:
+                    hour_stats[hour] = {"trades": 0, "wins": 0, "pnl": 0.0}
+                hour_stats[hour]["trades"] += 1
+                if event.pnl > 0:
+                    hour_stats[hour]["wins"] += 1
+                hour_stats[hour]["pnl"] += event.pnl
+        # Compute WR
+        for h, stats in hour_stats.items():
+            t = stats["trades"]
+            stats["win_rate"] = round(stats["wins"] / t * 100, 1) if t > 0 else 0
+            stats["pnl"] = round(stats["pnl"], 2)
+        return hour_stats
+
+    def _report_by_setup_type(self) -> Dict[str, Any]:
+        """Performance breakdown by setup type classification."""
+        from collections import defaultdict
+        setup_stats: Dict[str, Dict] = {}
+        open_setups: Dict[str, str] = {}  # symbol -> setup_type (FIFO)
+        setup_queues: Dict[str, list] = defaultdict(list)
+        setup_cursors: Dict[str, int] = {}
+        for event in self.pos_mgr.trade_log:
+            if event.action == "OPEN":
+                meta = event.metadata or {}
+                reasons = meta.get("entry_reasons", {})
+                setup = reasons.get("setup_type", "unknown")
+                setup_queues[event.symbol].append(setup)
+            elif event.action in self._CLOSE_ACTIONS:
+                cursor = setup_cursors.get(event.symbol, 0)
+                sym_setups = setup_queues.get(event.symbol, [])
+                setup = sym_setups[cursor] if cursor < len(sym_setups) else "unknown"
+                setup_cursors[event.symbol] = cursor + 1
+                if setup not in setup_stats:
+                    setup_stats[setup] = {"trades": 0, "wins": 0, "pnl": 0.0}
+                setup_stats[setup]["trades"] += 1
+                if event.pnl > 0:
+                    setup_stats[setup]["wins"] += 1
+                setup_stats[setup]["pnl"] += event.pnl
+        for s, stats in setup_stats.items():
+            t = stats["trades"]
+            stats["win_rate"] = round(stats["wins"] / t * 100, 1) if t > 0 else 0
+            stats["pnl"] = round(stats["pnl"], 2)
+        return setup_stats
+
+    def _report_hold_time_analysis(self) -> Dict[str, Any]:
+        """Analyze trade performance vs hold duration to find optimal hold times."""
+        from collections import defaultdict
+        hold_buckets = {
+            "0-2h": {"min": 0, "max": 2, "trades": 0, "wins": 0, "pnl": 0.0},
+            "2-6h": {"min": 2, "max": 6, "trades": 0, "wins": 0, "pnl": 0.0},
+            "6-12h": {"min": 6, "max": 12, "trades": 0, "wins": 0, "pnl": 0.0},
+            "12-24h": {"min": 12, "max": 24, "trades": 0, "wins": 0, "pnl": 0.0},
+            "24-48h": {"min": 24, "max": 48, "trades": 0, "wins": 0, "pnl": 0.0},
+            "48h+": {"min": 48, "max": 9999, "trades": 0, "wins": 0, "pnl": 0.0},
+        }
+        open_times: Dict[str, float] = {}  # symbol -> open timestamp
+        for event in self.pos_mgr.trade_log:
+            if event.action == "OPEN":
+                meta = event.metadata or {}
+                sim_str = (meta.get("entry_reasons") or {}).get("sim_time", "")
+                try:
+                    from datetime import datetime as _dt
+                    if isinstance(sim_str, str) and len(sim_str) >= 19:
+                        _t = _dt.fromisoformat(sim_str.replace("+00:00", "+00:00"))
+                        open_times[event.symbol] = _t.timestamp()
+                except Exception:
+                    open_times[event.symbol] = 0
+            elif event.action in self._CLOSE_ACTIONS:
+                close_meta = event.metadata or {}
+                close_sim = close_meta.get("close_sim_time", "")
+                open_ts = open_times.get(event.symbol, 0)
+                if open_ts == 0:
+                    continue
+                try:
+                    from datetime import datetime as _dt
+                    if isinstance(close_sim, str) and len(close_sim) >= 19:
+                        _ct = _dt.fromisoformat(close_sim.replace("+00:00", "+00:00"))
+                        hold_hours = (_ct.timestamp() - open_ts) / 3600
+                    else:
+                        continue
+                except Exception:
+                    continue
+                for bucket_name, bucket in hold_buckets.items():
+                    if bucket["min"] <= hold_hours < bucket["max"]:
+                        bucket["trades"] += 1
+                        if event.pnl > 0:
+                            bucket["wins"] += 1
+                        bucket["pnl"] += event.pnl
+                        break
+        # Compute WR
+        for name, b in hold_buckets.items():
+            t = b["trades"]
+            b["win_rate"] = round(b["wins"] / t * 100, 1) if t > 0 else 0
+            b["pnl"] = round(b["pnl"], 2)
+        return hold_buckets
+
     def _report_confidence_regime_crosstab(self) -> Dict[str, Any]:
         """Cross-tab: confidence band × regime → WR and PnL.
         Reveals whether high confidence clusters in bad regimes."""
@@ -2920,6 +3218,54 @@ def print_report(report: Dict):
                     f"    {regime:18s}  {t:>3} trades  "
                     f"WR={stats.get('win_rate', 0):>5.1f}%  "
                     f"PnL=${stats.get('pnl', 0):>10,.2f}"
+                )
+
+    # ── BY HOUR (UTC) ──
+    by_hour = report.get("by_hour", {})
+    if by_hour:
+        print(f"\n{'── BY HOUR (UTC) ':─<{W}}")
+        # Show as compact table: top performing hours
+        sorted_hours = sorted(by_hour.items(), key=lambda x: -x[1].get("pnl", 0))
+        for hour, stats in sorted_hours:
+            t = stats.get("trades", 0)
+            if t > 0:
+                pnl = stats.get("pnl", 0)
+                wr = stats.get("win_rate", 0)
+                marker = " ** BEST" if pnl > 0 and wr >= 60 else ""
+                print(
+                    f"    {int(hour):02d}:00 UTC  {t:>3} trades  "
+                    f"WR={wr:>5.1f}%  PnL=${pnl:>10,.2f}{marker}"
+                )
+
+    # ── BY SETUP TYPE ──
+    by_setup = report.get("by_setup_type", {})
+    if by_setup:
+        print(f"\n{'── BY SETUP TYPE ':─<{W}}")
+        for setup in sorted(by_setup.keys(), key=lambda k: -by_setup[k].get("pnl", 0)):
+            stats = by_setup[setup]
+            t = stats.get("trades", 0)
+            if t > 0:
+                wr = stats.get("win_rate", 0)
+                pnl = stats.get("pnl", 0)
+                pf_marker = "PROFITABLE" if pnl > 0 else "LOSING"
+                print(
+                    f"    {setup:25s}  {t:>3} trades  "
+                    f"WR={wr:>5.1f}%  PnL=${pnl:>10,.2f}  {pf_marker}"
+                )
+
+    # ── HOLD TIME ANALYSIS ──
+    hold_time = report.get("hold_time_analysis", {})
+    if hold_time:
+        print(f"\n{'── HOLD TIME ANALYSIS ':─<{W}}")
+        for bucket, stats in hold_time.items():
+            t = stats.get("trades", 0)
+            if t > 0:
+                wr = stats.get("win_rate", 0)
+                pnl = stats.get("pnl", 0)
+                marker = " ** SWEET SPOT" if pnl > 0 and wr >= 55 else ""
+                print(
+                    f"    {bucket:>8s}  {t:>3} trades  "
+                    f"WR={wr:>5.1f}%  PnL=${pnl:>10,.2f}{marker}"
                 )
 
     # ── RISK METRICS ──

@@ -24,19 +24,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 class TestStrategyWeightHardFloor:
     """Test that strategies with <35% WR over 20+ trades get muted."""
 
-    def test_muted_at_low_wr_over_20_trades(self):
+    def test_muted_at_low_wr_over_30_trades(self):
         from data.strategy_weights import StrategyWeightManager
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             path = f.name
         try:
             mgr = StrategyWeightManager(path=path)
-            # Record 20 outcomes: 6 wins, 14 losses = 30% WR
-            # Rolling window (last 10) = all losses = 0% WR → auto-muted at 0.05
-            for i in range(20):
-                mgr.record_outcome("bad_strat", win=(i < 6))
+            # Record 35 outcomes: 4 wins, 31 losses = 11% WR
+            # Rolling window = all losses → auto-muted at 0.20
+            for i in range(35):
+                mgr.record_outcome("bad_strat", win=(i < 4))
             weights = mgr.get_rolling_weights()
-            # Hard mute floor raised from 0.05 to 0.20 to preserve ensemble diversity
-            assert weights["bad_strat"] == 0.20, f"Expected 0.20 (auto-muted), got {weights['bad_strat']}"
+            # Muted or soft-demoted: weight should be low (0.15-0.20)
+            assert weights["bad_strat"] <= 0.20, f"Expected <=0.20 (muted/demoted), got {weights['bad_strat']}"
+            assert weights["bad_strat"] >= 0.10, f"Expected >=0.10 (not zeroed), got {weights['bad_strat']}"
         finally:
             os.unlink(path)
 

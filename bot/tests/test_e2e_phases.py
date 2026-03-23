@@ -315,25 +315,33 @@ def test_reconciliation():
 # ── PHASE C: Final Integration ──────────────────────────────────────
 
 def test_time_sizing():
-    """Test weekend and low-liquidity multipliers."""
-    from execution.time_sizing import get_time_multiplier, is_weekend, is_low_liquidity_hours
+    """Test weekend and session-aware multipliers."""
+    from execution.time_sizing import get_time_multiplier, is_weekend
 
-    # Monday 12pm UTC -> 1.0
+    # Monday 12pm UTC -> 0.8 (below-average hour, moderate reduction)
     mon = datetime(2025, 1, 6, 12, 0, tzinfo=timezone.utc)
-    assert get_time_multiplier(mon) == 1.0
+    assert get_time_multiplier(mon) == 0.8
 
-    # Saturday 3am UTC -> 0.5 * 0.7 = 0.35
+    # Monday 15pm UTC -> 1.0 (US afternoon, normal)
+    mon_3pm = datetime(2025, 1, 6, 15, 0, tzinfo=timezone.utc)
+    assert get_time_multiplier(mon_3pm) == 1.0
+
+    # Saturday 3am UTC -> 0.5 * 1.15 = 0.575 (weekend * asia_prime)
     sat = datetime(2025, 1, 4, 3, 0, tzinfo=timezone.utc)
     m = get_time_multiplier(sat)
-    assert abs(m - 0.35) < 0.001
+    assert abs(m - 0.575) < 0.001
 
-    # Sunday 15pm UTC -> 0.5 (weekend only)
+    # Sunday 15pm UTC -> 0.5 (weekend, hour 15 = 1.0 session)
     sun = datetime(2025, 1, 5, 15, 0, tzinfo=timezone.utc)
     assert get_time_multiplier(sun) == 0.5
 
-    # Tuesday 2am UTC -> 0.7 (low-liq only)
-    tue = datetime(2025, 1, 7, 2, 0, tzinfo=timezone.utc)
-    assert get_time_multiplier(tue) == 0.7
+    # Tuesday 0am UTC -> 0.5 (midnight danger zone)
+    tue_midnight = datetime(2025, 1, 7, 0, 0, tzinfo=timezone.utc)
+    assert get_time_multiplier(tue_midnight) == 0.5
+
+    # Tuesday 5am UTC -> 1.15 (asia prime, best session)
+    tue_asia = datetime(2025, 1, 7, 5, 0, tzinfo=timezone.utc)
+    assert abs(get_time_multiplier(tue_asia) - 1.15) < 0.001
 
     print("  [PASS] Time sizing")
 
@@ -499,7 +507,7 @@ def test_snapshot_compaction():
     # Compact core data (excluding enrichment context) should be shorter than verbose
     parsed_compact = json.loads(compact_json)
     # Remove enrichment fields only present in compact mode
-    for key in ("growth", "survival", "knowledge", "trade_dna", "deep_memory"):
+    for key in ("growth", "survival", "knowledge", "trade_dna", "deep_memory", "rules"):
         parsed_compact.pop(key, None)
     compact_core = json.dumps(parsed_compact, separators=(",", ":"))
     verbose_json = snapshot_to_json(snapshot, compact=False)
