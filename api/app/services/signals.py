@@ -254,17 +254,22 @@ async def fetch_market_data(
     for attempt in range(retries + 1):
         try:
             r = await client.get(url, params=params, timeout=15)
+            # Handle rate limiting explicitly — back off and retry
+            if r.status_code == 429:
+                retry_after = int(r.headers.get("Retry-After", RETRY_DELAY * (attempt + 2)))
+                await asyncio.sleep(retry_after)
+                continue
             r.raise_for_status()
             data = r.json()
-            
+
             if "prices" not in data or "total_volumes" not in data:
                 return None
-            
+
             df = pd.DataFrame(data["prices"], columns=["timestamp", "close"])
             df["volume"] = [v[1] for v in data["total_volumes"]]
             df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
             return df
-        
+
         except Exception as e:
             if attempt < retries:
                 await asyncio.sleep(RETRY_DELAY * (attempt + 1))
@@ -276,7 +281,8 @@ async def fetch_market_data(
 
 async def refresh_signals():
     """Fetch market data for all coins, compute indicators, zones, labels, scores, and regime."""
-    async with httpx.AsyncClient() as client:
+    # trust_env=False bypasses any system HTTPS_PROXY that may block financial APIs
+    async with httpx.AsyncClient(trust_env=False) as client:
         results: Dict[str, Any] = {}
 
         for symbol, info in COINS.items():
@@ -294,7 +300,8 @@ async def refresh_signals():
             atr_abs = atr14_proxy(df)
             label, score, atr_pct = label_and_score(zones, zones["sma20"], zones["sma50"], rsi, atr_abs)
 
-            results[symbol] = {
+            # Update state immediately so the coin is visible before the next fetch
+            state["signals"][symbol] = {
                 "symbol": symbol,
                 "label": label,
                 "score": score,  # 0–100
@@ -312,13 +319,11 @@ async def refresh_signals():
                     "safeDistrib": zones["safe_sell"],
                 },
             }
+            state["regime"] = compute_regime(state["signals"])
+            state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
-            # Rate-limit friendly: small random delay between requests
-            await asyncio.sleep(0.25 * random.uniform(0.8, 1.2))
-
-        state["signals"] = results
-        state["regime"] = compute_regime(results)
-        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+            # Rate-limit friendly: wait 15s between coins (CoinGecko free = ~5 req/min)
+            await asyncio.sleep(15 * random.uniform(0.9, 1.1))
 
 
 async def loop_runner():

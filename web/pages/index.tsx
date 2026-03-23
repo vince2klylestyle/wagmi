@@ -3,25 +3,16 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { C, R, S, F, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { motion } from 'framer-motion';
+import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
+import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover, viewportTrigger, scrollStagger } from '../src/animations';
+import { GlowOrb } from '../components/ui/GlowOrb';
+import { ParticleField } from '../components/ui/ParticleField';
+import { GeometricBG } from '../components/ui/GeometricBG';
+import { Waveform } from '../components/ui/Waveform';
 import type { BacktestResult, ActivityEvent, LlmMarketView } from '../src/types';
 import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from 'lightweight-charts';
-
-// ─── API helper ───────────────────────────────────────────────────────────────
-
-function resolveApiBase(): string {
-  const envVal =
-    (process.env.NEXT_PUBLIC_API_URL as string | undefined) ||
-    (process.env.NEXT_PUBLIC_API_BASE_URL as string | undefined);
-  if (envVal && envVal.trim().length > 0) return envVal;
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return 'https://nunuirl-platform.onrender.com';
-    }
-  }
-  return 'http://localhost:8000';
-}
+import { resolveApiBase } from '../src/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +61,21 @@ function Skeleton({ w, h, style = {} }: { w?: string | number; h?: string | numb
   );
 }
 
+// ─── Glass wrapper for sections ──────────────────────────────────────────────
+function GlassSection({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className="refraction-edge"
+      style={{ ...Glass.crystal, borderRadius: R.lg, padding: SP[5], ...style }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
@@ -85,20 +91,25 @@ function KpiCard({
   color?: string;
   loading?: boolean;
 }) {
+  const glowShadow = color === C.bull ? S.bullGlow : color === C.bear ? S.bearGlow : S.ambient;
   return (
-    <div
-      className="fade-in"
+    <motion.div
+      variants={fadeUp}
+      className="refraction-edge"
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
+        ...Glass.crystal,
         borderRadius: R.lg,
         padding: '20px 24px',
-        boxShadow: S.sm,
+        boxShadow: glowShadow,
         flex: '1 1 180px',
         minWidth: 160,
+        position: 'relative',
+        overflow: 'hidden',
       }}
+      {...magneticHover}
     >
-      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+      {color && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: color, opacity: 0.7 }} />}
+      <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
         {label}
       </div>
       {loading ? (
@@ -108,13 +119,22 @@ function KpiCard({
         </>
       ) : (
         <>
-          <div style={{ fontSize: F['2xl'], fontWeight: 800, color: color || C.text, lineHeight: 1.2, marginBottom: 4 }}>
+          <div style={{
+            fontSize: F['2xl'],
+            fontWeight: 800,
+            color: color || C.text,
+            lineHeight: 1.2,
+            marginBottom: 4,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontVariantNumeric: 'tabular-nums',
+            textShadow: color ? `0 0 16px ${color}33` : undefined,
+          }}>
             {value}
           </div>
           <div style={{ fontSize: F.xs, color: C.muted }}>{sub}</div>
         </>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -441,12 +461,14 @@ function CandleChart({
   zones,
   signalLevels,
   timeframe,
+  height = 620,
 }: {
   symbol: string;
   apiBase: string;
   zones?: Signal['zones'] | null;
   signalLevels?: { entry?: number; sl?: number; tp1?: number; tp2?: number; side?: string } | null;
   timeframe: Timeframe;
+  height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -597,25 +619,64 @@ function CandleChart({
     })();
   }, [zones, signalLevels]);
 
-  // TradingView widget fallback when OHLCV API is unavailable
-  if (status === 'error') {
+  // TradingView Advanced Chart widget fallback (script-based, reliable)
+  const tvFallbackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status !== 'error' || !tvFallbackRef.current) return;
     const TV_TF: Record<string, string> = { '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
-    const tvSrc = `https://s.tradingview.com/widgetembed/?frameElementId=tv_${symbol}&symbol=${TV_SYMBOLS[symbol] ?? symbol}&interval=${TV_TF[timeframe] ?? '60'}&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&withdateranges=1`;
-    return (
-      <div style={{ width: '100%', height: 620, borderRadius: R.md, overflow: 'hidden', background: '#131722' }}>
-        <iframe
-          src={tvSrc}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          allow="fullscreen"
-          title={`${symbol} Chart`}
-        />
-      </div>
-    );
-  }
+    const tvSym = TV_SYMBOLS[symbol] ?? `BINANCE:${symbol}USDT`;
+    const cId = `tv-dash-${symbol}`;
+
+    tvFallbackRef.current.innerHTML = `<div id="${cId}" style="width:100%;height:100%"></div>`;
+
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      if (typeof (window as any).TradingView !== 'undefined') {
+        new (window as any).TradingView.widget({
+          container_id: cId,
+          autosize: true,
+          symbol: tvSym,
+          interval: TV_TF[timeframe] ?? '60',
+          timezone: 'Etc/UTC',
+          theme: 'dark',
+          style: '1',
+          locale: 'en',
+          toolbar_bg: '#0a0f1e',
+          enable_publishing: false,
+          hide_legend: false,
+          save_image: false,
+          backgroundColor: '#1a2236',
+          gridColor: 'rgba(45,55,72,0.3)',
+        });
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => { try { document.head.removeChild(script); } catch {} };
+  }, [status, symbol, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height: 620, background: C.card, borderRadius: R.md }} />
+      {/* Native chart (hidden when API fails) */}
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height,
+          background: C.card,
+          borderRadius: R.md,
+          display: status === 'error' ? 'none' : 'block',
+        }}
+      />
+      {/* TradingView fallback (shown when API fails) */}
+      {status === 'error' && (
+        <div
+          ref={tvFallbackRef}
+          style={{ width: '100%', height, background: '#1a2236', borderRadius: R.md, overflow: 'hidden' }}
+        />
+      )}
       {status === 'loading' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.card + 'cc', borderRadius: R.md, fontSize: F.sm, color: C.muted }}>
           Loading candles…
@@ -651,7 +712,7 @@ function SignalPanel({
     high_volatility: '#fbbf24', low_liquidity: '#64748b',
     news_dislocation: '#7c3aed', unknown: C.muted, neutral: C.muted,
   };
-  const regimeKey = regime.toLowerCase().replace(' ', '_');
+  const regimeKey = (regime || 'unknown').toLowerCase().replace(' ', '_');
   const regimeColor = REGIME_COLOR[regimeKey] || C.muted;
 
   // Price ladder entries (sorted by price for visual)
@@ -888,10 +949,19 @@ export default function Home() {
   const [correlations, setCorrelations] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [sniperQueue, setSniperQueue] = useState<any[]>([]);
   const [sniperStats, setSniperStats] = useState<any>({pending:0,approved:0,rejected:0,executed:0,total:0});
   const [sniperAction, setSniperAction] = useState<Record<string, 'approving'|'rejecting'|null>>({});
   const apiBase = resolveApiBase();
+  const hasGoodSignals = useRef(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Compute correlation matrix from recent OHLCV (30 daily candles)
   useEffect(() => {
@@ -947,7 +1017,11 @@ export default function Home() {
         ]);
 
         if (sigRes.status === 'fulfilled' && sigRes.value.ok) {
-          setSignalsData(await sigRes.value.json());
+          const newSig = await sigRes.value.json();
+          if (newSig?.signals && Object.keys(newSig.signals).length > 0) {
+            setSignalsData(newSig);
+            hasGoodSignals.current = true;
+          }
           setApiError(false);
         } else {
           setApiError(true);
@@ -973,9 +1047,9 @@ export default function Home() {
         if (sniperStatsRes.status === 'fulfilled' && sniperStatsRes.value.ok) {
           setSniperStats(await sniperStatsRes.value.json());
         }
-        setLoading(false);
+        if (hasGoodSignals.current) setLoading(false);
       } catch {
-        setLoading(false);
+        if (hasGoodSignals.current) setLoading(false);
         setApiError(true);
       }
     };
@@ -1012,7 +1086,15 @@ export default function Home() {
     : [];
 
   return (
-    <div>
+    <div className="bg-aurora vignette" style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Atmospheric background layers */}
+      <GeometricBG variant="hexagon" opacity={0.03} />
+      <GlowOrb color="rgba(99,102,241,0.12)" size={400} top="-10%" left="10%" duration={18} />
+      <GlowOrb color="rgba(168,85,247,0.08)" size={350} top="30%" right="-5%" duration={22} delay={-5} />
+      <GlowOrb color="rgba(6,182,212,0.06)" size={300} bottom="10%" left="40%" duration={20} delay={-10} />
+      <ParticleField count={25} />
+      <Waveform opacity={0.08} height={60} />
+
       {/* ── API offline banner ─────────────────────────── */}
       {apiError && !loading && (
         <div
@@ -1040,56 +1122,81 @@ export default function Home() {
       )}
 
       {/* ── Page header ───────────────────────────────── */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: F['3xl'], fontWeight: 800, color: C.text, letterSpacing: -0.5 }}>
+      <motion.div
+        variants={orchestratedContainer}
+        initial="hidden"
+        animate="show"
+        style={{ marginBottom: 16 }}
+      >
+        <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'flex-end', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: 10 }}>
+          <motion.div variants={cinematicReveal}>
+            <h1 style={{
+              margin: 0,
+              fontSize: isMobile ? F['2xl'] : 36,
+              fontWeight: 900,
+              letterSpacing: -0.5,
+              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 30%, #06b6d4 60%, #6366f1 100%)',
+              backgroundSize: '200% 200%',
+              animation: 'gradientShift 4s ease infinite',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
               Dashboard
             </h1>
-            <p style={{ margin: '4px 0 0', fontSize: F.sm, color: C.muted }}>
-              Live signals · AI analysis · Real-time market intelligence
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '6px 14px', borderRadius: R.md }}>
-              View Results →
+            {!isMobile && (
+              <p style={{ margin: '4px 0 0', fontSize: F.sm, color: C.muted }}>
+                Live signals · AI analysis · Real-time market intelligence
+              </p>
+            )}
+          </motion.div>
+          <motion.div variants={fadeUp} style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+            <Link href="/results" style={{ fontSize: F.sm, color: C.brand, fontWeight: 600, textDecoration: 'none', border: `1px solid ${C.brand}40`, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
+              Results →
             </Link>
-            <Link href="/copy-trade" style={{ fontSize: F.sm, color: '#fff', fontWeight: 600, textDecoration: 'none', background: C.brand, padding: '6px 14px', borderRadius: R.md }}>
+            <Link href="/copy-trade" style={{ fontSize: F.sm, color: '#fff', fontWeight: 600, textDecoration: 'none', background: C.brand, padding: '7px 14px', borderRadius: R.md, flex: isMobile ? '1' : undefined, textAlign: 'center' }}>
               Copy Trade →
             </Link>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Always Watching Intelligence Bar ──────────── */}
       {llmView && (
-        <div style={{
-          background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
-          border: `1px solid ${C.border}`,
-          borderRadius: R.lg,
-          padding: '14px 20px',
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0,
-          flexWrap: 'wrap',
-        }}>
-          {/* Live pulse */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 20, flexShrink: 0 }}>
-            <div style={{ position: 'relative', width: 10, height: 10 }}>
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, opacity: 0.8 }} />
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, animation: 'ripplePulse 2s ease-out infinite' }} />
-            </div>
-            <span style={{ fontSize: F.xs, fontWeight: 700, color: C.bull, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Always On
-            </span>
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: 1, height: 28, background: C.border, marginRight: 20 }} />
+        <motion.div
+          variants={fadeUp}
+          initial="hidden"
+          animate="show"
+          className="breathe-glow"
+          style={{
+            ...Glass.crystal,
+            borderRadius: R.lg,
+            padding: '14px 20px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0,
+            flexWrap: 'wrap',
+          }}
+        >
+          {/* Live pulse — hidden on mobile to save space */}
+          {!isMobile && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 20, flexShrink: 0 }}>
+                <div style={{ position: 'relative', width: 10, height: 10 }}>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, opacity: 0.8 }} />
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.bull, animation: 'ripplePulse 2s ease-out infinite' }} />
+                </div>
+                <span style={{ fontSize: F.xs, fontWeight: 700, color: C.bull, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Always On
+                </span>
+              </div>
+              <div style={{ width: 1, height: 28, background: C.border, marginRight: 20 }} />
+            </>
+          )}
 
           {/* Regime */}
-          <div style={{ marginRight: 24 }}>
+          <div style={{ marginRight: isMobile ? 12 : 24 }}>
             <span style={{ fontSize: F.xs, color: C.muted }}>Regime </span>
             <span style={{
               fontSize: F.sm,
@@ -1105,10 +1212,10 @@ export default function Home() {
 
           {/* Decision counts */}
           {llmView.decision_counts && (
-            <div style={{ display: 'flex', gap: 16, marginRight: 24, fontSize: F.xs }}>
-              <span style={{ color: C.bull, fontWeight: 700 }}>✓ {llmView.decision_counts.proceed} trade</span>
-              <span style={{ color: C.muted }}>— {llmView.decision_counts.flat} skip</span>
-              <span style={{ color: '#a78bfa' }}>↔ {llmView.decision_counts.flip} flip</span>
+            <div style={{ display: 'flex', gap: isMobile ? 8 : 16, marginRight: isMobile ? 0 : 24, fontSize: F.xs }}>
+              <span style={{ color: C.bull, fontWeight: 700 }}>✓ {llmView.decision_counts.proceed}</span>
+              <span style={{ color: C.muted }}>— {llmView.decision_counts.flat}</span>
+              <span style={{ color: '#a78bfa' }}>↔ {llmView.decision_counts.flip}</span>
             </div>
           )}
 
@@ -1126,14 +1233,19 @@ export default function Home() {
             borderRadius: R.pill,
             flexShrink: 0,
           }}>
-            View Signal Feed →
+            {isMobile ? 'Signals →' : 'View Signal Feed →'}
           </Link>
-        </div>
+        </motion.div>
       )}
       <style>{`@keyframes ripplePulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }`}</style>
 
       {/* ── KPI Hero Row ──────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap' }}>
+      <motion.div
+        variants={orchestratedContainer}
+        initial="hidden"
+        animate="show"
+        style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}
+      >
         <KpiCard
           label="Total Return"
           value={btRes ? fmtPct(btRes.total_return_pct) : '—'}
@@ -1162,18 +1274,18 @@ export default function Home() {
           color={btRes && btRes.max_drawdown_pct < 15 ? C.warn : C.bear}
           loading={loading}
         />
-        <div
-          className="fade-in"
+        {!isMobile && <motion.div
+          variants={fadeUp}
+          className="glass-noise"
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
+            ...Glass.crystal,
             borderRadius: R.lg,
             padding: '20px 24px',
-            flex: '1 1 200px',
-            minWidth: 180,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
           <div style={{ fontSize: F.xs, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
@@ -1189,79 +1301,86 @@ export default function Home() {
               </div>
             </>
           )}
-        </div>
-      </div>
+        </motion.div>}
+      </motion.div>
 
       {/* ── Activity ticker ───────────────────────────── */}
       <ActivityTicker events={activity} />
 
       {/* ── Full-width Chart ──────────────────────────── */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="fade-in" style={{ marginBottom: 16 }}>
         {/* Controls row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text }}>Chart</h2>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isMobile ? 8 : 0, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible' }}>
+            {!isMobile && <h2 style={{ margin: 0, fontSize: F.lg, fontWeight: 700, color: C.text, flexShrink: 0 }}>Chart</h2>}
 
-          <div style={{ display: 'flex', gap: 5, marginLeft: 6 }}>
-            {SYMBOLS.map((sym) => (
-              <button key={sym} onClick={() => setActiveChart(sym)} style={{
-                padding: '5px 14px', borderRadius: R.pill, cursor: 'pointer', transition: 'all 0.15s',
-                border: `1px solid ${activeChart === sym ? C.brand : C.border}`,
-                background: activeChart === sym ? C.brand : 'transparent',
-                color: activeChart === sym ? '#fff' : C.muted,
-                fontSize: F.sm, fontWeight: 600,
-              }}>
-                {sym}
-              </button>
-            ))}
-          </div>
+            <div style={{ display: 'flex', gap: 5, marginLeft: isMobile ? 0 : 6, flexShrink: 0 }}>
+              {SYMBOLS.map((sym) => (
+                <button key={sym} onClick={() => setActiveChart(sym)} style={{
+                  padding: isMobile ? '6px 12px' : '5px 14px', borderRadius: R.pill, cursor: 'pointer', transition: 'all 0.15s',
+                  border: `1px solid ${activeChart === sym ? C.brand : C.border}`,
+                  background: activeChart === sym ? C.brand : 'transparent',
+                  color: activeChart === sym ? '#fff' : C.muted,
+                  fontSize: F.sm, fontWeight: 600, flexShrink: 0,
+                }}>
+                  {sym}
+                </button>
+              ))}
+            </div>
 
-          <div style={{ width: 1, height: 20, background: C.border, margin: '0 4px' }} />
+            <div style={{ width: 1, height: 20, background: C.border, margin: '0 4px', flexShrink: 0 }} />
 
-          <div style={{ display: 'flex', gap: 4 }}>
-            {CHART_TIMEFRAMES.map((tf) => (
-              <button key={tf} onClick={() => setActiveTimeframe(tf)} style={{
-                padding: '4px 10px', borderRadius: R.sm, cursor: 'pointer', transition: 'all 0.15s',
-                border: `1px solid ${activeTimeframe === tf ? C.brand + '88' : C.border}`,
-                background: activeTimeframe === tf ? C.brand + '22' : 'transparent',
-                color: activeTimeframe === tf ? C.brand : C.muted,
-                fontSize: F.xs, fontWeight: 600,
-              }}>
-                {tf}
-              </button>
-            ))}
-          </div>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              {CHART_TIMEFRAMES.map((tf) => (
+                <button key={tf} onClick={() => setActiveTimeframe(tf)} style={{
+                  padding: '4px 10px', borderRadius: R.sm, cursor: 'pointer', transition: 'all 0.15s',
+                  border: `1px solid ${activeTimeframe === tf ? C.brand + '88' : C.border}`,
+                  background: activeTimeframe === tf ? C.brand + '22' : 'transparent',
+                  color: activeTimeframe === tf ? C.brand : C.muted,
+                  fontSize: F.xs, fontWeight: 600,
+                }}>
+                  {tf}
+                </button>
+              ))}
+            </div>
 
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: F.xs, color: C.muted }}>
-            <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#22c55e', verticalAlign: 'middle', marginRight: 4 }} />Buy zones</span>
-            <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#ef4444', verticalAlign: 'middle', marginRight: 4 }} />Sell zones</span>
+            {!isMobile && (
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: F.xs, color: C.muted }}>
+                <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#22c55e', verticalAlign: 'middle', marginRight: 4 }} />Buy zones</span>
+                <span><span style={{ display: 'inline-block', width: 20, height: 2, background: '#ef4444', verticalAlign: 'middle', marginRight: 4 }} />Sell zones</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Full-width chart */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: R.md, overflow: 'hidden', background: C.card }}>
+        <div className="glow-border" style={{ ...Glass.crystal, borderRadius: R.md, overflow: 'hidden' }}>
           <CandleChart
             symbol={activeChart}
             apiBase={apiBase}
             zones={signals[activeChart]?.zones ?? null}
             signalLevels={null}
             timeframe={activeTimeframe}
+            height={isMobile ? 300 : 620}
           />
         </div>
       </div>
 
       {/* ── Below-chart 3-column panel ────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
+      <div className="stagger-reveal" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 220px 220px', gap: 14, marginBottom: 28, alignItems: 'start' }}>
 
-        {/* LEFT — Tabbed heatmap section */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+        {/* LEFT — Tabbed heatmap section (order: 2 on mobile so AI stance shows first) */}
+        <div style={{ ...Glass.crystal, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 2 : 1 }}>
           {/* Tab strip */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, background: '#0f172a' }}>
             {(['market', 'scores', 'correlation', 'regime'] as const).map((tab) => {
-              const labels: Record<string, string> = { market: 'Market Signals', scores: 'Strategy Scores', correlation: 'Correlation', regime: 'Regime History' };
+              const labels: Record<string, string> = isMobile
+                ? { market: 'Signals', scores: 'Scores', correlation: 'Corr', regime: 'Regime' }
+                : { market: 'Market Signals', scores: 'Strategy Scores', correlation: 'Correlation', regime: 'Regime History' };
               return (
                 <button key={tab} onClick={() => setHeatTab(tab)} style={{
-                  flex: 1, padding: '10px 4px', background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: F.xs, fontWeight: 600, transition: 'all 0.15s',
+                  flex: 1, padding: isMobile ? '10px 2px' : '10px 4px', background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: isMobile ? 10 : F.xs, fontWeight: 600, transition: 'all 0.15s',
                   color: heatTab === tab ? C.brand : C.muted,
                   borderBottom: heatTab === tab ? `2px solid ${C.brand}` : '2px solid transparent',
                 }}>
@@ -1404,14 +1523,14 @@ export default function Home() {
           </div>
         </div>
 
-        {/* CENTER — Compact AI stance cards */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+        {/* CENTER — Compact AI stance cards (order: 1 on mobile — most useful info first) */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden', order: isMobile ? 1 : 2 }}>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14 }}>🤖</span>
             <span style={{ fontSize: F.xs, fontWeight: 700, color: C.text }}>AI Stance</span>
             <Link href="/signals" style={{ marginLeft: 'auto', fontSize: 10, color: C.brand, fontWeight: 600, textDecoration: 'none' }}>Feed →</Link>
           </div>
-          <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr', gap: 10 }}>
             {SYMBOLS.map((sym) => {
               const dec = llmView?.per_symbol?.[sym];
               const action = (dec?.action || 'skip').toLowerCase();
@@ -1448,7 +1567,7 @@ export default function Home() {
             })}
 
             {/* Global regime */}
-            <div style={{ marginTop: 4, padding: '8px 10px', background: C.brand + '15', borderRadius: R.sm, border: `1px solid ${C.brand}33` }}>
+            <div style={{ marginTop: 4, padding: '8px 10px', background: C.brand + '15', borderRadius: R.sm, border: `1px solid ${C.brand}33`, gridColumn: isMobile ? '1 / -1' : undefined }}>
               <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>MARKET REGIME</div>
               <div style={{ fontSize: F.sm, fontWeight: 800, color: C.brand }}>{regime.toUpperCase()}</div>
               {llmView?.decision_counts && (
@@ -1462,8 +1581,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* RIGHT — Signal levels for active chart */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden' }}>
+        {/* RIGHT — Signal levels for active chart (hidden on mobile, info is in heatmap) */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, overflow: 'hidden', order: 3, display: isMobile ? 'none' : undefined }}>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14 }}>📍</span>
             <span style={{ fontSize: F.xs, fontWeight: 700, color: C.text }}>{activeChart} Signal</span>

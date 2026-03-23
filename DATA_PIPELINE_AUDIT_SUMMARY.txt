@@ -1,0 +1,227 @@
+================================================================================
+DATA PIPELINE AUDIT — EXECUTIVE SUMMARY
+================================================================================
+
+AUDIT SCOPE:
+  Files Examined: 14 core files (~2,500 lines of production code)
+    - bot/data/fetcher.py (850+ lines) — CCXT multi-exchange data fetcher
+    - bot/data/db.py (880 lines) — SQLite persistence layer
+    - bot/data/migrations.py (189 lines) — Database schema migrations
+    - bot/multi_strategy_main.py (6,500+ lines) — Main bot loop & signal pipeline
+    - bot/core/signal_pipeline.py (500+ lines) — Risk filter chain
+    - bot/strategies/ensemble.py (1,500+ lines) — Strategy voting & merger
+    - bot/data/price_store.py (83 lines) — Price cache
+    - bot/strategies/base.py (150 lines) — Signal dataclass
+
+QUESTIONS ANSWERED:
+
+1. WHERE DOES PRICE DATA COME FROM?
+   Answer: Hyperliquid → Kraken → Bybit → CoinGecko (per symbol)
+   - Hyperliquid is primary for BTC/ETH/SOL/HYPE and all ALTs
+   - CoinGecko is automatic fallback if CCXT unavailable
+   - Disk cache used in backtest mode for reproducibility
+
+2. HOW OFTEN IS DATA REFRESHED?
+   Answer: Every scan interval (15-60s, configurable)
+   - In-memory cache: 45s TTL
+   - Staleness check: Last candle must be < (period + 5min) old
+   - 5m candles: stale if >425s old
+   - 1h candles: stale if >3900s old
+   - Stale signals SKIPPED (but open positions still monitored)
+
+3. WHAT HAPPENS IF EXCHANGE DOWN?
+   Answer: Circuit breaker + graceful fallback
+   - 5 consecutive failures → circuit opens for 300s
+   - After 5min, one probe request allowed (half-open)
+   - On success: circuit resets
+   - On failure: wait another 5min before retry
+   - Hyperliquid down → falls back to Kraken/Bybit
+   - All CCXT down → falls back to CoinGecko
+   - All sources down → skip signal generation (no crash)
+
+4. HOW IS HISTORICAL DATA STORED?
+   Answer: SQLite with WAL mode
+   - Location: bot/ml_data/bot.db
+   - 8 main tables: signals, trades, equity, outcomes, health, rejections, perf, sniper
+   - 13 indices on timestamp/symbol/strategy/gate
+   - Unlimited retention (no TTL purge)
+   - Migrations tracked in _migrations table
+
+5. WHAT DATA IS PERSISTED VS CACHED?
+   Answer: Three-tier system
+   - Disk: Backtests, trading history (permanent)
+   - Memory: OHLCV candles (45s TTL)
+   - Exchange: API calls (rate-limited, no local store)
+   - No automatic cleanup of old data
+
+6. HOW DO STRATEGIES RECEIVE DATA?
+   Answer: Dict[str, DataFrame]
+   - fetch_multi_timeframe() returns {"5m": df, "1h": df, "6h": df, "1d": df}
+   - Concurrent fetching: 5 workers max
+   - Each strategy.evaluate(symbol, data) receives all required timeframes
+   - If timeframe missing: strategy returns None (no vote)
+
+7. WHAT TIMEFRAMES AVAILABLE?
+   Answer: 5m, 15m, 30m, 1h, 4h, 6h, 1d
+   - RegimeTrend requires 1h, 6h, 1d
+   - Most strategies require 5m and 1h
+   - All timeframes fetched concurrently at line 1785
+
+8. WHAT IF TIMEFRAME MISSING?
+   Answer: Graceful degradation
+   - Strategy returns None (no signal)
+   - Counts as no vote in ensemble
+   - Other strategies still vote
+   - No interpolation or upsampling
+
+9. HOW IS DATA FRESHNESS VALIDATED?
+   Answer: Two-point staleness check
+   - Point 1: Fetcher tracks last_fetch_ts per (symbol, timeframe)
+   - Point 2: Multi-strategy checks candle timestamp vs now
+   - If candle age > period + 5min: SKIP signal generation
+   - Logged: "[STALE DATA] ... skipping signal generation"
+
+10. ARE THERE RACE CONDITIONS?
+    Answer: Mostly safe, minor risks identified
+    - Cache reads/writes: Protected by threading.Lock ✓
+    - Dataframe copies returned: Safe ✓
+    - Signal mutation: Partially safe (deepcopy in ensemble, not everywhere)
+    - Small window between stale check and eval: Low risk (5min tolerance)
+
+11. HOW IS DATA RECONCILED AFTER CRASH?
+    Answer: Exchange-sourced reconciliation
+    - On startup: Call reconcile_positions() from Hyperliquid API
+    - Compares in-memory positions with exchange state
+    - Restores any missing positions
+    - Reconciles funding rates + open interest
+    - Circuit breaker state persisted to disk (survives restarts)
+
+12. WHAT DATA VALIDATION EXISTS?
+    Answer: Multi-layer validation
+    - OHLCV: High ≥ Open, Low ≤ Close, no NaN/Inf, volume ≥ 0
+    - Drops if >10% bad, warns and continues
+    - Continuity: Logs gaps >2.5x period (no fix, alerts only)
+    - Signal: R:R ≥ 1.0, stop width ≥ 0.3%, side correctness
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+STRENGTHS:
+  ✓ Multi-tier exchange fallback (Hyperliquid → Kraken → Bybit → CoinGecko)
+  ✓ Per-exchange circuit breaker (prevents hammering downed exchanges)
+  ✓ Thread-safe in-memory cache (Lock-protected reads/writes with copies)
+  ✓ OHLCV integrity validation (drops invalid candles, warns if >10%)
+  ✓ Staleness detection (5m tolerance + period check)
+  ✓ Comprehensive database schema (8 tables, 13 indices)
+  ✓ WAL mode SQLite (safe concurrent access)
+  ✓ Crash recovery (exchange reconciliation on startup)
+  ✓ Signal mutation defense in ensemble (deepcopy at lines 377, 380)
+
+WEAKNESSES:
+  ⚠ Signal mutation not defended everywhere (signal_pipeline.py missing deepcopy)
+  ⚠ No disk cache age validation (backtest can use stale cached data)
+  ⚠ CoinGecko limited to 90 days (long backtests fail silently)
+  ⚠ No disk space monitoring (cache can grow unbounded)
+  ⚠ Open interest cached too long (refreshed every 60 ticks = ~15-60min)
+  ⚠ Small race window between stale check and strategy eval (5min tolerance mitigates)
+
+RISKS (Ranked by Impact):
+  1. LOW: Signal mutation in downstream handlers (ensemble defends, others don't)
+  2. LOW: Stale disk cache in backtests (no age check before load)
+  3. LOW: CoinGecko 90-day limit silently fails long backtests
+  4. LOW: No LRU cleanup of backtest cache (disk space risk)
+  5. VERY_LOW: Race between staleness check and eval (5min tolerance mitigates)
+
+================================================================================
+RECOMMENDATIONS (Priority Order)
+================================================================================
+
+HIGH (Do First):
+  1. Add deepcopy(signal) at start of signal_pipeline.py:evaluate()
+     - Prevents downstream mutations affecting signal outcome tracking
+     - 5 lines of code, zero performance impact
+
+  2. Document CoinGecko 90-day limit in README
+     - Users will attempt 180-day backtests and get incomplete data
+     - Add: "Use --fresh flag to force CCXT fetch for backtests >90 days"
+
+  3. Add disk cache age validation
+     - Backtest: refuse disk cache if >7 days old
+     - Config: max_cache_age_days = 7
+
+MEDIUM (Next Sprint):
+  4. Add LRU eviction for backtest cache
+     - Monitor bot/data/cache/ size during backtests
+     - Delete oldest files when >5GB
+
+  5. Make OI/FR refresh configurable
+     - Currently hardcoded: every 60 ticks
+     - Move to trading_config.py: oi_refresh_interval_ticks = 60
+
+  6. Add staleness telemetry
+     - Count: signals_with_fresh_data vs signals_skipped_stale
+     - Log periodically: "90% of signals used fresh data"
+
+LOW (Nice-to-Have):
+  7. Add --quiet flag to suppress fetcher logs
+     - Thousands of "[CCXT] Fetched 500 candles for BTC/5m" per day
+     - Keep warnings, suppress info
+
+  8. Add data freshness dashboard widget
+     - "Last 24h: 95% fresh, 4% cached, 1% fallback"
+     - Track per symbol and per timeframe
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+To verify audit findings:
+
+[ ] Test exchange failover: Kill Hyperliquid → verify fallback to Kraken
+[ ] Test circuit breaker: 5 failures → verify 300s lockout
+[ ] Test staleness: Freeze clock → verify signal generation skipped
+[ ] Test cache TTL: Verify 45s expiry (set to 10s for testing)
+[ ] Test OHLCV validation: Inject NaN → verify row dropped
+[ ] Test signal mutation: Add metadata mutation → verify deepcopy prevents it
+[ ] Test crash recovery: Kill bot with open positions → verify reconciliation
+[ ] Test disk cache: Run backtest twice → verify second uses cache
+[ ] Test missing timeframe: Remove 5m data → verify strategies graceful
+[ ] Test concurrent fetches: Monitor 5 workers max per fetch_multi_timeframe()
+
+Commands:
+  cd bot && python -m pytest tests/ -k "data or fetch or cache"
+  cd bot && python run.py backtest --symbols BTC --days 180 (verify CoinGecko limit)
+
+================================================================================
+CONCLUSION
+================================================================================
+
+Assessment: PRODUCTION-READY (with hardening)
+Risk Level: LOW
+Overall Score: 8.5/10
+
+The data pipeline is well-architected with strong resilience:
+- Multi-layer exchange fallback prevents data unavailability
+- Circuit breaker prevents DOS to downed exchanges
+- Staleness detection prevents trading on stale candles
+- OHLCV validation prevents corrupted data entering strategies
+- WAL mode SQLite ensures crash-safe persistence
+
+Identified issues are primarily around *edge case hardening* and *operational visibility*,
+not core reliability. Recommended fixes are minor (deepcopy, config, telemetry).
+
+The architecture can handle:
+  ✓ Exchange outages (multi-tier fallback, 5min resume)
+  ✓ Stale data (5m tolerance, candle age check)
+  ✓ Concurrent access (thread-safe caches, WAL mode)
+  ✓ Bot crashes (exchange reconciliation, disk persistence)
+
+Implementation time for all recommendations: <8 hours.
+No breaking changes required.
+
+================================================================================
+
+AUDIT FILES GENERATED:
+  - /home/user/WAGMI/DATA_PIPELINE_AUDIT.md (detailed 15-section report)
+  - /home/user/WAGMI/DATA_PIPELINE_AUDIT_SUMMARY.txt (this file)

@@ -21,10 +21,12 @@ Flow:
 7. If TP2 hit or trailing stop triggered (TRAILING -> CLOSED)
 """
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Dict, List, Any
 
 from execution.position_state import (
@@ -32,6 +34,13 @@ from execution.position_state import (
 )
 from execution.precision import round_price, round_qty
 from execution.trade_profile import TradeProfile, ExitParams, MEDIUM, _BASE_PROFILES
+
+# Mechanical bot instrumentation (TIER 4)
+try:
+    from llm.mechanical_bot_instrumentation import get_mechanical_bot_instrumentation
+    _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE = True
+except ImportError:
+    _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE = False
 
 logger = logging.getLogger("bot.execution.positions")
 
@@ -177,9 +186,74 @@ class PositionManager:
         self.taker_fee_bps = taker_fee_bps
         self.enable_trailing = enable_trailing
         self.trailing_atr_mult = trailing_atr_mult
+        # Position backup directory for crash recovery
+        self._backup_dir = Path("data") / "position_backups"
+        self._backup_dir.mkdir(parents=True, exist_ok=True)
 
     def _fee(self, price: float, qty: float) -> float:
         return price * qty * (self.taker_fee_bps / 10000.0)
+
+    def _backup_position(self, pos: 'Position') -> None:
+        """Persist position SL/TP to disk for crash recovery."""
+        try:
+            backup_file = self._backup_dir / f"{pos.symbol.replace('/', '_')}.json"
+            backup_data = {
+                "symbol": pos.symbol,
+                "side": pos.side,
+                "entry": pos.entry,
+                "qty": pos.qty,
+                "sl": pos.sl,
+                "tp1": pos.tp1,
+                "tp2": pos.tp2,
+                "original_sl": pos.sl,
+                "original_tp1": pos.tp1,
+                "original_tp2": pos.tp2,
+                "leverage": pos.leverage,
+                "strategy": pos.strategy,
+                "confidence": pos.confidence,
+                "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
+            }
+            with open(backup_file, 'w') as f:
+                json.dump(backup_data, f, indent=2)
+            logger.debug(f"[{pos.symbol}] Position backup saved")
+        except Exception as e:
+            logger.warning(f"[{pos.symbol}] Position backup failed: {e}")
+
+    def _remove_backup(self, symbol: str) -> None:
+        """Remove position backup after successful close."""
+        try:
+            backup_file = self._backup_dir / f"{symbol.replace('/', '_')}.json"
+            if backup_file.exists():
+                backup_file.unlink()
+                logger.debug(f"[{symbol}] Position backup removed")
+        except Exception as e:
+            logger.warning(f"[{symbol}] Failed to remove position backup: {e}")
+
+    def recover_from_backups(self) -> int:
+        """Recover position data from disk backups after crash.
+
+        Returns number of positions recovered.
+        """
+        recovered = 0
+        for backup_file in self._backup_dir.glob("*.json"):
+            try:
+                with open(backup_file) as f:
+                    data = json.load(f)
+                symbol = data.get("symbol", "")
+                if symbol and symbol not in self.positions:
+                    logger.info(
+                        f"[{symbol}] Found crash backup: "
+                        f"SL={data.get('original_sl')} TP1={data.get('original_tp1')} "
+                        f"TP2={data.get('original_tp2')}"
+                    )
+                    recovered += 1
+                    # Note: actual position reconstruction requires exchange reconciliation.
+                    # This backup provides the original SL/TP values that would otherwise be lost.
+            except Exception as e:
+                logger.warning(f"Failed to read position backup {backup_file}: {e}")
+        if recovered > 0:
+            logger.warning(f"Found {recovered} position backup(s) from previous session")
+        return recovered
 
     def accrue_funding(self, symbol: str, funding_rate: float, interval_hours: float = 8.0) -> None:
         """Accumulate funding cost on an open position.
@@ -284,6 +358,9 @@ class PositionManager:
         # State: IDLE -> OPEN
         pos._transition(OPEN, f"OPEN {side} @ {entry}")
 
+        # Persist SL/TP to disk BEFORE adding to in-memory tracking
+        self._backup_position(pos)
+
         self.positions[symbol] = pos
 
         fee = self._fee(entry, qty)
@@ -300,6 +377,29 @@ class PositionManager:
             strategy=strategy,
         )
         self.trade_log.append(event)
+
+        # ── TIER 4: Mechanical Bot Instrumentation (Position Opening Hook) ──
+        # Record position opening with all context
+        if _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE:
+            try:
+                instr = get_mechanical_bot_instrumentation()
+                instr.on_position_opened(
+                    symbol=symbol,
+                    side=side,
+                    entry_price=entry,
+                    qty=qty,
+                    sl=sl,
+                    tp1=tp1,
+                    tp2=tp2,
+                    leverage=leverage,
+                    confidence=confidence,
+                    strategy=strategy,
+                    entry_reasons=entry_reasons or {},
+                    notes=notes,
+                    setup_type=setup_type,
+                )
+            except Exception as e:
+                logger.debug(f"[{symbol}] Mechanical bot instrumentation error (position opening): {e}")
 
         entry_type = trade_profile.entry_type if trade_profile else "UNKNOWN"
         logger.info(
@@ -562,6 +662,27 @@ class PositionManager:
         # TP1_HIT -> TRAILING
         pos._transition(TRAILING, "trailing activated")
 
+        # ── TIER 4: Mechanical Bot Instrumentation (State Change Hook: TP1_HIT) ──
+        if _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE:
+            try:
+                instr = get_mechanical_bot_instrumentation()
+                instr.on_position_state_change(
+                    symbol=pos.symbol,
+                    from_state=TP1_HIT,
+                    to_state=TRAILING,
+                    trigger="TP1_HIT",
+                    price=price,
+                    context={
+                        'partial_close_qty': close_qty,
+                        'partial_close_pct': dynamic_close_pct,
+                        'realized_pnl': pnl,
+                        'new_sl': pos.sl,
+                        'remaining_qty': pos.qty,
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"[{pos.symbol}] Mechanical bot instrumentation error (state change): {e}")
+
         logger.info(
             f"[{pos.symbol}] TP1 @ {price} | Closed {close_qty} ({dynamic_close_pct:.0%}) | "
             f"PnL={pnl:.2f} | SL->BE+={pos.sl} | Trailing ON"
@@ -726,6 +847,29 @@ class PositionManager:
         # State -> CLOSED
         pos._transition(CLOSED, f"{action} @ {price}")
 
+        # ── TIER 4: Mechanical Bot Instrumentation (Position Closing Hook) ──
+        if _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE:
+            try:
+                instr = get_mechanical_bot_instrumentation()
+                instr.on_position_closed(
+                    symbol=pos.symbol,
+                    side=pos.side,
+                    exit_price=price,
+                    exit_action=action,  # "SL", "TP1", "TP2", "TRAILING", "EARLY_EXIT", etc.
+                    exit_qty=qty,
+                    entry_price=pos.entry,
+                    pnl=pos.realized_pnl,
+                    total_fees=pos.fees_paid,
+                    funding_costs=pos.funding_costs,
+                    outcome=pos.outcome,
+                    hold_duration_seconds=(pos.close_time - pos.open_time).total_seconds(),
+                    entry_reasons=pos.entry_reasons or {},
+                    notes=pos.notes,
+                    setup_type=pos.setup_type,
+                )
+            except Exception as e:
+                logger.debug(f"[{pos.symbol}] Mechanical bot instrumentation error (position closing): {e}")
+
         logger.info(
             f"[{pos.symbol}] {action} @ {price} | PnL={pnl:.2f} | "
             f"Total={pos.realized_pnl:.2f} | Fees={pos.fees_paid:.2f} | "
@@ -770,6 +914,10 @@ class PositionManager:
             },
         )
         self.trade_log.append(event)
+
+        # Remove backup after successful close
+        self._remove_backup(pos.symbol)
+
         return event
 
     def force_close(self, symbol: str, price: float, reason: str = "EMERGENCY") -> Optional[TradeEvent]:

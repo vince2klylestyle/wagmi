@@ -174,7 +174,26 @@ class CircuitBreaker:
                 )
 
     def _check_breakers(self, equity: float, sim_time: Optional[datetime] = None):
-        """Check if any circuit breaker should trigger."""
+        """Check if any circuit breaker should trigger.
+
+        FAIL-SAFE: If any exception occurs during checks, assume breakers
+        are tripped (deny trading) rather than silently allowing it.
+        """
+        try:
+            self._check_breakers_inner(equity, sim_time=sim_time)
+        except Exception as e:
+            # FAIL-SAFE: On any error, trip the breaker to prevent trading
+            logger.error(
+                f"CIRCUIT BREAKER EXCEPTION — tripping as fail-safe: {e}"
+            )
+            self._trip(f"Exception in breaker check (fail-safe): {e}", sim_time=sim_time)
+            _log_safety_event("cb_exception_failsafe", str(e), {
+                "equity": equity,
+                "tripped_reason": "exception_failsafe",
+            })
+
+    def _check_breakers_inner(self, equity: float, sim_time: Optional[datetime] = None):
+        """Inner breaker checks. Exceptions caught by _check_breakers."""
         if self._session_halted:
             return  # Session permanently halted — no recovery via cooldown
 
@@ -289,18 +308,17 @@ class CircuitBreaker:
                 self._trip_sim_time = None
                 self.trip_reason = ""
                 self.post_cooldown_caution = 4  # Next 4 trades at half size
-                # Reset peak_equity to current equity to prevent immediate re-trip.
+                # UNCONDITIONALLY reset peak_equity to current equity to prevent immediate re-trip.
                 # Without this, the drawdown from the old peak is still >10% and
                 # check_mtm_breakers() re-trips on the very next candle.
-                if equity > 0:
-                    old_peak = self.peak_equity
-                    self.peak_equity = equity
-                    logger.info(
-                        f"Circuit breaker cooldown complete, peak_equity reset "
-                        f"${old_peak:.2f} → ${equity:.2f} (caution mode: 4 trades at reduced size)"
-                    )
-                else:
-                    logger.info("Circuit breaker cooldown complete, trading resumed (caution mode: 4 trades at reduced size)")
+                # Note: session_peak_equity (cumulative max) is NOT reset, only the
+                # daily peak_equity (used for per-breaker drawdown checks).
+                old_peak = self.peak_equity
+                self.peak_equity = equity if equity > 0 else self.peak_equity
+                logger.info(
+                    f"Circuit breaker cooldown complete, peak_equity reset "
+                    f"${old_peak:.2f} → ${self.peak_equity:.2f} (caution mode: 4 trades at reduced size)"
+                )
                 return True
 
         # High-confidence override: allow exceptional setups through

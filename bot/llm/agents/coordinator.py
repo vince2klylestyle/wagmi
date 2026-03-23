@@ -49,6 +49,63 @@ from llm.agents.consistency_checker import (
 from llm.client import call_llm
 from llm.decision_types import LLMDecision, StrategyWeights
 
+# Strategic agents (Portfolio, Forecaster, Hypothesis, Correlator)
+# These are optional Phase 3 agents
+try:
+    from llm.agents.strategic_agents import (
+        build_portfolio_aggregator,
+        build_regime_forecaster,
+        build_hypothesis_generator,
+        build_correlator,
+    )
+    _STRATEGIC_AGENTS_AVAILABLE = True
+except ImportError:
+    _STRATEGIC_AGENTS_AVAILABLE = False
+
+# Phase 4 agents (Scalping + Conviction)
+# These are optional Phase 4 agents
+try:
+    from llm.agents.phase_4_agents import (
+        build_micro_trend_detector,
+        build_scalper,
+        build_conviction,
+    )
+    _PHASE_4_AGENTS_AVAILABLE = True
+except ImportError:
+    _PHASE_4_AGENTS_AVAILABLE = False
+
+# Phase 4A agents (Core Trading System)
+# These are optional Phase 4A agents
+try:
+    from llm.agents.phase_4a_trading_agents import (
+        build_position_sizer,
+        build_entry_optimizer,
+        build_exit_advisor,
+        build_risk_guard,
+        build_agent_router,
+        build_consensus_builder,
+    )
+    _PHASE_4A_AGENTS_AVAILABLE = True
+except ImportError:
+    _PHASE_4A_AGENTS_AVAILABLE = False
+
+# Pipeline extensions: quant engine, agent brains, debate, telemetry
+# These are optional — gracefully degrade if modules not yet built
+try:
+    from llm.agents.pipeline_extensions import (
+        get_brain_context_for_agent,
+        record_agent_decision,
+        run_debate_if_warranted,
+        run_interactive_debate_if_enabled,
+        apply_debate_to_confidence,
+        log_pipeline_telemetry,
+        format_quant_for_prompt,
+        compute_quant_context,
+    )
+    _EXTENSIONS_AVAILABLE = True
+except ImportError:
+    _EXTENSIONS_AVAILABLE = False
+
 logger = logging.getLogger("bot.llm.agents.coordinator")
 
 
@@ -319,6 +376,56 @@ class AgentCoordinator:
                         latency_ms=trade_out.latency_ms,
                     )
 
+        # ── Agent Brain: Record decisions for learning ────────
+        if _EXTENSIONS_AVAILABLE:
+            try:
+                _regime = regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown"
+                record_agent_decision("regime", regime_out.data, regime=_regime)
+                record_agent_decision("trade", trade_out.data, regime=_regime)
+                if risk_out and risk_out.ok:
+                    record_agent_decision("risk", risk_out.data, regime=_regime)
+                if critic_out and critic_out.ok:
+                    record_agent_decision("critic", critic_out.data, regime=_regime)
+            except Exception as e:
+                logger.debug(f"[MULTI-AGENT] Brain recording error: {e}")
+
+        # ── Debate: synthesize diverse agent viewpoints ───────
+        debate_outcome = None
+        interactive_debate_outcome = None
+        if _EXTENSIONS_AVAILABLE:
+            try:
+                _agent_data = {
+                    "regime": regime_out.data if regime_out.ok else {},
+                    "trade": trade_out.data if trade_out.ok else {},
+                    "critic": critic_out.data if critic_out and critic_out.ok else {},
+                }
+                _sym = ""
+                _markets = snapshot_data.get("m", []) if snapshot_data else []
+                if _markets and isinstance(_markets[0], dict):
+                    _sym = _markets[0].get("s", _markets[0].get("sym", ""))
+
+                # Try interactive debate first (2-round, more sophisticated)
+                if trade_out.ok and critic_out and critic_out.ok:
+                    interactive_debate_outcome = run_interactive_debate_if_enabled(
+                        trade_agent_output=trade_out.data,
+                        critic_agent_output=critic_out.data,
+                        market_context=snapshot_data or {},
+                    )
+                    if interactive_debate_outcome:
+                        scratchpad.write("debate", "interactive_outcome", interactive_debate_outcome)
+
+                # Fall back to post-hoc debate if interactive not enabled
+                if not interactive_debate_outcome:
+                    debate_outcome = run_debate_if_warranted(
+                        _agent_data,
+                        regime=regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown",
+                        symbol=_sym,
+                    )
+                    if debate_outcome:
+                        scratchpad.write("debate", "outcome", debate_outcome)
+            except Exception as e:
+                logger.debug(f"[MULTI-AGENT] Debate error: {e}")
+
         # ── Confidence Consensus & Consistency Scaling ─────────
         # Gap 1: Compound conviction across agents
         # Gap 7: Consistency score scales confidence
@@ -328,6 +435,16 @@ class AgentCoordinator:
         if consensus_conf is not None:
             # Write to scratchpad for audit trail
             scratchpad.write("system", "consensus_confidence", round(consensus_conf, 3))
+
+        # Apply debate adjustment to consensus confidence
+        if _EXTENSIONS_AVAILABLE and consensus_conf is not None:
+            # Interactive debate takes precedence if available
+            if interactive_debate_outcome:
+                # Use debate resolution's final confidence
+                if "final_confidence" in interactive_debate_outcome:
+                    consensus_conf = interactive_debate_outcome["final_confidence"]
+            elif debate_outcome:
+                consensus_conf = apply_debate_to_confidence(consensus_conf, debate_outcome)
 
         # ── Merge into LLMDecision ──────────────────────────────
         decision = self._merge_outputs(
@@ -435,6 +552,16 @@ class AgentCoordinator:
                     )
         except Exception as e:
             logger.info(f"[MULTI-AGENT] Brain wiring error: {e}")
+
+        # ── Pipeline Telemetry ─────────────────────────────────
+        if _EXTENSIONS_AVAILABLE:
+            try:
+                log_pipeline_telemetry(
+                    pipeline_results, elapsed_ms,
+                    decision.action, decision.confidence,
+                )
+            except Exception:
+                pass
 
         # Store pipeline results for external consumers (backtest logging, etc.)
         self.last_pipeline_results = pipeline_results
@@ -744,6 +871,314 @@ class AgentCoordinator:
         )
         return data
 
+    # ── Phase 3 Strategic Agents ────────────────────────────────
+
+    def get_portfolio_intelligence(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Portfolio Aggregator agent for holistic portfolio health analysis.
+        Runs DAILY (not per-trade).
+
+        Returns:
+            Portfolio analysis dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_portfolio_aggregator(self, model_for_trigger)
+
+    def get_regime_forecast(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Regime Forecaster agent to predict regime transitions.
+        Runs DAILY.
+
+        Returns:
+            Regime forecast dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_regime_forecaster(self, model_for_trigger)
+
+    def get_novel_hypotheses(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Hypothesis Generator agent to discover novel trading patterns.
+        Runs WEEKLY.
+
+        Returns:
+            Novel hypotheses dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_hypothesis_generator(self, model_for_trigger)
+
+    def get_correlator_analysis(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Correlator agent to analyze cross-asset relationships.
+        Runs DAILY.
+
+        Returns:
+            Correlation analysis dict or None on failure.
+        """
+        if not _STRATEGIC_AGENTS_AVAILABLE:
+            return None
+        return build_correlator(self, model_for_trigger)
+
+    # ── Phase 4 Scalping + Conviction Agents ────────────────────
+
+    def get_micro_trend(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Micro-Trend Detector to classify 5m micro-trends.
+        Feeds context into Scalper Agent.
+
+        Returns:
+            Micro-trend classification dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_micro_trend_detector(self, model_for_trigger)
+
+    def get_scalp_signal(
+        self, model_for_trigger: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Scalper Agent to find 1m-5m micro-trading opportunities.
+        Runs very frequently (every 1m when enabled).
+
+        Returns:
+            Scalp signal dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_scalper(self, model_for_trigger)
+
+    def get_conviction_analysis(
+        self,
+        regime_out: AgentOutput,
+        trade_out: AgentOutput,
+        quant_out: Optional[AgentOutput] = None,
+        critic_out: Optional[AgentOutput] = None,
+        forecaster_out: Optional[AgentOutput] = None,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Conviction Agent to authorize high-leverage trades when all agents align.
+        Runs per signal (rare, ~5-10/month).
+
+        Returns:
+            Conviction analysis dict or None on failure.
+        """
+        if not _PHASE_4_AGENTS_AVAILABLE:
+            return None
+        return build_conviction(
+            self, regime_out, trade_out, quant_out, critic_out, forecaster_out, model_for_trigger
+        )
+
+    # ── Phase 4A Core Trading Agents ─────────────────────────────
+
+    def get_position_size(
+        self,
+        capital: float,
+        edge_confidence: float,
+        kelly_fraction: Optional[float] = None,
+        regime: str = "unknown",
+        risk_per_trade: float = 1.0,
+        leverage: float = 1.5,
+        atr: float = 0.0,
+        stop_distance: float = 0.0,
+        consecutive_losses: int = 0,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Position Sizer Agent to calculate exact position size in USD.
+
+        Returns:
+            Position sizing dict with position_size_usd, leverage_applied, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_position_sizer(
+            self,
+            capital=capital,
+            edge_confidence=edge_confidence,
+            kelly_fraction=kelly_fraction,
+            regime=regime,
+            risk_per_trade=risk_per_trade,
+            leverage=leverage,
+            atr=atr,
+            stop_distance=stop_distance,
+            consecutive_losses=consecutive_losses,
+            model_for_trigger=model_for_trigger,
+        )
+
+    def get_entry_method(
+        self,
+        signal_confidence: float,
+        current_price: float,
+        entry_price_from_signal: float,
+        regime: str = "unknown",
+        recent_momentum: str = "flat",
+        order_book: Optional[Dict] = None,
+        position_size_usd: float = 0.0,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Entry Optimizer Agent to determine entry method and timing.
+
+        Returns:
+            Entry optimization dict with entry_method, entry_price, urgency, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_entry_optimizer(
+            self,
+            signal_confidence=signal_confidence,
+            current_price=current_price,
+            entry_price_from_signal=entry_price_from_signal,
+            regime=regime,
+            recent_momentum=recent_momentum,
+            order_book=order_book,
+            position_size_usd=position_size_usd,
+            model_for_trigger=model_for_trigger,
+        )
+
+    def get_exit_recommendation(
+        self,
+        position_id: str,
+        symbol: str,
+        side: str,
+        entry_price: float,
+        current_price: float,
+        pnl_usd: float,
+        thesis: str = "",
+        regime: str = "unknown",
+        original_regime: str = "unknown",
+        time_held_seconds: int = 0,
+        funding_paid: float = 0.0,
+        volume_trend: str = "stable",
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Exit Advisor Agent to recommend exit actions for open positions.
+
+        Returns:
+            Exit recommendation dict with action, thesis_still_valid, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_exit_advisor(
+            self,
+            position_id=position_id,
+            symbol=symbol,
+            side=side,
+            entry_price=entry_price,
+            current_price=current_price,
+            pnl_usd=pnl_usd,
+            thesis=thesis,
+            regime=regime,
+            original_regime=original_regime,
+            time_held_seconds=time_held_seconds,
+            funding_paid=funding_paid,
+            volume_trend=volume_trend,
+            model_for_trigger=model_for_trigger,
+        )
+
+    def get_risk_check(
+        self,
+        proposed_trade: Dict[str, Any],
+        portfolio_leverage: float,
+        circuit_breaker_active: bool = False,
+        daily_loss_pct: float = 0.0,
+        consecutive_losses: int = 0,
+        open_positions: Optional[list] = None,
+        max_single_position_pct: float = 3.0,
+        max_portfolio_leverage: float = 8.0,
+        correlation_to_open: float = 0.0,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Risk Guard Agent to check safety gates and prevent catastrophic losses.
+
+        Returns:
+            Risk check dict with approved, risk_flags, max_size_allowed, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_risk_guard(
+            self,
+            proposed_trade=proposed_trade,
+            portfolio_leverage=portfolio_leverage,
+            circuit_breaker_active=circuit_breaker_active,
+            daily_loss_pct=daily_loss_pct,
+            consecutive_losses=consecutive_losses,
+            open_positions=open_positions,
+            max_single_position_pct=max_single_position_pct,
+            max_portfolio_leverage=max_portfolio_leverage,
+            correlation_to_open=correlation_to_open,
+            model_for_trigger=model_for_trigger,
+        )
+
+    def get_routing_decision(
+        self,
+        signal: Dict[str, Any],
+        market_state: Dict[str, Any],
+        portfolio_state: Dict[str, Any],
+        system_state: Optional[Dict[str, Any]] = None,
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Agent Router to determine which agents to call and how.
+
+        Returns:
+            Routing dict with route, agents_to_call, agent_configs, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_agent_router(
+            self,
+            signal=signal,
+            market_state=market_state,
+            portfolio_state=portfolio_state,
+            system_state=system_state,
+            model_for_trigger=model_for_trigger,
+        )
+
+    def get_final_decision(
+        self,
+        position_sizer_output: Dict[str, Any],
+        entry_optimizer_output: Dict[str, Any],
+        risk_guard_output: Dict[str, Any],
+        exit_advisor_output: Dict[str, Any],
+        original_signal: Dict[str, Any],
+        route: str = "normal_pipeline",
+        model_for_trigger: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run Consensus Builder Agent to merge all specialist outputs into final trade decision.
+
+        Returns:
+            Final decision dict with final_decision (execute|skip), trade parameters, etc or None on failure.
+        """
+        if not _PHASE_4A_AGENTS_AVAILABLE:
+            return None
+        return build_consensus_builder(
+            self,
+            position_sizer_output=position_sizer_output,
+            entry_optimizer_output=entry_optimizer_output,
+            risk_guard_output=risk_guard_output,
+            exit_advisor_output=exit_advisor_output,
+            original_signal=original_signal,
+            route=route,
+            model_for_trigger=model_for_trigger,
+        )
+
     def _build_overseer_input(self) -> str:
         """Build comprehensive system state for the Overseer agent."""
         state: Dict[str, Any] = {}
@@ -1028,10 +1463,21 @@ class AgentCoordinator:
             except Exception:
                 pass
 
-        # Prepend protocol, calibration, and context to the agent's system prompt
+        # Agent brain context injection (beliefs, performance, calibration)
+        brain_prefix = ""
+        if _EXTENSIONS_AVAILABLE:
+            try:
+                current_regime = scratchpad.read_by_key("regime") or ""
+                brain_prefix = get_brain_context_for_agent(role.value, regime=current_regime)
+            except Exception:
+                pass
+
+        # Prepend protocol, calibration, brain, and context to the agent's system prompt
         enhanced_prompt = prompt
         if calibration_prefix:
             enhanced_prompt = f"CALIBRATION: {calibration_prefix}\n\n{enhanced_prompt}"
+        if brain_prefix:
+            enhanced_prompt = f"BRAIN: {brain_prefix}\n\n{enhanced_prompt}"
         if protocol_prefix:
             enhanced_prompt = f"{protocol_prefix}\n\n{enhanced_prompt}"
         if shared_context:

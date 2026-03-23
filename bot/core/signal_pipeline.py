@@ -183,6 +183,28 @@ class RiskFilterChain:
         if ev is not None:
             meta["ev_per_dollar"] = ev
 
+        # Gate 1e: Slippage rejection (hard reject on high slippage, not just warning)
+        # High slippage can turn winners into losers and should be avoided preemptively.
+        # Calculate expected slippage impact as % of stop width.
+        if stop_pct > 0:
+            # Base slippage + regime-specific adjustment
+            _slippage_impact_pct = (slippage_bps + _extra_slip) / 10000.0
+            _slippage_pct_of_stop = _slippage_impact_pct / stop_pct if stop_pct > 0 else 0
+            meta["slippage_pct_of_stop"] = round(_slippage_pct_of_stop * 100, 1)
+
+            # Reject if slippage + fees consume >40% of stop width (leaves only 60% for actual risk)
+            # This prevents trades where execution costs dominate the risk structure
+            max_slippage_pct_of_stop = 0.40
+            if _slippage_pct_of_stop > max_slippage_pct_of_stop:
+                _reason = (f"Slippage impact {_slippage_pct_of_stop:.0%} of stop width > "
+                          f"{max_slippage_pct_of_stop:.0%} (regime={_sig_regime}, stop={stop_pct:.4f})")
+                _log_rejection(signal, "slippage", _reason)
+                return FilterResult(
+                    approved=False, signal=signal,
+                    rejection_reason=_reason,
+                    metadata=meta,
+                )
+
         # Gate 2: Circuit breaker
         if not self.risk_mgr.is_trading_allowed(
             confidence=signal.confidence,

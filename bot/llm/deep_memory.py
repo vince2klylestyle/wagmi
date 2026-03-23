@@ -261,6 +261,45 @@ class TradeDNAStore:
         _save_json("trade_dna_archive.json", summary)
         logger.info(f"[DEEP-MEM] Archived {len(old_trades)} old trade DNA records")
 
+    def prune_by_ttl(self, max_age_days: int = 30):
+        """Remove archived trade summaries older than max_age_days.
+
+        Called periodically to prevent unbounded growth of archive.
+        Keeps:
+        - All 500 active trades in detail (fresh)
+        - Recent archive summaries within TTL window
+        - Deletes archive summaries older than max_age_days
+
+        Args:
+            max_age_days: Archive summaries older than this are removed (default 30)
+        """
+        archive_path = _path("trade_dna_archive.json")
+        if not os.path.exists(archive_path):
+            return
+
+        summary = _load_json("trade_dna_archive.json", {"summaries": [], "total_archived": 0})
+        now = time.time()
+        max_age_seconds = max_age_days * 86400
+
+        original_count = len(summary.get("summaries", []))
+        kept_summaries = []
+        removed_count = 0
+
+        for s in summary.get("summaries", []):
+            archived_at = s.get("archived_at", 0)
+            age_seconds = now - archived_at
+            if age_seconds < max_age_seconds:
+                kept_summaries.append(s)
+            else:
+                removed_count += s.get("count", 0)
+
+        summary["summaries"] = kept_summaries
+        _save_json("trade_dna_archive.json", summary)
+
+        if removed_count > 0:
+            logger.info(f"[DEEP-MEM] TTL pruning: removed {removed_count} archived trades "
+                       f"(summaries: {original_count} → {len(kept_summaries)})")
+
 
 # ═══════════════════════════════════════════════════════════════
 # 2. Strategy Fingerprints
@@ -700,6 +739,7 @@ class DeepMemoryManager:
         self.patterns = PatternLibrary()
         self.regimes = RegimeHistory()
         self.insights = InsightJournal()
+        self._last_ttl_prune = time.time()  # Track periodic pruning
         logger.info("[DEEP-MEM] DeepMemoryManager initialized")
 
     def record_full_trade(
@@ -803,6 +843,25 @@ class DeepMemoryManager:
             )
         except Exception as e:
             logger.debug(f"[DEEP_MEM] Pattern cache update failed: {e}")
+
+    def periodic_maintenance(self, prune_interval_hours: int = 24):
+        """Run periodic cleanup to prevent unbounded memory growth.
+
+        Call this periodically (e.g., hourly or after market close) to:
+        - Prune archived trades older than 30 days
+        - Compress old records
+        - Check file sizes
+
+        Args:
+            prune_interval_hours: Only prune if >= N hours since last prune
+        """
+        now = time.time()
+        hours_since_prune = (now - self._last_ttl_prune) / 3600
+
+        if hours_since_prune >= prune_interval_hours:
+            self.trade_dna.prune_by_ttl(max_age_days=30)
+            self._last_ttl_prune = now
+            logger.info(f"[DEEP-MEM] Periodic maintenance complete (TTL pruning interval: {prune_interval_hours}h)")
 
     def build_llm_knowledge_summary(
         self,
