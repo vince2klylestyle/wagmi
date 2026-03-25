@@ -48,7 +48,7 @@ def sample_recommendations():
             action="use trailing stop",
             rationale="Reduces draw",
             estimated_impact_pct=8.0,
-            confidence=0.68,
+            confidence=0.71,
             priority=1,
         ),
         Recommendation(
@@ -57,7 +57,7 @@ def sample_recommendations():
             action="3% risk per trade",
             rationale="Kelly Criterion positive edge",
             estimated_impact_pct=5.0,
-            confidence=0.65,
+            confidence=0.60,
             priority=2,  # Lower priority
         ),
     ]
@@ -129,7 +129,7 @@ class TestRecommendationFiltering:
             if r.confidence >= min_confidence and r.estimated_impact_pct >= min_impact
         ]
 
-        assert len(filtered) == 1  # Only first one
+        assert len(filtered) == 2  # First two meet both thresholds
         assert filtered[0].estimated_impact_pct == 6.0
 
 

@@ -261,7 +261,7 @@ class BotPerceptionAPIClient:
             return snapshot
 
         except Exception as e:
-            logger.error(f"Error fetching summary: {e}")
+            logger.debug(f"Error fetching summary: {e}")
             return None
 
     async def fetch_all_strategies(self) -> Dict[str, StrategySnapshot]:
@@ -299,7 +299,7 @@ class BotPerceptionAPIClient:
             return strategies
 
         except Exception as e:
-            logger.error(f"Error fetching strategies: {e}")
+            logger.debug(f"Error fetching strategies: {e}")
             return {}
 
     async def fetch_llm_latest_decision(self) -> Optional[LLMDecisionSnapshot]:
@@ -327,7 +327,7 @@ class BotPerceptionAPIClient:
             return snapshot
 
         except Exception as e:
-            logger.error(f"Error fetching LLM decision: {e}")
+            logger.debug(f"Error fetching LLM decision: {e}")
             return None
 
     async def fetch_llm_market_view(self) -> Optional[Dict[str, Any]]:
@@ -339,7 +339,7 @@ class BotPerceptionAPIClient:
             logger.debug(f"Fetched LLM market view")
             return data
         except Exception as e:
-            logger.error(f"Error fetching market view: {e}")
+            logger.debug(f"Error fetching market view: {e}")
             return None
 
     async def fetch_agent_brain(self, agent_role: str) -> Optional[AgentBrainSnapshot]:
@@ -368,7 +368,7 @@ class BotPerceptionAPIClient:
             return snapshot
 
         except Exception as e:
-            logger.error(f"Error fetching agent brain {agent_role}: {e}")
+            logger.debug(f"Error fetching agent brain {agent_role}: {e}")
             return None
 
     async def fetch_all_agent_brains(self) -> Dict[str, AgentBrainSnapshot]:
@@ -391,7 +391,7 @@ class BotPerceptionAPIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Error fetching calibration for {agent_role}: {e}")
+            logger.debug(f"Error fetching calibration for {agent_role}: {e}")
             return None
 
     async def fetch_latest_debate(self) -> Optional[AgentDebate]:
@@ -416,7 +416,7 @@ class BotPerceptionAPIClient:
             return snapshot
 
         except Exception as e:
-            logger.error(f"Error fetching debate: {e}")
+            logger.debug(f"Error fetching debate: {e}")
             return None
 
     async def fetch_debate_history(self, limit: int = 100) -> List[AgentDebate]:
@@ -443,7 +443,7 @@ class BotPerceptionAPIClient:
             return debates
 
         except Exception as e:
-            logger.error(f"Error fetching debate history: {e}")
+            logger.debug(f"Error fetching debate history: {e}")
             return []
 
     async def fetch_pipeline_telemetry(self) -> Optional[PipelineTelemetry]:
@@ -470,7 +470,7 @@ class BotPerceptionAPIClient:
             return snapshot
 
         except Exception as e:
-            logger.error(f"Error fetching telemetry: {e}")
+            logger.debug(f"Error fetching telemetry: {e}")
             return None
 
     @retry_on_network_error(max_retries=3)

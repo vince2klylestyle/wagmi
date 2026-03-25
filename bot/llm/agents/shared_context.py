@@ -96,7 +96,56 @@ MARKET_AXIOMS = [
     "Cross-market divergence (BTC up, target down) → strong caution signal",
     "Hold time > 4h with funding > 0.03% → funding drag destroys edge",
     "Near-zero stop width → infinite leverage risk, must reject",
+    # Multi-timeframe alignment (alpha research 2026-03-24):
+    "NEVER go LONG when 6h trend is bearish (6h EMA20) — 34% WR, these are bear market rally traps",
+    "NEVER go SHORT when 6h trend is bullish — same logic, fighting the current",
+    "1h=bear + 6h=bull → mean-reversion bounce, 68% go up. Best setup for LONG.",
+    # Per-asset awareness:
+    "HYPE is MEAN-REVERTING at 2-6h (negative autocorrelation). Do NOT trend-follow HYPE. Fade moves.",
+    "BTC trends on 6h/daily but is noise on 1h. Trust higher TF for BTC direction.",
+    # Session awareness:
+    "European session 10-12 UTC has 10-12% WR — toxic hours. Reduce confidence 15%.",
 ]
+
+
+# ── Per-Asset Chart DNA ────────────────────────────────────────
+# Statistical properties of each asset that should inform trading decisions.
+# Based on 90d autocorrelation analysis (2026-03-24).
+ASSET_DNA = {
+    "BTC": {
+        "personality": "trending on 6h/daily, noise on 1h",
+        "hourly_vol": 0.54,  # % per candle
+        "autocorrelation_2h": 0.007,  # noise
+        "autocorrelation_6h": 0.004,  # noise
+        "big_move_pct": 6.8,  # % of candles with >1% move
+        "edge": "Follow 6h/daily trend. Ignore 1h microstructure.",
+        "avoid": "Mean-reversion against strong 6h trend",
+        "best_strategies": ["probability_engine", "confidence_scorer", "bollinger_squeeze"],
+        "worst_strategies": ["regime_trend"],  # PF=0.63
+    },
+    "SOL": {
+        "personality": "high-beta BTC follower, 1.4x BTC volatility",
+        "hourly_vol": 0.77,
+        "autocorrelation_2h": 0.009,  # noise, similar to BTC
+        "autocorrelation_6h": 0.010,
+        "big_move_pct": 13.6,
+        "edge": "Same as BTC but wider stops needed. Follow BTC direction.",
+        "avoid": "Longs when BTC is in downtrend",
+        "best_strategies": ["probability_engine", "confidence_scorer"],
+        "worst_strategies": ["regime_trend"],
+    },
+    "HYPE": {
+        "personality": "MEAN-REVERTING at 2-6h, extreme volatility",
+        "hourly_vol": 1.11,  # 2x BTC
+        "autocorrelation_2h": -0.044,  # NEGATIVE = mean-reverting
+        "autocorrelation_6h": -0.025,  # NEGATIVE = mean-reverting
+        "big_move_pct": 28.7,  # ~1 in 3 candles moves >1%
+        "edge": "Fade big moves. Mean-reversion > trend-following. Enter after exhaustion.",
+        "avoid": "Trend-following (regime_trend PF=0.09 on HYPE). NEVER follow trends on HYPE.",
+        "best_strategies": ["mean_reversion", "bollinger_squeeze", "funding_rate"],
+        "worst_strategies": ["regime_trend"],  # PF=0.09 — catastrophic
+    },
+}
 
 
 # ── Regime-Action Mapping ────────────────────────────────────────
@@ -354,14 +403,16 @@ def _classify_setup(strategies: List[str], best_confluence: str, regime: str) ->
 
 STRATEGY_REGIME_FIT = {
     "trend": {
-        "regime_trend": "strong", "monte_carlo_zones": "weak", "confidence_scorer": "strong", "multi_tier_quality": "moderate",
+        "regime_trend": "weak", "monte_carlo_zones": "weak", "confidence_scorer": "strong", "multi_tier_quality": "moderate",  # regime_trend "weak" in trend: PF=0.63 but contributes to 2-agree consensus. Full disable loses $65 from fewer consensus trades.
         "bollinger_squeeze": "weak", "funding_rate": "strong", "lead_lag": "moderate", "liquidation_cascade": "moderate",
         "oi_delta": "strong", "probability_engine": "strong", "vmc_cipher": "moderate",
+        "mean_reversion": "weak",  # Has internal ADX gate — don't disable externally. "weak" lets it fire but with low ensemble weight.
     },
     "range": {
         "regime_trend": "avoid", "monte_carlo_zones": "strong", "confidence_scorer": "weak", "multi_tier_quality": "weak",
         "bollinger_squeeze": "strong", "funding_rate": "moderate", "lead_lag": "weak", "liquidation_cascade": "weak",
         "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "strong",
+        "mean_reversion": "strong",  # Range = prime mean-reversion territory
     },
     "panic": {
         "regime_trend": "avoid", "monte_carlo_zones": "avoid", "confidence_scorer": "weak", "multi_tier_quality": "avoid",
@@ -369,7 +420,7 @@ STRATEGY_REGIME_FIT = {
         "oi_delta": "strong", "probability_engine": "weak", "vmc_cipher": "avoid",
     },
     "high_volatility": {
-        "regime_trend": "weak", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",
+        "regime_trend": "avoid", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",  # regime_trend: avoid in high_vol (PF=0.65)
         "bollinger_squeeze": "moderate", "funding_rate": "moderate", "lead_lag": "strong", "liquidation_cascade": "strong",
         "oi_delta": "strong", "probability_engine": "moderate", "vmc_cipher": "moderate",
     },
@@ -384,12 +435,13 @@ STRATEGY_REGIME_FIT = {
         "oi_delta": "moderate", "probability_engine": "weak", "vmc_cipher": "avoid",
     },
     "consolidation": {
-        "regime_trend": "weak", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",
+        "regime_trend": "avoid", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",  # regime_trend: avoid in consolidation (PF=0.65, our best regime needs better strategies)
         "bollinger_squeeze": "strong", "funding_rate": "moderate", "lead_lag": "weak", "liquidation_cascade": "weak",
         "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "strong",
+        "mean_reversion": "strong",  # Designed specifically for consolidation regime
     },
     "unknown": {
-        "regime_trend": "weak", "monte_carlo_zones": "weak", "confidence_scorer": "moderate", "multi_tier_quality": "weak",
+        "regime_trend": "weak", "monte_carlo_zones": "weak", "confidence_scorer": "moderate", "multi_tier_quality": "weak",  # regime_trend "weak" in unknown
         "bollinger_squeeze": "moderate", "funding_rate": "moderate", "lead_lag": "moderate", "liquidation_cascade": "moderate",
         "oi_delta": "moderate", "probability_engine": "moderate", "vmc_cipher": "moderate",
     },
@@ -555,6 +607,7 @@ def build_shared_context_block(
     include_regime_map: bool = False,
     include_strategy_theory: bool = False,
     current_regime: str = "",
+    symbol: str = "",
 ) -> str:
     """Build a compact shared context block for an agent.
 
@@ -569,10 +622,22 @@ def build_shared_context_block(
     """
     parts = []
 
-    # Market axioms (compact)
+    # Market axioms (compact) — include quant rules (items 10-16) alongside core rules
     if include_axioms:
-        axiom_block = "AXIOMS: " + " | ".join(MARKET_AXIOMS[:5])
+        # Core rules (first 5) + quant rules (items 10+: HTF alignment, asset DNA, session)
+        _core = MARKET_AXIOMS[:5]
+        _quant = [a for a in MARKET_AXIOMS[10:] if a]  # HTF, asset DNA, session rules
+        axiom_block = "AXIOMS: " + " | ".join(_core + _quant[:4])  # Cap at 9 to control tokens
         parts.append(axiom_block)
+
+    # Per-asset DNA: tell agents the character of what they're trading
+    _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
+    _dna = ASSET_DNA.get(_base_sym)
+    if _dna:
+        parts.append(
+            f"ASSET_DNA({_base_sym}): {_dna['personality']}. "
+            f"Edge: {_dna['edge']} Avoid: {_dna['avoid']}"
+        )
 
     # Upstream scratchpad
     if scratchpad:

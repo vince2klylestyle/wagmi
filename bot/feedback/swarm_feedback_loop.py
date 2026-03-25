@@ -277,9 +277,7 @@ class SwarmFeedbackLoop:
         rule.measured_impact_pct = actual_impact_pct
 
         # Update status based on impact
-        if actual_impact_pct >= rule.recommendation_id.split("_")[0]:
-            rule.status = "active"
-        elif actual_impact_pct >= 0:  # Positive but less than estimated
+        if actual_impact_pct >= 0:
             rule.status = "active"  # Still good
         else:  # Negative impact
             rule.status = "degraded"

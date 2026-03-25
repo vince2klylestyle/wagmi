@@ -770,14 +770,20 @@ class DataFetcher:
         cg_fallback_tfs = []
         tfs_to_fetch = []
 
-        # Check cache first (instant, no I/O)
+        # Check cache first (in-memory, then disk)
         for tf in timeframes:
             cache_key = f"ohlcv:{symbol_name}:{tf}"
             cached = self._get_cached(cache_key)
             if cached is not None:
                 result[tf] = cached
             else:
-                tfs_to_fetch.append(tf)
+                # Try disk cache (backtest reproducibility)
+                disk_cached = self._load_disk_cache(symbol_name, tf)
+                if disk_cached is not None:
+                    self._set_cache(cache_key, disk_cached)
+                    result[tf] = disk_cached
+                else:
+                    tfs_to_fetch.append(tf)
 
         # Fetch uncached timeframes concurrently via CCXT
         if tfs_to_fetch:
@@ -792,6 +798,7 @@ class DataFetcher:
                         tf, df = fut.result()
                         if df is not None and not df.empty:
                             self._set_cache(f"ohlcv:{symbol_name}:{tf}", df)
+                            self._save_disk_cache(symbol_name, tf, df)
                             result[tf] = df
                         else:
                             cg_fallback_tfs.append(tf)
@@ -827,6 +834,7 @@ class DataFetcher:
                     cache_key = f"ohlcv:{symbol_name}:{tf}"
                     if not df.empty:
                         self._set_cache(cache_key, df)
+                        self._save_disk_cache(symbol_name, tf, df)
                     result[tf] = df
 
         return result

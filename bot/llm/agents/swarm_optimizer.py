@@ -43,7 +43,7 @@ class Recommendation:
     def impact_score(self) -> float:
         """Score for ranking by impact."""
         # Higher WR improvement + higher confidence = higher priority
-        return (self.estimated_impact_pct / 100) * self.confidence * self.priority
+        return (self.estimated_impact_pct / 100) * self.confidence / self.priority
 
 
 @dataclass

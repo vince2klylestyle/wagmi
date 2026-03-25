@@ -1442,6 +1442,13 @@ class AgentCoordinator:
         # Inject thought protocol and shared context into the prompt
         protocol_prefix = build_protocol_prefix(role.value)
         scratchpad = get_pipeline_scratchpad()
+        # Extract symbol from input JSON for asset DNA injection
+        _agent_sym = ""
+        try:
+            _inp = json.loads(input_json) if isinstance(input_json, str) else input_json
+            _agent_sym = _inp.get("symbol", _inp.get("sym", ""))
+        except Exception:
+            pass
         shared_context = build_shared_context_block(
             agent_role=role.value,
             scratchpad=scratchpad,
@@ -1450,6 +1457,7 @@ class AgentCoordinator:
             include_regime_map=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER)),
             include_strategy_theory=(role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.OVERSEER, AgentRole.QUANT)),
             current_regime=scratchpad.read_by_key("regime") or "",
+            symbol=_agent_sym,
         )
 
         # Dynamic calibration injection for Trade, Critic, and Regime agents

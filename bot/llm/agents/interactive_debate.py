@@ -258,10 +258,12 @@ class InteractiveDebater:
         score = 0.5
 
         # Consistency with original
-        if rebuttal.maintains_thesis:
+        if rebuttal.maintains_thesis and not rebuttal.concessions:
             score += 0.25
+        elif rebuttal.maintains_thesis:
+            score += 0.15  # Maintained but had to concede points
         elif not rebuttal.concessions:
-            score += 0.15
+            score += 0.10
         else:
             score += 0.05
 
@@ -272,12 +274,16 @@ class InteractiveDebater:
             score -= 0.1
 
         # Confidence maintenance (didn't panic)
-        if rebuttal.adjusted_confidence >= proposal.confidence - 0.1:
+        if rebuttal.adjusted_confidence >= proposal.confidence - 0.05:
             score += 0.1
         elif rebuttal.adjusted_confidence >= proposal.confidence - 0.3:
             score += 0.05
         else:
             score -= 0.05
+
+        # Penalty for concessions (thesis weakened)
+        if rebuttal.concessions:
+            score -= min(0.25, len(rebuttal.concessions) * 0.15)
 
         return min(1.0, max(0.0, score))
 
@@ -293,15 +299,18 @@ class InteractiveDebater:
         - Trade Agent acknowledged objections but defended (0.4-0.6)
         - Trade Agent dismissed/ignored objections (0.1-0.3)
         """
-        score = 0.5
+        score = 0.3
 
-        # How many objections did Trade Agent acknowledge?
-        if rebuttal.rebuttal_points:
-            score += 0.2
+        # Factor in objection quality (average likelihood)
+        if counter_thesis.objections:
+            avg_likelihood = sum(
+                o.get("likelihood", 0.5) if isinstance(o, dict) else 0.5
+                for o in counter_thesis.objections
+            ) / len(counter_thesis.objections)
+            score += avg_likelihood * 0.2
 
         # Did Trade Agent concede to any?
         if rebuttal.concessions:
-            # Weight by severity (more concessions = stronger Critic case)
             score += min(0.25, len(rebuttal.concessions) * 0.1)
 
         # Did Trade Agent reverse?
@@ -313,6 +322,10 @@ class InteractiveDebater:
             score += 0.1
         elif len(counter_thesis.objections) >= 1:
             score += 0.05
+
+        # Penalty: Trade Agent fully defended with no concessions
+        if rebuttal.maintains_thesis and not rebuttal.concessions:
+            score -= 0.15
 
         return min(1.0, max(0.0, score))
 

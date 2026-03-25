@@ -254,7 +254,8 @@ class ABTestManager:
             try:
                 with open(path, "r") as f:
                     raw = json.load(f)
-                for item in raw:
+                items = raw if isinstance(raw, list) else raw.get("experiments", [])
+                for item in items:
                     exp = Experiment(**item)
                     self._experiments[exp.id] = exp
                 logger.info("Loaded %d experiments from disk", len(self._experiments))
