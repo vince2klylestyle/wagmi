@@ -249,16 +249,16 @@ class TestManualSniperFilter:
         assert result.margin_required <= result.account_equity
 
     def test_hype_buy_sizing_100_account(self):
-        """HYPE BUY at 82%/3-agree is now SNIPER tier (auto-promoted)."""
+        """HYPE BUY at 82%/3-agree is SNIPER with quality score boost."""
         filt = self._make_filter(equity=100.0)
         sig = self._make_signal()  # 82% conf, 3 agree, HYPE BUY → SNIPER
         result = filt.evaluate(sig)
         assert result is not None
         assert result.tier == "SNIPER"
-        # 10% risk on $100 = $10
-        assert result.risk_amount == 10.0
-        # Position size = $10 / (1/40) = $400
-        assert result.position_size_usd == 400.0
+        assert result.quality_score >= 60
+        # Base 10% risk * quality multiplier (1.0-1.3x for A/A+)
+        assert 10.0 <= result.risk_amount <= 14.0
+        assert result.position_size_usd >= 400.0
 
     def test_margin_cannot_exceed_equity(self):
         """Even with high leverage, margin stays within account."""
@@ -479,6 +479,10 @@ class TestAggressiveAccountMath:
         wins = 0
         losses = 0
 
+        # Seed price history to simulate a dip (entry at $40, was $42 recently)
+        for p in [38, 39, 40, 41, 42, 42, 41, 40]:
+            filt._update_price_history("HYPE", p)
+
         for i in range(10):
             # Reset dedup/cooldown for simulation
             filt._dedup_cache = {}
@@ -661,3 +665,124 @@ class TestDipBuyDetection:
         # Dip-buy detected but no tier boost (unproven setup)
         assert result.is_dip_buy is True
         assert result.tier == "SNIPER"  # Already SNIPER from confidence/agree, not from boost
+
+
+class TestPriceRelativeFilter:
+    """Test rolling-price dip filter: rejects HYPE BUY near highs, SOL SELL after drops."""
+
+    def _make_filter(self, **overrides):
+        from manual.sniper_filter import ManualSniperFilter
+        from manual.config import ManualSniperConfig
+        config = ManualSniperConfig()
+        for k, v in overrides.items():
+            setattr(config, k, v)
+        f = ManualSniperFilter(config)
+        f._running_equity = overrides.get('equity', 100.0)
+        return f
+
+    def _make_signal(self, **overrides) -> MockSignal:
+        defaults = {
+            "symbol": "HYPE",
+            "side": "BUY",
+            "confidence": 82.0,
+            "entry": 40.0,
+            "sl": 39.0,
+            "tp1": 42.0,
+            "tp2": 44.0,
+            "atr": 1.5,
+            "metadata": {
+                "num_agree": 3,
+                "strategies_agree": ["a", "b", "c"],
+                "regime": "consolidation",
+                "chop_score": 0.1,
+            },
+        }
+        defaults.update(overrides)
+        return MockSignal(**defaults)
+
+    def _seed_price_history(self, filt, symbol, prices):
+        """Seed the filter with a price history so dip detection works."""
+        for p in prices:
+            filt._update_price_history(symbol, p)
+
+    def test_hype_buy_rejected_near_high(self):
+        """HYPE BUY at 99% of rolling high should be rejected."""
+        filt = self._make_filter()
+        # Seed: HYPE rallied to $42, now at $41.5 (only 1.2% dip)
+        self._seed_price_history(filt, "HYPE", [38, 39, 40, 41, 42, 42, 41.8, 41.5])
+        sig = self._make_signal(entry=41.5)
+        result = filt.evaluate(sig)
+        assert result is None  # Rejected — too close to high
+
+    def test_hype_buy_passes_on_dip(self):
+        """HYPE BUY at 5% below rolling high should pass."""
+        filt = self._make_filter()
+        # Seed: HYPE was at $42, dipped to $40 (4.8% dip)
+        self._seed_price_history(filt, "HYPE", [38, 39, 40, 41, 42, 42, 41, 40])
+        sig = self._make_signal(entry=40.0)
+        result = filt.evaluate(sig)
+        assert result is not None  # Passes — good dip
+
+    def test_hype_buy_passes_insufficient_history(self):
+        """HYPE BUY with < 5 price points should not trigger dip filter."""
+        filt = self._make_filter()
+        # Only 3 prices — not enough for dip detection
+        self._seed_price_history(filt, "HYPE", [40, 41, 42])
+        # Dip check should return None (insufficient data) — won't block on price
+        dip = filt._get_dip_pct("HYPE", 41.9)
+        assert dip is None  # Confirms insufficient data bypass
+
+    def test_sol_sell_rejected_after_drop(self):
+        """SOL SELL when price already dropped 8% should be rejected."""
+        filt = self._make_filter()
+        # Seed: SOL was at $140, dropped to $129 (7.9% drop)
+        self._seed_price_history(filt, "SOL", [135, 137, 140, 138, 135, 132, 130, 129])
+        sig = self._make_signal(
+            symbol="SOL", side="SELL", entry=129.0,
+            sl=132.0, tp1=125.0, tp2=121.0,
+            metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"],
+                       "regime": "consolidation", "chop_score": 0.2}
+        )
+        result = filt.evaluate(sig)
+        assert result is None  # Rejected — already dipped too far
+
+    def test_sol_sell_passes_near_high(self):
+        """SOL SELL near rolling high should pass (selling the rip)."""
+        filt = self._make_filter()
+        # Seed: SOL near highs at $139 (rolling high $140, 0.7% dip)
+        self._seed_price_history(filt, "SOL", [135, 137, 140, 139, 138, 139, 140, 139])
+        sig = self._make_signal(
+            symbol="SOL", side="SELL", entry=139.0,
+            sl=142.0, tp1=135.0, tp2=131.0,
+            metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"],
+                       "regime": "consolidation", "chop_score": 0.2}
+        )
+        result = filt.evaluate(sig)
+        assert result is not None  # Passes — selling near high
+
+    def test_price_history_rolling_window(self):
+        """Price history should only keep last N prices."""
+        filt = self._make_filter()
+        # Seed more than max (20 prices)
+        for p in range(25):
+            filt._update_price_history("HYPE", 30.0 + p)
+        assert len(filt._price_history["HYPE"]) == 20
+        # Should NOT contain the earliest prices
+        assert 30.0 not in filt._price_history["HYPE"]
+
+    def test_get_dip_pct_calculation(self):
+        """Verify dip percentage math."""
+        filt = self._make_filter()
+        self._seed_price_history(filt, "HYPE", [38, 39, 40, 41, 42])
+        # Current price $40, high is $42 → dip = (42-40)/42 = 4.76%
+        dip = filt._get_dip_pct("HYPE", 40.0)
+        assert dip is not None
+        assert abs(dip - 4.76) < 0.1
+
+    def test_get_dip_pct_at_high(self):
+        """At the high, dip should be 0%."""
+        filt = self._make_filter()
+        self._seed_price_history(filt, "HYPE", [38, 39, 40, 41, 42])
+        dip = filt._get_dip_pct("HYPE", 42.0)
+        assert dip is not None
+        assert dip == 0.0

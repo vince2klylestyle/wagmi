@@ -53,6 +53,10 @@ def _make_filter(**overrides):
         setattr(config, k, v)
     f = ManualSniperFilter(config)
     f._running_equity = overrides.get('equity', 100.0)
+    # Seed price history so dip filter doesn't reject signals near highs
+    # Simulates HYPE dipped from $42 to $40 (4.8% dip — passes 2% threshold)
+    for p in [38, 39, 40, 41, 42, 42, 41, 40]:
+        f._update_price_history("HYPE", p)
     return f
 
 
@@ -203,7 +207,8 @@ class TestSniperFilterBoundaryEquity:
         sig = _make_signal()
         result = filt.evaluate(sig)
         assert result is not None
-        assert result.risk_amount == 1000.0  # 10% of $10k
+        # Base risk = 10% of $10k = $1000, but quality scorer may apply size multiplier
+        assert 1000.0 <= result.risk_amount <= 1500.0  # $1000 base, up to 1.5x from quality boost
 
 
 class TestSniperFilterEntryPrice:
@@ -770,29 +775,168 @@ class TestExpandedSetups:
         # Since it matches the setup key, it gets the min_confidence=90 check
         assert result is None
 
-    def test_btc_buy_always_blocked_as_toxic(self):
-        """BTC BUY is in toxic_setups (15% WR) — blocked regardless of expanded_setups."""
-        filt = _make_filter(expanded_setups=True, mode="standard",
-                           dedup_window_s=0, min_alert_gap_s=0)
+    def test_btc_buy_blocked_outside_band(self):
+        """BTC BUY at 92% conf should be blocked (outside 70-80% profitable band)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
         sig = _make_signal(
             symbol="BTC", side="BUY", confidence=92.0,
             entry=70000, sl=69000, tp1=72000, tp2=74000,
             metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
         )
         result = filt.evaluate(sig)
-        assert result is None  # Toxic: 15% WR in counterfactuals
+        assert result is None  # Outside 70-80 band
 
-    def test_btc_buy_also_blocked_when_disabled(self):
-        """BTC BUY is toxic even without expanded_setups."""
-        filt = _make_filter(expanded_setups=False, mode="standard",
-                           dedup_window_s=0, min_alert_gap_s=0)
+    def test_btc_buy_passes_in_profitable_band(self):
+        """BTC BUY at 79% conf + 2 agree passes toxic gate AND standard conf gate."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
         sig = _make_signal(
-            symbol="BTC", side="BUY", confidence=87.0,
+            symbol="BTC", side="BUY", confidence=79.0,
+            entry=70000, sl=69000, tp1=72000, tp2=74000,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is not None  # 79 passes toxic [70,80] AND standard min_conf 78
+
+    def test_btc_buy_blocked_low_agree(self):
+        """BTC BUY at 75% conf but only 1 agree should be blocked."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="BTC", side="BUY", confidence=75.0,
+            entry=70000, sl=69000, tp1=72000, tp2=74000,
+            metadata={"num_agree": 1, "strategies_agree": ["a"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is None  # Needs 2+ agree
+
+    def test_btc_buy_at_70_blocked_by_downstream(self):
+        """BTC BUY at 70% passes toxic gate but fails downstream min_confidence (78%)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="BTC", side="BUY", confidence=70.0,
+            entry=70000, sl=69000, tp1=72000, tp2=74000,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        # Passes toxic [70,80] but fails standard min_confidence=78
+        assert result is None
+
+    def test_btc_buy_boundary_80(self):
+        """BTC BUY at exactly 80% conf + 2 agree should pass both gates."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="BTC", side="BUY", confidence=80.0,
+            entry=70000, sl=69000, tp1=72000, tp2=74000,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is not None  # 80 passes toxic [70,80] AND min_conf 78
+
+    def test_btc_buy_blocked_at_81(self):
+        """BTC BUY at 81% conf should be blocked (above 80% cap)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="BTC", side="BUY", confidence=81.0,
             entry=70000, sl=69000, tp1=72000, tp2=74000,
             metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
         )
         result = filt.evaluate(sig)
-        assert result is None  # Toxic regardless of mode
+        assert result is None  # Above 80 = death zone for BTC LONG
+
+
+class TestConditionalToxicSetups:
+    """Test the conditional toxic setup gates (BTC_BUY, SOL_BUY, HYPE_SELL)."""
+
+    def test_hype_sell_always_blocked(self):
+        """HYPE SELL is hard blocked at ANY confidence — truly toxic (0-7% WR)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        for conf in [50, 70, 85, 95]:
+            sig = _make_signal(
+                symbol="HYPE", side="SELL", confidence=float(conf),
+                entry=40.0, sl=41.0, tp1=38.0, tp2=36.0,
+                metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
+            )
+            assert filt.evaluate(sig) is None, f"HYPE SELL at {conf}% should ALWAYS be blocked"
+            filt._dedup_cache = {}
+
+    def test_sol_buy_blocked_outside_band(self):
+        """SOL BUY at 80% conf should be blocked (outside 70-75% band)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=80.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is None  # Outside 70-75 band
+
+    def test_sol_buy_in_band_blocked_by_downstream(self):
+        """SOL BUY at 72% passes toxic gate but fails min_confidence (78%)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=72.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        # 72 passes toxic gate [70,75] but fails min_confidence=78 downstream
+        assert result is None
+
+    def test_sol_buy_blocked_at_76(self):
+        """SOL BUY at 76% conf should be blocked (above 75% cap)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=76.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is None  # Above 75 cap
+
+    def test_sol_buy_blocked_low_agree(self):
+        """SOL BUY at 72% but 1 agree should be blocked."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=72.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 1, "strategies_agree": ["a"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is None  # Needs 2+ agree
+
+    def test_sol_buy_boundary_70_blocked_downstream(self):
+        """SOL BUY at 70% passes toxic gate but fails min_confidence (78%)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=70.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        # SOL BUY band [70,75] is entirely below min_confidence=78
+        assert result is None
+
+    def test_sol_buy_boundary_75_blocked_downstream(self):
+        """SOL BUY at 75% passes toxic gate but fails min_confidence (78%)."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="SOL", side="BUY", confidence=75.0,
+            entry=150, sl=146, tp1=155, tp2=160,
+            metadata={"num_agree": 2, "strategies_agree": ["a", "b"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        # 75 < 78 min_confidence
+        assert result is None
+
+    def test_unknown_symbol_not_affected_by_toxic(self):
+        """DOGE BUY should go through standard confidence gate, not toxic gate."""
+        filt = _make_filter(mode="standard", dedup_window_s=0, min_alert_gap_s=0)
+        sig = _make_signal(
+            symbol="DOGE", side="BUY", confidence=85.0,
+            entry=0.15, sl=0.14, tp1=0.17, tp2=0.19,
+            metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"},
+        )
+        result = filt.evaluate(sig)
+        assert result is not None  # DOGE isn't in toxic list, passes standard gates
 
 
 class TestFullPipeline:

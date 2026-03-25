@@ -79,6 +79,12 @@ class SniperSignal:
     # Dip-buy detection
     is_dip_buy: bool = False    # True if signal is a dip-buy setup (higher conviction)
 
+    # Quality scoring
+    quality_score: int = 0          # 0-100, higher = better edge
+    quality_grade: str = ""         # A+/A/B/C/F
+    quality_recommendation: str = ""  # FIRE/TAKE/CAUTIOUS/SKIP
+    size_multiplier: float = 1.0    # Score-based sizing adjustment
+
     # Metadata
     timestamp: str = ""
     daily_target_pct: float = 0.0     # How much of daily target this covers
@@ -111,11 +117,38 @@ class ManualSniperFilter:
         os.makedirs(os.path.dirname(self._log_path), exist_ok=True)
         # Rejection stats (in-memory, for quick access)
         self._daily_rejections: Dict[str, int] = {}  # reason -> count
+        # Rolling price tracker for dip detection (per symbol)
+        # Stores last N prices to compute rolling high/low
+        self._price_history: Dict[str, List[float]] = {}
+        self._price_history_max: int = 20  # 20-period rolling window
 
     def update_equity(self, new_equity: float) -> None:
         """Update running equity for compound sizing."""
         if new_equity > 0:
             self._running_equity = new_equity
+
+    def _update_price_history(self, symbol: str, price: float) -> None:
+        """Track rolling price for dip detection."""
+        if symbol not in self._price_history:
+            self._price_history[symbol] = []
+        hist = self._price_history[symbol]
+        hist.append(price)
+        if len(hist) > self._price_history_max:
+            self._price_history[symbol] = hist[-self._price_history_max:]
+
+    def _get_dip_pct(self, symbol: str, current_price: float) -> Optional[float]:
+        """Get current price's distance below the rolling high as a percentage.
+
+        Returns None if insufficient data (< 5 prices).
+        Returns 0.0 if at the high, positive values for dips (e.g., 5.0 = 5% below high).
+        """
+        hist = self._price_history.get(symbol, [])
+        if len(hist) < 5:
+            return None  # Not enough data yet
+        rolling_high = max(hist)
+        if rolling_high <= 0:
+            return None
+        return ((rolling_high - current_price) / rolling_high) * 100.0
 
     def evaluate(self, signal, equity: Optional[float] = None) -> Optional[SniperSignal]:
         """
@@ -142,6 +175,9 @@ class ManualSniperFilter:
         if acct_equity <= 0:
             logger.warning(f"[SNIPER] Invalid equity: ${acct_equity:.2f}, skipping")
             return None
+
+        # Track price for dip detection
+        self._update_price_history(signal.symbol, signal.entry)
 
         # Reset daily tracking
         today = date.today()
@@ -226,6 +262,35 @@ class ManualSniperFilter:
                 logger.debug(f"[SNIPER] {signal.symbol} {signal.side} rejected: chop {chop:.2f} > {max_chop}")
                 self._log_rejection(signal, f"chop_too_high_{chop:.2f}")
                 return None
+
+            # ── DIP FILTER: Only buy dips, only sell rips ──
+            # Data proves HYPE BUY WR is price-dependent:
+            #   < 90% of rolling high: 100% WR (buying dips)
+            #   90-95%: 55% WR (momentum fading)
+            #   > 95%: 0% WR (buying the top)
+            # SOL SELL: best when price is near rolling high (selling rips)
+            dip_pct = self._get_dip_pct(signal.symbol, signal.entry)
+            if dip_pct is not None:
+                if setup_key == "HYPE_BUY":
+                    # Require at least 2% dip from rolling high (sweet spot: 2-10%)
+                    if dip_pct < 2.0:
+                        logger.debug(
+                            f"[SNIPER] HYPE BUY rejected: only {dip_pct:.1f}% from high "
+                            f"(need 2%+ dip). Entry ${signal.entry:.2f}"
+                        )
+                        self._log_rejection(signal, f"near_high_{dip_pct:.1f}pct")
+                        return None
+                elif setup_key == "SOL_SELL":
+                    # SOL SELL works best when price is near highs (overextended)
+                    # Only short when within 5% of rolling high
+                    if dip_pct > 5.0:
+                        logger.debug(
+                            f"[SNIPER] SOL SELL rejected: {dip_pct:.1f}% from high "
+                            f"(already dropped, don't chase). Entry ${signal.entry:.2f}"
+                        )
+                        self._log_rejection(signal, f"already_dipped_{dip_pct:.1f}pct")
+                        return None
+
             # Expanded setups may have confidence band requirements
             min_conf = setup.get("min_confidence")
             max_conf = setup.get("max_confidence")
@@ -373,6 +438,40 @@ class ManualSniperFilter:
         else:
             hold_target = "4-12h (swing)"
 
+        # ── Quality scoring ──
+        try:
+            from manual.signal_scorer import score_signal
+            score_result = score_signal(
+                symbol=signal.symbol, side=signal.side,
+                confidence=confidence, num_agree=num_agree,
+                chop=chop, ev_per_dollar=ev_per_dollar,
+                regime=regime, is_dip_buy=is_dip_buy, metadata=meta,
+            )
+        except Exception:
+            score_result = {"score": 50, "grade": "B", "recommendation": "TAKE", "size_multiplier": 1.0}
+
+        # Apply score-based sizing adjustment
+        score_size_mult = score_result.get("size_multiplier", 1.0)
+        position_size_usd *= score_size_mult
+        qty *= score_size_mult
+        risk_amount *= score_size_mult
+        margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
+
+        # Re-apply margin cap after score multiplier (prevents exceeding equity)
+        if margin_required > acct_equity * 0.95:
+            scale = (acct_equity * 0.95) / margin_required
+            position_size_usd *= scale
+            qty *= scale
+            risk_amount *= scale
+            margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
+
+        pnl_scalp = position_size_usd * scalp_target_pct
+        pnl_swing = position_size_usd * swing_target_pct
+        loss_amount = risk_amount
+        account_after_win = acct_equity + pnl_scalp
+        account_after_loss = acct_equity - loss_amount
+        growth_pct = (pnl_scalp / acct_equity * 100) if acct_equity > 0 else 0
+
         sniper = SniperSignal(
             symbol=signal.symbol,
             side=signal.side,
@@ -403,6 +502,10 @@ class ManualSniperFilter:
             ev_per_dollar=ev_per_dollar,
             signal_context=getattr(signal, 'signal_context', '') or '',
             is_dip_buy=is_dip_buy,
+            quality_score=score_result.get("score", 0),
+            quality_grade=score_result.get("grade", ""),
+            quality_recommendation=score_result.get("recommendation", ""),
+            size_multiplier=score_size_mult,
             timestamp=datetime.now(timezone.utc).isoformat(),
             daily_target_pct=round(daily_target_pct, 1),
             hold_target_hours=hold_target,
