@@ -2120,10 +2120,16 @@ class MultiStrategyBot:
                     _fc_pos = self.pos_mgr.positions.get(symbol)
                     if _fc_pos:
                         _close_side = "SELL" if _fc_pos.side == "LONG" else "BUY"
-                        self.order_executor.close_position(
+                        _fund_close = self.order_executor.close_position(
                             symbol, _close_side, _fc_pos.qty, current_price, "FUNDING_AVOIDANCE"
                         )
-                    self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                        if _fund_close and getattr(_fund_close, "filled", False):
+                            self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                        else:
+                            logger.critical(
+                                f"[{trace_id}][{symbol}] FUNDING CLOSE FAILED — position still open. "
+                                f"Reconciliation will handle. Result: {_fund_close}"
+                            )
 
         # Accrue funding costs on open positions (paper trading doesn't auto-deduct)
         _fr = self._last_funding_rates.get(symbol, 0.0)
@@ -2723,18 +2729,24 @@ class MultiStrategyBot:
                 )
                 if liq_check["at_risk"]:
                     logger.warning(f"[{symbol}] LIQUIDATION RISK: {liq_check}")
-                    event = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
-                    # Submit exchange close order (force_close only updates internal state)
-                    if event and event.qty > 0:
-                        close_side = "SELL" if event.side == "LONG" else "BUY"
-                        self.order_executor.close_position(
-                            symbol, close_side, event.qty, current_price,
+                    _liq_pos2 = self.pos_mgr.positions.get(symbol)
+                    if _liq_pos2 and _liq_pos2.qty > 0:
+                        close_side = "SELL" if _liq_pos2.side == "LONG" else "BUY"
+                        _liq_close2 = self.order_executor.close_position(
+                            symbol, close_side, _liq_pos2.qty, current_price,
                             reason="LIQUIDATION_AVOID"
                         )
-                        if self.alerts:
-                            self.alerts.send_trade_alert(
-                                f"🚨 LIQUIDATION AVOID: {symbol} {event.side} "
-                                f"force-closed @ {current_price}"
+                        if _liq_close2 and getattr(_liq_close2, "filled", False):
+                            event = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_AVOID")
+                            if self.alerts and event:
+                                self.alerts.send_trade_alert(
+                                    f"LIQUIDATION AVOID: {symbol} {event.side} "
+                                    f"force-closed @ {current_price}"
+                                )
+                        else:
+                            logger.critical(
+                                f"[{symbol}] LIQUIDATION AVOID CLOSE FAILED — position still open. "
+                                f"Reconciliation will handle. Result: {_liq_close2}"
                             )
 
         # Clean up stale closed positions (prevent memory growth overnight)
@@ -4737,10 +4749,17 @@ class MultiStrategyBot:
         _rot_pos = self.pos_mgr.positions.get(close_symbol)
         if _rot_pos and _rot_pos.qty > 0:
             _rot_close_side = "SELL" if _rot_pos.side == "LONG" else "BUY"
-            self.order_executor.close_position(
+            _rot_close_result = self.order_executor.close_position(
                 close_symbol, _rot_close_side, _rot_pos.qty, close_price,
                 reason=action.close_reason
             )
+            if not (_rot_close_result and getattr(_rot_close_result, "filled", False)):
+                logger.critical(
+                    f"[{trace_id}] Rotation close FAILED for {close_symbol} — "
+                    f"position still open. Aborting rotation. "
+                    f"Reconciliation will handle. Result: {_rot_close_result}"
+                )
+                return
         close_event = self.pos_mgr.force_close(
             close_symbol, close_price, action.close_reason
         )
@@ -5213,11 +5232,23 @@ class MultiStrategyBot:
                                         elif action_name == "partial":
                                             partial_pct = result.get("partial_pct", 0.5)
                                             close_qty = pos.qty * partial_pct
-                                            pos.qty -= close_qty
-                                            logger.info(
-                                                f"[EXIT-INTEL-LLM] {symbol} partial: "
-                                                f"closed {close_qty:.6f}, remaining {pos.qty:.6f}"
-                                            )
+                                            if close_qty > 0:
+                                                _part_side = "SELL" if pos.side == "LONG" else "BUY"
+                                                _part_close = self.order_executor.close_position(
+                                                    symbol, _part_side, close_qty, current_price,
+                                                    reason="LLM_EXIT_PARTIAL"
+                                                )
+                                                if _part_close and getattr(_part_close, "filled", False):
+                                                    pos.qty -= close_qty
+                                                    logger.info(
+                                                        f"[EXIT-INTEL-LLM] {symbol} partial: "
+                                                        f"closed {close_qty:.6f}, remaining {pos.qty:.6f}"
+                                                    )
+                                                else:
+                                                    logger.critical(
+                                                        f"[{symbol}] LLM PARTIAL CLOSE FAILED — "
+                                                        f"keeping full position. Reconciliation will handle."
+                                                    )
                                     self.exit_engine.mark_evaluated(symbol)
                                     continue  # Skip heuristic rules below
                     except Exception as e:
@@ -5386,14 +5417,26 @@ class MultiStrategyBot:
                                         f"Reconciliation will handle."
                                     )
                         elif action == "partial":
-                            # Partial close: reduce qty, log the partial
+                            # Partial close: submit exchange order, then update internal state
                             partial_pct = result.get("partial_pct", 0.5)
                             close_qty = pos.qty * partial_pct
-                            pos.qty -= close_qty
-                            logger.info(
-                                f"[EXIT-INTEL] {symbol} partial close: "
-                                f"closed {close_qty:.6f}, remaining {pos.qty:.6f}"
-                            )
+                            if close_qty > 0:
+                                _part_side2 = "SELL" if pos.side == "LONG" else "BUY"
+                                _part_close2 = self.order_executor.close_position(
+                                    symbol, _part_side2, close_qty, current_price,
+                                    reason="EXIT_ENGINE_PARTIAL"
+                                )
+                                if _part_close2 and getattr(_part_close2, "filled", False):
+                                    pos.qty -= close_qty
+                                    logger.info(
+                                        f"[EXIT-INTEL] {symbol} partial close: "
+                                        f"closed {close_qty:.6f}, remaining {pos.qty:.6f}"
+                                    )
+                                else:
+                                    logger.critical(
+                                        f"[{symbol}] EXIT ENGINE PARTIAL CLOSE FAILED — "
+                                        f"keeping full position. Reconciliation will handle."
+                                    )
                     else:
                         logger.debug(
                             f"[EXIT-INTEL] {symbol} decision not applied: "
