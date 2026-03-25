@@ -1226,9 +1226,17 @@ class MultiStrategyBot:
         # Sniper Simulator: check sim positions against live prices
         if self._sniper_simulator is not None and hasattr(self, '_last_prices') and self._last_prices:
             try:
-                self._sniper_simulator.check_positions(self._last_prices)
-            except Exception:
-                pass
+                _sim_closed = self._sniper_simulator.check_positions(self._last_prices)
+                for _st in (_sim_closed or []):
+                    logger.info(
+                        f"[SIM] CLOSED {_st.trade_id} {_st.symbol} {_st.side} "
+                        f"{_st.exit_reason} @ ${_st.exit_price:.2f} "
+                        f"PnL=${_st.pnl_usd:+.2f} ({_st.pnl_pct:+.1f}%) "
+                        f"hold={_st.hold_time_hours:.1f}h | "
+                        f"Sim equity=${self._sniper_simulator._equity:.2f}"
+                    )
+            except Exception as _sim_err:
+                logger.warning(f"[SIM] Error checking positions: {_sim_err}")
 
         # ── Trade rotation evaluation ──
         # Check if any open position should be rotated into a better signal
@@ -3071,9 +3079,15 @@ class MultiStrategyBot:
                         )
                     if self._sniper_simulator is not None:
                         try:
-                            self._sniper_simulator.on_signal(_sniper_sig)
-                        except Exception:
-                            pass
+                            _sim_pos = self._sniper_simulator.on_signal(_sniper_sig)
+                            if _sim_pos:
+                                logger.info(
+                                    f"[SIM] Opened {_sim_pos.trade_id} {_sim_pos.symbol} "
+                                    f"{_sim_pos.side} @ ${_sim_pos.entry:.2f} "
+                                    f"size=${_sim_pos.position_size_usd:.2f}"
+                                )
+                        except Exception as _sim_err:
+                            logger.warning(f"[SIM] Error on signal: {_sim_err}")
                     # ── Sniper Auto-Execute: route qualifying signals to order executor ──
                     if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
                         try:

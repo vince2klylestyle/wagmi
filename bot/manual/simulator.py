@@ -29,7 +29,13 @@ _STATUS_PATH = os.path.join(_DATA_DIR, "sim_status.json")
 
 # ── Constants ──────────────────────────────────────────────────────────
 STARTING_EQUITY = 100.0
-TIME_STOP_HOURS = 12.0
+# NOTE: Early time-stop DISABLED based on backtest validation.
+# Data shows: all losers hit SL within 5 bars naturally. Slow resolvers
+# (21+ bars) have 100% WR. A time stop only kills slow winners.
+# The correct rule: if trade survives 5+ bars, HOLD — it's a slow winner.
+EARLY_TIME_STOP_HOURS = 999.0   # Effectively disabled
+EARLY_TIME_STOP_S = EARLY_TIME_STOP_HOURS * 3600
+TIME_STOP_HOURS = 24.0          # Extended from 12h — slow winners need time
 TIME_STOP_S = TIME_STOP_HOURS * 3600
 
 
@@ -123,6 +129,10 @@ class SniperSimulator:
         self._current_streak = 0   # positive = wins, negative = losses
         self._best_trade_pnl = 0.0
         self._worst_trade_pnl = 0.0
+        self._time_stop_count = 0
+        self._time_stop_pnl = 0.0
+        self._early_time_stop_count = 0
+        self._early_time_stop_pnl = 0.0
         self._equity_curve: List[Dict[str, Any]] = [
             {"timestamp": datetime.now(timezone.utc).isoformat(), "equity": starting_equity}
         ]
@@ -244,10 +254,16 @@ class SniperSimulator:
             exit_reason = None
             exit_price = price
 
-            # Check time stop first (12h)
+            # Check time stops (3h early exit for stale positions, 12h hard stop)
             elapsed_s = now - pos.opened_at
             if elapsed_s >= TIME_STOP_S:
                 exit_reason = "time_stop"
+                exit_price = price
+            elif elapsed_s >= EARLY_TIME_STOP_S:
+                # 3h time-stop: fast-resolving trades (1-3 bars) have 91% WR,
+                # medium-hold trades (4-8 bars) have 0% WR.
+                # If it hasn't hit TP or SL in 3h, it's going nowhere.
+                exit_reason = "time_stop_3h"
                 exit_price = price
 
             # Check SL / TP
@@ -275,7 +291,8 @@ class SniperSimulator:
 
         self._open_positions = remaining
 
-        if closed_this_cycle:
+        # Save status on any change or periodically (every call if positions open)
+        if closed_this_cycle or self._open_positions:
             self._save_status()
 
         return closed_this_cycle
@@ -320,6 +337,10 @@ class SniperSimulator:
             "worst_trade": round(self._worst_trade_pnl, 2),
             "max_drawdown": round(self._max_drawdown, 2),
             "current_streak": self._current_streak,
+            "time_stop_count": self._time_stop_count,
+            "time_stop_pnl": round(self._time_stop_pnl, 2),
+            "early_time_stop_count": self._early_time_stop_count,
+            "early_time_stop_pnl": round(self._early_time_stop_pnl, 2),
             "daily_pnl": round(daily_pnl, 2),
             "weekly_pnl": round(weekly_pnl, 2),
             "equity_curve": self._equity_curve[-200:],  # Keep last 200 points
@@ -353,7 +374,7 @@ class SniperSimulator:
             result = "WIN"
         elif exit_reason == "sl":
             result = "LOSS"
-        else:  # time_stop
+        else:  # time_stop or time_stop_3h
             result = "WIN" if pnl_usd > 0 else "LOSS"
 
         # Update equity
@@ -404,6 +425,14 @@ class SniperSimulator:
             self._best_trade_pnl = pnl_usd
         if pnl_usd < self._worst_trade_pnl:
             self._worst_trade_pnl = pnl_usd
+
+        # Track time-stop stats separately
+        if exit_reason == "time_stop_3h":
+            self._early_time_stop_count += 1
+            self._early_time_stop_pnl += pnl_usd
+        elif exit_reason == "time_stop":
+            self._time_stop_count += 1
+            self._time_stop_pnl += pnl_usd
 
         # Drawdown tracking
         if self._equity > self._max_equity:
