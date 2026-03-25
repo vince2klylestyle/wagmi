@@ -443,7 +443,7 @@ class TestEmergencyRules:
         update = mgr.evaluate(
             **BASE_LONG,
             current_price=25.10,
-            entry_time=_mins_ago(4 * 60),  # 4 hours
+            entry_time=_mins_ago(2 * 60),  # 2 hours (well under 4h SNIPER max)
             partial_taken=True,
             highest_price_since_entry=25.50,
             last_new_high_time=_mins_ago(10),

@@ -94,7 +94,8 @@ _SNIPER_HIGH_LEV = RuleParams(
     post_partial_sl_r=0.5,
     swing_trail_start_r=1.0,
     emergency_loss_pct=0.004,       # tighter: 0.4% loss = bail at 25x
-    max_hold_hours=8.0,             # shorter max hold at high leverage
+    time_stop_no_new_high_min=90,   # 1.5h no new high = close (was 2h; data: 1-3 bars=91% WR, 4-8=0%)
+    max_hold_hours=4.0,             # 4h max hold at high leverage (was 8h; fast resolution is the edge)
 )
 
 _SNIPER_MED_LEV = RuleParams(
@@ -105,7 +106,8 @@ _SNIPER_MED_LEV = RuleParams(
     post_partial_sl_r=0.5,
     swing_trail_start_r=1.0,
     emergency_loss_pct=0.005,
-    max_hold_hours=10.0,
+    time_stop_no_new_high_min=105,  # 1.75h (was default 2h)
+    max_hold_hours=6.0,             # 6h max (was 10h; medium leverage still benefits from faster exit)
 )
 
 _PREMIUM_HIGH_LEV = RuleParams(
