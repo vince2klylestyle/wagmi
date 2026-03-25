@@ -505,13 +505,20 @@ class MultiStrategyBot:
                     )
                 except Exception:
                     pass
+                # Auto-execute: optionally route sniper signals to the order executor
+                self._sniper_auto_execute = os.getenv(
+                    "SNIPER_AUTO_EXECUTE", "false"
+                ).lower() == "true"
                 logger.info(
                     f"[INIT] Manual Sniper System enabled — "
                     f"target=${_ms_config.daily_target}/day "
-                    f"max_lev={_ms_config.max_leverage}x"
+                    f"max_lev={_ms_config.max_leverage}x "
+                    f"auto_execute={self._sniper_auto_execute}"
                 )
         except Exception as _ms_err:
             logger.debug(f"[INIT] Manual Sniper System not available: {_ms_err}")
+        if not hasattr(self, "_sniper_auto_execute"):
+            self._sniper_auto_execute = False
 
         # Execution
         self.risk_mgr = RiskManager(
@@ -3034,7 +3041,7 @@ class MultiStrategyBot:
                 return  # same signal, skip silently
         self._last_signal[symbol] = (signal_result.side, now)
 
-        # ── Manual Sniper Signal Evaluation (read-only, never touches trades) ──
+        # ── Manual Sniper Signal Evaluation ──
         if self._manual_sniper is not None:
             try:
                 _sniper_sig = self._manual_sniper.evaluate(
@@ -3050,6 +3057,12 @@ class MultiStrategyBot:
                             self._sniper_simulator.on_signal(_sniper_sig)
                         except Exception:
                             pass
+                    # ── Sniper Auto-Execute: route qualifying signals to order executor ──
+                    if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
+                        try:
+                            self._execute_sniper_signal(_sniper_sig, symbol, current_price)
+                        except Exception as _sae_err:
+                            logger.error(f"[SNIPER-EXEC] Error executing {symbol}: {_sae_err}")
             except Exception:
                 pass
 
@@ -5060,6 +5073,112 @@ class MultiStrategyBot:
         if not hasattr(self, '_reentry_cache'):
             self._reentry_cache = {}
         self._reentry_cache[symbol] = (cleared, time.time())
+
+    def _execute_sniper_signal(self, sniper_sig, symbol: str, current_price: float):
+        """Execute a qualifying sniper signal through the order executor.
+
+        Safety gates (checked in order):
+        1. Circuit breaker must not be tripped
+        2. No existing position on this symbol
+        3. Max open positions not exceeded
+        4. Ops guard rate limits respected
+        """
+        # Gate 1: Circuit breaker
+        if not self.risk_mgr.is_trading_allowed():
+            logger.info(f"[SNIPER-EXEC] {symbol} blocked: circuit breaker tripped")
+            return
+
+        # Gate 2: No existing position
+        if symbol in self.pos_mgr.positions:
+            pos = self.pos_mgr.positions[symbol]
+            if pos.state not in ("CLOSED",):
+                logger.debug(f"[SNIPER-EXEC] {symbol} blocked: position already open")
+                return
+
+        # Gate 3: Max positions
+        open_count = sum(
+            1 for p in self.pos_mgr.positions.values()
+            if p.state not in ("CLOSED",)
+        )
+        if open_count >= self.config.max_open_positions:
+            logger.info(f"[SNIPER-EXEC] {symbol} blocked: max positions ({open_count})")
+            return
+
+        # Gate 4: Ops guard
+        if hasattr(self, 'ops_guard') and self.ops_guard is not None:
+            if not self.ops_guard.can_trade():
+                logger.info(f"[SNIPER-EXEC] {symbol} blocked: ops guard rate limit")
+                return
+
+        # Execute the trade
+        side = sniper_sig.side  # "BUY" or "SELL"
+        qty = sniper_sig.qty
+        leverage = sniper_sig.leverage
+
+        logger.info(
+            f"[SNIPER-EXEC] Executing {symbol} {side} | "
+            f"tier={sniper_sig.tier} conf={sniper_sig.confidence:.0f}% "
+            f"lev={leverage:.0f}x qty={qty:.6f} "
+            f"entry=${current_price:.2f} sl=${sniper_sig.sl:.2f} "
+            f"tp_scalp=${sniper_sig.tp_scalp:.2f}"
+        )
+
+        order_result = self.order_executor.open_position(
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            price=current_price,
+            leverage=leverage,
+            reason=f"SNIPER_{sniper_sig.tier}",
+        )
+
+        if order_result and getattr(order_result, "filled", False):
+            # Register position with position manager
+            fill_price = getattr(order_result, "fill_price", current_price)
+            fill_qty = getattr(order_result, "fill_qty", qty)
+
+            self.pos_mgr.open_position(
+                symbol=symbol,
+                side="LONG" if side == "BUY" else "SHORT",
+                entry=fill_price,
+                qty=fill_qty,
+                sl=sniper_sig.sl,
+                tp1=sniper_sig.tp_scalp,
+                tp2=sniper_sig.tp_swing,
+                leverage=leverage,
+                strategy=f"sniper_{sniper_sig.tier.lower()}",
+                metadata={
+                    "sniper_tier": sniper_sig.tier,
+                    "sniper_confidence": sniper_sig.confidence,
+                    "sniper_quality_grade": sniper_sig.quality_grade,
+                    "is_dip_buy": sniper_sig.is_dip_buy,
+                    "auto_executed": True,
+                },
+            )
+
+            # Track in ops guard
+            if hasattr(self, 'ops_guard') and self.ops_guard is not None:
+                self.ops_guard.record_trade(symbol)
+
+            logger.info(
+                f"[SNIPER-EXEC] FILLED {symbol} {side} @ ${fill_price:.2f} "
+                f"qty={fill_qty:.6f} lev={leverage:.0f}x | "
+                f"SL=${sniper_sig.sl:.2f} TP1=${sniper_sig.tp_scalp:.2f} "
+                f"TP2=${sniper_sig.tp_swing:.2f}"
+            )
+
+            if self.alerts:
+                self.alerts.send_trade_alert(
+                    f"SNIPER {sniper_sig.tier} EXECUTED: {symbol} {side} "
+                    f"@ ${fill_price:.2f} | {leverage:.0f}x | "
+                    f"conf={sniper_sig.confidence:.0f}% "
+                    f"grade={sniper_sig.quality_grade}"
+                )
+        else:
+            logger.error(
+                f"[SNIPER-EXEC] FAILED to fill {symbol} {side}: "
+                f"{getattr(order_result, 'error', 'unknown')}"
+            )
 
     def _check_llm_exit_suggestions(self):
         """Evaluate open positions for dynamic SL/TP adjustments using the exit engine.
