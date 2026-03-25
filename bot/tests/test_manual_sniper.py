@@ -186,7 +186,7 @@ class TestManualSniperFilter:
         result = filt.evaluate(sig)
         assert result is not None
         assert result.tier == "SNIPER"
-        assert result.leverage >= 20.0  # High leverage for SNIPER (dynamic based on stop width)
+        assert result.leverage >= 5.0  # Kelly-optimal leverage for proven HYPE BUY setup
 
     def test_hype_buy_82_is_sniper(self):
         """HYPE BUY at 82% with 3 agree = SNIPER (proven setup auto-promote)."""
@@ -202,24 +202,23 @@ class TestManualSniperFilter:
 
     # ── Dynamic leverage tests ──
 
-    def test_tight_stop_gets_higher_leverage(self):
-        """Tighter stops should result in higher leverage."""
+    def test_kelly_leverage_is_consistent(self):
+        """Same setup/confidence should get same Kelly-optimal leverage."""
         filt = self._make_filter()
-        # Tight stop: 0.5% (entry=40, sl=39.8)
-        sig_tight = self._make_signal(confidence=87.0, entry=40.0, sl=39.8, tp1=42.0, tp2=44.0,
-                                       metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"})
-        result_tight = filt.evaluate(sig_tight)
+        sig1 = self._make_signal(confidence=87.0, entry=40.0, sl=39.8, tp1=42.0, tp2=44.0,
+                                  metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"})
+        result1 = filt.evaluate(sig1)
 
         filt2 = self._make_filter()
-        # Wide stop: 5% (entry=40, sl=38.0)
-        sig_wide = self._make_signal(confidence=87.0, entry=40.0, sl=38.0, tp1=44.0, tp2=48.0,
-                                      metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"})
-        result_wide = filt2.evaluate(sig_wide)
+        sig2 = self._make_signal(confidence=87.0, entry=40.0, sl=38.0, tp1=44.0, tp2=48.0,
+                                  metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"], "regime": "trend"})
+        result2 = filt2.evaluate(sig2)
 
-        assert result_tight is not None
-        assert result_wide is not None
-        assert result_tight.leverage > result_wide.leverage, \
-            f"Tight stop lev ({result_tight.leverage}) should be > wide stop lev ({result_wide.leverage})"
+        assert result1 is not None
+        assert result2 is not None
+        # Kelly computes leverage from edge quality, not stop width
+        # Same setup/confidence → similar leverage
+        assert abs(result1.leverage - result2.leverage) < 5.0
 
     def test_leverage_capped_at_max(self):
         """Even with tight stops and high confidence, leverage stays <= max."""
@@ -238,27 +237,24 @@ class TestManualSniperFilter:
         result = filt.evaluate(sig)
         assert result is not None
         assert result.account_equity == 100.0
-        # 10% risk on $100 = $10
-        assert result.risk_amount == 10.0
-        assert result.loss_amount == 10.0
-        # Position size = $10 / (1/40) = $400
-        assert result.position_size_usd == 400.0
-        # Leverage is dynamic based on 2.5% stop width
-        assert result.leverage >= 20.0
+        # Kelly-optimized risk: ~12.5% (quarter-Kelly at bootstrap tier)
+        assert 5.0 <= result.risk_amount <= 20.0
+        # Leverage from Kelly optimizer (edge-quality based)
+        assert result.leverage >= 5.0
         # Margin = position / leverage
         assert result.margin_required <= result.account_equity
 
     def test_hype_buy_sizing_100_account(self):
-        """HYPE BUY at 82%/3-agree is SNIPER with quality score boost."""
+        """HYPE BUY at 82%/3-agree is SNIPER with Kelly-optimized sizing."""
         filt = self._make_filter(equity=100.0)
         sig = self._make_signal()  # 82% conf, 3 agree, HYPE BUY → SNIPER
         result = filt.evaluate(sig)
         assert result is not None
         assert result.tier == "SNIPER"
         assert result.quality_score >= 60
-        # Base 10% risk * quality multiplier (1.0-1.3x for A/A+)
-        assert 10.0 <= result.risk_amount <= 14.0
-        assert result.position_size_usd >= 400.0
+        # Kelly-optimized: higher risk than fixed 10% for proven HYPE BUY setup
+        assert 8.0 <= result.risk_amount <= 25.0
+        assert result.position_size_usd >= 200.0
 
     def test_margin_cannot_exceed_equity(self):
         """Even with high leverage, margin stays within account."""

@@ -121,6 +121,22 @@ class ManualSniperFilter:
         # Stores last N prices to compute rolling high/low
         self._price_history: Dict[str, List[float]] = {}
         self._price_history_max: int = 20  # 20-period rolling window
+        # Kelly sizing optimizer (optional — enhances fixed % risk with data-driven sizing)
+        self._sizing_optimizer = None
+        try:
+            from execution.sizing_optimizer import SizingOptimizer
+            self._sizing_optimizer = SizingOptimizer()
+            logger.info("[SNIPER] Kelly sizing optimizer enabled")
+        except Exception:
+            pass
+
+    def record_trade_outcome(self, setup: str, won: bool, pnl_pct: float) -> None:
+        """Record a trade outcome for Kelly sizing optimizer learning.
+
+        Call this when a sniper trade closes to update per-setup WR/payoff.
+        """
+        if self._sizing_optimizer is not None:
+            self._sizing_optimizer.record_outcome(setup, won, pnl_pct)
 
     def update_equity(self, new_equity: float) -> None:
         """Update running equity for compound sizing."""
@@ -376,18 +392,39 @@ class ManualSniperFilter:
 
         leverage = self._get_dynamic_leverage(tier, confidence, num_agree, stop_width_pct)
 
-        # ── Risk sizing: target $20-50 P&L per winning trade ──
-        # Work backwards from target P&L to find position size
-        risk_pct = self._get_risk_pct(tier)
-        risk_amount = acct_equity * risk_pct
-
-        # Position size from risk: risk_amount / stop_width_pct
-        position_size_usd = risk_amount / stop_width_pct if stop_width_pct > 0 else 0
-        margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
+        # ── Risk sizing: Kelly-optimized or fixed % ──
+        _kelly_rationale = ""
+        if self._sizing_optimizer is not None:
+            try:
+                _opt_sizing = self._sizing_optimizer.get_optimal_size(
+                    setup=setup_key,
+                    equity=acct_equity,
+                    confidence=confidence,
+                    num_agree=num_agree,
+                    regime=regime,
+                    is_dip_buy=is_dip_buy,
+                    stop_width_pct=stop_width_pct,
+                )
+                risk_pct = _opt_sizing.risk_pct
+                risk_amount = _opt_sizing.risk_amount
+                leverage = _opt_sizing.leverage  # Override with Kelly-optimal leverage
+                position_size_usd = _opt_sizing.position_size_usd
+                margin_required = _opt_sizing.margin_required
+                _kelly_rationale = _opt_sizing.rationale
+            except Exception:
+                # Fallback to fixed sizing
+                risk_pct = self._get_risk_pct(tier)
+                risk_amount = acct_equity * risk_pct
+                position_size_usd = risk_amount / stop_width_pct if stop_width_pct > 0 else 0
+                margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
+        else:
+            risk_pct = self._get_risk_pct(tier)
+            risk_amount = acct_equity * risk_pct
+            position_size_usd = risk_amount / stop_width_pct if stop_width_pct > 0 else 0
+            margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
 
         # ── Sanity check: margin can't exceed equity ──
         if margin_required > acct_equity * 0.95:
-            # Scale down to fit within 95% of equity
             scale = (acct_equity * 0.95) / margin_required
             position_size_usd *= scale
             risk_amount *= scale

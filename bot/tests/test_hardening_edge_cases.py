@@ -207,8 +207,9 @@ class TestSniperFilterBoundaryEquity:
         sig = _make_signal()
         result = filt.evaluate(sig)
         assert result is not None
-        # Base risk = 10% of $10k = $1000, but quality scorer may apply size multiplier
-        assert 1000.0 <= result.risk_amount <= 1500.0  # $1000 base, up to 1.5x from quality boost
+        # Kelly-optimized risk scales with equity tier (preservation at $10K = lower %)
+        # Range accounts for Kelly fraction + quality score multiplier
+        assert 500.0 <= result.risk_amount <= 2000.0
 
 
 class TestSniperFilterEntryPrice:
