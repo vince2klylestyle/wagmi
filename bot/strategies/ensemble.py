@@ -337,6 +337,7 @@ class EnsembleStrategy:
 
         signals: List[Signal] = []
         shadow_signals: List[Signal] = []  # Disabled strategy signals for IC tracking
+        self._last_raw_signals: Dict[str, List[Signal]] = getattr(self, '_last_raw_signals', {})
         active_count = 0  # Strategies that ran (didn't error or get disabled)
         error_count = 0
 
@@ -381,6 +382,9 @@ class EnsembleStrategy:
         _silent = [n for n in _strat_names if n not in _fired and (regime_allowed is None or n in regime_allowed)]
         if signals:
             logger.info(f"[{symbol}] Strategy map: fired={_fired} silent={_silent} ({len(signals)}/{active_count})")
+
+        # Store raw signals for sniper access (before any consensus/EV filtering)
+        self._last_raw_signals[symbol] = [deepcopy(s) for s in signals]
 
         # Deep copy signals FIRST, then cache copies — prevents mutation between
         # cache write and copy if any code path modifies signals in-place.

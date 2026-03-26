@@ -2969,8 +2969,42 @@ class MultiStrategyBot:
         signal_result = self.ensemble.evaluate(symbol, data)
 
         # ── EARLY: Sniper Signal Evaluation (before regime gating can null the signal) ──
-        # The sniper filter has its own gates and should see ALL ensemble signals,
-        # not just those that pass the bot's confidence floor.
+        # Route ALL raw strategy signals to sniper, even if ensemble rejected them.
+        # The sniper has its own proven-setup gates and can trade what the bot sits out on.
+        if self._manual_sniper is not None:
+            _raw_sigs = getattr(self.ensemble, '_last_raw_signals', {}).get(symbol, [])
+            for _raw_sig in _raw_sigs:
+                try:
+                    _sniper_sig = self._manual_sniper.evaluate(_raw_sig, equity=self.risk_mgr.equity)
+                    if _sniper_sig is not None:
+                        if self._sniper_simulator is not None:
+                            try:
+                                _sim_pos = self._sniper_simulator.on_signal(_sniper_sig)
+                                if _sim_pos:
+                                    logger.info(
+                                        f"[SIM] OPENED {_sim_pos.trade_id} {_sim_pos.symbol} "
+                                        f"{_sim_pos.side} @ ${_sim_pos.entry:.2f} "
+                                        f"size=${_sim_pos.position_size_usd:.2f} "
+                                        f"lev={_sim_pos.leverage:.0f}x"
+                                    )
+                            except Exception as _sim_err:
+                                logger.warning(f"[SIM] Error: {_sim_err}")
+                        if self._manual_alerter is not None:
+                            self._manual_alerter.send_sniper_alert(_sniper_sig, equity=self.risk_mgr.equity)
+                        if hasattr(self, '_signal_tracker') and self._signal_tracker is not None:
+                            try:
+                                self._signal_tracker.record_signal(_sniper_sig)
+                            except Exception:
+                                pass
+                        if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
+                            try:
+                                self._execute_sniper_signal(_sniper_sig, symbol, current_price)
+                            except Exception as _sae_err:
+                                logger.error(f"[SNIPER-EXEC] Error: {_sae_err}")
+                except Exception:
+                    pass
+
+        # Also evaluate the consensus signal if it exists
         if signal_result is not None and self._manual_sniper is not None:
             try:
                 _sniper_sig = self._manual_sniper.evaluate(
