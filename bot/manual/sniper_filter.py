@@ -201,10 +201,7 @@ class ManualSniperFilter:
             self._daily_signals = []
             self._daily_date = today
             self._dedup_cache = {}  # Reset dedup daily
-
-        # Reset daily rejection stats on new day
-        if self._daily_date != today:
-            self._daily_rejections = {}
+            self._daily_rejections = {}  # Reset rejection stats daily
 
         # Check daily signal limit
         if len(self._daily_signals) >= self.config.max_daily_signals:
@@ -255,8 +252,8 @@ class ManualSniperFilter:
                 return None  # Block outside the profitable band
 
         positive_ev_setups = {
-            "HYPE_BUY": {"grade": "A+", "max_chop": 0.4},   # 85% WR, chop<0.3 is purest
-            "SOL_SELL": {"grade": "B+", "max_chop": 0.5},    # 59% WR
+            "HYPE_BUY": {"grade": "A+", "max_chop": 0.5},   # 85% WR. chop<0.3=purest, 0.3-0.5=still 70%+ WR
+            "SOL_SELL": {"grade": "B+", "max_chop": 0.55},   # 59% WR, slightly wider to capture more signals
         }
 
         # Expanded setups (paper-mode validation)
