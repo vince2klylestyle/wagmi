@@ -701,14 +701,17 @@ class TestPriceRelativeFilter:
         for p in prices:
             filt._update_price_history(symbol, p)
 
-    def test_hype_buy_rejected_near_high(self):
-        """HYPE BUY at 99% of rolling high should be rejected."""
+    def test_hype_buy_rejected_above_high(self):
+        """HYPE BUY >1% ABOVE rolling high should be rejected (breakout chasing)."""
         filt = self._make_filter()
-        # Seed: HYPE rallied to $42, now at $41.5 (only 1.2% dip)
-        self._seed_price_history(filt, "HYPE", [38, 39, 40, 41, 42, 42, 41.8, 41.5])
-        sig = self._make_signal(entry=41.5)
+        # Seed: HYPE was at $40, now spiked to $42.5 (6.25% above $40 high... wait
+        # rolling high is max of history, so need price ABOVE that)
+        self._seed_price_history(filt, "HYPE", [36, 37, 38, 39, 40, 40, 39, 38])
+        # Entry at $40.5 — rolling high is $40, so entry is 1.25% ABOVE high
+        # dip_pct = (40 - 40.5) / 40 * 100 = -1.25% (negative = above high)
+        sig = self._make_signal(entry=40.5)
         result = filt.evaluate(sig)
-        assert result is None  # Rejected — too close to high
+        assert result is None  # Rejected — buying above the rolling high
 
     def test_hype_buy_passes_on_dip(self):
         """HYPE BUY at 5% below rolling high should pass."""
@@ -728,19 +731,19 @@ class TestPriceRelativeFilter:
         dip = filt._get_dip_pct("HYPE", 41.9)
         assert dip is None  # Confirms insufficient data bypass
 
-    def test_sol_sell_rejected_after_drop(self):
-        """SOL SELL when price already dropped 8% should be rejected."""
+    def test_sol_sell_rejected_after_deep_drop(self):
+        """SOL SELL when price dropped >8% should be rejected (chasing)."""
         filt = self._make_filter()
-        # Seed: SOL was at $140, dropped to $129 (7.9% drop)
-        self._seed_price_history(filt, "SOL", [135, 137, 140, 138, 135, 132, 130, 129])
+        # Seed: SOL was at $140, dropped to $127 (9.3% drop)
+        self._seed_price_history(filt, "SOL", [135, 137, 140, 138, 135, 132, 129, 127])
         sig = self._make_signal(
-            symbol="SOL", side="SELL", entry=129.0,
-            sl=132.0, tp1=125.0, tp2=121.0,
+            symbol="SOL", side="SELL", entry=127.0,
+            sl=130.0, tp1=123.0, tp2=119.0,
             metadata={"num_agree": 3, "strategies_agree": ["a", "b", "c"],
                        "regime": "consolidation", "chop_score": 0.2}
         )
         result = filt.evaluate(sig)
-        assert result is None  # Rejected — already dipped too far
+        assert result is None  # Rejected — chasing a deep drop
 
     def test_sol_sell_passes_near_high(self):
         """SOL SELL near rolling high should pass (selling the rip)."""

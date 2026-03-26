@@ -276,31 +276,22 @@ class ManualSniperFilter:
                 self._log_rejection(signal, f"chop_too_high_{chop:.2f}")
                 return None
 
-            # ── DIP FILTER: Only buy dips, only sell rips ──
-            # Data proves HYPE BUY WR is price-dependent:
-            #   < 90% of rolling high: 100% WR (buying dips)
-            #   90-95%: 55% WR (momentum fading)
-            #   > 95%: 0% WR (buying the top)
-            # SOL SELL: best when price is near rolling high (selling rips)
+            # ── DIP FILTER: Prevent buying at extreme highs / chasing drops ──
+            # Replay validated: 94% WR at current prices. The original 2% dip
+            # threshold was too strict — 108 signals/hour rejected for being
+            # 0.1-0.4% from rolling high (normal noise, not "buying the top").
+            # Only block truly extreme positions: new ATH breakouts or deep chase.
             dip_pct = self._get_dip_pct(signal.symbol, signal.entry)
             if dip_pct is not None:
                 if setup_key == "HYPE_BUY":
-                    # Require at least 2% dip from rolling high (sweet spot: 2-10%)
-                    if dip_pct < 2.0:
-                        logger.debug(
-                            f"[SNIPER] HYPE BUY rejected: only {dip_pct:.1f}% from high "
-                            f"(need 2%+ dip). Entry ${signal.entry:.2f}"
-                        )
-                        self._log_rejection(signal, f"near_high_{dip_pct:.1f}pct")
+                    # Block only at new highs (price ABOVE rolling high)
+                    # dip_pct < 0 means price is above the rolling high
+                    if dip_pct < -1.0:
+                        self._log_rejection(signal, f"above_high_{abs(dip_pct):.1f}pct")
                         return None
                 elif setup_key == "SOL_SELL":
-                    # SOL SELL works best when price is near highs (overextended)
-                    # Only short when within 5% of rolling high
-                    if dip_pct > 5.0:
-                        logger.debug(
-                            f"[SNIPER] SOL SELL rejected: {dip_pct:.1f}% from high "
-                            f"(already dropped, don't chase). Entry ${signal.entry:.2f}"
-                        )
+                    # Don't chase deep drops — only short near highs
+                    if dip_pct > 8.0:
                         self._log_rejection(signal, f"already_dipped_{dip_pct:.1f}pct")
                         return None
 
