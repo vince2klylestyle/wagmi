@@ -74,10 +74,12 @@ class TradingConfig:
 
     # Equity & risk
     starting_equity: float = field(default_factory=lambda: _env_float("STARTING_EQUITY", 10000.0))
-    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.025))
-    # Full Kelly: 2.5% risk per trade on $1k = $25 base risk.
-    # With 4 positions at full size = 10% total risk = healthy for full Kelly.
-    # Scale down via env var for larger accounts (e.g. RISK_PER_TRADE=0.005 for $10k+).
+    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.10))
+    # Half Kelly from backtest (WR=51.7%, payoff=1.5): f* = 19.5%, half = 9.75%
+    # Using 10% = slightly above half Kelly. On $1k = $100 risk per trade.
+    # With 2h time stops and profit locking, max 2-3 concurrent = 20-30% at risk.
+    # For high-edge setups (SOL SELL 85% WR), Kelly says 35-71% — we're still conservative.
+    # Scale down via env var for larger accounts.
     vol_target_pct: float = field(default_factory=lambda: _env_float("VOL_TARGET_PCT", 0.005))
     # Vol-targeting: replaces 11-multiplier compound sizing system (single parameter).
     # Position risk scales inversely with ATR vs 1.5% baseline ATR.
@@ -748,7 +750,7 @@ def get_symbol_param(symbol: str, param: str, config: TradingConfig) -> float:
 
 PAPER_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Match live — paper should test real sizing
-    "risk_per_trade": 0.025,    # 2.5% risk per trade: full Kelly for aggressive growth on small accounts
+    "risk_per_trade": 0.10,     # 10% risk per trade: half Kelly (backtest f*=19.5%)
     "max_open_positions": 8,    # 8 concurrent positions at 1.5% risk = 12% max exposure
     "max_portfolio_leverage": 4.0,  # Tighter cap with more positions
     "enable_smart_orders": False,
@@ -911,7 +913,7 @@ def get_regime_sl_tp(regime: str, base_sl_mult: float, base_tp1_mult: float,
 
 LIVE_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Full leverage in live
-    "risk_per_trade": 0.025,    # 2.5% risk per trade: full Kelly for aggressive growth on small accounts
+    "risk_per_trade": 0.10,     # 10% risk per trade: half Kelly (backtest f*=19.5%)
     "max_open_positions": 8,    # 8 concurrent positions at 1.5% risk = 12% max exposure
     "max_portfolio_leverage": 4.0,  # Tighter cap with more positions
     "enable_smart_orders": True,
