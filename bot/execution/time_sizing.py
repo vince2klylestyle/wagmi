@@ -40,18 +40,18 @@ WEEKEND_SIZE_MULTIPLIER = float(os.getenv("WEEKEND_SIZE_MULTIPLIER", "0.8"))
 # PRIME=1.2, GOOD=1.0, QUIET=0.7, DEAD=0.5
 
 _SESSION_MULTIPLIERS = {
-    # PRIME hours — highest volatility & directional moves
-    0:  1.2,
-    11: 1.2,
+    # PRIME hours — confirmed by fresh 7d data (2026-04-01)
+    0:  1.2,   # Asia open, +0.17% avg BTC
+    11: 1.3,   # Confirmed: ALL symbols green, 71-86% WR
     13: 1.2,
-    14: 1.2,
+    14: 1.0,   # Fresh data shows -0.2% avg — downgraded from PRIME
     15: 1.2,
+    20: 1.3,   # Fresh data: best hour for BTC/SOL (+0.28-0.32%)
     22: 1.2,
     # GOOD hours — normal opportunity
     12: 1.0,
     16: 1.0,
     18: 1.0,
-    20: 1.0,
     23: 1.0,
     # QUIET hours — reduced opportunity
     1:  0.7,
@@ -65,9 +65,9 @@ _SESSION_MULTIPLIERS = {
     4:  0.5,
     5:  0.5,
     6:  0.5,
-    9:  0.5,
-    10: 0.5,
-    17: 0.5,  # worst hour: -$1,977, 20% WR over 5 trades
+    9:  0.3,  # Fresh data (7d, 2026-04-01): 14% WR across all symbols
+    10: 0.3,  # Fresh data: 14-29% WR across all symbols
+    17: 0.15, # Fresh data: 0% WR across ALL 4 symbols! Near-hard block.
 }
 
 # ── Day-of-week multipliers ──────────────────────────────────────────

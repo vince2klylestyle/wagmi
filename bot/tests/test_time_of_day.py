@@ -50,13 +50,13 @@ class TestSessionMultipliers:
     """Hour-of-day session classification."""
 
     def test_prime_hours(self):
-        """PRIME hours (00, 11, 13-15, 22) get 1.2x."""
-        for hour in [0, 11, 13, 14, 15, 22]:
-            assert _SESSION_MULTIPLIERS[hour] == 1.2, f"Hour {hour} should be PRIME (1.2x)"
+        """PRIME hours get >= 1.2x boost."""
+        for hour in [0, 11, 13, 15, 20, 22]:
+            assert _SESSION_MULTIPLIERS[hour] >= 1.2, f"Hour {hour} should be PRIME (>=1.2x), got {_SESSION_MULTIPLIERS[hour]}"
 
     def test_good_hours(self):
         """GOOD hours get 1.0x (neutral)."""
-        for hour in [12, 16, 18, 20, 23]:
+        for hour in [12, 16, 18, 23]:
             assert _SESSION_MULTIPLIERS[hour] == 1.0, f"Hour {hour} should be GOOD (1.0x)"
 
     def test_quiet_hours(self):
@@ -65,9 +65,9 @@ class TestSessionMultipliers:
             assert _SESSION_MULTIPLIERS[hour] == 0.7, f"Hour {hour} should be QUIET (0.7x)"
 
     def test_dead_hours(self):
-        """DEAD hours (03-06, 09-10, 17) get 0.5x."""
+        """DEAD hours get <= 0.5x."""
         for hour in [3, 4, 5, 6, 9, 10, 17]:
-            assert _SESSION_MULTIPLIERS[hour] == 0.5, f"Hour {hour} should be DEAD (0.5x)"
+            assert _SESSION_MULTIPLIERS[hour] <= 0.5, f"Hour {hour} should be DEAD (<=0.5x), got {_SESSION_MULTIPLIERS[hour]}"
 
     def test_all_24_hours_covered(self):
         """Every hour 0-23 has a multiplier."""
@@ -121,9 +121,9 @@ class TestGetTimeMultiplier:
         assert abs(get_time_multiplier(now) - 0.5) < 0.001
 
     def test_thursday_dead_hour(self):
-        # Thursday 10:00 UTC: 0.85 * 0.5 = 0.425
+        # Thursday 10:00 UTC: 0.85 * 0.3 = 0.255 (hour 10 reduced from 0.5 to 0.3)
         now = _utc(day=THU, hour=10)
-        assert abs(get_time_multiplier(now) - 0.425) < 0.001
+        assert abs(get_time_multiplier(now) - 0.255) < 0.001
 
     def test_saturday_dead_hour(self):
         # Saturday 03:00 UTC: 0.8 * 0.5 = 0.4
@@ -234,17 +234,17 @@ class TestGetFullTimeMultiplier:
 
     def test_with_aligned_direction(self):
         """SELL at 14:00 UTC (short bias) gets boost."""
-        now = _utc(day=TUE, hour=14)  # base=1.2 (PRIME), dir=1.15
+        now = _utc(day=TUE, hour=14)  # base=1.0 (downgraded from PRIME), dir=1.15
         info = get_full_time_multiplier(side="SELL", now=now)
-        expected = 1.2 * 1.15  # 1.38
+        expected = 1.0 * 1.15  # 1.15
         assert abs(info["multiplier"] - expected) < 0.001
         assert info["directional_multiplier"] == 1.15
 
     def test_with_opposed_direction(self):
         """BUY at 14:00 UTC (short bias) gets penalty."""
-        now = _utc(day=TUE, hour=14)  # base=1.2, dir=0.85
+        now = _utc(day=TUE, hour=14)  # base=1.0, dir=0.85
         info = get_full_time_multiplier(side="BUY", now=now)
-        expected = 1.2 * 0.85  # 1.02
+        expected = 1.0 * 0.85  # 0.85
         assert abs(info["multiplier"] - expected) < 0.001
 
     def test_max_boost_cap(self):
