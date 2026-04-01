@@ -343,9 +343,9 @@ def test_time_sizing():
     tue_dead = datetime(2025, 1, 7, 5, 0, tzinfo=timezone.utc)
     assert abs(get_time_multiplier(tue_dead) - 0.5) < 0.001
 
-    # Thursday 10am UTC -> 0.85 (Thu) * 0.5 (DEAD hour) = 0.425
+    # Thursday 10am UTC -> 0.85 (Thu) * 0.3 (DEAD hour, freshly reduced) = 0.255
     thu_dead = datetime(2025, 1, 9, 10, 0, tzinfo=timezone.utc)
-    assert abs(get_time_multiplier(thu_dead) - 0.425) < 0.001
+    assert abs(get_time_multiplier(thu_dead) - 0.255) < 0.001
 
     # Directional bias: 18:00 UTC = long
     info_18 = get_time_sizing_info(datetime(2025, 1, 6, 18, 0, tzinfo=timezone.utc))

@@ -3408,22 +3408,40 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # previous volatility-proxy approach (std dev of returns < 1%) which
         # triggered "range" far more aggressively than ADX < 20.
         try:
-            _rt_strategy = next(
-                (s for s in self.ensemble.strategies if s.name == "regime_trend"), None
-            )
-            if _rt_strategy is not None:
-                _rt_status = _rt_strategy.get_status(symbol, data)
-                _adx_live = _rt_status.get("adx", 25.0)
-                _al_live = _rt_status.get("align_long", 0)
-                _ash_live = _rt_status.get("align_short", 0)
-                if _al_live >= 3 or _ash_live >= 3:
-                    _live_regime = "trend"
-                elif _adx_live < 20:
-                    _live_regime = "range"
-                elif _adx_live > 40:
-                    _live_regime = "high_volatility"
-                else:
-                    _live_regime = "consolidation"
+            _live_regime = None
+            # Primary: use quant_regime detector with full 1h candle data
+            try:
+                from core.quant_regime import detect_regime as _qr_detect
+                df_1h = data.get("1h")
+                if df_1h is not None and not df_1h.empty and len(df_1h) >= 20:
+                    _candles = [
+                        {"open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"]}
+                        for _, r in df_1h.iterrows()
+                    ]
+                    _live_regime = _qr_detect(_candles, symbol=symbol)
+            except Exception:
+                pass
+
+            # Fallback: simple ADX-based from regime_trend strategy
+            if not _live_regime or _live_regime == "unknown":
+                _rt_strategy = next(
+                    (s for s in self.ensemble.strategies if s.name == "regime_trend"), None
+                )
+                if _rt_strategy is not None:
+                    _rt_status = _rt_strategy.get_status(symbol, data)
+                    _adx_live = _rt_status.get("adx", 25.0)
+                    _al_live = _rt_status.get("align_long", 0)
+                    _ash_live = _rt_status.get("align_short", 0)
+                    if _al_live >= 3 or _ash_live >= 3:
+                        _live_regime = "trend"
+                    elif _adx_live < 20:
+                        _live_regime = "range"
+                    elif _adx_live > 40:
+                        _live_regime = "high_volatility"
+                    else:
+                        _live_regime = "consolidation"
+
+            if _live_regime:
                 self.regime_detector.update(symbol, _live_regime)
                 self._tick_regime_cache[symbol] = _live_regime
         except Exception:
