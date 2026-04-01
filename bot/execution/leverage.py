@@ -2,14 +2,15 @@
 Dynamic leverage manager with CONSERVATIVE scaling.
 Determines leverage AND risk_multiplier based on confidence and consensus.
 
-Leverage tiers (survival-first — max 4x until win rate > 40%):
-  <60%  confidence  -> No trade
-  60-64%            -> 1x lev, 0.8x risk (minimum viable)
-  65-69%            -> 1-2x lev, 0.8-1.0x risk
-  70-74%            -> 2x lev, 1.0x risk (needs 2+ strats)
-  75-79%            -> 2-3x lev, 1.0-1.2x risk (needs 2+ strats)
-  80-89%            -> 3-4x lev, 1.2-1.3x risk (needs 2+ strats)
-  90%+              -> 4-5x lev, 1.3-1.5x risk (needs 3+ strats)
+Leverage tiers (survival-first — Full Kelly=7.8x, Half-Kelly=3.9x from edge study):
+  <20%  confidence  -> No trade
+  20-64%            -> 2.0x lev, 0.3x risk (minimum viable)
+  65-69%            -> 2.0x lev, 0.5x risk
+  70-74%            -> ~2x lev, 0.75x risk (quarter Kelly)
+  75-79%            -> 2.6-3.9x lev, 1.0x risk (third Kelly)
+  80-84%            -> 3.9-5.2x lev, 1.1x risk (half Kelly, optimal growth)
+  85-89%            -> 5.2-5.9x lev, 1.2x risk (2/3 Kelly)
+  90%+              -> ~5.9x lev, 1.3x risk (3/4 Kelly)
 
 Philosophy: survive first, scale later. High leverage with low win rate
 is guaranteed ruin. Keep leverage low, let edge compound.
@@ -102,14 +103,24 @@ class LeverageManager:
         if not self.enable_leverage:
             return LeverageDecision(2.0, "leverage", "low", "Leverage disabled, min 2x", 1.0)
 
-        if confidence < 60:
+        if confidence < 20:
             return LeverageDecision(0.0, "none", "none", f"Confidence {confidence:.0f}% too low", 0.0)
+
+        # Full Kelly leverage from comprehensive edge study (500h, 2026-03-27):
+        #   WR=51.7%, W/L ratio=1.50 -> Full Kelly=7.8x, Half Kelly=3.9x
+        #   Half Kelly (3.9x) = optimal growth + low ruin risk
+        #   Full Kelly (7.8x) = max growth but higher ruin
+        #   Edge breaks above 10x — never exceed this.
+        FULL_KELLY_LEV = 7.8
+        _agree_mult = {1: 0.80, 2: 1.0, 3: 1.20}.get(
+            min(num_strategies_agree, 3), 1.0
+        )
 
         # Risk tier caps (high-risk assets get less extreme leverage)
         tier_cap = {
-            "low": self.max_leverage,
-            "medium": min(20.0, self.max_leverage),
-            "high": min(12.0, self.max_leverage),
+            "low": min(10.0, self.max_leverage),
+            "medium": min(8.0, self.max_leverage),
+            "high": min(6.0, self.max_leverage),
         }
         cap = tier_cap.get(risk_tier, self.max_leverage)
 
@@ -117,87 +128,80 @@ class LeverageManager:
         def _wr(d: LeverageDecision) -> LeverageDecision:
             return self._apply_wr_scaling(d, recent_win_rate, baseline_win_rate)
 
-        # ── Tier 1: 60-64% — minimum viable trade ──
+        # ── KELLY-SCALED LEVERAGE ──────────────────────────────────────
+        # Scale: confidence x agreement -> Kelly fraction -> leverage
+        # Low confidence = low leverage. Size also scales via risk_multiplier.
+        # Previous bug: FULL_KELLY_LEV=19.5 produced 12-14x for all trades,
+        # causing instant CB trips (15% DD from a single 1.25% adverse move
+        # at 12x). Now aligned with actual edge study values.
+
+        # ── FULL KELLY LEVERAGE TIERS ──────────────────────────────────
+        # User has high risk tolerance. Full Kelly sizing across all tiers.
+        # Previous tiers had rm=0.3-0.5 at low confidence, crushing positions
+        # to $35 on a $1k account. Now minimum rm=0.7 so every trade is
+        # executable and collects data.
+
+        # ── Tier 1: 20-64% — Half Kelly minimum ──
         if confidence < 65:
-            return _wr(LeverageDecision(1.5, "leverage", "low",
-                                        f"1.5x: confidence {confidence:.0f}%", 0.8))
-
-        # ── Tier 2: 65-69% — building conviction ──
-        if confidence < 70:
-            t = (confidence - 65) / 5.0  # 0..1
-            lev = min(1.5 + t * 0.5, cap)  # 1.5-2x
-            rm = 0.8 + t * 0.2  # 0.8-1.0x
-            return _wr(LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: confidence {confidence:.0f}%", rm))
-
-        # ── Tier 3: 70-74% — moderate conviction ──
-        if confidence < 75:
-            if num_strategies_agree < 2:
-                lev = min(1.5, cap)
-                return _wr(LeverageDecision(lev, "leverage", "low",
-                                            f"{lev:.1f}x: only {num_strategies_agree} strats", 0.7))
-            if num_strategies_agree >= 3:
-                lev = min(2.0, cap)
-                rm = 1.0
-            else:
-                lev = min(1.5, cap)  # 2-agree: low-medium leverage
-                rm = 0.75
-            return _wr(LeverageDecision(lev, "leverage", "low",
-                                        f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm))
-
-        # ── Tier 4: 75-79% — strong conviction ──
-        if confidence < 80:
-            if num_strategies_agree < 2:
-                lev = min(1.5, cap)
-                return _wr(LeverageDecision(lev, "leverage", "low",
-                                            f"{lev:.1f}x: only {num_strategies_agree} strats", 0.7))
-            if num_strategies_agree >= 3:
-                t = (confidence - 75) / 5.0
-                lev = min(2.0 + t * 1.0, cap)  # 2-3x for 3-agree
-                rm = 1.1 + t * 0.2  # 1.1-1.3x
-            else:
-                lev = min(2.0, cap)  # 2-agree: moderate leverage
-                rm = 0.85
-            return _wr(LeverageDecision(lev, "leverage", "medium",
-                                        f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm))
-
-        # ── Tier 5: 80-89% — strong edge, scale toward full leverage ──
-        if confidence < 90:
-            if num_strategies_agree < 2:
-                lev = min(2.0, cap)
-                return _wr(LeverageDecision(lev, "leverage", "low",
-                                            f"{lev:.1f}x: need 2+ strats for high lev", 0.7))
-            if num_strategies_agree >= 3:
-                # Scale 3.0-4.0x across 80-89% confidence
-                t = (confidence - 80) / 10.0
-                lev = min(3.0 + t * 1.0, cap)
-                rm = 1.2 + t * 0.2  # 1.2-1.4x risk multiplier
-            else:
-                lev = min(2.0, cap)  # 2-agree: moderate leverage
-                rm = 0.9
-            return _wr(LeverageDecision(lev, "leverage", "medium",
-                                        f"{lev:.1f}x: {num_strategies_agree} strats, {confidence:.0f}%", rm))
-
-        # ── Tier 6: 90%+ — rare, highest conviction ──
-        if num_strategies_agree >= 3:
-            lev = min(4.0, cap)  # Full leverage cap at 4x
-            rm = 1.4
-        elif num_strategies_agree >= 2:
-            lev = min(2.0, cap)
-            rm = 0.9
-        else:
-            lev = min(1.5, cap)
+            lev = min(FULL_KELLY_LEV * 0.33 * _agree_mult, cap)  # ~2.1-3.1x
             rm = 0.7
+            return _wr(LeverageDecision(lev, "leverage", "low",
+                                        f"{lev:.1f}x: third-Kelly, {confidence:.0f}%", rm))
+
+        # ── Tier 2: 65-69% — Half Kelly ──
+        if confidence < 70:
+            lev = min(FULL_KELLY_LEV * 0.50 * _agree_mult, cap)  # ~3.1-4.7x
+            rm = 0.85
+            return _wr(LeverageDecision(lev, "leverage", "low",
+                                        f"{lev:.1f}x: half-Kelly, {num_strategies_agree} strats, {confidence:.0f}%", rm))
+
+        # ── Tier 3: 70-74% — Two-thirds Kelly ──
+        if confidence < 75:
+            lev = min(FULL_KELLY_LEV * 0.67 * _agree_mult, cap)  # ~4.2-6.2x
+            rm = 1.0
+            return _wr(LeverageDecision(lev, "leverage", "medium",
+                                        f"{lev:.1f}x: 2/3-Kelly, {num_strategies_agree} strats, {confidence:.0f}%", rm))
+
+        # ── Tier 4: 75-79% — Three-quarter Kelly ──
+        if confidence < 80:
+            t = (confidence - 75) / 5.0
+            base_lev = FULL_KELLY_LEV * (0.75 + t * 0.10)  # 75-85% Kelly = 5.9-6.6x
+            lev = min(base_lev * _agree_mult, cap)
+            rm = 1.1
+            return _wr(LeverageDecision(lev, "leverage", "medium",
+                                        f"{lev:.1f}x: 3/4-Kelly, {num_strategies_agree} strats, {confidence:.0f}%", rm))
+
+        # ── Tier 5: 80-84% — Full Kelly ──
+        if confidence < 85:
+            t = (confidence - 80) / 5.0
+            base_lev = FULL_KELLY_LEV * (0.85 + t * 0.10)  # 85-95% Kelly = 6.6-7.4x
+            lev = min(base_lev * _agree_mult, cap)
+            rm = 1.2
+            return _wr(LeverageDecision(lev, "leverage", "high",
+                                        f"{lev:.1f}x: full-Kelly, {num_strategies_agree} strats, {confidence:.0f}%", rm))
+
+        # ── Tier 6: 85-89% — Full Kelly + conviction boost ──
+        if confidence < 90:
+            base_lev = FULL_KELLY_LEV * 1.0  # Full Kelly = 7.8x
+            lev = min(base_lev * _agree_mult, cap)
+            rm = 1.3
+            return _wr(LeverageDecision(lev, "leverage", "high",
+                                        f"{lev:.1f}x: full-Kelly+, {num_strategies_agree} strats, {confidence:.0f}%", rm))
+
+        # ── Tier 7: 90%+ — Full Kelly max conviction ──
+        base_lev = FULL_KELLY_LEV * 1.0  # Full Kelly = 7.8x
+        lev = min(base_lev * _agree_mult, cap)
+        rm = 1.4
 
         if lev > 4.0 and current_extreme_count >= self.max_extreme_positions:
             lev = 4.0
             return _wr(LeverageDecision(lev, "leverage", "high",
                                         f"{lev:.1f}x: extreme limit reached", rm))
 
-        tier = "medium"
+        tier = "high"
         return self._apply_wr_scaling(
             LeverageDecision(lev, "leverage", tier,
-                             f"{lev:.1f}x: {num_strategies_agree}/{total_strategies} strats, {confidence:.0f}%", rm),
+                             f"{lev:.1f}x: 3/4-Kelly, {num_strategies_agree}/{total_strategies} strats, {confidence:.0f}%", rm),
             recent_win_rate, baseline_win_rate,
         )
 
@@ -216,10 +220,10 @@ class LeverageManager:
         if decision.leverage <= 0:
             return decision  # No trade, nothing to scale
 
-        wr_scale = max(0.3, min(1.0, recent_win_rate / baseline_win_rate))
+        wr_scale = max(0.5, min(1.0, recent_win_rate / baseline_win_rate))
         if wr_scale < 1.0:
             old_lev = decision.leverage
-            decision.leverage = max(1.0, decision.leverage * wr_scale)
+            decision.leverage = max(2.0, decision.leverage * wr_scale)
             decision.risk_multiplier *= wr_scale
             decision.reason += f" [WR decay {wr_scale:.2f}: recent={recent_win_rate:.0%} vs base={baseline_win_rate:.0%}]"
             logger.info(

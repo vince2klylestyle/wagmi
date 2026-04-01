@@ -488,7 +488,7 @@ class RiskManager:
             )
             return 0.0
 
-        # Cap risk_multiplier to prevent oversizing (was up to 3.5x before)
+        # Cap risk_multiplier — raised to 2.0 for full Kelly sizing
         capped_rm = min(max(risk_multiplier, 0.1), self.max_risk_multiplier)
         effective_risk_pct = risk_per_trade_override if risk_per_trade_override > 0 else self.risk_per_trade
         risk_usd = self.equity * effective_risk_pct * capped_rm

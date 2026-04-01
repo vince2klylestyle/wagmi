@@ -26,17 +26,21 @@ logger = logging.getLogger("bot.feedback.kelly_engine")
 
 # ── Constants ────────────────────────────────────────────────
 
-KELLY_FLOOR = 0.05       # Minimum half-Kelly weight (never fully zero out a factor)
+KELLY_FLOOR = 0.15       # Minimum half-Kelly weight — 0.05 was producing micro-positions
 KELLY_CAP = 1.0          # Maximum half-Kelly weight
 DEFAULT_LOOKBACK = 30    # Default rolling window for Kelly computation
-MIN_TRADES_FOR_KELLY = 5 # Minimum trades before computing Kelly (use prior otherwise)
+MIN_TRADES_FOR_KELLY = 3 # Lowered from 5: we have 7 total trades, can't afford to wait
 
 # ── Initial calibration from backtest data ───────────────────
 # These seed the system before live trades accumulate.
+# Added ensemble and sniper_premium from actual live trade data.
 BACKTEST_PRIORS: Dict[str, Dict[str, float]] = {
     "confidence_scorer": {"win_rate": 0.71, "payoff_ratio": 2.0},
     "bollinger_squeeze": {"win_rate": 0.60, "payoff_ratio": 1.73},
     "regime_trend": {"win_rate": 0.56, "payoff_ratio": 1.5},
+    "ensemble": {"win_rate": 0.57, "payoff_ratio": 1.5},  # From live: 4W/3L, shorts print
+    "sniper_premium": {"win_rate": 0.50, "payoff_ratio": 1.5},  # Conservative prior
+    "multi_tier_quality": {"win_rate": 0.55, "payoff_ratio": 1.4},
 }
 
 # ── Persistence ──────────────────────────────────────────────

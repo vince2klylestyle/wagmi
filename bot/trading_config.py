@@ -47,6 +47,7 @@ class SymbolConfig:
 # Fewer symbols = faster rescan loop = better scalp coverage
 DEFAULT_SYMBOLS = {
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
+    "ETH": SymbolConfig("ETH", "ETH-USD", "ethereum", "low"),
     "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
     "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),
 }
@@ -73,9 +74,10 @@ class TradingConfig:
 
     # Equity & risk
     starting_equity: float = field(default_factory=lambda: _env_float("STARTING_EQUITY", 10000.0))
-    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.005))
-    # Was 0.02: quant approach = many small bets. 0.5% risk means a single loss
-    # costs $250 on $50k, not $1,000. Law of large numbers over 40+ trades.
+    risk_per_trade: float = field(default_factory=lambda: _env_float("RISK_PER_TRADE", 0.025))
+    # Full Kelly: 2.5% risk per trade on $1k = $25 base risk.
+    # With 4 positions at full size = 10% total risk = healthy for full Kelly.
+    # Scale down via env var for larger accounts (e.g. RISK_PER_TRADE=0.005 for $10k+).
     vol_target_pct: float = field(default_factory=lambda: _env_float("VOL_TARGET_PCT", 0.005))
     # Vol-targeting: replaces 11-multiplier compound sizing system (single parameter).
     # Position risk scales inversely with ATR vs 1.5% baseline ATR.
@@ -106,7 +108,8 @@ class TradingConfig:
     # Leverage tiers: (min_confidence, max_confidence) -> leverage
     enable_leverage: bool = field(default_factory=lambda: _env_bool("ENABLE_LEVERAGE", True))
     max_leverage: float = field(default_factory=lambda: _env_float("MAX_LEVERAGE", 25.0))
-    max_risk_multiplier: float = field(default_factory=lambda: _env_float("MAX_RISK_MULTIPLIER", 1.5))
+    max_sniper_leverage: float = field(default_factory=lambda: _env_float("MAX_SNIPER_LEVERAGE", 5.0))  # Hard cap for sniper trades
+    max_risk_multiplier: float = field(default_factory=lambda: _env_float("MAX_RISK_MULTIPLIER", 2.0))
 
     # Trailing stop
     enable_trailing_stop: bool = field(
@@ -227,9 +230,10 @@ class TradingConfig:
         default_factory=lambda: _env_int("MAX_HOLD_HOURS", 48)
     )
     time_stop_hours: int = field(
-        default_factory=lambda: _env_int("TIME_STOP_HOURS", 8)
+        default_factory=lambda: _env_int("TIME_STOP_HOURS", 12)
     )  # Close positions that haven't hit TP1 after this many hours.
-    # 61.9% exit at SL after avg 15.5h drift. 8h time stop cuts slow bleeders early.
+    # Was 8h. Data: 12h time stop is optimal (+4.5R net). Gives winners more room
+    # to develop while still cutting slow bleeders before they drift to SL.
     hold_limit_action: str = field(
         default_factory=lambda: _env("HOLD_LIMIT_ACTION", "tighten_sl")
     )  # "tighten_sl" or "force_close"
@@ -269,9 +273,22 @@ class TradingConfig:
     enable_regime_strategy_filter: bool = field(
         default_factory=lambda: _env_bool("ENABLE_REGIME_STRATEGY_FILTER", True)
     )
+    # Regime-aware strategy weighting: multiplicatively adjust strategy weights
+    # based on the current market regime (e.g., boost bollinger_squeeze in high_vol).
+    # Auto-tunes from observed per-regime-per-strategy performance over time.
+    regime_strategy_weighting_enabled: bool = field(
+        default_factory=lambda: _env_bool("REGIME_STRATEGY_WEIGHTING_ENABLED", True)
+    )
     dynamic_tp_scaling: bool = field(
         default_factory=lambda: _env_bool("DYNAMIC_TP_SCALING", True)
     )
+    # MFE-based dynamic TP/SL optimization (per-symbol data-driven levels)
+    dynamic_tp_enabled: bool = field(
+        default_factory=lambda: _env_bool("DYNAMIC_TP_ENABLED", True)
+    )
+    dynamic_tp_blend_weight: float = field(
+        default_factory=lambda: _env_float("DYNAMIC_TP_BLEND_WEIGHT", 0.6)
+    )  # 0.0=profile only, 1.0=MFE only. 0.6 = lean toward MFE data.
     enable_liquidity_guard: bool = field(
         default_factory=lambda: _env_bool("ENABLE_LIQUIDITY_GUARD", True)
     )
@@ -290,6 +307,29 @@ class TradingConfig:
         default_factory=lambda: _env_bool("ENABLE_CASCADE_SIGNALS", True)
     )
 
+    # ── Cross-Asset Lead-Lag Intelligence ──
+    # BTC leads SOL by ~1h (corr 0.87), ETH by ~30min (corr 0.91).
+    # When BTC makes a decisive move, followers lag — boost aligned signals.
+    enable_lead_lag_boost: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_LEAD_LAG_BOOST", True)
+    )
+    # BTC move threshold (%) over 15min window to trigger a lead signal
+    lead_lag_btc_move_threshold: float = field(
+        default_factory=lambda: _env_float("LEAD_LAG_BTC_MOVE_THRESHOLD", 0.3)
+    )
+    # Maximum confidence boost from lead-lag alignment (added to signal confidence)
+    lead_lag_max_boost: float = field(
+        default_factory=lambda: _env_float("LEAD_LAG_MAX_BOOST", 12.0)
+    )
+    # Minimum real-time correlation to apply boost (decays if correlation weakens)
+    lead_lag_min_correlation: float = field(
+        default_factory=lambda: _env_float("LEAD_LAG_MIN_CORRELATION", 0.60)
+    )
+    # Correlation decay factor per evaluation (exponential decay toward 0.5)
+    lead_lag_correlation_decay: float = field(
+        default_factory=lambda: _env_float("LEAD_LAG_CORRELATION_DECAY", 0.98)
+    )
+
     # ── Wave 4: Self-evolving architecture ──
     enable_ab_testing: bool = field(
         default_factory=lambda: _env_bool("ENABLE_AB_TESTING", True)
@@ -302,6 +342,41 @@ class TradingConfig:
     )
     enable_attribution: bool = field(
         default_factory=lambda: _env_bool("ENABLE_ATTRIBUTION", True)
+    )
+
+    # ── Time-of-Day Sizing Filter ──
+    # Data-driven hour/day multipliers from 500-candle quant analysis.
+    # Adjusts position sizing (not gating) based on statistical edges.
+    enable_time_sizing: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_TIME_SIZING", True)
+    )
+    # Apply boosts during PRIME hours (not just reductions during DEAD hours)
+    time_sizing_allow_boost: bool = field(
+        default_factory=lambda: _env_bool("TIME_SIZING_ALLOW_BOOST", True)
+    )
+    # Max boost cap — prevents runaway sizing from stacked multipliers
+    time_sizing_max_boost: float = field(
+        default_factory=lambda: _env_float("TIME_SIZING_MAX_BOOST", 1.4)
+    )
+    # Directional bias boost: extra sizing when trade direction matches
+    # proven hour-of-day directional edge (e.g., long at 18:00 UTC)
+    time_sizing_directional_boost: float = field(
+        default_factory=lambda: _env_float("TIME_SIZING_DIRECTIONAL_BOOST", 1.15)
+    )
+    # Directional penalty: reduce sizing when trading against proven bias
+    time_sizing_directional_penalty: float = field(
+        default_factory=lambda: _env_float("TIME_SIZING_DIRECTIONAL_PENALTY", 0.85)
+    )
+
+    # ── Dual Wallet System ──
+    dual_wallet_enabled: bool = field(
+        default_factory=lambda: _env_bool("DUAL_WALLET_ENABLED", False)
+    )
+    wallet_a_equity_pct: float = field(
+        default_factory=lambda: _env_float("WALLET_A_EQUITY_PCT", 0.5)
+    )
+    wallet_b_equity_pct: float = field(
+        default_factory=lambda: _env_float("WALLET_B_EQUITY_PCT", 0.5)
     )
 
     # ── Web Dashboard ──
@@ -349,6 +424,14 @@ class TradingConfig:
     # Fee-drag filter + R:R gate are the primary quality controls.
     # At 45% WR + 1.2 RR: EV = 0.45×1.2 - 0.55 = -0.01 (needs RR > 1.22 to break even).
     # 0.08 EV floor: allows 47% WR × 1.4 RR trades (EV=0.088) that fee-drag passes.
+
+    # Minimum win probability (post-deflation). Blocks trades where the ensemble's
+    # own probability estimate says the trade is below coin-flip after regime deflation.
+    # Data: trades at 42%/40% WP all lost. 48% gives a small buffer above break-even.
+    min_signal_win_prob: float = field(
+        default_factory=lambda: _env_float("MIN_SIGNAL_WIN_PROB", 0.48)
+    )
+
     # Monte Carlo strategy
     mc_num_sims: int = field(
         default_factory=lambda: _env_int("MC_NUM_SIMS", 1000)
@@ -391,6 +474,12 @@ class TradingConfig:
     )
     tp_sl_atr_mult: float = field(
         default_factory=lambda: _env_float("TP_SL_ATR_MULT", 1.5)
+    )
+    # Minimum R:R floor enforced after all ensemble SL/TP adjustments.
+    # If TP1 is too close (R:R < this), TP1 is widened to meet the floor.
+    # Prevents per-symbol overrides from destroying signal geometry.
+    min_rr_tp1: float = field(
+        default_factory=lambda: _env_float("MIN_RR_TP1", 1.5)
     )
 
     # ── Technical Indicator Periods ──
@@ -499,6 +588,75 @@ class TradingConfig:
         default_factory=lambda: _env_bool("SOFT_FILTER_LEARNING", True)
     )  # Enable filter accuracy feedback loop
 
+    # ── Quant Rules (proven statistical edges hardcoded into pipeline) ──
+    # Each rule is individually toggleable. Applied BEFORE the risk multiplier chain
+    # as confidence boosts, so they compound with existing sizing logic.
+
+    # Rule 1: Morning Edge — 06-12 UTC has 75% WR vs 33-45% in evening
+    quant_morning_edge_enabled: bool = field(
+        default_factory=lambda: _env_bool("QUANT_MORNING_EDGE_ENABLED", True)
+    )
+    quant_morning_edge_boost: float = field(
+        default_factory=lambda: _env_float("QUANT_MORNING_EDGE_BOOST", 1.2)
+    )  # 1.2x confidence boost for signals in 06-12 UTC window
+
+    # Rule 2: BTC SHORT Edge — 67% WR live, historically strongest setup
+    quant_btc_short_edge_enabled: bool = field(
+        default_factory=lambda: _env_bool("QUANT_BTC_SHORT_EDGE_ENABLED", True)
+    )
+    quant_btc_short_edge_boost: float = field(
+        default_factory=lambda: _env_float("QUANT_BTC_SHORT_EDGE_BOOST", 1.15)
+    )  # 1.15x confidence boost for BTC SELL signals
+
+    # Rule 3: HYPE BUY in High Vol — strongest edge at P50-P75 ATR percentile
+    quant_hype_highvol_enabled: bool = field(
+        default_factory=lambda: _env_bool("QUANT_HYPE_HIGHVOL_ENABLED", True)
+    )
+    quant_hype_highvol_boost: float = field(
+        default_factory=lambda: _env_float("QUANT_HYPE_HIGHVOL_BOOST", 1.2)
+    )  # 1.2x confidence boost for HYPE BUY in high_volatility regime
+
+    # Rule 4: Conviction Multiplier — size up on high-confidence multi-agree
+    quant_conviction_mult_enabled: bool = field(
+        default_factory=lambda: _env_bool("QUANT_CONVICTION_MULT_ENABLED", True)
+    )
+    quant_conviction_risk_mult: float = field(
+        default_factory=lambda: _env_float("QUANT_CONVICTION_RISK_MULT", 1.3)
+    )  # 1.3x risk multiplier when confidence > 80% AND 2+ strategies agree
+    quant_conviction_min_confidence: float = field(
+        default_factory=lambda: _env_float("QUANT_CONVICTION_MIN_CONFIDENCE", 80.0)
+    )
+    quant_conviction_min_agree: int = field(
+        default_factory=lambda: _env_int("QUANT_CONVICTION_MIN_AGREE", 2)
+    )
+
+    # ── Confidence Calibration ──
+    # Corrects raw ensemble confidence using historical win-rate data.
+    # 90-100% raw confidence often loses; 70-79% is the sweet spot.
+    # Calibration deflates overconfident bands and inflates underconfident ones.
+    confidence_calibration_enabled: bool = field(
+        default_factory=lambda: _env_bool("CONFIDENCE_CALIBRATION_ENABLED", True)
+    )
+    calibration_window: int = field(
+        default_factory=lambda: _env_int("CALIBRATION_WINDOW", 50)
+    )  # Number of recent trades (EWMA-weighted) used to build calibration curve
+
+    # ── Adaptive Sizing (Anti-Martingale) ──
+    # Size up when hot (winning streak), size down when cold (losing streak).
+    # Data insight: larger positions show 64-73% WR vs 42-45% for smaller ones.
+    adaptive_sizing_enabled: bool = field(
+        default_factory=lambda: _env_bool("ADAPTIVE_SIZING_ENABLED", True)
+    )
+    adaptive_sizing_window: int = field(
+        default_factory=lambda: _env_int("ADAPTIVE_SIZING_WINDOW", 20)
+    )  # Rolling window of recent trades for heat calculation
+    adaptive_sizing_max_boost: float = field(
+        default_factory=lambda: _env_float("ADAPTIVE_SIZING_MAX_BOOST", 1.5)
+    )  # Max sizing multiplier when on a hot streak
+    adaptive_sizing_min_floor: float = field(
+        default_factory=lambda: _env_float("ADAPTIVE_SIZING_MIN_FLOOR", 0.5)
+    )  # Min sizing multiplier when on a cold streak
+
     # ── Health Monitoring ──
     health_port: int = field(
         default_factory=lambda: _env_int("HEALTH_PORT", 8081)
@@ -541,6 +699,9 @@ class SymbolOverrides:
     # Volatility profile: "low" (BTC-like), "medium" (SOL-like), "high" (HYPE/meme)
     # Affects chop detection sensitivity and ensemble confidence floor
     volatility_profile: str = "medium"
+    # MFE-optimal TP1/SL as percentage of entry price (from MFE/MAE analysis)
+    mfe_tp1_pct: Optional[float] = None  # e.g. 0.38 means 0.38%
+    mfe_sl_pct: Optional[float] = None   # e.g. 0.72 means 0.72%
 
 
 # Default per-symbol overrides
@@ -548,18 +709,23 @@ class SymbolOverrides:
 # risk_per_trade overrides let memecoins risk slightly less than large caps
 # volatility_profile tunes chop detection + strategy sensitivity per asset
 DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
-    # BTC: reduced leverage (was 25x), halved risk_per_trade — BTC lost -$2,120 on
-    # 10d backtest (38% WR). Lower volatility = ATR stops proportionally tighter,
-    # needs less risk per trade to compensate.
-    "BTC": SymbolOverrides(max_leverage=10.0, risk_per_trade=_env_float("BTC_RISK_OVERRIDE", 0.004), volatility_profile="low"),
-    # BTC risk slightly below global 0.5% since BTC ATR stops are proportionally tighter
-    "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium"),
+    # BTC: Full Kelly sizing. Previous 0.004 risk_per_trade (73% haircut) crushed
+    # positions to $35 on a $1k account. BTC SHORT is our best edge (100% WR, +$92).
+    # The -$2,120 backtest loss was at 25x leverage — not relevant at Kelly levels.
+    "BTC": SymbolOverrides(max_leverage=10.0, risk_per_trade=_env_float("BTC_RISK_OVERRIDE", 0.015), volatility_profile="low",
+                           mfe_tp1_pct=0.38, mfe_sl_pct=0.72),
+    "ETH": SymbolOverrides(max_leverage=20.0, volatility_profile="low",
+                           mfe_tp1_pct=0.44, mfe_sl_pct=0.90),
+    "SOL": SymbolOverrides(max_leverage=20.0, volatility_profile="medium",
+                           mfe_tp1_pct=0.51, mfe_sl_pct=0.96),
     "HYPE": SymbolOverrides(
         max_leverage=20.0,
         volatility_profile="high",
         atr_mult_sl=2.0,   # Wide stops: HYPE has 2x BTC vol. 2.2x blocked all trades (R:R too low). 2.0x = compromise.
                             # Need to survive the first 6h of mean-reversion volatility.
-        atr_mult_tp1=1.0,  # Tight TP1: take profit at the mean quickly. HYPE mean-reverts fast.
+        atr_mult_tp1=3.0,  # TP1 must be >= 1.5x SL width for R:R >= 1.5. Was 1.0 which gave R:R=0.75,
+                            # causing ensemble to reject 498 valid HYPE signals/day as negative EV.
+        mfe_tp1_pct=0.78, mfe_sl_pct=1.34,
     ),
 }
 
@@ -578,8 +744,8 @@ def get_symbol_param(symbol: str, param: str, config: TradingConfig) -> float:
 
 PAPER_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Match live — paper should test real sizing
-    "risk_per_trade": 0.005,    # 0.5% risk per trade: quant approach, many small bets
-    "max_open_positions": 8,    # 8 concurrent positions at 0.5% risk = 4% max exposure
+    "risk_per_trade": 0.025,    # 2.5% risk per trade: full Kelly for aggressive growth on small accounts
+    "max_open_positions": 8,    # 8 concurrent positions at 1.5% risk = 12% max exposure
     "max_portfolio_leverage": 4.0,  # Tighter cap with more positions
     "enable_smart_orders": False,
 }
@@ -603,16 +769,16 @@ REGIME_SL_TP_SCALARS = {
 # Regime-aware risk sizing: bet bigger where edge is proven, smaller where it isn't.
 # 30-day backtest: consolidation 78% WR (+$3.2k), trending_bull 40% WR (-$4k).
 REGIME_RISK_MULTIPLIERS = {
-    "trending_bull":    0.12,   # 16.7% WR in 90d. Keep minimal exposure for learning, near-skip.
-    "trending_bear":    0.15,   # Worst regime. Minimal exposure, not zero — allows learning.
-    "trend":            0.85,   # generic trend — raised from 0.7 (2026-03-24, paper trading showed sizing too small)
-    "consolidation":    1.0,    # best regime: 47% WR, +$4k PnL — full size
-    "range":            0.75,   # raised from 0.6 — 50% WR with proper sizing should be profitable
-    "high_volatility":  0.3,    # 0% WR in recent data. Near-skip.
-    "panic":            0.2,    # extreme conditions — minimal exposure
-    "low_liquidity":    0.3,    # 0% WR in live trades — near-skip
-    "news_dislocation": 0.3,
-    "unknown":          0.3,    # no edge data — be cautious
+    "trending_bull":    0.85,   # Full Kelly approach: trade every regime, let Kelly size handle risk
+    "trending_bear":    0.70,   # Was 0.30 — need trades to collect data. Kelly sizes down via WR naturally.
+    "trend":            1.0,    # Our core edge — full size
+    "consolidation":    1.0,    # Best regime: 47% WR, +$4k PnL — full size
+    "range":            0.85,   # Was 0.75 — need data collection, keep executable
+    "high_volatility":  0.85,   # Was 0.75 — vol is where money is made
+    "panic":            0.50,   # Extreme conditions — still half size (was 0.3)
+    "low_liquidity":    0.60,   # Was 0.40
+    "news_dislocation": 0.50,   # Was 0.3
+    "unknown":          0.75,   # Was 0.5 — need data, need executable trades to get it
 }
 
 
@@ -621,17 +787,75 @@ REGIME_RISK_MULTIPLIERS = {
 # SOL: PF=0.67, 33% WR over 90d — marginal, reduce
 # HYPE: PF=0.0, 0% WR over 90d — minimal until more data
 SYMBOL_RISK_MULTIPLIERS = {
-    "BTC":  1.0,   # proven edge — full size
-    "SOL":  0.5,   # raised from 0.35 — needs paper trading data. Still cautious.
-    "HYPE": 0.5,   # raised from 0.25 — was causing MIN_QTY rejections (qty < 1.0 HYPE min).
-                   # Paper trading showed HYPE SELL signals were correct but couldn't execute.
+    "BTC":  0.90,  # Was 1.0 → 0.90. Slight haircut, still near-full size.
+    "ETH":  0.85,  # Was default 0.6 → 0.85. Major liquid asset, deserves near-full size.
+    "SOL":  0.80,  # Was 0.5 → 0.80. Previous value crushed sizing below exchange minimums.
+    "HYPE": 0.85,  # Was 0.5 → 0.85. Was causing MIN_QTY rejections (qty < 1.0 HYPE min).
 }
+
+# Symbol+side risk scaling: penalize specific directional trades with weak edge.
+# 30-day backtest analysis (2026-03-30):
+#   SOL LONG: 13 trades, 46% WR, -$1,209 PnL (losers hold 7-36 days before SL)
+#   SOL SHORT: 13 trades, 62% WR, +$2,353 PnL
+# SOL LONG winners hit TP1 instantly (0h); losers bleed for weeks. Structural issue.
+# Reducing SOL LONG to 0.35x preserves the signal for data collection but limits damage.
+SYMBOL_SIDE_RISK_MULTIPLIERS: Dict[tuple, float] = {
+    ("SOL", "BUY"):  0.35,  # SOL LONG has negative edge: 46% WR, -$93/trade avg. Reduce to 0.35x.
+    ("SOL", "SELL"): 1.0,   # SOL SHORT is strong: 62% WR, +$181/trade avg. Full size.
+}
+
+# Per-symbol lead-lag configuration: empirical lag times and correlations.
+# Used by LeadLagBoostEngine to generate confidence boosts for follower assets.
+# lag_minutes: (min, max) expected lag behind BTC
+# correlation: empirical correlation coefficient (0-1)
+# beta: follower amplification factor (1.2 = follower moves 1.2x BTC's %)
+# boost_cap: maximum confidence boost for this symbol from lead-lag
+LEAD_LAG_SYMBOL_CONFIG = {
+    "SOL": {
+        "lag_minutes": (30, 60),       # SOL lags BTC by 30-60 min
+        "correlation": 0.87,
+        "beta": 1.16,
+        "boost_cap": 12.0,
+    },
+    "ETH": {
+        "lag_minutes": (15, 30),       # ETH lags BTC by 15-30 min
+        "correlation": 0.91,
+        "beta": 1.20,
+        "boost_cap": 10.0,            # Lower cap: ETH follows faster, less edge
+    },
+    "HYPE": {
+        "lag_minutes": (15, 45),       # HYPE less predictable
+        "correlation": 0.44,
+        "beta": 1.50,
+        "boost_cap": 5.0,             # Low cap: weak correlation
+    },
+}
+
+
+def get_lead_lag_config(symbol: str) -> dict:
+    """Return lead-lag configuration for a symbol. Returns empty dict if not configured."""
+    base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
+    return LEAD_LAG_SYMBOL_CONFIG.get(base, {})
+
 
 def get_symbol_risk_mult(symbol: str) -> float:
     """Return position-size multiplier for the given symbol."""
     # Strip common suffixes to match base symbol
     base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
-    return SYMBOL_RISK_MULTIPLIERS.get(base, 0.6)  # default cautious for unknown symbols
+    return SYMBOL_RISK_MULTIPLIERS.get(base, 0.70)  # Was 0.6 — raised for executability on small accounts
+
+
+def get_symbol_side_risk_mult(symbol: str, side: str) -> float:
+    """Return position-size multiplier for a specific symbol+side combo.
+
+    Allows penalizing directional trades with weak historical edge
+    (e.g., SOL LONG has 46% WR and negative PnL while SOL SHORT is profitable).
+    Returns 1.0 (no adjustment) for combos not in SYMBOL_SIDE_RISK_MULTIPLIERS.
+    """
+    base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
+    # Normalize side: LONG->BUY, SHORT->SELL for consistent lookup
+    normalized_side = "BUY" if side.upper() in ("BUY", "LONG") else "SELL"
+    return SYMBOL_SIDE_RISK_MULTIPLIERS.get((base, normalized_side), 1.0)
 
 
 def get_regime_risk_mult(regime: str) -> float:
@@ -657,8 +881,8 @@ def get_regime_sl_tp(regime: str, base_sl_mult: float, base_tp1_mult: float,
 
 LIVE_PROFILE_OVERRIDES = {
     "max_leverage": 25.0,       # Full leverage in live
-    "risk_per_trade": 0.005,    # 0.5% risk per trade: quant approach, many small bets
-    "max_open_positions": 8,    # 8 concurrent positions at 0.5% risk = 4% max exposure
+    "risk_per_trade": 0.025,    # 2.5% risk per trade: full Kelly for aggressive growth on small accounts
+    "max_open_positions": 8,    # 8 concurrent positions at 1.5% risk = 12% max exposure
     "max_portfolio_leverage": 4.0,  # Tighter cap with more positions
     "enable_smart_orders": True,
 }
