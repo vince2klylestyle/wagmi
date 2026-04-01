@@ -4698,10 +4698,30 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 f"qty * {_liq_size_mult:.2f} = {qty:.6f}"
             )
 
-        # Enforce minimum order size — bump up to min instead of rejecting
+        # ── QTY FLOOR: prevent multiplicative chain from crushing to dust ──
+        # The chain above (correlation, sector, portfolio, time, liquidity) can
+        # multiply qty down to near-zero. Floor at 50% of original calculated qty
+        # so we always take a meaningful position. The risk gates already approved
+        # this trade — the multipliers are just sizing adjustments, not vetoes.
+        _original_qty = self.risk_mgr.calculate_qty(
+            signal_result.entry, signal_result.sl,
+            leverage=lev_decision.leverage,
+            risk_multiplier=lev_decision.risk_multiplier,
+            symbol=symbol,
+            slippage_bps=self.config.slippage_bps,
+            risk_per_trade_override=_sym_risk,
+        )
+        if _original_qty > 0 and qty < _original_qty * 0.50:
+            qty = _original_qty * 0.50
+            logger.info(
+                f"[{trace_id}][{symbol}] QTY FLOOR: multiplier chain crushed qty. "
+                f"Restored to 50% of base ({qty:.6f})"
+            )
+
+        # Enforce minimum order size
         min_q = get_min_qty(symbol)
         if qty < min_q:
-            logger.info(f"[{trace_id}][{symbol}] Qty {qty:.6f} < min {min_q} — bumping to min (aggressive mode)")
+            logger.info(f"[{trace_id}][{symbol}] Qty {qty:.6f} < min {min_q} — bumping to min")
             qty = min_q
 
         # ── Trade Classification Layer ──
