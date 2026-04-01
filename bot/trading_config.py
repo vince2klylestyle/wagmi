@@ -839,15 +839,16 @@ LEAD_LAG_SYMBOL_CONFIG = {
 }
 
 
-# Optimal TP/SL and time stops per setup (from 7,911 signal MFE/MAE analysis, 2026-04-01).
-# These override default ATR-based TPs when a setup-specific profile is available.
-# TP is % of entry price, SL is % of entry price, time_stop is hours.
+# Setup exit STRATEGY (not fixed TPs — those don't work on these assets).
+# BTC moves 0.3%/h, SOL 0.4%/h, HYPE 0.56%/h. Fixed 1-1.5% TPs are coinflips.
+# Our actual winners (BTC SHORT +$53, +$38) all used TRAILING stops.
+# Strategy: TP1 at 1R to de-risk 50%, let rest trail. Time stop if flat.
 SETUP_OPTIMAL_EXITS: Dict[str, Dict[str, float]] = {
-    "SOL_SELL": {"tp_pct": 1.5, "sl_pct": 1.0, "time_stop_h": 4, "edge": "tier1"},
-    "BTC_SELL": {"tp_pct": 1.0, "sl_pct": 1.5, "time_stop_h": 2, "edge": "tier1"},
-    "ETH_BUY":  {"tp_pct": 0.5, "sl_pct": 0.7, "time_stop_h": 4, "edge": "tier2"},
-    "HYPE_BUY": {"tp_pct": 2.0, "sl_pct": 1.5, "time_stop_h": 6, "edge": "tier2"},
-    "HYPE_SELL":{"tp_pct": 1.5, "sl_pct": 1.0, "time_stop_h": 4, "edge": "tier1"},
+    "SOL_SELL": {"tp1_r": 1.0, "tp1_close_pct": 0.5, "trail_atr": 1.0, "time_stop_h": 12, "edge": "tier1"},
+    "BTC_SELL": {"tp1_r": 1.0, "tp1_close_pct": 0.5, "trail_atr": 1.0, "time_stop_h": 8, "edge": "tier1"},
+    "HYPE_SELL":{"tp1_r": 1.0, "tp1_close_pct": 0.5, "trail_atr": 1.2, "time_stop_h": 12, "edge": "tier1"},
+    "ETH_BUY":  {"tp1_r": 1.0, "tp1_close_pct": 0.5, "trail_atr": 1.0, "time_stop_h": 8, "edge": "tier2"},
+    "HYPE_BUY": {"tp1_r": 1.0, "tp1_close_pct": 0.5, "trail_atr": 1.2, "time_stop_h": 12, "edge": "tier2"},
 }
 
 
