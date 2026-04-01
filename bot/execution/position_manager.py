@@ -498,8 +498,46 @@ class PositionManager:
         if current_price < pos.lowest_price:
             pos.lowest_price = current_price
 
-        # 0. Check stop loss FIRST — on flash crashes, SL must fire before early exit
-        # to prevent closing at a worse price than the SL level
+        # 0a. PROFIT LOCK: move SL to breakeven once we're up 0.3R+
+        # Never ride a winner back to a loser. We can always re-enter.
+        if pos.state == OPEN:
+            sl_dist = abs(pos.entry - pos.original_sl)
+            if sl_dist > 0:
+                if is_long:
+                    unrealized_r = (current_price - pos.entry) / sl_dist
+                else:
+                    unrealized_r = (pos.entry - current_price) / sl_dist
+
+                # At 0.3R profit: move SL to breakeven (entry price)
+                if unrealized_r >= 0.3:
+                    be_sl = pos.entry
+                    if is_long and pos.sl < be_sl:
+                        pos.sl = be_sl
+                        logger.info(
+                            f"[{symbol}] PROFIT LOCK: {unrealized_r:.2f}R profit -> "
+                            f"SL moved to breakeven {be_sl}"
+                        )
+                    elif not is_long and pos.sl > be_sl:
+                        pos.sl = be_sl
+                        logger.info(
+                            f"[{symbol}] PROFIT LOCK: {unrealized_r:.2f}R profit -> "
+                            f"SL moved to breakeven {be_sl}"
+                        )
+
+                # At 0.6R profit: lock in 0.3R (SL at entry + 0.3 * sl_dist)
+                if unrealized_r >= 0.6:
+                    if is_long:
+                        lock_sl = pos.entry + sl_dist * 0.3
+                        if pos.sl < lock_sl:
+                            pos.sl = lock_sl
+                            logger.info(f"[{symbol}] PROFIT LOCK 0.3R: SL -> {lock_sl}")
+                    else:
+                        lock_sl = pos.entry - sl_dist * 0.3
+                        if pos.sl > lock_sl:
+                            pos.sl = lock_sl
+                            logger.info(f"[{symbol}] PROFIT LOCK 0.3R: SL -> {lock_sl}")
+
+        # 0b. Check stop loss — on flash crashes, SL must fire before early exit
         sl_hit = (current_price <= pos.sl) if is_long else (current_price >= pos.sl)
         if sl_hit:
             action = "TRAILING_STOP" if pos.state == TRAILING else "SL"
