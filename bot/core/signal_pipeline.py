@@ -776,6 +776,32 @@ class RiskFilterChain:
             meta["quant_confidence_boost"] = quant["confidence_boost"]
             meta.update(quant["meta"])
 
+        # ── Setup-optimal TP/SL override (from MFE/MAE analysis) ──
+        # If we have data-driven optimal exits for this setup, override strategy TPs.
+        # This ensures the bot uses statistically proven TP/SL levels.
+        try:
+            from trading_config import get_setup_exit
+            _exit_profile = get_setup_exit(signal.symbol, signal.side)
+            if _exit_profile:
+                signal = copy.copy(signal)
+                _tp_pct = _exit_profile["tp_pct"] / 100.0
+                _sl_pct = _exit_profile["sl_pct"] / 100.0
+                if signal.side == "BUY":
+                    signal.tp1 = signal.entry * (1 + _tp_pct)
+                    signal.tp2 = signal.entry * (1 + _tp_pct * 2)
+                    signal.sl = signal.entry * (1 - _sl_pct)
+                else:
+                    signal.tp1 = signal.entry * (1 - _tp_pct)
+                    signal.tp2 = signal.entry * (1 - _tp_pct * 2)
+                    signal.sl = signal.entry * (1 + _sl_pct)
+                meta["setup_exit_override"] = True
+                meta["setup_tp_pct"] = _exit_profile["tp_pct"]
+                meta["setup_sl_pct"] = _exit_profile["sl_pct"]
+                meta["setup_time_stop_h"] = _exit_profile.get("time_stop_h", 8)
+                meta["setup_edge_tier"] = _exit_profile.get("edge", "unknown")
+        except Exception as e:
+            logger.debug(f"[SETUP-EXIT] Error: {e}")
+
         # ── Hard Gate: Signal validity ──
         if not signal.is_valid:
             return AnnotatedSignal(
