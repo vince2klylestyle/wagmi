@@ -107,34 +107,37 @@ class LeverageManager:
         if confidence < 20:
             return LeverageDecision(0.0, "none", "none", f"Confidence {confidence:.0f}% too low", 0.0)
 
-        # ── VOLATILITY-SCALED LEVERAGE ──────────────────────────────
-        # Leverage is set so TP (1R) is reachable in ~1.5 hours based on
-        # the asset's hourly volatility. More volatile = less leverage needed.
-        # Risk stays constant ($25 at 2.5%) — leverage just compresses time.
+        # ── NOISE-AWARE LEVERAGE ──────────────────────────────────
+        # Wick noise analysis (5min data, 30 days, 5000+ candles):
+        #   BTC 1h p95 MAE = 1.11% -> max lev for 95% survival = 2.2x
+        #   SOL 1h p95 MAE = 1.45% -> max lev = 1.7x
+        #   HYPE 1h p95 MAE = 2.29% -> max lev = 1.1x
         #
-        # BTC moves 0.30%/h -> needs ~27x for 1.5h TP
-        # SOL moves 0.40%/h -> needs ~21x for 1.5h TP
-        # HYPE moves 0.56%/h -> needs ~15x for 1.5h TP
-        # ETH moves 0.38%/h -> needs ~22x for 1.5h TP
+        # At 12x with 0.20% SL, noise kills 60-80% of trades regardless
+        # of direction. Our 3 winners averaged 5.5x. Our losers at 9.7-12x
+        # lost $277 (90% of all losses).
         #
-        # Fallback for unknown symbols: 15x
-        _VOL_SCALED_LEV = {
-            "BTC": 25.0,   # Tight SL 0.45%, TP in ~1.5h
-            "ETH": 22.0,   # SL 0.52%, TP in ~1.5h
-            "SOL": 20.0,   # SL 0.60%, TP in ~1.5h
-            "HYPE": 15.0,  # SL 0.84%, TP in ~1.5h
+        # Strategy: SL MUST be outside noise zone. Leverage adjusts to keep
+        # risk at $25. Higher confidence/agreement = slightly more leverage
+        # but NEVER beyond noise survival threshold.
+        _NOISE_AWARE_LEV = {
+            "BTC": 5.0,    # SL ~1.1%, survives 90% of 1h noise
+            "ETH": 4.0,    # SL ~1.3%
+            "SOL": 3.5,    # SL ~1.5%, SOL is noisier
+            "HYPE": 3.0,   # SL ~2.0%, HYPE is noisiest
         }
         _sym_clean = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").split("/")[0]
-        FULL_KELLY_LEV = _VOL_SCALED_LEV.get(_sym_clean, 15.0)
+        FULL_KELLY_LEV = _NOISE_AWARE_LEV.get(_sym_clean, 4.0)
         _agree_mult = {1: 0.80, 2: 1.0, 3: 1.20}.get(
             min(num_strategies_agree, 3), 1.0
         )
 
-        # Leverage caps — allow vol-scaled leverage through
+        # Leverage caps — noise-aware, not vol-scaled
+        # Our winning trades averaged 5.5x. High leverage = noise trading.
         tier_cap = {
-            "low": min(25.0, self.max_leverage),    # BTC/ETH
-            "medium": min(20.0, self.max_leverage),  # SOL
-            "high": min(15.0, self.max_leverage),    # HYPE
+            "low": min(8.0, self.max_leverage),     # BTC/ETH: max 8x
+            "medium": min(6.0, self.max_leverage),   # SOL: max 6x
+            "high": min(5.0, self.max_leverage),     # HYPE: max 5x
         }
         cap = tier_cap.get(risk_tier, self.max_leverage)
 

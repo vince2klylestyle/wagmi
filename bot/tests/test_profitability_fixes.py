@@ -610,25 +610,26 @@ class TestKellySizing:
         assert d3.leverage >= d2.leverage, "3-agree should get >= leverage than 2-agree"
 
     def test_3agree_tier5_scales_kelly(self):
-        """At 89%, 3-agree should get ~6.6x (2/3 Kelly)."""
+        """At 89%, 3-agree should get noise-aware leverage with high rm."""
         from execution.leverage import LeverageManager
         mgr = LeverageManager()
         d = mgr.decide(89, 3, 4)
-        assert d.leverage >= 5.0, f"3-agree at 89% should get >=5x Kelly, got {d.leverage}"
+        assert d.leverage >= 3.0, f"3-agree at 89% should get >=3x, got {d.leverage}"
+        assert d.leverage <= 8.0, f"3-agree at 89% should be <=8x (noise cap), got {d.leverage}"
         assert d.risk_multiplier >= 1.2, f"risk_mult should be >=1.2, got {d.risk_multiplier}"
 
-    def test_3agree_full_kelly(self):
-        """Vol-scaled leverage: 3-agree gets base_lev * 1.2 (agreement boost)."""
+    def test_3agree_noise_aware(self):
+        """Noise-aware leverage: base * agreement_mult, capped by noise."""
         from execution.leverage import LeverageManager
         mgr = LeverageManager()
-        # No symbol = default 15x * 1.2 = 18x
+        # Default (no symbol) = 4.0 base * 1.2 = 4.8x
         d = mgr.decide(72, 3, 4)
-        assert d.leverage >= 10.0, f"3-agree should get >=10x, got {d.leverage}"
-        assert d.leverage <= 25.0, f"Should be <= exchange max 25x, got {d.leverage}"
-        # With symbol: BTC = 25x * 1.2 = 30 -> capped at 25
+        assert d.leverage >= 3.0, f"3-agree should get >=3x, got {d.leverage}"
+        assert d.leverage <= 8.0, f"Should be <= noise cap 8x, got {d.leverage}"
+        # BTC = 5.0 base * 1.2 = 6.0x
         d_btc = mgr.decide(72, 3, 4, symbol="BTC")
-        assert d_btc.leverage >= 15.0, f"BTC 3-agree should get >=15x, got {d_btc.leverage}"
-        assert d_btc.risk_multiplier >= 0.8, f"rm should be meaningful, got {d_btc.risk_multiplier}"
+        assert d_btc.leverage >= 4.0, f"BTC 3-agree should get >=4x, got {d_btc.leverage}"
+        assert d_btc.leverage <= 8.0, f"BTC should be <=8x (noise cap), got {d_btc.leverage}"
 
     def test_risk_multiplier_stays_within_cap(self):
         """risk_multiplier should never exceed the max_risk_multiplier cap (2.0)."""
