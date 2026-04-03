@@ -512,8 +512,10 @@ class TradingConfig:
     )  # 15min: 60s was causing machine-gun re-entry (8 SOL shorts in 10hrs = -$103).
     # At 60s cooldown, bot re-enters same thesis before market structure changes.
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 300)
-    )  # 5min: winners need less cooldown but still avoid immediate re-entry into exhausted move.
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 1800)
+    )  # 30min: data shows after every big win we bleed it back immediately.
+    # Win +$54 -> next 5 trades: -$106. Win +$38 -> next 5: -$158.
+    # Take the profit, chill, let the market reset before re-entering.
     signal_dedup_window_s: int = field(
         default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 600)
     )  # 10min: 2min dedup was letting duplicate signals through (3 HYPE entries in 16min at same price).
@@ -807,15 +809,16 @@ SYMBOL_RISK_MULTIPLIERS = {
 # SOL LONG winners hit TP1 instantly (0h); losers bleed for weeks. Structural issue.
 # Reducing SOL LONG to 0.35x preserves the signal for data collection but limits damage.
 SYMBOL_SIDE_RISK_MULTIPLIERS: Dict[tuple, float] = {
-    # Data-driven from 7,911 signal analysis (2026-04-01):
-    ("SOL", "BUY"):  0.25,  # 24.4% WR, -4.4% avg — near-toxic, minimal size for data
-    ("SOL", "SELL"): 0.80,  # Backtest said 85.5% WR but LIVE is 32% WR, -$114 across 19 trades. Size DOWN until live confirms.
-    ("BTC", "BUY"):  0.50,  # Marginal — 37% WR at 1h but regime-dependent
-    ("BTC", "SELL"): 1.2,   # 48.5-60.6% WR, real trades 100% WR. Strong.
-    ("ETH", "BUY"):  0.85,  # 51.4% WR at 4h — slight edge but only with consensus
-    ("ETH", "SELL"): 0.30,  # 32.7% WR — toxic, keep for data only
-    ("HYPE", "BUY"): 0.70,  # 54.9% WR at 1h but WEAKENING. Trend-only.
-    ("HYPE", "SELL"):1.2,   # 85.2% WR in rejection data — newly discovered edge
+    # LIVE DATA (33 trades, 2026-04-03): ALL longs = 0% WR (0/7). Market is bearish.
+    # Block longs until macro trend flips. Shorts are the only proven edge.
+    ("SOL", "BUY"):  0.0,   # BLOCKED: 0/0 live wins. Bear market = don't buy.
+    ("SOL", "SELL"): 0.90,  # Live: 6W/13L but winners are huge (+$129, +$99). Keep with cooldown protection.
+    ("BTC", "BUY"):  0.0,   # BLOCKED: 0/1 live wins (-$6). Bear market = don't buy.
+    ("BTC", "SELL"): 1.3,   # BEST EDGE: 2/2 live wins, +$92. Full conviction.
+    ("ETH", "BUY"):  0.0,   # BLOCKED: 0/3 live wins (-$5.28). Bear market = don't buy.
+    ("ETH", "SELL"): 0.50,  # No live wins but SHORT is the only direction that works. Small size, collect data.
+    ("HYPE", "BUY"): 0.0,   # BLOCKED: 0/3 live wins (-$19.16). Bear market = don't buy.
+    ("HYPE", "SELL"):1.2,   # 1/4 live but SHORT is the right direction. Keep at size.
 }
 
 # Per-symbol lead-lag configuration: empirical lag times and correlations.

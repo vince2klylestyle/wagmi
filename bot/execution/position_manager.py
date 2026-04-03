@@ -203,6 +203,10 @@ class PositionManager:
         self.enable_trailing = enable_trailing
         self.trailing_atr_mult = trailing_atr_mult
         self._time_stop_hours = time_stop_hours
+        # Post-close cooldown: prevent tilt re-entry after losses only
+        self._last_close_time: Dict[str, datetime] = {}  # symbol -> close time
+        self._last_close_won: Dict[str, bool] = {}  # symbol -> was it a win?
+        self._reentry_cooldown_minutes: int = 10  # 10 min cooldown after losses only
         # Position backup directory for crash recovery
         self._backup_dir = Path("data") / "position_backups"
         self._backup_dir.mkdir(parents=True, exist_ok=True)
@@ -336,6 +340,27 @@ class PositionManager:
                 f"already have {existing.side} position in state {existing.state} "
                 f"(entry={existing.entry}, qty={existing.qty}, leverage={existing.leverage}x). "
                 f"Attempted new {side} entry at {entry} with {leverage}x leverage."
+            )
+            return None
+
+        # Post-close cooldown: only after losses (prevent tilt re-entry)
+        # Winners can re-enter immediately — the thesis was right, re-entry is valid
+        last_close = self._last_close_time.get(symbol)
+        if last_close is not None and not self._last_close_won.get(symbol, True):
+            elapsed = (datetime.now(timezone.utc) - last_close).total_seconds() / 60.0
+            if elapsed < self._reentry_cooldown_minutes:
+                logger.warning(
+                    f"[{symbol}] COOLDOWN BLOCKED: only {elapsed:.0f}m since last LOSS "
+                    f"(need {self._reentry_cooldown_minutes}m). Skipping {side} entry."
+                )
+                return None
+
+        # HARD SAFETY: Never open a position without a stop loss.
+        # Sniper trades with sl=0 caused -$330 in catastrophic losses (4 trades, no SL).
+        if sl <= 0 or abs(entry - sl) / max(entry, 1) < 0.001:
+            logger.error(
+                f"[{symbol}] REJECTED: No valid stop loss (sl={sl}, entry={entry}). "
+                f"Every trade MUST have a stop loss. This is non-negotiable."
             )
             return None
 
@@ -1153,6 +1178,9 @@ class PositionManager:
 
         # State -> CLOSED
         pos._transition(CLOSED, f"{action} @ {price}")
+        # Record close time and win/loss for cooldown enforcement
+        self._last_close_time[pos.symbol] = pos.close_time
+        self._last_close_won[pos.symbol] = pos.realized_pnl > 0
 
         # ── TIER 4: Mechanical Bot Instrumentation (Position Closing Hook) ──
         if _MECHANICAL_BOT_INSTRUMENTATION_AVAILABLE:
