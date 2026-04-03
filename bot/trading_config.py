@@ -718,10 +718,10 @@ class SymbolOverrides:
 # risk_per_trade overrides let memecoins risk slightly less than large caps
 # volatility_profile tunes chop detection + strategy sensitivity per asset
 DEFAULT_SYMBOL_OVERRIDES: Dict[str, SymbolOverrides] = {
-    # BTC: Our best live edge — SHORT is 100% WR, +$92 on 2 trades.
-    # Was 1.5% risk (too conservative). Bumping to 5% to actually capture the edge.
-    # Still well below half Kelly. BTC has lowest vol = safest to size up on.
-    "BTC": SymbolOverrides(max_leverage=10.0, risk_per_trade=_env_float("BTC_RISK_OVERRIDE", 0.05), volatility_profile="low",
+    # BTC: Best live edge (SHORT 100% WR). No special overrides — let Kelly size it
+    # like everything else. Global risk_per_trade=10%, global max_leverage=25x.
+    # The leverage manager + stop width will produce the right leverage naturally.
+    "BTC": SymbolOverrides(volatility_profile="low",
                            mfe_tp1_pct=0.38, mfe_sl_pct=0.72),
     "ETH": SymbolOverrides(max_leverage=20.0, volatility_profile="low",
                            mfe_tp1_pct=0.44, mfe_sl_pct=0.90),
