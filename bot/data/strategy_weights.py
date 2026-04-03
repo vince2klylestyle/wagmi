@@ -57,12 +57,17 @@ class StrategyWeightManager:
 
     def _ensure_entry(self, name: str):
         if name not in self.data:
-            self.data[name] = {"wins": 0.0, "trials": 0.0, "weight": 0.5}
+            self.data[name] = {"wins": 0.0, "trials": 0.0, "weight": 0.30}
 
     def get_weight(self, name: str) -> float:
-        """Get smoothed weight: (wins+1)/(trials+2) — Laplace prior."""
+        """Get smoothed weight: (wins+1)/(trials+2) — Laplace prior.
+        For strategies with zero trials, return a conservative 0.30 instead of 0.50.
+        Untested strategies should NOT outweigh proven performers."""
         self._ensure_entry(name)
         entry = self.data[name]
+        # Zero-trial strategies get conservative weight — don't trust what's unproven
+        if entry["trials"] < 1.0:
+            return 0.30
         return (entry["wins"] + 1) / (entry["trials"] + 2)
 
     def get_all_weights(self) -> Dict[str, float]:

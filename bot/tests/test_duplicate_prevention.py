@@ -112,13 +112,16 @@ class TestPositionManagerDuplicateBlock:
         assert pm.get_open_count() == 2
 
     def test_reopen_after_close_succeeds(self):
-        """After a position is closed, a new one should be allowed."""
+        """After a position is closed and cooldown elapsed, a new one should be allowed."""
         pm = _make_pos_mgr()
         pos1 = _open_btc_short(pm, leverage=1.5)
         assert pos1 is not None
 
         # Close the position
         pm._close_position(pos1, price=95.0, action="TP2")
+
+        # Clear cooldown to simulate time passing
+        pm._last_close_time.clear()
 
         # Now reopen should work
         pos2 = _open_btc_short(pm, leverage=2.0)
@@ -133,8 +136,45 @@ class TestPositionManagerDuplicateBlock:
 
         # Delete closed position (simulates cleanup in multi_strategy_main)
         del pm.positions["BTC"]
+        pm._last_close_time.clear()
 
         # Reopen should work
+        pos2 = _open_btc_short(pm, leverage=2.0)
+        assert pos2 is not None
+
+
+    def test_cooldown_blocks_immediate_reentry_after_loss(self):
+        """After a losing close, immediate re-entry should be blocked by cooldown."""
+        pm = _make_pos_mgr()
+        pos1 = _open_btc_short(pm, leverage=1.5)
+        # Close at 105 = loss for SHORT (price went up)
+        pm._close_position(pos1, price=105.0, action="SL")
+
+        # Immediate reopen should be blocked (was a loss)
+        pos2 = _open_btc_short(pm, leverage=2.0)
+        assert pos2 is None
+
+    def test_cooldown_allows_reentry_after_win(self):
+        """After a winning close, immediate re-entry should be allowed."""
+        pm = _make_pos_mgr()
+        pos1 = _open_btc_short(pm, leverage=1.5)
+        # Close at 95 = win for SHORT (price went down)
+        pm._close_position(pos1, price=95.0, action="TP2")
+
+        # Immediate reopen should work (was a win)
+        pos2 = _open_btc_short(pm, leverage=2.0)
+        assert pos2 is not None
+
+    def test_cooldown_clears_after_time(self):
+        """After cooldown period, re-entry should work even after loss."""
+        from datetime import timedelta
+        pm = _make_pos_mgr()
+        pos1 = _open_btc_short(pm, leverage=1.5)
+        pm._close_position(pos1, price=105.0, action="SL")
+
+        # Simulate 11 minutes passing (cooldown is 10 min)
+        pm._last_close_time["BTC"] = pm._last_close_time["BTC"] - timedelta(minutes=11)
+
         pos2 = _open_btc_short(pm, leverage=2.0)
         assert pos2 is not None
 
@@ -425,8 +465,9 @@ class TestDuplicatePreventionIntegration:
         stale = [s for s, p in pm.positions.items() if p.state == CLOSED]
         for s in stale:
             del pm.positions[s]
+        pm._last_close_time.clear()
 
-        # Reopen is legitimate
+        # Reopen is legitimate (after cooldown cleared)
         pos2 = _open_btc_short(pm, leverage=2.0)
         assert pos2 is not None
         assert pos2.leverage == 2.0

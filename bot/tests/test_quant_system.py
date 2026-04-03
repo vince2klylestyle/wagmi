@@ -346,7 +346,7 @@ class TestTimeStop:
         from trading_config import TradingConfig
         tc = TradingConfig()
         assert hasattr(tc, "time_stop_hours")
-        assert tc.time_stop_hours == 12  # Updated: 12h time stop is optimal (+4.5R net)
+        assert tc.time_stop_hours == 2  # Scalp approach: 2h time stop, exit fast
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -144,11 +144,11 @@ class TestBtcShortEdge:
 class TestTimeStop:
     """Time stop should default to 12h (was 8h)."""
 
-    def test_default_time_stop_is_12h(self):
-        """Default time_stop_hours in config should be 12."""
+    def test_default_time_stop_is_2h(self):
+        """Default time_stop_hours in config should be 2 (scalp approach)."""
         from trading_config import TradingConfig
         config = TradingConfig()
-        assert config.time_stop_hours == 12
+        assert config.time_stop_hours == 2
 
     def test_time_stop_env_override(self):
         """TIME_STOP_HOURS env var should still work."""

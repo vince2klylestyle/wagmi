@@ -352,7 +352,7 @@ class TestRiskFilterChainGates:
     # ── Gate 4: Correlation guard ──
 
     def test_gate4_rejects_high_cluster_risk(self):
-        """Gate 4: Cluster risk >= 0.85 causes rejection."""
+        """Gate 4: Cluster risk >= 0.85 causes rejection (when NOT a market-wide move)."""
         chain, _, _ = self._make_chain()
         sig = self._make_signal()
 
@@ -362,7 +362,9 @@ class TestRiskFilterChainGates:
         mock_corr_matrix.get_cluster_risk.return_value = 0.90
         mock_engine.compute_correlation_matrix.return_value = mock_corr_matrix
 
-        mock_positions = {"ETH": MagicMock(side="LONG"), "SOL": MagicMock(side="LONG")}
+        # Only 2 unique symbols (BTC from signal + ETH) — NOT a market-wide move,
+        # so the correlation guard should still reject.
+        mock_positions = {"ETH": MagicMock(side="LONG"), "ETH2": MagicMock(side="SELL")}
 
         result = chain.evaluate(
             sig, equity=10000, num_strategies_agree=3, total_strategies=4,
@@ -371,6 +373,28 @@ class TestRiskFilterChainGates:
         )
         assert not result.approved
         assert "Correlation" in result.rejection_reason or "cluster" in result.rejection_reason.lower()
+
+    def test_gate4_market_wide_override(self):
+        """Gate 4: Market-wide move (3+ symbols same direction) overrides correlation guard."""
+        chain, _, _ = self._make_chain()
+        sig = self._make_signal()  # BTC BUY
+
+        mock_engine = MagicMock()
+        mock_corr_matrix = MagicMock()
+        mock_corr_matrix.get_cluster_risk.return_value = 0.90
+        mock_engine.compute_correlation_matrix.return_value = mock_corr_matrix
+
+        # 3 unique symbols all LONG (BTC + ETH + SOL) — market-wide move, should pass
+        mock_positions = {"ETH": MagicMock(side="LONG"), "SOL": MagicMock(side="LONG")}
+
+        result = chain.evaluate(
+            sig, equity=10000, num_strategies_agree=3, total_strategies=4,
+            current_open_count=2, open_positions=mock_positions,
+            portfolio_risk_engine=mock_engine,
+        )
+        # Should NOT be rejected — market-wide override kicks in
+        assert "cluster" not in (result.rejection_reason or "").lower()
+        assert result.metadata.get("corr_guard_override") == "market_wide_move"
 
     def test_gate4_reduces_size_moderate_risk(self):
         """Gate 4: Cluster risk 0.70-0.85 reduces position size but doesn't reject."""

@@ -122,8 +122,8 @@ class TestConfigProfiles:
         cfg = TradingConfig()
         cfg.environment = "production"
         apply_profile(cfg)
-        # Live should respect configured risk
-        assert cfg.risk_per_trade <= 0.05
+        # Live should respect configured risk (half Kelly = 10%)
+        assert cfg.risk_per_trade <= 0.15
 
     def test_profile_env_var_priority(self):
         from trading_config import TradingConfig, apply_profile

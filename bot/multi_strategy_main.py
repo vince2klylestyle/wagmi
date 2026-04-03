@@ -5299,6 +5299,37 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except Exception:
             pass
 
+        # ── MIN NOTIONAL FLOOR: ensure position meets exchange minimum ──
+        # After ALL multipliers have been applied, check if the final qty * price
+        # still meets the $10 Hyperliquid minimum. If not, bump qty UP.
+        # This prevents the multiplier chain (risk_mult * HTF * time * adaptive * LLM * RL)
+        # from crushing positions below exchange minimums on small accounts.
+        _MIN_NOTIONAL = 10.0  # Hyperliquid minimum
+        _NOTIONAL_FLOOR_MARGIN = 1.15  # 15% margin to survive round_qty ROUND_DOWN
+        _pre_floor_qty = qty
+        _pre_floor_notional = qty * signal_result.entry
+        if _pre_floor_notional < _MIN_NOTIONAL * _NOTIONAL_FLOOR_MARGIN:
+            _floor_qty = (_MIN_NOTIONAL * _NOTIONAL_FLOOR_MARGIN) / signal_result.entry
+            # Sanity: don't let the floor exceed 2x the original base qty
+            # (prevents unbounded risk on very small signals)
+            if _original_qty > 0 and _floor_qty > _original_qty * 2.0:
+                logger.warning(
+                    f"[{trace_id}][{symbol}] MIN_NOTIONAL floor would need {_floor_qty:.6f} "
+                    f"(>{_original_qty * 2.0:.6f} = 2x base) — rejecting as too risky"
+                )
+                log_rejection(symbol, "MIN_NOTIONAL_FLOOR_TOO_RISKY",
+                              confidence=signal_result.confidence)
+                return
+            qty = max(qty, _floor_qty)
+            # Also bump to exchange min_qty if needed
+            _floor_min_q = get_min_qty(symbol)
+            if qty < _floor_min_q:
+                qty = _floor_min_q
+            logger.info(
+                f"[{trace_id}][{symbol}] MIN_NOTIONAL floor applied: qty {_pre_floor_qty:.6f} "
+                f"-> {qty:.6f} (notional ${_pre_floor_notional:.2f} -> ${qty * signal_result.entry:.2f})"
+            )
+
         # ── Push 1: Portfolio notional cap ──
         # Prevent aggregate over-leverage across all positions
         _new_notional = qty * signal_result.entry * lev_decision.leverage

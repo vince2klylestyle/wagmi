@@ -136,7 +136,10 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         # trail_end raised 0.30→0.45: was over-tightening to 0.45 ATR at TP2 progress,
         # causing premature trailing stops on normal pullbacks.
         "trailing": "medium", "trail_start": 0.60, "trail_end": 0.45,
-        "floor_progress": 0.35, "floor_start": 0.25, "floor_max": 0.60,
+        # floor_progress 0.35→0.15: SOL gave back $22 of $51 peak because floor
+        # hadn't kicked in at 25% progress. Start locking early.
+        # floor_start 0.25→0.40: lock 40% of peak immediately, scale to 70%.
+        "floor_progress": 0.15, "floor_start": 0.40, "floor_max": 0.70,
     }),
     TREND: _build_profile("TREND", {
         "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.60, "tp1_pct": 0.40,
@@ -145,7 +148,8 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         # at TP1, keep 60% riding the trend toward TP2 with trailing stop.
         # trail_end raised 0.30→0.45: trends need room for pullbacks.
         "trailing": "medium", "trail_start": 0.55, "trail_end": 0.45,
-        "floor_progress": 0.30, "floor_start": 0.30, "floor_max": 0.60,
+        # Trend floor: start locking at 20% progress, lock 35% initially scaling to 65%
+        "floor_progress": 0.20, "floor_start": 0.35, "floor_max": 0.65,
     }),
     REGIME: _build_profile("REGIME", {
         "tp1_atr": 1.2, "tp2_atr": 2.5, "sl_atr": 0.55, "tp1_pct": 0.55,

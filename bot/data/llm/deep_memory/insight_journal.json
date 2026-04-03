@@ -79,6 +79,376 @@
       "source": "student_course",
       "validated": false,
       "validation_count": 0
+    },
+    {
+      "ts": 1774489758.0081108,
+      "category": "symbol_insight",
+      "insight": "HYPE_BUY is the highest-edge setup. 30-day backtest: 58% WR, PF 1.61 (36 trades). During 18-06 UTC: 62% WR, PF 2.19. The sniper filter correctly identifies this as A+ grade.",
+      "confidence": 0.9,
+      "evidence": "30-day 1h OHLCV backtest, 500 candles, 8 parameter configs tested. Source: deep_edge_analysis.py, full_stack_backtest.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 36
+    },
+    {
+      "ts": 1774489759.0081108,
+      "category": "timing_insight",
+      "insight": "HYPE_BUY performs best during 18-06 UTC (evening/night sessions). WR=67% PF=2.47 vs daytime 06-18 UTC WR=47% PF=1.29. US evening and Asian morning are the high-edge windows.",
+      "confidence": 0.85,
+      "evidence": "30-day time-of-day analysis. 18 trades in 18-24 UTC window, 19 trades in 06-12 UTC. Source: deep_edge_analysis.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 74
+    },
+    {
+      "ts": 1774489760.0081108,
+      "category": "symbol_insight",
+      "insight": "SOL_SELL is marginal. 30-day backtest: PF < 1.0 across all 8 parameter configs. Best case PF 0.97. Keep for data collection but size conservatively (0.5x normal). LLMs should learn when SOL_SELL works vs fails.",
+      "confidence": 0.8,
+      "evidence": "30-day parameter sweep, 8 configs x 36 trades each. Source: deep_edge_analysis.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 36
+    },
+    {
+      "ts": 1774489761.0081108,
+      "category": "execution_insight",
+      "insight": "MFE/MAE analysis shows current TP (3.75%) is near-optimal. Median MFE=3.6%, 75th percentile=6.5%. Wider TP (6%) captures fat tails but lowers WR. Current SL (2.5%) survives most noise (median MAE=2.1%).",
+      "confidence": 0.9,
+      "evidence": "MFE/MAE distribution on 35 HYPE_BUY trades over 30 days. Source: deep_edge_analysis.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 35
+    },
+    {
+      "ts": 1774489762.0081108,
+      "category": "strategy_insight",
+      "insight": "In choppy markets, only 1 strategy fires per symbol per scan. Solo signals routed to sniper via callback still have edge. The strategy pipeline (especially multi_tier_quality) adds real alpha: blind entry WR=56% vs strategy-filtered WR=58-94% depending on sample.",
+      "confidence": 0.85,
+      "evidence": "Live signal scan + replay analysis. Signal flow fix commit 9373a3d. Source: signal_scan.py, clean_replay.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 49
+    },
+    {
+      "ts": 1774489763.0081108,
+      "category": "risk_insight",
+      "insight": "HYPE_BUY losers hit SL within 1-2 bars. Winners take 6-12 bars. If a HYPE_BUY trade survives 5+ bars, it is very likely a slow winner \u2014 HOLD and extend time stop. Do NOT cut early.",
+      "confidence": 0.85,
+      "evidence": "Bar-by-bar resolution analysis on 49 replay trades. Source: clean_replay.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 49
+    },
+    {
+      "ts": 1774489764.0081108,
+      "category": "regime_insight",
+      "insight": "RSI 35-65 is the sweet spot for HYPE_BUY entries (62-64% WR). Oversold (RSI<35) shows only 50% WR \u2014 counterintuitive but validated. RSI 55-65 has highest WR at 64%.",
+      "confidence": 0.8,
+      "evidence": "RSI zone analysis on 84 HYPE_BUY entries over 30 days. Source: deep_edge_analysis.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 84
+    },
+    {
+      "ts": 1774489765.0081108,
+      "category": "meta_insight",
+      "insight": "BTC_BUY shows 56% WR, PF 1.40 over 30 days but is not yet in the sniper filter proven setups. Monitor in sim. BTC_SELL and HYPE_SELL are confirmed negative EV \u2014 hard blocked.",
+      "confidence": 0.85,
+      "evidence": "30-day parameter sweep. BTC_BUY: 36 trades. HYPE_SELL: 0% WR. Source: deep_edge_analysis.py",
+      "source": "quant_backtest_2026_03_26",
+      "validated": true,
+      "validation_count": 36
+    },
+    {
+      "ts": 1774493370.5371282,
+      "category": "correlation_insight",
+      "insight": "BTC >0.5% hourly move predicts HYPE direction next hour with 73% accuracy (63 samples). BTC >1% move = 79% (15 samples). Avg follow: +0.62% up, -0.75% down. Tradeable lead-lag signal.",
+      "confidence": 0.9,
+      "evidence": "30-day 1h correlation on 500 aligned candles",
+      "source": "quant_correlation_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774493459.121772,
+      "category": "strategy_insight",
+      "insight": "BTC lead-lag ONLY works for swing entries (2.5%+ TP, 6x lev, 12h hold). Tight scalps (0.5-1.5% TP) FAIL with BTC trigger \u2014 follow-through takes 6-12 bars. BTC >0.8% trigger + HYPE swing = 77% WR PF 3.72 (13 trades). Do NOT scalp on BTC signals.",
+      "confidence": 0.85,
+      "evidence": "Multi-config backtest: 5 configs x 4 BTC thresholds. Scalps PF<1 across all. Swings PF 3+ at >0.8% threshold.",
+      "source": "quant_leadlag_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774493459.1224174,
+      "category": "execution_insight",
+      "insight": "Pure scalps (0.3-0.8% SL) on HYPE have 40-46% WR without strong directional trigger \u2014 barely profitable via R:R. The edge is in ENTRY TIMING (BTC trigger, regime, time-of-day), not in tight stops. Wider stops with good entries beat tight stops with any entry.",
+      "confidence": 0.85,
+      "evidence": "Multi-edge backtest: 13 configs across 3 symbols. Tight scalps profitable only via volume (159 trades) not WR.",
+      "source": "quant_multi_edge_2026_03_26",
+      "validated": false,
+      "validation_count": -1
+    },
+    {
+      "ts": 1774493590.701022,
+      "category": "execution_insight",
+      "insight": "Exit strategy comparison on same entries: Fixed SL+TP beats trailing stops, partial closes, and scale-out. Tight SL (1.5%) + wide TP (5%) = best return (+5.5%). Trailing stops hit by noise before TP. Partial closes reduce upside. Keep it simple: fixed SL, fixed TP, let it resolve.",
+      "confidence": 0.8,
+      "evidence": "28-trade comparison, 5 exit strategies on identical entries. Source: entry utilization analysis.",
+      "source": "quant_exit_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774493590.7016594,
+      "category": "meta_insight",
+      "insight": "Simple technical filters (SMA+RSI+BTC) produce 21-29% WR. Strategy pipeline produces 53-58% WR. The bot strategies ARE the edge. Simple conditions cannot replicate what multi_tier_quality + ensemble capture. Trust the pipeline, focus on utilizing entries.",
+      "confidence": 0.9,
+      "evidence": "Confluence analysis: 37 trades at 27% WR with basic filters vs 36-39 trades at 53-58% from strategies.",
+      "source": "quant_confluence_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774494476.8347561,
+      "category": "strategy_insight",
+      "insight": "Signal flow: 49% of hours have 1 strategy firing, 17% have 2+, 34% have 0. Solo-signal callback captures the 49% that ensemble rejects. The sniper setup filter (HYPE_BUY) is the real quality gate, not consensus count. Solo signals from proven setups are tradeable.",
+      "confidence": 0.9,
+      "evidence": "100-candle walkthrough of 4 strategies on HYPE 1h data.",
+      "source": "quant_signal_flow_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774495618.569632,
+      "category": "execution_insight",
+      "insight": "12h time stop is optimal at +4.5R net. 3h too early (-0R), 24h diminishing returns (+2.4R). Most winners resolve in 6-12 bars. Time stops at 12h cut only the trades that would have been marginal anyway. The current sim setting (24h, was 12h) could be tightened back to 12h for better risk-adjusted returns.",
+      "confidence": 0.85,
+      "evidence": "Time stop sweep: 8 settings (3h-48h) on 28 entries, net R analysis. 12h = +4.5R, 24h = +2.4R.",
+      "source": "quant_timestop_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774495664.3899477,
+      "category": "strategy_insight",
+      "insight": "Multi-timeframe alignment is critical: 1h+6h aligned = 33% WR, misaligned = 10% WR on HYPE BUY. The multi_tier_quality strategy already gates on 6h EMA alignment \u2014 this validates that gate. Never override 6h misalignment.",
+      "confidence": 0.85,
+      "evidence": "31 trades split by 1h/6h alignment. Aligned 7/21 (33%), misaligned 1/10 (10%).",
+      "source": "quant_mtf_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774495782.4770572,
+      "category": "risk_insight",
+      "insight": "Do NOT stop trading after losses. After 2 consecutive losses, next trade WR = 75% (n=4). Drawdowns of 5-10% recover in 1.5-4 days. The system has positive EV even at 47% WR because R:R is 1.5:1. Pausing after losses would MISS the recovery trades.",
+      "confidence": 0.8,
+      "evidence": "29-trade sim: 9W/10L, 00->21. 3 drawdown recovery events (1.5d, 1.6d, 3.9d avg).",
+      "source": "quant_drawdown_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774496474.2557502,
+      "category": "execution_insight",
+      "insight": "HYPE min SL should be 1.93% (1.5x median 1h range). Current 2.5% is above noise. HYPE after >1% down bars bounces 61% of time (mean reversion edge). Volume support at 37.50 (5% below). US session (14-21 UTC) has highest volume and ranges.",
+      "confidence": 0.85,
+      "evidence": "500 1h candles: range stats, volume profile, momentum autocorrelation. Source: volume_profile.py",
+      "source": "quant_microstructure_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774496474.256516,
+      "category": "symbol_insight",
+      "insight": "BTC min SL is 0.96% (1.5x median range). BTC is tighter than HYPE \u2014 can use tighter stops. Volume support at 70117 (1% below). BTC autocorrelation -0.04 (random walk at 1h). All assets show random walk \u2014 edge is in ENTRY QUALITY not trend riding.",
+      "confidence": 0.85,
+      "evidence": "500 1h candles per symbol. Autocorrelation, range stats, volume profile.",
+      "source": "quant_microstructure_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774496571.6916223,
+      "category": "strategy_insight",
+      "insight": "Strategy weights show vmc_cipher at 0.02 (0% WR on 42 trials) \u2014 effectively dead. regime_trend at 0.32 (25% recent WR) \u2014 struggling. confidence_scorer at 0.36 (45% recent WR) \u2014 decent. mean_reversion at 0.47 (40% recent WR, currently firing on oversold HYPE). multi_tier_quality and monte_carlo_zones at 0.50 (default, no live data yet). Consider disabling vmc_cipher to reduce noise in ensemble voting.",
+      "confidence": 0.85,
+      "evidence": "Strategy weights from ml_data/strategy_weights.json with recent outcomes.",
+      "source": "quant_weights_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774519800.0,
+      "category": "risk_insight",
+      "insight": "After 3+ consecutive red 1h candles on HYPE, next 6h has 79% probability of being up with +1.17% avg gain (n=48). Mean reversion is real and tradeable. After RSI enters 30-35 zone, 3h forward return is 64% up with +0.43% avg (n=28). Entry at RSI<30 is too early \u00e2\u20ac\u201d wait for RSI recovery to 30-35.",
+      "confidence": 0.9,
+      "evidence": "500 1h candles, 49 events of 3+ red streaks, 29 events of RSI 30-35. Forward return analysis.",
+      "source": "quant_mean_reversion_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774519801.0,
+      "category": "execution_insight",
+      "insight": "Solo signals (1-agree) with win_prob < 48% should be blocked. Live losses on 2026-03-25: trades 2&3 had 42% and 40% win prob, both lost. Win_prob < 50% = negative EV after fees. Added win_prob floor gate at 0.48 to sniper filter.",
+      "confidence": 0.95,
+      "evidence": "3 live trades on 2026-03-25: all losses. 2 were solo signals with sub-50% win prob. RSI gate added at <30, >75.",
+      "source": "quant_loss_analysis_2026_03_26",
+      "validated": true,
+      "validation_count": 3
+    },
+    {
+      "ts": 1774519802.0,
+      "category": "strategy_insight",
+      "insight": "RSI zone analysis (500 1h candles): RSI<30 has only 10.3% WR on raw candles (terrible). RSI 30-35 has 12.5% WR but PF 3.03 (rare big winners). RSI 35-50 is best (27.8% WR, PF 1.95). RSI 65-75 surprisingly strong (29.6% WR, PF 2.73). RSI>75 decent WR but thin edge.",
+      "confidence": 0.85,
+      "evidence": "HYPE 1h 500-candle RSI zone analysis with 2.5% SL / 3.75% TP simulation.",
+      "source": "quant_rsi_zones_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774519900.0,
+      "category": "execution_insight",
+      "insight": "TP/Hold optimization grid (500 1h candles, SMA20 filter): 12h hold with 2.5% TP is the optimal balanced config (+37R total, 56% WR). Current config (3.75% TP, 24h hold) yields +32R at 45% WR. 24h hold only wins at 5% TP (+53R) but WR drops to 44%. 3h hold is suboptimal at ALL TP targets. For scalp-focused trading, consider 2.5% TP with 12h hold. For max R, keep 5% TP with 24h hold.",
+      "confidence": 0.85,
+      "evidence": "7-TP x 4-hold grid optimization on 500 1h HYPE candles with 2.5% SL and SMA20 filter.",
+      "source": "quant_tp_hold_optimization_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774520000.0,
+      "category": "risk_insight",
+      "insight": "CRITICAL: MIN_SIGNAL_EV in .env is 0.03 (default 0.08). At 0.03 the EV gate blocks NOTHING \u00e2\u20ac\u201d trades with actual negative EV (42% WR, EV=-0.13) pass through. This is the #1 reason bad trades execute. Raise to 0.08 minimum. Also: ensemble win_prob deflation uses regime-dependent factors (e.g., 2-agree consolidation = 0.65x deflation). A 70% confidence becomes 45.5% win prob after deflation. Add a win_prob >= 0.48 gate to the signal pipeline to catch these.",
+      "confidence": 0.95,
+      "evidence": "Analysis of ensemble.py lines 1689-1748, signal_pipeline.py gates 1c/1d, and 3 live losing trades. EV at 42% WR with 1.2 R:R and 1% fee drag = -0.129.",
+      "source": "quant_ev_gate_analysis_2026_03_26",
+      "validated": true,
+      "validation_count": 3
+    },
+    {
+      "ts": 1774560000.0,
+      "category": "strategy_insight",
+      "insight": "COMBO SIGNAL: BTC RSI<20 AND HYPE alpha >0.5% = 100% WR at 3-6h (3 events, avg +4.04% at 6h, MFE 5.91%). Wider sample BTC RSI<30 + alpha>1% = 100% WR at 6h (6/6), avg +1.92%. Edge DIES by 24h. This is a 3-12h scalp/medium-hold, NOT a trend trade. Optimal params: 2.5% SL, 3.75% TP, 12h time stop.",
+      "confidence": 0.85,
+      "evidence": "500 1h candle backtest, 3 exact matches + 7 wider matches. Forward return analysis at 1/3/6/12/24h horizons.",
+      "source": "quant_oversold_alpha_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774560100.0,
+      "category": "risk_insight",
+      "insight": "SOL RSI<10 is a DEATH TRAP \u00e2\u20ac\u201d 0% up-rate at 6h (n=6), avg -4.73% at 24h. SOL RSI<20 = -1.52% at 12h with 7% WR. MFE only +0.59% vs MAE -1.94%. SOL extreme oversold is a CONTINUATION signal, not reversal. NEVER buy SOL at RSI<20.",
+      "confidence": 0.9,
+      "evidence": "500 1h candle cross-asset analysis. 6 events RSI<10, 28 events RSI<20.",
+      "source": "quant_cross_asset_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774560101.0,
+      "category": "strategy_insight",
+      "insight": "HYPE decoupling signal: when HYPE alpha >1% while BTC drops >1% (n=21), HYPE is 85% up at 6h (+1.33% avg). After BTC panic (4h drop >2%, n=14), HYPE averages +2.07% at 6h. BTC panic is a HYPE-specific long trigger. Also: BTC RSI<15 predicts continued decline, NOT bounce.",
+      "confidence": 0.85,
+      "evidence": "500 1h candle cross-asset study, 21 decoupling events, 14 BTC panic events.",
+      "source": "quant_cross_asset_2026_03_26",
+      "validated": false,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774560102.0,
+      "category": "risk_insight",
+      "insight": "CRITICAL BUG FOUND: multi_tier_quality had 0.50 weight (MAXIMUM) via Laplace smoothing on zero trials, despite causing ALL 3 live losses. Zero-trial strategies got more voting power than proven performers. Fixed: zero-trial default 0.50\u00e2\u2020\u20190.30, multi_tier seeded with 0/3 record (weight 0.20).",
+      "confidence": 0.95,
+      "evidence": "Strategy weights analysis. multi_tier_quality was primary_driver on all 3 live losing trades totaling -$19.16.",
+      "source": "quant_weight_bug_2026_03_26",
+      "validated": true,
+      "validation_count": 3
+    },
+    {
+      "ts": 1774632061.0933475,
+      "category": "strategy_insight",
+      "insight": "HYPE_BUY edge trend: WEAKENING (-24.0pp). Overall: 418 trades, WR=51.7%, PF=1.34. First third WR=64.0%, last third WR=40.0%.",
+      "confidence": 0.85,
+      "evidence": "500 1h candle edge decay analysis, 418 trades split into thirds.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 420
+    },
+    {
+      "ts": 1774632062.0933475,
+      "category": "execution_insight",
+      "insight": "HYPE BUY entry timing: best=open_next (PF=1.38, WR=51.3%), worst=vwap_proxy (PF=1.25). Entry price method matters 0.13 PF difference.",
+      "confidence": 0.8,
+      "evidence": "5 entry methods compared on 417 HYPE BUY trades.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 417
+    },
+    {
+      "ts": 1774632063.0933475,
+      "category": "regime_insight",
+      "insight": "HYPE volatility regime edge: best=High Vol (P50-P75) (PF=3.51, WR=73.9%), worst=Extreme (>P90) (PF=0.65). Trade when vol is High Vol (P50-P75).",
+      "confidence": 0.85,
+      "evidence": "500 1h candles bucketed by ATR percentile.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 111
+    },
+    {
+      "ts": 1774632063.0933475,
+      "category": "regime_insight",
+      "insight": "SOL volatility regime edge: best=Normal (P25-P50) (PF=1.75, WR=61.5%), worst=Extreme (>P90) (PF=0.39). Trade when vol is Normal (P25-P50).",
+      "confidence": 0.85,
+      "evidence": "500 1h candles bucketed by ATR percentile.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 96
+    },
+    {
+      "ts": 1774632063.0933475,
+      "category": "regime_insight",
+      "insight": "BTC volatility regime edge: best=Very High (P75-P90) (PF=3.13, WR=66.2%), worst=Normal (P25-P50) (PF=0.59). Trade when vol is Very High (P75-P90).",
+      "confidence": 0.85,
+      "evidence": "500 1h candles bucketed by ATR percentile.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 71
+    },
+    {
+      "ts": 1774632064.0933475,
+      "category": "correlation_insight",
+      "insight": "HYPE BUY edge by BTC correlation: best regime=Medium (0.5-0.7) (PF=2.05, WR=59.5%, 158 trades). Correlation regime affects profitability.",
+      "confidence": 0.8,
+      "evidence": "Rolling 24h BTC-HYPE correlation bucketed, HYPE BUY backtested per bucket.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 158
+    },
+    {
+      "ts": 1774632065.0933475,
+      "category": "strategy_insight",
+      "insight": "Signal clustering: MARGINAL - near random. After WIN: 55.2% WR. After LOSS: 46.2% WR. Autocorrelation(1)=0.090. Keep position sizing constant.",
+      "confidence": 0.8,
+      "evidence": "Sequential trade analysis on HYPE BUY, win/loss streaks.",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 0
+    },
+    {
+      "ts": 1774632066.0933475,
+      "category": "execution_insight",
+      "insight": "Fee impact: at 5x leverage, fees add +1.1pp to breakeven WR (BE=41.1%). At 10x, +1.1pp (BE=41.1%). Use limit orders (0.02% maker) to halve fee drag.",
+      "confidence": 0.95,
+      "evidence": "Mathematical fee analysis at Hyperliquid rates (0.02% maker, 0.05% taker).",
+      "source": "quant_edge_study_2026_03_25",
+      "validated": true,
+      "validation_count": 0
     }
   ]
 }

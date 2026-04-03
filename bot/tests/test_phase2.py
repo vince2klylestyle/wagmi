@@ -144,6 +144,7 @@ class TestOnePositionPerSymbol:
         )
         # Force close
         pm.force_close("BTC", 96.0, "TEST")
+        pm._last_close_time.clear()  # Clear cooldown for test
 
         # Now should be able to open again
         pos2 = pm.open_position(

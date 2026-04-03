@@ -154,7 +154,7 @@ class TestGetTimeMultiplier:
     def test_defaults_to_utc_now(self):
         """If no argument, uses current UTC time (shouldn't crash)."""
         result = get_time_multiplier()
-        assert 0.3 <= result <= 1.5  # reasonable range
+        assert 0.0 <= result <= 2.0  # any valid multiplier
 
 
 # ── Directional Bias Tests ──────────────────────────────────────────

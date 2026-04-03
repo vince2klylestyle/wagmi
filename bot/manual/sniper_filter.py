@@ -127,6 +127,13 @@ class ManualSniperFilter:
         self._micro_sniper_date: Optional[date] = None
         # Pre-trade quality scorecard (prevents junk entries)
         self._scorecard = TradeScorecard()
+        # Reflection engine for re-entry quality analysis
+        self._reflection_engine = None
+        try:
+            from llm.reflection_engine import ReflectionEngine
+            self._reflection_engine = ReflectionEngine()
+        except Exception:
+            pass
         # Kelly sizing optimizer (optional — enhances fixed % risk with data-driven sizing)
         self._sizing_optimizer = None
         try:
@@ -429,10 +436,10 @@ class ManualSniperFilter:
         _is_prime_hours = (current_hour >= 18 or current_hour < 6)  # 18-06 UTC
 
         # ── Gate 3: Regime filter (ALL setups in dangerous regimes) ──
-        # Our 2 sim losses were in "high_volatility" and "unknown" regimes.
-        # Even proven setups lose in bad regimes. Require extra confidence.
+        # Only block in truly dangerous regimes. "unknown" is just missing data,
+        # not an actual dangerous regime — was blocking 102 high-conf signals.
         regime_lower = regime.lower()
-        _dangerous_regimes = {"panic", "high_volatility", "unknown"}
+        _dangerous_regimes = {"panic", "high_volatility"}
         if regime_lower in _dangerous_regimes:
             if confidence < 85 or num_agree < 3:
                 self._log_rejection(signal, f"dangerous_regime_{regime_lower}_conf{confidence:.0f}_agree{num_agree}")
@@ -587,6 +594,32 @@ class ManualSniperFilter:
             self._log_rejection(signal, f"scorecard_{effective_score}_min{min_threshold}")
             return None
 
+        # ── Reflection Engine: re-entry quality check ──
+        _refl_size_mult = 1.0
+        if self._reflection_engine is not None:
+            try:
+                _refl_score = self._reflection_engine.get_entry_quality_score(
+                    symbol=signal.symbol, side=signal.side,
+                    entry_price=signal.entry, confidence=confidence,
+                    regime=regime, atr=getattr(signal, 'atr', 0) or 0,
+                    win_prob=meta.get("win_prob", 0),
+                )
+                if _refl_score["advisory"] == "WEAK":
+                    logger.info(
+                        f"[SNIPER] REFLECT: WEAK entry SKIPPED (score={_refl_score['quality_score']}) "
+                        f"codes=[{','.join(_refl_score['codes'])}]"
+                    )
+                    self._log_rejection(signal, f"reflect_weak_{_refl_score['quality_score']}")
+                    return None
+                elif _refl_score["advisory"] == "CAUTION":
+                    _refl_size_mult = 0.75
+                    logger.info(
+                        f"[SNIPER] REFLECT: CAUTION entry (score={_refl_score['quality_score']}) "
+                        f"codes=[{','.join(_refl_score['codes'])}] — size * 0.75"
+                    )
+            except Exception:
+                pass
+
         # ── In aggressive mode, skip STANDARD tier entirely ──
         if self.config.mode == "aggressive" and tier == "STANDARD":
             self._log_rejection(signal, "aggressive_standard_skip")
@@ -648,7 +681,7 @@ class ManualSniperFilter:
             # Leverage: scale between min/max based on confidence
             conf_frac = min(1.0, max(0.0, (confidence - 80) / 20.0))  # 80→0, 100→1
             leverage = mc.micro_sniper_min_leverage + conf_frac * (mc.micro_sniper_max_leverage - mc.micro_sniper_min_leverage)
-            leverage = round(min(leverage, mc.micro_sniper_max_leverage), 1)
+            leverage = round(min(leverage, mc.micro_sniper_max_leverage, self.config.max_sniper_leverage), 1)
             position_size_usd = risk_amount / stop_width_pct if stop_width_pct > 0 else 0
             margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
 
@@ -763,7 +796,7 @@ class ManualSniperFilter:
         if _conviction_result is not None:
             risk_pct = _conviction_result.risk_pct
             risk_amount = _conviction_result.risk_amount
-            leverage = _conviction_result.leverage
+            leverage = min(_conviction_result.leverage, self.config.max_sniper_leverage)
             position_size_usd = _conviction_result.position_notional
             margin_required = _conviction_result.margin_required
             qty = _conviction_result.qty
@@ -785,7 +818,7 @@ class ManualSniperFilter:
                 )
                 risk_pct = _opt_sizing.risk_pct
                 risk_amount = _opt_sizing.risk_amount
-                leverage = _opt_sizing.leverage  # Override with Kelly-optimal leverage
+                leverage = min(_opt_sizing.leverage, self.config.max_sniper_leverage)  # Override with Kelly-optimal leverage, capped
                 position_size_usd = _opt_sizing.position_size_usd
                 margin_required = _opt_sizing.margin_required
                 _kelly_rationale = _opt_sizing.rationale
@@ -872,6 +905,13 @@ class ManualSniperFilter:
         position_size_usd *= score_size_mult
         qty *= score_size_mult
         risk_amount *= score_size_mult
+
+        # Apply reflection engine sizing (re-entry quality)
+        if _refl_size_mult < 1.0:
+            position_size_usd *= _refl_size_mult
+            qty *= _refl_size_mult
+            risk_amount *= _refl_size_mult
+
         margin_required = position_size_usd / leverage if leverage > 0 else position_size_usd
 
         # Apply scorecard size factor (50-69 = half size, 70+ = full)

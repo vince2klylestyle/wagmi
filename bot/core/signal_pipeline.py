@@ -424,15 +424,36 @@ class RiskFilterChain:
                     # Lowered from 0.90 to 0.85 — 3 correlated longs at 0.85+ all
                     # stop out in a dump, creating compounded drawdown.
                     if cluster_risk >= 0.85:
-                        _reason = (f"Correlation cluster risk {cluster_risk:.2f} >= 0.85 "
-                                   f"(too many correlated positions in same direction)")
-                        _log_rejection(signal, "correlation", _reason)
-                        self._log_signal_filtered(signal, "correlation", _reason)
-                        return FilterResult(
-                            approved=False, signal=signal,
-                            rejection_reason=_reason,
-                            metadata=meta,
+                        # Market-wide move override: if 3+ DIFFERENT symbols all
+                        # signal the same direction, this is a regime event (e.g.,
+                        # broad selloff), not a diversification problem. Allow it.
+                        unique_symbols = set(positions_map.keys())
+                        directions = set(positions_map.values())
+                        is_market_wide = (
+                            len(unique_symbols) >= 3
+                            and len(directions) == 1  # all same direction
                         )
+                        if is_market_wide:
+                            _dir = list(directions)[0]
+                            logger.info(
+                                f"[CORR-GUARD] OVERRIDE: market-wide {_dir.upper()} "
+                                f"({len(unique_symbols)} symbols agree: "
+                                f"{', '.join(sorted(unique_symbols))}) "
+                                f"— allowing {signal.symbol} through"
+                            )
+                            meta["corr_guard_override"] = "market_wide_move"
+                            meta["market_wide_direction"] = _dir
+                            meta["market_wide_symbols"] = len(unique_symbols)
+                        else:
+                            _reason = (f"Correlation cluster risk {cluster_risk:.2f} >= 0.85 "
+                                       f"(too many correlated positions in same direction)")
+                            _log_rejection(signal, "correlation", _reason)
+                            self._log_signal_filtered(signal, "correlation", _reason)
+                            return FilterResult(
+                                approved=False, signal=signal,
+                                rejection_reason=_reason,
+                                metadata=meta,
+                            )
                     elif cluster_risk >= 0.70:
                         # Don't reject, but reduce risk multiplier by 30%
                         meta["correlation_size_reduction"] = 0.7
@@ -898,17 +919,34 @@ class RiskFilterChain:
                     cluster_risk = corr_matrix.get_cluster_risk(positions_map)
                     meta["cluster_risk"] = round(cluster_risk, 3)
 
+                    # Market-wide move override (same logic as hard gate)
+                    unique_symbols = set(positions_map.keys())
+                    directions = set(positions_map.values())
+                    is_market_wide = (
+                        len(unique_symbols) >= 3
+                        and len(directions) == 1
+                    )
+
+                    corr_passed = cluster_risk < 0.85 or is_market_wide
+                    if is_market_wide and cluster_risk >= 0.85:
+                        meta["corr_guard_override"] = "market_wide_move"
+                        meta["market_wide_direction"] = list(directions)[0]
+                        meta["market_wide_symbols"] = len(unique_symbols)
+
                     annotations.append(FilterAnnotation(
                         gate="correlation",
-                        passed=cluster_risk < 0.85,
-                        severity="reject" if cluster_risk >= 0.85 else (
-                            "warning" if cluster_risk >= 0.70 else "ok"),
+                        passed=corr_passed,
+                        severity="ok" if corr_passed else (
+                            "reject" if cluster_risk >= 0.85 else (
+                                "warning" if cluster_risk >= 0.70 else "ok")),
                         value=round(cluster_risk, 3),
                         threshold=0.85,
-                        detail=f"corr={cluster_risk:.2f}",
+                        detail=(f"corr={cluster_risk:.2f} (market-wide override)"
+                                if is_market_wide and cluster_risk >= 0.85
+                                else f"corr={cluster_risk:.2f}"),
                     ))
 
-                    if cluster_risk >= 0.70:
+                    if cluster_risk >= 0.70 and not is_market_wide:
                         meta["correlation_size_reduction"] = 0.7
             except Exception as e:
                 logger.debug(f"[CORR-GUARD] Error: {e}")

@@ -262,14 +262,15 @@ class TestRejectionStats:
 
 
 class TestOpenPositionIntegration:
-    def test_open_position_rejects_tiny_order(self):
-        """open_position returns error for sub-minimum orders."""
+    def test_open_position_bumps_tiny_order_to_minimum(self):
+        """open_position bumps sub-minimum orders to meet exchange minimums."""
         ex = OrderExecutor(mode="paper")
         ex.set_sanity_context(account_equity=1000.0, max_leverage=15.0)
         result = ex.open_position("SOL", "BUY", qty=0.001, price=100.0, leverage=2)
-        # qty=0.001 is below min_qty for SOL, caught by existing check or sanity
-        # Either way, should not be a successful fill
-        assert not result.filled
+        # qty=0.001 is below min_qty for SOL (0.1) and below $10 notional.
+        # The MIN_NOTIONAL floor bumps qty up so the order fills.
+        assert result.filled
+        assert result.fill_qty >= 0.1  # At least min_qty for SOL
 
     def test_open_position_rejects_high_leverage(self):
         """open_position returns error for excessive leverage."""

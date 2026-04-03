@@ -1,11 +1,38 @@
 {
   "recent_outcomes": [
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+    true,
+    true,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false,
     false
   ],
   "regime_wr": {
     "trending": {
-      "wins": 0,
+      "wins": 1,
+      "total": 2
+    },
+    "illiquid": {
+      "wins": 1,
       "total": 1
+    },
+    "ranging": {
+      "wins": 0,
+      "total": 2
     }
   }
 }

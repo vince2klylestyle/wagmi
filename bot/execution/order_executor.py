@@ -266,7 +266,29 @@ class OrderExecutor:
         qty = round_qty(symbol, qty)
         min_qty = get_min_qty(symbol)
         if qty < min_qty:
-            return OrderResult(error=f"Qty {qty} below minimum {min_qty} for {symbol}")
+            qty = min_qty  # Bump up to exchange minimum (don't reject)
+
+        # After rounding, ensure notional meets exchange minimum ($10).
+        # round_qty uses ROUND_DOWN which can push notional below minimum.
+        _notional_check = qty * price
+        if _notional_check < MIN_NOTIONAL_USD and price > 0:
+            _floor_qty = MIN_NOTIONAL_USD * 1.05 / price  # 5% margin
+            _floor_qty = round_qty(symbol, _floor_qty)
+            if _floor_qty < min_qty:
+                _floor_qty = min_qty
+            # Only bump if the floor qty notional actually meets minimum
+            if _floor_qty * price >= MIN_NOTIONAL_USD:
+                logger.info(
+                    f"[ORDER] MIN_NOTIONAL floor: {symbol} qty {qty} -> {_floor_qty} "
+                    f"(notional ${_notional_check:.2f} -> ${_floor_qty * price:.2f})"
+                )
+                qty = _floor_qty
+            # If even the floor qty doesn't meet minimum after rounding, reject
+            if qty * price < MIN_NOTIONAL_USD:
+                return OrderResult(
+                    error=f"Qty {qty} * price {price} = ${qty * price:.2f} "
+                    f"below minimum ${MIN_NOTIONAL_USD} for {symbol}"
+                )
 
         if price <= 0:
             return OrderResult(error=f"Invalid price: {price}")

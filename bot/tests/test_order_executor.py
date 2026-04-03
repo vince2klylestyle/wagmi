@@ -100,11 +100,12 @@ class TestValidation:
         assert not result.filled
         assert "Unknown symbol" in result.error
 
-    def test_zero_qty_rejected(self):
-        # round_qty rounds down, so 0.0001 for BTC (min_qty=0.001) rounds to 0.00010
+    def test_tiny_qty_bumped_to_minimum(self):
+        # qty=0.0001 for BTC is below min_qty=0.001 and below $10 notional.
+        # The MIN_NOTIONAL floor bumps it up to at least min_qty so it fills.
         result = self.executor.open_position("BTC", "BUY", qty=0.0001, price=50000.0)
-        assert not result.filled
-        assert "below minimum" in result.error
+        assert result.filled
+        assert result.fill_qty >= 0.001  # At least min_qty for BTC
 
     def test_zero_price_rejected(self):
         result = self.executor.open_position("BTC", "BUY", qty=0.001, price=0.0)

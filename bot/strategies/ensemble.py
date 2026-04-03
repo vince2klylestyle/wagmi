@@ -1251,25 +1251,16 @@ class EnsembleStrategy:
         # confidence_scorer: solo ONLY on HYPE (PF=2.65). Bad on BTC (PF=0.0) and SOL (PF=0.23).
         _PROVEN_SOLO_STRATEGIES = {"probability_engine", "bollinger_squeeze", "vmc_cipher", "monte_carlo_zones"}  # mean_reversion removed: zero validated trades, no proven solo edge
         _HYPE_SOLO_STRATEGIES = {"confidence_scorer"}  # Solo edge only on HYPE
-        _SOLO_CONF_THRESHOLD = 62.0  # Lowered from 66 — vmc_cipher 82% WR, BB 78% WR justify lower bar
+        _SOLO_CONF_THRESHOLD = 75.0  # Raised: 62 let through too many losers. Only high-conviction solos.
         # Symbol+regime combos where solo signals have validated edge
-        # Aggressive mode: full size on all solo signals for data collection
+        # Only allow solo trades in trending regimes with high confidence
+        # Ranging regime solo trades have been consistent losers (-$7 net from trade data)
         _SYMBOL_REGIME_SOLO = {
-            ("BTC", "ranging"):        {"min_conf": 30.0, "risk_mult": 1.0},
-            ("BTC", "consolidation"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("BTC", "trend"):          {"min_conf": 30.0, "risk_mult": 1.0},
-            ("BTC", "trending_bull"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("BTC", "trending_bear"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("SOL", "consolidation"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("SOL", "ranging"):        {"min_conf": 30.0, "risk_mult": 1.0},
-            ("HYPE", "consolidation"): {"min_conf": 30.0, "risk_mult": 1.0},
-            ("HYPE", "ranging"):       {"min_conf": 30.0, "risk_mult": 1.0},
-            ("HYPE", "trend"):         {"min_conf": 30.0, "risk_mult": 1.0},
-            ("ETH", "ranging"):        {"min_conf": 30.0, "risk_mult": 1.0},
-            ("ETH", "consolidation"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("ETH", "trend"):          {"min_conf": 30.0, "risk_mult": 1.0},
-            ("ETH", "trending_bull"):  {"min_conf": 30.0, "risk_mult": 1.0},
-            ("ETH", "trending_bear"):  {"min_conf": 30.0, "risk_mult": 1.0},
+            ("BTC", "trend"):          {"min_conf": 75.0, "risk_mult": 0.5},
+            ("BTC", "trending_bull"):  {"min_conf": 75.0, "risk_mult": 0.5},
+            ("BTC", "trending_bear"):  {"min_conf": 75.0, "risk_mult": 0.5},
+            ("SOL", "trend"):          {"min_conf": 75.0, "risk_mult": 0.5},
+            ("HYPE", "trend"):         {"min_conf": 75.0, "risk_mult": 0.5},
         }
 
         if len(buy_signals) < min_v and len(sell_signals) < min_v:
@@ -1301,6 +1292,29 @@ class EnsembleStrategy:
                     f"conf={lone_signals[0].confidence:.0f}% (0.4x size)"
                 )
                 _allowed = True
+
+            # Path 1c: Regime momentum solo — when regime is strongly directional
+            # and the solo signal aligns with regime direction, allow at half size.
+            # Counterfactual: 100% of SELL signals in regime -2 were correct on 2026-04-01.
+            if not _allowed and lone_signals and len(lone_signals) == 1:
+                _regime = self._current_regime.get(symbol, "unknown")
+                _regime_4h = self._current_regime_4h.get(symbol)
+                _sig = lone_signals[0]
+                # Strong bear regime + SELL signal, or strong bull + BUY signal
+                _strong_regimes_bear = {"trending_bear"}
+                _strong_regimes_bull = {"trending_bull"}
+                _regime_aligned = (
+                    (_sig.side == "SELL" and _regime in _strong_regimes_bear) or
+                    (_sig.side == "BUY" and _regime in _strong_regimes_bull)
+                )
+                if _regime_aligned and _sig.confidence >= 70.0:
+                    _sig.metadata["regime_momentum_solo"] = True
+                    _sig.metadata["risk_mult_override"] = 0.5
+                    logger.info(
+                        f"[{symbol}] Regime momentum solo: {_sig.strategy} {_sig.side} "
+                        f"regime={_regime} conf={_sig.confidence:.0f}% (0.5x size)"
+                    )
+                    _allowed = True
 
             # Path 2: Symbol+regime edge (solo signals in validated combos)
             if not _allowed and lone_signals:
@@ -1951,10 +1965,9 @@ class EnsembleStrategy:
                     pass
 
             if not _ev_override:
-                # Aggressive mode: let negative EV signals through for data collection
-                # Kelly sizing controls risk, we need trade volume
-                logger.info(f"[ENSEMBLE] {symbol} {side} negative EV ALLOWED (aggressive mode)")
-            # Continue to signal construction
+                logger.info(f"[ENSEMBLE] {symbol} {side} negative EV BLOCKED — no override")
+                return None
+            # Continue to signal construction (EV calibrator override active)
 
         # Propagate chop_score from input signals (attached by chop detector pre-merge)
         _chop_score = max(

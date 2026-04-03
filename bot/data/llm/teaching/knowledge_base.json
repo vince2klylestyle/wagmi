@@ -1694,6 +1694,661 @@
         "playbook"
       ],
       "source": "student_course"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 47% win rate (30 trades)",
+      "confidence": 1.1,
+      "evidence_count": 17,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774589487.9522927,
+      "last_validated": 1774640568.9281757,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 48% win rate (31 trades)",
+      "confidence": 1.12,
+      "evidence_count": 52,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774646097.331306,
+      "last_validated": 1774824325.9955332,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 52% win rate (33 trades)",
+      "confidence": 1.1600000000000001,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774827097.1179967,
+      "last_validated": 1774833318.0496013,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 50% win rate (34 trades)",
+      "confidence": 1.1800000000000002,
+      "evidence_count": 18,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774838860.912257,
+      "last_validated": 1775009733.5381901,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 49% win rate (35 trades)",
+      "confidence": 1.2,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775016023.7628608,
+      "last_validated": 1775020758.0917988,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System struggles in  regime (33% WR)",
+      "confidence": 0.6666666666666667,
+      "evidence_count": 24,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775025552.835997,
+      "last_validated": 1775236154.2624693,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "unfavorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 47% win rate (36 trades)",
+      "confidence": 1.22,
+      "evidence_count": 8,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775025552.8386378,
+      "last_validated": 1775052586.047832,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System struggles in  regime (25% WR)",
+      "confidence": 0.7,
+      "evidence_count": 8,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775058161.4781928,
+      "last_validated": 1775179331.1546574,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "unfavorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 46% win rate (37 trades)",
+      "confidence": 1.24,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775058161.4843612,
+      "last_validated": 1775063683.1522708,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System struggles in  regime (20% WR)",
+      "confidence": 0.7,
+      "evidence_count": 9,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775068868.9028897,
+      "last_validated": 1775097335.5209463,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "unfavorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "Overconfidence detected: 3 high-conf trades lost",
+      "confidence": 0.6,
+      "evidence_count": 36,
+      "supporting": [
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence",
+        "3 losses at >80% confidence"
+      ],
+      "contradicting": [],
+      "created_at": 1775068868.9056735,
+      "last_validated": 1775236154.2669878,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "calibration",
+      "tags": [
+        "overconfident"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 44% win rate (39 trades)",
+      "confidence": 1.28,
+      "evidence_count": 9,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775068868.908298,
+      "last_validated": 1775097335.5264792,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 45% win rate (40 trades)",
+      "confidence": 1.3,
+      "evidence_count": 2,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775100542.4609325,
+      "last_validated": 1775109104.581302,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 45% win rate (42 trades)",
+      "confidence": 1.3399999999999999,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775112543.0641613,
+      "last_validated": 1775116009.0695524,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 47% win rate (43 trades)",
+      "confidence": 1.3599999999999999,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775129783.068551,
+      "last_validated": 1775129783.0685515,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System performs well in  regime (67% WR)",
+      "confidence": 0.6666666666666666,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775129967.8428202,
+      "last_validated": 1775131803.6545343,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "favorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 67% win rate (3 trades)",
+      "confidence": 0.56,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775129967.8456247,
+      "last_validated": 1775131803.6575017,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 48% win rate (44 trades)",
+      "confidence": 1.38,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775133332.2774801,
+      "last_validated": 1775137074.7490194,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System performs well in  regime (75% WR)",
+      "confidence": 0.7,
+      "evidence_count": 2,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775133644.304453,
+      "last_validated": 1775137369.9749603,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "favorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 75% win rate (4 trades)",
+      "confidence": 0.58,
+      "evidence_count": 2,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775133644.3074143,
+      "last_validated": 1775137369.9781716,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 60% win rate (5 trades)",
+      "confidence": 0.6,
+      "evidence_count": 3,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775139239.5884516,
+      "last_validated": 1775144742.1360288,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 47% win rate (45 trades)",
+      "confidence": 1.4,
+      "evidence_count": 1,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775140865.0785155,
+      "last_validated": 1775144287.9633253,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "SOL performing poorly (25% WR, 4 trades, $+58)",
+      "confidence": 0.75,
+      "evidence_count": 1,
+      "supporting": [
+        "1/4 wins"
+      ],
+      "contradicting": [],
+      "created_at": 1775146612.4741912,
+      "last_validated": 1775146612.4741914,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "symbol",
+      "tags": [
+        "SOL",
+        "weak"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 50% win rate (6 trades)",
+      "confidence": 0.62,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775146612.4771898,
+      "last_validated": 1775146612.4771898,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 45% win rate (47 trades)",
+      "confidence": 1.44,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775148084.0199506,
+      "last_validated": 1775148084.019951,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "SOL performing poorly (20% WR, 5 trades, $+48)",
+      "confidence": 0.8,
+      "evidence_count": 1,
+      "supporting": [
+        "1/5 wins"
+      ],
+      "contradicting": [],
+      "created_at": 1775148521.9150295,
+      "last_validated": 1775148521.9150298,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "symbol",
+      "tags": [
+        "SOL",
+        "weak"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 33% win rate (6 trades)",
+      "confidence": 0.62,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775148521.9238834,
+      "last_validated": 1775148521.9238837,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "hypothesis",
+      "content": "High leverage (5x+) trades losing at 67% - consider capping leverage",
+      "confidence": 0.5,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775148521.93023,
+      "last_validated": 1775148521.93023,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "risk",
+      "tags": [
+        "leverage",
+        "risk"
+      ],
+      "source": "causal_analysis"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 46% win rate (48 trades)",
+      "confidence": 1.46,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775151274.0003653,
+      "last_validated": 1775151274.0003655,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 45% win rate (49 trades)",
+      "confidence": 1.48,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775158337.5154278,
+      "last_validated": 1775158337.515428,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 33% win rate (3 trades)",
+      "confidence": 0.56,
+      "evidence_count": 6,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775161054.4107184,
+      "last_validated": 1775198343.8477845,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 44% win rate (50 trades)",
+      "confidence": 1.5,
+      "evidence_count": 6,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775162237.2634747,
+      "last_validated": 1775192649.2812502,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "SOL performing poorly (25% WR, 4 trades, $+1)",
+      "confidence": 0.75,
+      "evidence_count": 7,
+      "supporting": [
+        "1/4 wins",
+        "1/4 wins",
+        "1/4 wins",
+        "1/4 wins",
+        "1/4 wins",
+        "1/4 wins",
+        "1/4 wins"
+      ],
+      "contradicting": [],
+      "created_at": 1775168442.368889,
+      "last_validated": 1775179331.1510596,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "symbol",
+      "tags": [
+        "SOL",
+        "weak"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 25% win rate (4 trades)",
+      "confidence": 0.58,
+      "evidence_count": 6,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775168442.3768058,
+      "last_validated": 1775179331.158614,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "System struggles in  regime (35% WR)",
+      "confidence": 0.65,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775196446.9134781,
+      "last_validated": 1775196446.9134781,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "regime",
+      "tags": [
+        "",
+        "unfavorable"
+      ],
+      "source": "pattern_recognition"
+    },
+    {
+      "knowledge_type": "observation",
+      "content": "1-strategy agreement: 42% win rate (50 trades)",
+      "confidence": 1.5,
+      "evidence_count": 5,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1775196446.921174,
+      "last_validated": 1775236154.274151,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "strategy",
+      "tags": [
+        "agree_1"
+      ],
+      "source": "pattern_recognition"
     }
   ]
 }

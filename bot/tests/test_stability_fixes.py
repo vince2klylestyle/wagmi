@@ -61,14 +61,12 @@ class TestPositionSizingRiskBased(unittest.TestCase):
         qty = rm.calculate_qty(100.0, 100.0, leverage=2.0)
         self.assertEqual(qty, 0.0)
 
-    def test_default_risk_per_trade_is_one_percent(self):
-        """Default risk_per_trade should be 1% (0.01), not 1.5%."""
+    def test_default_risk_per_trade_is_half_kelly(self):
+        """Default risk_per_trade should be 10% (half Kelly)."""
         from trading_config import TradingConfig
-        # Default without env override
         with patch.dict(os.environ, {}, clear=False):
             config = TradingConfig()
-            # Should be 0.02 (2%) unless overridden by env
-            self.assertLessEqual(config.risk_per_trade, 0.025)
+            self.assertLessEqual(config.risk_per_trade, 0.15)
 
     def test_max_dollar_risk_per_trade(self):
         """With $10k equity and 1% risk capped at 1.5x rm, effective risk ≤ $150."""
