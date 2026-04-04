@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": 1775283590.5808778,
+  "updated_at": 1775314811.8257205,
   "scenarios": [
     {
       "id": "cf_1774470140_6aa484a8",
@@ -616,6 +616,50 @@
         "actual_pnl_raw": -17.657829364731064,
         "pnl_at_tp1_pct": 0.5254,
         "pnl_at_tp2_pct": 1.3404
+      }
+    },
+    {
+      "id": "cf_1775313701_ba3cfeb7",
+      "timestamp": 1775313701.030773,
+      "symbol": "BTC",
+      "scenario_type": "exit_timing",
+      "actual_action": "SL",
+      "counterfactual_action": "exit_at_tp1",
+      "actual_pnl": -0.0016104605469154766,
+      "counterfactual_pnl": 0.5835027453692387,
+      "delta": 0.5851132059161542,
+      "resolved": true,
+      "metadata": {
+        "side": "long",
+        "entry_price": 67094.8,
+        "actual_exit_price": 66989.5,
+        "tp1_price": 67486.3,
+        "tp2_price": 67871.0,
+        "actual_pnl_raw": -1.0805352830318453,
+        "pnl_at_tp1_pct": 0.5835,
+        "pnl_at_tp2_pct": 1.1569
+      }
+    },
+    {
+      "id": "cf_1775314811_796e329c",
+      "timestamp": 1775314811.825698,
+      "symbol": "SOL",
+      "scenario_type": "exit_timing",
+      "actual_action": "SL",
+      "counterfactual_action": "exit_at_tp1",
+      "actual_pnl": -0.45855325424902016,
+      "counterfactual_pnl": 0.8236573385494207,
+      "delta": 1.2822105927984409,
+      "resolved": true,
+      "metadata": {
+        "side": "short",
+        "entry_price": 80.009,
+        "actual_exit_price": 80.3125,
+        "tp1_price": 79.35,
+        "tp2_price": 78.682,
+        "actual_pnl_raw": -0.36688387319209853,
+        "pnl_at_tp1_pct": 0.8237,
+        "pnl_at_tp2_pct": 1.6586
       }
     }
   ]

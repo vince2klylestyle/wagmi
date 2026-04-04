@@ -188,7 +188,7 @@
       "evidence": "Multi-edge backtest: 13 configs across 3 symbols. Tight scalps profitable only via volume (159 trades) not WR.",
       "source": "quant_multi_edge_2026_03_26",
       "validated": false,
-      "validation_count": -1
+      "validation_count": -2
     },
     {
       "ts": 1774493590.701022,

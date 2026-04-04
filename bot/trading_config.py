@@ -511,13 +511,13 @@ class TradingConfig:
 
     # ── Cooldowns & Time Intervals ──
     loss_cooldown_s: int = field(
-        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 300)
-    )  # 5min: 15min was over-corrected.
+        default_factory=lambda: _env_int("LOSS_COOLDOWN_S", 60)
+    )  # 60s: aggressive re-entry for data collection. SL + notional cap protect us.
     win_cooldown_s: int = field(
-        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 600)
-    )  # 10min: 30min was over-corrected.
+        default_factory=lambda: _env_int("WIN_COOLDOWN_S", 60)
+    )  # 60s: fast re-entry to capitalize on momentum.
     signal_dedup_window_s: int = field(
-        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 600)
+        default_factory=lambda: _env_int("SIGNAL_DEDUP_WINDOW_S", 120)
     )  # 10min: 2min dedup was letting duplicate signals through (3 HYPE entries in 16min at same price).
 
     # ── Timeframe Trend Weights ──
@@ -809,16 +809,16 @@ SYMBOL_RISK_MULTIPLIERS = {
 # SOL LONG winners hit TP1 instantly (0h); losers bleed for weeks. Structural issue.
 # Reducing SOL LONG to 0.35x preserves the signal for data collection but limits damage.
 SYMBOL_SIDE_RISK_MULTIPLIERS: Dict[tuple, float] = {
-    # LIVE DATA (33 trades, 2026-04-03): ALL longs = 0% WR (0/7). Market is bearish.
-    # Block longs until macro trend flips. Shorts are the only proven edge.
-    ("SOL", "BUY"):  0.50,  # Restored: shorts-only was recency bias. Modest size until data confirms.
-    ("SOL", "SELL"): 0.90,  # Live: 6W/13L but winners are huge (+$129, +$99). Keep with cooldown protection.
-    ("BTC", "BUY"):  0.50,  # Restored: shorts-only was recency bias. Modest size until data confirms.
-    ("BTC", "SELL"): 1.3,   # BEST EDGE: 2/2 live wins, +$92. Full conviction.
-    ("ETH", "BUY"):  0.50,  # Restored: shorts-only was recency bias. Modest size until data confirms.
-    ("ETH", "SELL"): 0.50,  # No live wins but SHORT is the only direction that works. Small size, collect data.
-    ("HYPE", "BUY"): 0.50,  # Restored: shorts-only was recency bias. Modest size until data confirms.
-    ("HYPE", "SELL"):1.2,   # 1/4 live but SHORT is the right direction. Keep at size.
+    # AGGRESSIVE DATA COLLECTION — trade everything, collect data, learn.
+    # Every direction open. SL enforcement + notional cap handles risk.
+    ("SOL", "BUY"):  0.70,
+    ("SOL", "SELL"): 1.3,   # Big winners came from here (+$129, +$99)
+    ("BTC", "BUY"):  0.70,
+    ("BTC", "SELL"): 1.3,   # Best live edge (100% WR)
+    ("ETH", "BUY"):  0.70,
+    ("ETH", "SELL"): 0.70,
+    ("HYPE", "BUY"): 0.70,
+    ("HYPE", "SELL"):1.2,
 }
 
 # Per-symbol lead-lag configuration: empirical lag times and correlations.
