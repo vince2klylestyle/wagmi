@@ -426,57 +426,54 @@ When `LLM_FIRST_MODE=true` AND `LLM_MODE >= SIZING`, the signal flow uses the ne
 
 ## Incremental Implementation Plan
 
-### Step 1: SafetyFilterChain extraction (LOW RISK)
+### Step 1: SafetyFilterChain extraction (LOW RISK) ✅ DONE
 - Extract safety gates from `RiskFilterChain` into `SafetyFilterChain`
 - `RiskFilterChain` still exists, unchanged
 - No behavior change — pure refactor
 - **Files:** `bot/core/signal_pipeline.py`
-- **Test:** All existing tests pass
+- **Test:** All existing tests pass + 7 new SafetyFilterChain tests
 
-### Step 2: `evaluate_raw()` in ensemble (LOW RISK)
+### Step 2: `evaluate_raw()` in ensemble (LOW RISK) ✅ DONE
 - Add `evaluate_raw()` method to `EnsembleStrategy`
 - Existing `evaluate()` unchanged
 - Returns signal with metadata but no quality filtering
 - **Files:** `bot/strategies/ensemble.py`
 - **Test:** New tests that raw signals are returned with metadata
 
-### Step 3: LLM context enrichment (LOW RISK)
-- Modify `_build_llm_context()` to include all data that mechanical gates used to check
-- Enrich agent prompts with this data
-- No flow change — just richer context for existing LLM veto check
-- **Files:** `bot/core/llm_integration.py`, `bot/llm/agents/prompts.py`, `bot/llm/agents/coordinator.py`
-- **Test:** LLM receives richer context (log inspection)
-
-### Step 4: LLM sizing authority (MEDIUM RISK)
-- Extend Risk Agent prompt to return leverage + qty
-- Add `get_entry_decision()` to coordinator
-- Parse and validate LLM sizing output
+### Step 3: LLM context enrichment (LOW RISK) ✅ DONE
+- Signal metadata (chop, EV, win_prob, fee_drag, HTF alignment) wired into Trade + Risk Agent inputs
+- Trade Agent prompt updated with SIGNAL QUALITY DATA section
+- Risk Agent prompt updated with signal quality evaluation instructions
 - **Files:** `bot/llm/agents/coordinator.py`, `bot/llm/agents/prompts.py`
-- **Test:** Mock LLM returns valid sizing, test bounds enforcement
+- **Test:** 3098 tests passing
 
-### Step 5: Rewire `_process_symbol()` — THE BIG CHANGE (HIGH RISK)
-- Add `LLM_FIRST_MODE` flag
-- When enabled:
-  1. Run `SafetyFilterChain` (not `RiskFilterChain`)
-  2. Run `_llm_entry_decision()` (not `_llm_veto_check()`)
-  3. Use LLM-returned leverage/qty (not mechanical)
-  4. Apply post-LLM hard caps
-  5. Execute
-- When disabled: legacy path unchanged
-- **Files:** `bot/multi_strategy_main.py`, `bot/trading_config.py`, `bot/llm/autonomy.py`
-- **Test:** Run both paths in parallel, compare decisions (dual-track logging)
+### Step 4: LLM sizing authority (MEDIUM RISK) ✅ DONE
+- Risk Agent prompt outputs leverage (1-20x) + risk_pct (0.01-0.15)
+- `EntryDecision` dataclass in decision_types.py
+- `get_entry_decision()` in coordinator — translates signal context → agent pipeline
+- `_build_entry_snapshot()` bridges raw signal to snapshot format
+- **Files:** `bot/llm/agents/coordinator.py`, `bot/llm/decision_types.py`, `bot/llm/agents/prompts.py`
+- **Test:** 5 new tests for EntryDecision and get_entry_decision
 
-### Step 6: Dual-track validation (ZERO RISK)
-- Run BOTH paths and log decisions side by side
-- Compare: what would LLM-first approve that mechanical killed?
-- Compare: what would LLM-first skip that mechanical approved?
-- Tune for 1 week before switching live
-- **Files:** `bot/multi_strategy_main.py` (dual-path logging)
+### Step 5: Rewire `_process_symbol()` — THE BIG CHANGE (HIGH RISK) ✅ DONE
+- `LLM_FIRST_MODE` flag in trading_config.py (env: LLM_FIRST_MODE=true/false)
+- `_process_symbol_llm_first()` method: Safety → evaluate_raw → LLM → caps → execute
+- `_log_dual_track_llm_decision()` for side-by-side comparison
+- Fail-open: on LLM pipeline error, falls back to mechanical path
+- Post-LLM caps: notional 15x, portfolio leverage, OpsGuard, min qty
+- **Files:** `bot/multi_strategy_main.py`, `bot/trading_config.py`
+- **Test:** 20 new tests in test_llm_first_architecture.py, 3098 total
+
+### Step 6: Dual-track validation (ZERO RISK) ✅ IMPLEMENTED
+- `LLM_FIRST_DUAL_TRACK=true` runs both paths, logs divergence
+- Set in .env, ready to activate
+- **Files:** `bot/multi_strategy_main.py`
 
 ### Step 7: Go live
-- Set `LLM_FIRST_MODE=true` in production
+- Set `LLM_FIRST_MODE=true` in .env
 - Monitor via existing candidate logger + growth intelligence
 - Keep mechanical path as instant rollback (`LLM_FIRST_MODE=false`)
+- **STATUS:** Ready to activate after API credits added
 
 ---
 
