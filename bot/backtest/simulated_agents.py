@@ -99,9 +99,14 @@ def sim_regime_agent(signal, df_1h=None) -> str:
 # ─── Simulated Trade Agent ──────────────────────────────────────
 
 def sim_trade_agent(signal, regime: str, df_1h=None) -> SimDecision:
-    """Apply the Trade Agent's 7-gate decision tree.
+    """Apply the Trade Agent's decision logic informed by 1,410-signal analysis.
 
-    Returns go/skip with confidence adjustment and reasoning.
+    KEY FINDINGS FROM FULL DATA:
+    - bollinger_squeeze is the ONLY profitable strategy (57% WR, +0.15%/trade)
+    - confidence_scorer is a slight loser (47% WR, generates 60% of all signals)
+    - Confidence numbers are NOT predictive (80%+ is WORSE than <60%)
+    - high_volatility regime has genuine edge (55% WR, n=258)
+    - Golden setups: ETH_SELL_BB 70%, BTC_BUY_BB 69%, SOL_BUY_BB 67%
     """
     skip_reasons = []
     boost_reasons = []
@@ -131,6 +136,60 @@ def sim_trade_agent(signal, regime: str, df_1h=None) -> SimDecision:
                 regime=regime, reason="; ".join(skip_reasons),
                 skip_reasons=skip_reasons,
             )
+
+    # ── Gate 1.5: STRATEGY QUALITY (from 1,410-signal analysis) ──
+    # bollinger_squeeze is the ONLY profitable strategy (57% WR)
+    # confidence_scorer is 47% WR (slight loser). Others worse.
+    strategy = signal.strategy or ""
+    strategies_agree = meta.get("strategies_agree", [strategy])
+    has_bb = "bollinger_squeeze" in strategies_agree
+    primary_is_bb = strategy == "bollinger_squeeze"
+
+    if has_bb:
+        conf += 0.10
+        boost_reasons.append("bollinger_squeeze signal (57% WR, only profitable strategy)")
+    else:
+        # No BB involved — this is a non-BB signal.
+        # From 1,410 signals: non-BB strategies have NEGATIVE expected value.
+        # 2-agree without BB is two losing strategies agreeing — still loses.
+        conf -= 0.15
+        skip_reasons.append("no bollinger_squeeze (only profitable strategy missing)")
+
+    # GOLDEN SETUP DETECTION
+    setup_key = f"{symbol}_{signal.side}_{strategy}"
+    golden_setups = {
+        "ETH_SELL_bollinger_squeeze": (0.15, "ETH_SELL_BB 70% WR"),
+        "BTC_BUY_bollinger_squeeze": (0.12, "BTC_BUY_BB 69% WR"),
+        "SOL_BUY_bollinger_squeeze": (0.10, "SOL_BUY_BB 67% WR"),
+        "BTC_SELL_bollinger_squeeze": (0.08, "BTC_SELL_BB 61% WR"),
+        "ETH_BUY_bollinger_squeeze": (0.06, "ETH_BUY_BB 59% WR"),
+    }
+    dead_setups = {
+        "HYPE_SELL_bollinger_squeeze": "35% WR, worst setup",
+        "HYPE_BUY_confidence_scorer": "38% WR",
+        "HYPE_SELL_regime_trend": "20% WR",
+    }
+
+    if setup_key in golden_setups:
+        boost, reason = golden_setups[setup_key]
+        conf += boost
+        boost_reasons.append(f"GOLDEN: {reason}")
+    elif setup_key in dead_setups:
+        skip_reasons.append(f"DEAD SETUP: {setup_key} ({dead_setups[setup_key]})")
+        return SimDecision(
+            action="skip", confidence=0.0,
+            regime=regime, reason="; ".join(skip_reasons),
+            skip_reasons=skip_reasons,
+        )
+
+    # Dead strategies (from 1,410-signal data)
+    if strategy in ("mean_reversion", "regime_trend") and not has_bb:
+        skip_reasons.append(f"{strategy} solo (43% WR, losing strategy)")
+        return SimDecision(
+            action="skip", confidence=0.0,
+            regime=regime, reason="; ".join(skip_reasons),
+            skip_reasons=skip_reasons,
+        )
 
     # ── Gate 2: Directional Alignment (basic check) ──
     # Can't form independent thesis without more data, skip this gate
