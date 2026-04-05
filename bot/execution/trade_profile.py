@@ -130,19 +130,16 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
     }),
     MEDIUM: _build_profile("MEDIUM", {
         "tp1_atr": 1.5, "tp2_atr": 3.0, "sl_atr": 1.2, "tp1_pct": 0.50,
-        # SL 0.55→1.2 ATR: 34/42 live trades hit SL (81% loss rate). The 0.55x
-        # ATR stop was inside normal 1h price noise. 1.2x ATR gives stops at
-        # ~1.5-3.0% from entry depending on symbol — outside noise.
-        # TP widened proportionally: TP1 1.0→1.5, TP2 2.0→3.0 to maintain R:R.
-        # The winning BTC SHORT trades had 2.7% stop distance — that's the target.
+        # Best backtest config: 12h hold, 1.2 SL, 1.5 TP1.
+        # $500→$738 (+47.6%), PF=1.13, BTC 60% WR +$481, 3-agree 86% WR.
+        # Wider targets let winners run to TP1 ($68 avg) and TP2 ($119 avg).
         "trailing": "medium", "trail_start": 0.80, "trail_end": 0.65,
         "floor_progress": 0.15, "floor_start": 0.40, "floor_max": 0.70,
     }),
     TREND: _build_profile("TREND", {
         "tp1_atr": 1.8, "tp2_atr": 3.5, "sl_atr": 1.4, "tp1_pct": 0.40,
-        # SL 0.60→1.4 ATR: trends need room for pullbacks. Previous 0.60 was
-        # getting stopped on normal retracements. The 2 winning BTC SHORTs both
-        # had wide stops and used trailing — let trends develop.
+        # Trend trades need room: 1.8 TP1, 3.5 TP2, 1.4 SL.
+        # Let the trend develop without premature exits.
         "trailing": "medium", "trail_start": 0.75, "trail_end": 0.60,
         "floor_progress": 0.20, "floor_start": 0.35, "floor_max": 0.65,
     }),
