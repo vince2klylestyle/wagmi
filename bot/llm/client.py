@@ -92,6 +92,7 @@ def call_llm(
                 max_tokens=max_tokens,
                 system=system_content,
                 messages=[{"role": "user", "content": snapshot_json}],
+                timeout=timeout,
             )
 
             elapsed_ms = int((time.monotonic() - start) * 1000)

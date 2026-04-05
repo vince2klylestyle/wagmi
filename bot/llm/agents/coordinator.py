@@ -494,6 +494,20 @@ class AgentCoordinator:
             logger.info("[MULTI-AGENT] Enriched context: %d chars from %d sources",
                         len(enriched_context), len(enriched_parts))
 
+        # Also store each enrichment as a SEPARATE named key for structured agent access
+        # (agents can read individual fields instead of parsing one blob)
+        _loc = locals()
+        for _var, _key in [
+            ("tech_text", "_enr_tech"), ("tech_text_5m", "_enr_tech_5m"),
+            ("fb_text", "_enr_feedback"), ("tel_text", "_enr_pipeline"),
+            ("pos_text", "_enr_positions"), ("_port_text", "_enr_portfolio"),
+            ("journal_text", "_enr_journal"), ("eq_summary", "_enr_exec"),
+            ("refl_summary", "_enr_reflection"),
+        ]:
+            _val = _loc.get(_var)
+            if _val:
+                snapshot_data[_key] = _val
+
         # ── Step 1: Regime Agent ────────────────────────────────
         regime_input = self._build_regime_input(snapshot_data)
         regime_out = self._call_agent(
@@ -656,6 +670,35 @@ class AgentCoordinator:
             pipeline_results[AgentRole.CRITIC] = critic_out
             if not critic_out.ok:
                 critic_out = None
+                # ── Mechanical Critic Fallback ──────────────────────
+                # Critic API failed but trade wants to proceed — apply
+                # fast mechanical checks so trades don't run unchecked.
+                _fb_action = trade_out.data.get("a", trade_out.data.get("action", "skip"))
+                if _fb_action in ("go", "proceed"):
+                    _fb_conf = float(trade_out.data.get("c", trade_out.data.get("confidence", 0.0)))
+                    _fb_bias = regime_out.data.get("bias", "neutral") if regime_out.ok else "neutral"
+                    _fb_side = trade_out.data.get("side", trade_out.data.get("s", "")).upper()
+                    _fb_counter_trend = (
+                        (_fb_bias == "bullish" and _fb_side == "SELL")
+                        or (_fb_bias == "bearish" and _fb_side == "BUY")
+                    )
+                    if _fb_conf < 0.55:
+                        logger.warning("[CRITIC-FALLBACK] Conf %.2f < 0.55 without Critic — skip", _fb_conf)
+                        trade_out = AgentOutput(role=AgentRole.TRADE, data={
+                            "a": "skip", "c": _fb_conf, "side": _fb_side,
+                            "n": f"critic_fallback: low conf ({_fb_conf:.2f}) without review",
+                        })
+                    elif _fb_counter_trend:
+                        logger.warning("[CRITIC-FALLBACK] Counter-trend %s vs %s without Critic — skip", _fb_side, _fb_bias)
+                        trade_out = AgentOutput(role=AgentRole.TRADE, data={
+                            "a": "skip", "c": _fb_conf, "side": _fb_side,
+                            "n": f"critic_fallback: counter-trend ({_fb_side} vs {_fb_bias}) without review",
+                        })
+                    else:
+                        _penalized = max(0.0, _fb_conf - 0.10)
+                        logger.info("[CRITIC-FALLBACK] No Critic — conf %.2f -> %.2f", _fb_conf, _penalized)
+                        trade_out.data["c"] = _penalized
+                        trade_out.data["n"] = trade_out.data.get("n", "") + " | critic_fallback: -10% conf (no review)"
 
         # ── Consistency Check ──────────────────────────────────────
         consistency_report = check_pipeline_consistency(
@@ -2405,6 +2448,18 @@ class AgentCoordinator:
         if "enriched_context" in trade_data:
             trade_data["enriched"] = trade_data.pop("enriched_context")
 
+        # Inject structured enrichment fields (named keys instead of one blob)
+        _enr_map = {
+            "_enr_tech": "tech", "_enr_tech_5m": "tech_5m",
+            "_enr_feedback": "feedback", "_enr_pipeline": "pipeline",
+            "_enr_positions": "positions", "_enr_portfolio": "portfolio",
+            "_enr_journal": "journal", "_enr_exec": "exec_quality",
+            "_enr_reflection": "reflection",
+        }
+        for _snap_key, _agent_key in _enr_map.items():
+            if _snap_key in snapshot:
+                trade_data[_agent_key] = snapshot[_snap_key]
+
         # Per-agent self-performance stats for the Trade Agent
         _pt = getattr(self, '_perf_tracker_ref', None)
         if _pt:
@@ -2521,6 +2576,16 @@ class AgentCoordinator:
         if snapshot.get("enriched_context"):
             risk_data["enriched"] = snapshot["enriched_context"]
 
+        # Inject structured enrichment fields (named keys instead of one blob)
+        _enr_map = {
+            "_enr_tech": "tech", "_enr_feedback": "feedback",
+            "_enr_pipeline": "pipeline", "_enr_portfolio": "portfolio",
+            "_enr_exec": "exec_quality", "_enr_reflection": "reflection",
+        }
+        for _snap_key, _agent_key in _enr_map.items():
+            if _snap_key in snapshot:
+                risk_data[_agent_key] = snapshot[_snap_key]
+
         # Per-agent self-performance stats for the Risk Agent
         _pt = getattr(self, '_perf_tracker_ref', None)
         if _pt:
@@ -2609,6 +2674,16 @@ class AgentCoordinator:
         # Enriched context from technicals, feedback, telemetry, positions
         if snapshot.get("enriched_context"):
             critic_data["enriched"] = snapshot["enriched_context"]
+
+        # Inject structured enrichment fields (named keys instead of one blob)
+        _enr_map = {
+            "_enr_tech": "tech", "_enr_feedback": "feedback",
+            "_enr_pipeline": "pipeline", "_enr_portfolio": "portfolio",
+            "_enr_exec": "exec_quality",
+        }
+        for _snap_key, _agent_key in _enr_map.items():
+            if _snap_key in snapshot:
+                critic_data[_agent_key] = snapshot[_snap_key]
 
         # Per-agent self-performance stats for the Critic Agent
         _pt = getattr(self, '_perf_tracker_ref', None)

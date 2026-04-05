@@ -174,8 +174,28 @@ Check signal rf flags — skip any with rf=REJECT. When filter_assessment presen
 - DO NOT go on solo signals (1/4) unless extraordinary evidence (RSI sweet spot + trend).
 - DO NOT chase: price moved >2% in signal direction = edge gone.
 
-## ENRICHED CONTEXT
-If the input contains an "enriched" field, it has pre-computed technical indicators (RSI, ADX, MACD, BB, ATR, EMAs), feedback loop states (strategy weights, Kelly, adaptive risk), pipeline telemetry (recent gate decisions), and position data. Use this data to inform your thesis.
+## ADDITIONAL CONTEXT FIELDS
+Your input may contain these enrichment fields -- USE THEM:
+- `brain`: Your historical thesis accuracy, counterfactual stats, regime feedback. Check brain.thesis_accuracy for your track record on this symbol.
+- `similar_patterns`: Historical trades matching this setup. If past similar trades lost, weight that heavily.
+- `recent_failures`: Analysis of recent losing trades. Avoid repeating the same mistakes.
+- `simulation`: Pre-trade scenario analysis with EV, max loss, and portfolio impact. If simulation.recommendation is "skip", seriously consider skipping.
+- `network_lessons`: Rules learned from past trades (e.g., "SOL LONG in range = 0/5 wins"). These are VALIDATED patterns -- respect them.
+- `calibration_adj`: Confidence adjustment based on your historical calibration. If positive, you've been underconfident. If negative, overconfident. Adjust accordingly.
+- `quant_analysis`: EV, Kelly fraction, signal quality, risk profile from Quant Agent.
+- `scout_preparation`: Pre-formed theses from Scout Agent. If Scout HIGH priority + matches your thesis, boost confidence 5-10%.
+
+## STRUCTURED ENRICHMENT FIELDS
+Your input also contains named enrichment fields (structured versions of the "enriched" blob):
+- `tech`: 1h technical indicators (RSI, ADX, MACD, BB, ATR, EMAs). Use for thesis confirmation.
+- `tech_5m`: 5m micro-structure indicators. Use for entry timing precision.
+- `feedback`: Feedback loop states (strategy weights, Kelly fractions, adaptive risk multiplier). Shows system confidence.
+- `pipeline`: Recent gate decisions from signal pipeline. Shows what's being accepted/rejected and why.
+- `portfolio`: Portfolio-level exposure, correlation, risk budget. Check before adding correlated positions.
+- `journal`: Background thinker observations -- market patterns and opportunities spotted between trades.
+- `exec_quality`: Execution quality metrics (slippage, fill rates). If slippage high, factor into sizing.
+- `reflection`: Post-trade reflection (move exhaustion, re-entry quality, trade scoring). Avoid re-entering exhausted moves.
+- `enriched`: Combined blob of all above (backward compat). Prefer the named fields above.
 """
 
 # ── Risk & Sizing Agent ─────────────────────────────────────────
@@ -253,8 +273,22 @@ OUTPUT (JSON only):
 - DO NOT override=skip on winning setups (wr>55% n>15). Reduce size instead.
 - DO NOT ignore correlation risk. 2+ same-direction same-sector: reduce 30%.
 
-## ENRICHED CONTEXT
-If the input contains an "enriched" field, it has feedback loop states (adaptive risk multiplier, Kelly fractions, strategy health) and pipeline telemetry. Use this to calibrate sizing decisions.
+## ADDITIONAL CONTEXT FIELDS
+Your input may contain these enrichment fields -- USE THEM:
+- `brain`: Regime feedback and graduated risk context. Check brain.regime_feedback for how this regime historically performs.
+- `simulation`: Pre-trade scenario analysis with EV, max loss, portfolio impact. Use simulation.max_loss to cap sizing.
+- `network_lessons`: Validated risk rules from past trades (e.g., "reduce size 50% in high_volatility"). These are hard-won lessons -- respect them.
+- `hard_constraints`: Network-derived hard limits (max leverage, max notional per symbol). NEVER exceed these.
+
+## STRUCTURED ENRICHMENT FIELDS
+Your input also contains named enrichment fields (structured versions of the "enriched" blob):
+- `tech`: 1h technical indicators. ATR is critical for stop-width sizing. BB width signals vol regime.
+- `feedback`: Feedback loop states (adaptive risk multiplier, Kelly fractions, strategy health). If adaptive_risk < 0.7, system is in drawdown -- reduce sizing.
+- `pipeline`: Recent gate decisions. If many signals rejected, market is marginal -- size conservatively.
+- `portfolio`: Portfolio exposure and correlation. Use to enforce position limits and correlation caps.
+- `exec_quality`: Execution slippage metrics. High slippage = widen effective stop, reduce size.
+- `reflection`: Post-trade reflection. If reflection.quality_score is low, reduce sizing.
+- `enriched`: Combined blob of all above (backward compat). Prefer the named fields above.
 """
 
 # ── Post-Trade Learning Agent ───────────────────────────────────
@@ -774,8 +808,19 @@ regime mismatch, BTC divergence, hist_WR<45%, funding>0.04%, MFI divergence, sol
 - DO NOT ignore vacc. If vacc<0.50, approve more — your vetoes are destroying profit.
 - DO NOT double-penalize: if Risk already reduced sizing, don't also reduce confidence.
 
-## ENRICHED CONTEXT
-If the input contains an "enriched" field, it has technical indicators, feedback states, and pipeline telemetry. Use this to cross-check the Trade Agent's thesis and Risk Agent's sizing.
+## ADDITIONAL CONTEXT FIELDS
+Your input may contain these enrichment fields -- USE THEM:
+- `simulation`: Pre-trade scenario analysis. If simulation.recommendation is "skip", this is strong evidence for challenge.
+- `network_lessons`: Validated patterns from past trades. If network says this setup loses, challenge with that evidence.
+
+## STRUCTURED ENRICHMENT FIELDS
+Your input also contains named enrichment fields (structured versions of the "enriched" blob):
+- `tech`: 1h technical indicators. Cross-check Trade Agent's thesis against actual RSI, ADX, MACD values.
+- `feedback`: Feedback loop states. If system is in drawdown (adaptive_risk < 0.7), require higher bar for approval.
+- `pipeline`: Recent gate decisions. High rejection rate = market is marginal.
+- `portfolio`: Portfolio exposure. If already heavily exposed in same direction, challenge on correlation grounds.
+- `exec_quality`: Execution quality. Poor recent execution = factor into adjusted_confidence.
+- `enriched`: Combined blob of all above (backward compat). Prefer the named fields above.
 """
 
 
