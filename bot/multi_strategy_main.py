@@ -4818,7 +4818,11 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 _BASELINE_ATR = 0.015  # 1.5% daily ATR = neutral
                 _compound_mult = _BASELINE_ATR / max(_atr_pct, 0.001)
                 _compound_mult = max(0.3, min(2.0, _compound_mult))  # bound 0.3×–2.0×
-            _sym_risk = self.config.vol_target_pct * _compound_mult
+            # Vol-targeting: scale risk inversely with volatility.
+            # Base is risk_per_trade (user-set), NOT vol_target_pct (which was
+            # 0.5% and neutered the 20% risk_per_trade to 0.15-1.0%).
+            # The compound_mult adjusts risk: high vol → smaller, low vol → larger.
+            _sym_risk = self.config.risk_per_trade * _compound_mult
             # Safety cap: never exceed 2× base risk_per_trade
             _sym_risk = min(_sym_risk, self.config.risk_per_trade * 2)
             # Cache for trade ledger attribution at close
