@@ -101,6 +101,10 @@ class BacktestEngine:
             max_leverage=self.config.max_leverage,
         )
 
+        # Simulated LLM agents (rule-based, no API calls)
+        self._sim_agents_enabled = os.getenv("SIM_AGENTS_ENABLED", "false").lower() in ("1", "true", "yes")
+        self._current_df_1h = None  # Set during candle processing for sim agents
+
         # Portfolio risk engine: correlation guard for multi-symbol backtests.
         # Prevents clustered same-direction positions from creating cascade risk.
         self._portfolio_risk_engine = None
@@ -1001,6 +1005,8 @@ class BacktestEngine:
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
                         signal.metadata["sim_time"] = str(sim_dt)
+                        # Store 1h data for simulated agents
+                        self._current_df_1h = windowed.get("1h")
                         self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         # LLM vetoed — log candidate with flat action
@@ -1310,6 +1316,7 @@ class BacktestEngine:
                         candidate.llm_notes = signal.metadata.get("llm_notes")
                         self._active_candidates[symbol] = candidate
                         signal.metadata["sim_time"] = str(sim_dt)
+                        self._current_df_1h = windowed.get("1h")
                         self._execute_signal(signal, current_price, sim_dt=sim_dt)
                     else:
                         candidate.llm_action = "flat"
@@ -1690,6 +1697,41 @@ class BacktestEngine:
         """Execute a signal in backtest mode with slippage simulation."""
         from execution.trade_profile import classify_trade, apply_profile_to_signal
         from core.signal_pipeline import RiskFilterChain
+
+        # ── Simulated Agent Filter (when enabled) ──
+        # Applies the LLM agent decision tree logic without API calls.
+        # Filters ~50% of signals that would hit SL based on regime/quality checks.
+        if getattr(self, '_sim_agents_enabled', False):
+            try:
+                from backtest.simulated_agents import should_execute_signal
+                _df_1h = getattr(self, '_current_df_1h', None)
+                _equity = self.risk_mgr.equity or 500.0
+                _should, _sz_mult, _reason = should_execute_signal(
+                    signal, equity=_equity, df_1h=_df_1h,
+                )
+                if not _should:
+                    logger.debug(
+                        f"[{signal.symbol}] SIM-AGENT SKIP: {_reason[:80]}"
+                    )
+                    self.candle_stats.setdefault("sim_agent_skips", 0)
+                    self.candle_stats["sim_agent_skips"] += 1
+                    # Track as missed trade for comparison
+                    signal.metadata["sim_agent_vetoed"] = True
+                    signal.metadata["sim_agent_reason"] = _reason[:100]
+                    if hasattr(self, '_missed_tracker') and self._missed_tracker:
+                        try:
+                            self._missed_tracker.record_rejection(
+                                signal=signal, reason=f"sim_agent: {_reason[:60]}",
+                                gate="simulated_agent",
+                            )
+                        except Exception:
+                            pass
+                    return
+                # Apply size multiplier from sim agents
+                if _sz_mult != 1.0:
+                    signal.metadata["sim_agent_size_mult"] = _sz_mult
+            except Exception as e:
+                logger.debug(f"[{signal.symbol}] Sim agent error: {e}")
 
         # Pending order check: if entry is far from current_price (>1.5% slippage),
         # queue as pending limit order instead of filling at worse price.

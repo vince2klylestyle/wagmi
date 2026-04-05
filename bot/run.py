@@ -90,6 +90,12 @@ def cmd_backtest(args):
     if raw_mode:
         engine.enable_raw_mode()
 
+    sim_agents = getattr(args, "sim_agents", False)
+    if sim_agents:
+        engine._sim_agents_enabled = True
+        print("  Simulated LLM Agents: ENABLED (rule-based, no API)")
+        print("  Pipeline: Regime → Trade (7-gate) → Risk → Critic")
+
     symbols = [s.strip().upper() for s in args.symbols.split(",")]
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()] or None
 
@@ -428,6 +434,7 @@ Commands:
     sub_bt.add_argument("--raw", action="store_true", help="Disable circuit breakers, notional caps, and risk gates for raw strategy analysis")
     sub_bt.add_argument("--fresh", action="store_true", help="Force re-fetch data from exchanges, ignoring disk cache")
     sub_bt.add_argument("--relaxed-cb", action="store_true", help="Use relaxed circuit breaker settings (15%%/30%%) instead of live (5%%/10%%)")
+    sub_bt.add_argument("--sim-agents", action="store_true", help="Enable simulated LLM agents (rule-based, no API) to filter signals")
 
     # Signals
     sub_sig = subparsers.add_parser("signals", help="One-shot signal check")
