@@ -609,6 +609,25 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except ImportError:
             logger.debug("[INIT] Agent performance tracker not available")
 
+        # Agent Cost Optimizer: gates LLM calls based on budget, tracks ROI per pipeline
+        self._cost_optimizer = None
+        try:
+            from llm.agents.cost_optimizer import get_cost_optimizer
+            _daily_budget = float(os.getenv("LLM_DAILY_BUDGET_USD", "0.50"))
+            self._cost_optimizer = get_cost_optimizer(daily_budget=_daily_budget)
+            logger.info(f"[INIT] Cost optimizer enabled (budget=${_daily_budget:.2f}/day)")
+        except Exception as _co_err:
+            logger.debug(f"[INIT] Cost optimizer not available: {_co_err}")
+
+        # Active Learning Engine: meta-learning that improves the brain over time
+        self._active_learning = None
+        try:
+            from llm.agents.active_learning import ActiveLearningEngine
+            self._active_learning = ActiveLearningEngine()
+            logger.info("[INIT] Active learning engine enabled (30min cycles)")
+        except Exception as _al_err:
+            logger.debug(f"[INIT] Active learning engine not available: {_al_err}")
+
         # Execution
         self.risk_mgr = RiskManager(
             starting_equity=config.starting_equity,
@@ -3388,6 +3407,45 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             )
                         except Exception as _ap_err:
                             logger.debug(f"Agent perf outcome error: {_ap_err}")
+
+                    # Cost Optimizer: record PnL outcome for ROI tracking per pipeline type
+                    if self._cost_optimizer:
+                        try:
+                            _co_pipeline = pos.entry_reasons.get("cost_pipeline", "standard") if pos.entry_reasons else "standard"
+                            self._cost_optimizer.record_outcome(
+                                pipeline_type=_co_pipeline,
+                                pnl=pos.realized_pnl,
+                            )
+                        except Exception as _co_err:
+                            logger.debug(f"Cost optimizer outcome error: {_co_err}")
+
+                    # Active Learning: run a learning cycle after trade close if due
+                    if self._active_learning and self._active_learning.should_run():
+                        try:
+                            _al_recent = []
+                            try:
+                                _al_recent = self._active_learning._load_trades(20)
+                            except Exception:
+                                pass
+                            _al_agent_stats = {}
+                            if self._agent_perf:
+                                try:
+                                    _al_agent_stats = self._agent_perf.get_all_stats()
+                                except Exception:
+                                    pass
+                            _al_result = self._active_learning.run_cycle(
+                                recent_trades=_al_recent,
+                                agent_stats=_al_agent_stats,
+                                feedback_states={},
+                                rejection_stats={},
+                            )
+                            logger.info(
+                                f"[ACTIVE-LEARN] Cycle: health={_al_result.get('diagnosis', {}).get('overall_health', '?')} "
+                                f"hypotheses={_al_result.get('new_hypotheses', 0)} "
+                                f"applied={_al_result.get('applications', 0)}"
+                            )
+                        except Exception as _al_err:
+                            logger.debug(f"Active learning cycle error: {_al_err}")
 
             # Send enhanced trade event alert
             pos = self.pos_mgr.positions.get(symbol)

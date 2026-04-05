@@ -68,6 +68,13 @@ try:
 except ImportError:
     _SELF_PERF_AVAILABLE = False
 
+# Agent Cost Optimizer: gates LLM calls based on budget and signal importance
+try:
+    from llm.agents.cost_optimizer import get_cost_optimizer
+    _COST_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    _COST_OPTIMIZER_AVAILABLE = False
+
 logger = logging.getLogger("bot.main")
 
 
@@ -773,6 +780,26 @@ class LLMIntegrationMixin:
             )
             return
 
+        # Cost optimizer gate: skip LLM if budget exhausted or signal too weak
+        _cost_call_type = None
+        if _COST_OPTIMIZER_AVAILABLE and hasattr(self, '_cost_optimizer') and self._cost_optimizer:
+            try:
+                # Extract signal info from trigger context for cost gating
+                _co_conf = float(trigger_ctx.get("confidence", 60)) if isinstance(trigger_ctx, dict) else 60
+                _co_agree = int(trigger_ctx.get("num_agree", 1)) if isinstance(trigger_ctx, dict) else 1
+                _co_regime = trigger_ctx.get("regime", "unknown") if isinstance(trigger_ctx, dict) else "unknown"
+                should_call, _cost_call_type = self._cost_optimizer.should_call_agents(
+                    signal_confidence=_co_conf,
+                    num_strategies_agree=_co_agree,
+                    regime=_co_regime,
+                )
+                if not should_call:
+                    logger.info(f"[{trace_id}][LLM] Cost optimizer skipped: {_cost_call_type}")
+                    return
+                logger.debug(f"[{trace_id}][LLM] Cost optimizer: {_cost_call_type}")
+            except Exception as e:
+                logger.debug(f"[{trace_id}][LLM] Cost optimizer check error: {e}")
+
         markets, global_ctx, risk_ctx, positions = self._build_llm_context()
 
         if not markets:
@@ -841,6 +868,17 @@ class LLMIntegrationMixin:
                 )
         elif result.reason:
             logger.info(f"[{trace_id}][LLM] No decision: {result.reason}")
+
+        # Record cost for cost optimizer ROI tracking
+        if _COST_OPTIMIZER_AVAILABLE and hasattr(self, '_cost_optimizer') and self._cost_optimizer:
+            try:
+                _est_cost = result.usage.get("estimated_cost_usd", 0.004) if result.usage else 0.004
+                self._cost_optimizer.record_cost(
+                    pipeline_type=_cost_call_type or "standard",
+                    actual_cost=float(_est_cost),
+                )
+            except Exception as e:
+                logger.debug(f"[LLM] Cost optimizer record error: {e}")
 
         # Log API usage periodically
         if result.usage and result.usage.get("input_tokens", 0) > 0:
