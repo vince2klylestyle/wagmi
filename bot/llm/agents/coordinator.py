@@ -1156,22 +1156,40 @@ class AgentCoordinator:
         trade_out = self.last_pipeline_results.get(AgentRole.TRADE)
         critic_out = self.last_pipeline_results.get(AgentRole.CRITIC)
 
-        # Parse leverage from Risk Agent
+        # Parse leverage + sizing from Risk Agent
         leverage = 1.0
         risk_pct = 0.0
+        sz_mult = 1.0  # Risk Agent's primary sizing multiplier (0.0-2.0)
         sizing_rationale = ""
         risk_flags = []
 
         if risk_out and risk_out.ok:
             rd = risk_out.data
-            leverage = float(rd.get("leverage", rd.get("lev", rd.get("l", 1.0))))
-            risk_pct = float(rd.get("risk_pct", rd.get("rp", rd.get("position_size_pct",
-                             rd.get("sz_pct", 0.0)))))
-            sizing_rationale = rd.get("sizing_rationale", rd.get("rationale",
-                               rd.get("n", "")))
-            risk_flags = rd.get("risk_flags", rd.get("flags", []))
+            try:
+                leverage = float(rd.get("leverage", rd.get("lev", rd.get("l", 1.0))))
+            except (TypeError, ValueError):
+                leverage = 1.0
+            try:
+                risk_pct = float(rd.get("risk_pct", rd.get("rp", rd.get("position_size_pct",
+                                 rd.get("sz_pct", 0.0)))))
+            except (TypeError, ValueError):
+                risk_pct = 0.0
+            try:
+                sz_mult = float(rd.get("sz", rd.get("size_mult", rd.get("sm", 1.0))))
+            except (TypeError, ValueError):
+                sz_mult = 1.0
+            sizing_rationale = str(rd.get("sizing_rationale", rd.get("rationale",
+                               rd.get("n", ""))) or "")
+            risk_flags = rd.get("risk_flags", rd.get("flags", rd.get("risks", [])))
             if isinstance(risk_flags, str):
                 risk_flags = [risk_flags]
+            if not isinstance(risk_flags, list):
+                risk_flags = []
+
+        # Enforce leverage bounds (1.0 - 20.0)
+        leverage = max(1.0, min(20.0, leverage))
+        # Enforce sz_mult bounds (0.3 - 2.0)
+        sz_mult = max(0.3, min(2.0, sz_mult))
 
         # Use size_multiplier from LLMDecision as fallback sizing signal
         size_mult = decision.size_multiplier if decision else 1.0
@@ -1185,13 +1203,21 @@ class AgentCoordinator:
         if equity > 0 and entry_price > 0 and sl_price > 0:
             stop_width = abs(entry_price - sl_price)
             if stop_width > 0:
-                # risk_pct is fraction of equity to risk
-                # If Risk Agent didn't return risk_pct, derive from size_multiplier
+                # risk_pct is fraction of equity to risk per trade
+                # If Risk Agent didn't return risk_pct, derive from sz_mult
                 if risk_pct <= 0:
-                    # Default to config risk_per_trade * size_multiplier
-                    risk_pct = 0.10 * size_mult  # 10% base risk
+                    risk_pct = 0.10 * sz_mult  # 10% base risk * sz multiplier
                 risk_dollars = equity * risk_pct
-                position_qty = risk_dollars / stop_width
+                # qty = (dollars at risk / stop width in price) = units/contracts
+                # Then multiply by leverage: leveraged qty
+                position_qty = (risk_dollars / stop_width) * leverage
+
+        if position_qty <= 0:
+            logger.warning(
+                f"[LLM-FIRST] position_qty={position_qty:.6f} "
+                f"(equity={equity}, risk_pct={risk_pct:.3f}, "
+                f"entry={entry_price}, sl={sl_price}, lev={leverage})"
+            )
 
         # ── Parse thesis and debate from agents ──
         thesis = ""
@@ -1199,12 +1225,12 @@ class AgentCoordinator:
 
         if trade_out and trade_out.ok:
             td = trade_out.data
-            thesis = td.get("thesis", td.get("n", ""))
+            thesis = str(td.get("thesis", td.get("n", "")) or "")
 
         if critic_out and critic_out.ok:
             cd = critic_out.data
-            counter = cd.get("counter_thesis", cd.get("ct", ""))
-            verdict = cd.get("verdict", cd.get("v", ""))
+            counter = str(cd.get("counter_thesis", cd.get("ct", "")) or "")
+            verdict = str(cd.get("verdict", cd.get("v", "")) or "")
             if counter:
                 debate_summary = f"Bull: {thesis[:100]}. Bear: {counter[:100]}. Verdict: {verdict}"
 
@@ -1217,16 +1243,16 @@ class AgentCoordinator:
 
         entry_decision = EntryDecision(
             action=action,
-            leverage=max(1.0, leverage),
+            leverage=leverage,
             risk_pct=risk_pct,
             position_qty=position_qty,
-            regime=decision.regime,
-            thesis=thesis[:300],
+            regime=decision.regime or "unknown",
+            thesis=thesis[:300] if thesis else "",
             confidence=decision.confidence,
-            sizing_rationale=sizing_rationale[:200],
-            risk_flags=risk_flags[:5],
-            debate_summary=debate_summary[:300],
-            size_multiplier=size_mult,
+            sizing_rationale=sizing_rationale[:200] if sizing_rationale else "",
+            risk_flags=risk_flags[:5] if risk_flags else [],
+            debate_summary=debate_summary[:300] if debate_summary else "",
+            size_multiplier=sz_mult,
             notes=decision.notes[:500] if decision.notes else "",
             memory_update=decision.memory_update,
         )

@@ -476,5 +476,175 @@ class TestBackwardCompatibility:
         assert hasattr(ensemble, "evaluate_with_annotations")
 
 
+# ─── Test Bug Fixes ──────────────────────────────────────────────
+
+
+class TestBugFixes:
+    """Tests for specific bugs found during audit."""
+
+    def test_entry_decision_none_safe_fields(self):
+        """EntryDecision should handle None fields without crashing."""
+        from llm.decision_types import EntryDecision
+        d = EntryDecision(
+            action="go",
+            thesis=None,
+            sizing_rationale=None,
+            debate_summary=None,
+            regime=None,
+            notes=None,
+        )
+        # These should not crash
+        assert (d.thesis or "")[:100] == ""
+        assert (d.sizing_rationale or "")[:100] == ""
+        assert (d.debate_summary or "")[:100] == ""
+        assert (d.regime or "unknown") == "unknown"
+
+    def test_position_qty_applies_leverage(self):
+        """position_qty should include leverage in calculation."""
+        from llm.decision_types import EntryDecision, LLMDecision, StrategyWeights
+        from llm.agents.coordinator import AgentCoordinator
+        from llm.agents.base import AgentOutput, AgentRole
+
+        coord = AgentCoordinator()
+
+        mock_decision = LLMDecision(
+            action="proceed", confidence=0.80, regime="trend",
+            strategy_weights=StrategyWeights(), memory_update=None,
+            notes="test", size_multiplier=1.0,
+        )
+        coord.get_trading_decision = MagicMock(return_value=mock_decision)
+
+        # Risk Agent returns 5x leverage and 8% risk
+        risk_out = AgentOutput(
+            role=AgentRole.RISK,
+            data={"leverage": 5.0, "risk_pct": 0.08, "sz": 1.0},
+        )
+        trade_out = AgentOutput(
+            role=AgentRole.TRADE,
+            data={"a": "go", "thesis": "test"},
+        )
+        coord.last_pipeline_results = {
+            AgentRole.RISK: risk_out,
+            AgentRole.TRADE: trade_out,
+        }
+
+        result = coord.get_entry_decision(
+            signal_context={"symbol": "BTC", "side": "BUY", "entry": 50000,
+                           "sl": 49000, "tp1": 52000, "tp2": 54000,
+                           "confidence": 80, "atr": 500},
+            market_context={},
+            portfolio_context={"equity": 1000},
+        )
+
+        # equity=1000, risk_pct=0.08, risk_dollars=80
+        # stop_width=1000, base_qty=80/1000=0.08
+        # With 5x leverage: qty = 0.08 * 5 = 0.4
+        assert result.position_qty == pytest.approx(0.4, rel=0.01)
+        assert result.leverage == 5.0
+
+    def test_leverage_bounds_enforced(self):
+        """Leverage should be clamped to 1.0-20.0."""
+        from llm.decision_types import EntryDecision, LLMDecision, StrategyWeights
+        from llm.agents.coordinator import AgentCoordinator
+        from llm.agents.base import AgentOutput, AgentRole
+
+        coord = AgentCoordinator()
+
+        mock_decision = LLMDecision(
+            action="proceed", confidence=0.80, regime="trend",
+            strategy_weights=StrategyWeights(), memory_update=None,
+            notes="test", size_multiplier=1.0,
+        )
+        coord.get_trading_decision = MagicMock(return_value=mock_decision)
+
+        # Risk Agent returns absurd leverage
+        risk_out = AgentOutput(
+            role=AgentRole.RISK,
+            data={"leverage": 100.0, "risk_pct": 0.05, "sz": 1.0},
+        )
+        coord.last_pipeline_results = {
+            AgentRole.RISK: risk_out,
+            AgentRole.TRADE: AgentOutput(role=AgentRole.TRADE, data={"a": "go"}),
+        }
+
+        result = coord.get_entry_decision(
+            signal_context={"symbol": "BTC", "side": "BUY", "entry": 50000,
+                           "sl": 49000, "confidence": 80},
+            market_context={},
+            portfolio_context={"equity": 1000},
+        )
+        # Leverage should be capped at 20.0
+        assert result.leverage == 20.0
+
+    def test_sz_multiplier_extracted(self):
+        """Risk Agent's sz field should be extracted and used."""
+        from llm.decision_types import EntryDecision, LLMDecision, StrategyWeights
+        from llm.agents.coordinator import AgentCoordinator
+        from llm.agents.base import AgentOutput, AgentRole
+
+        coord = AgentCoordinator()
+
+        mock_decision = LLMDecision(
+            action="proceed", confidence=0.80, regime="trend",
+            strategy_weights=StrategyWeights(), memory_update=None,
+            notes="test", size_multiplier=1.0,
+        )
+        coord.get_trading_decision = MagicMock(return_value=mock_decision)
+
+        # Risk Agent returns sz=1.5 (high conviction sizing)
+        risk_out = AgentOutput(
+            role=AgentRole.RISK,
+            data={"leverage": 3.0, "sz": 1.5},
+        )
+        coord.last_pipeline_results = {
+            AgentRole.RISK: risk_out,
+            AgentRole.TRADE: AgentOutput(role=AgentRole.TRADE, data={"a": "go"}),
+        }
+
+        result = coord.get_entry_decision(
+            signal_context={"symbol": "BTC", "side": "BUY", "entry": 50000,
+                           "sl": 49000, "confidence": 80},
+            market_context={},
+            portfolio_context={"equity": 1000},
+        )
+        # sz=1.5 should be used as size_multiplier
+        assert result.size_multiplier == 1.5
+
+    def test_bad_risk_agent_data_handled(self):
+        """Non-numeric Risk Agent output should not crash."""
+        from llm.decision_types import EntryDecision, LLMDecision, StrategyWeights
+        from llm.agents.coordinator import AgentCoordinator
+        from llm.agents.base import AgentOutput, AgentRole
+
+        coord = AgentCoordinator()
+
+        mock_decision = LLMDecision(
+            action="proceed", confidence=0.80, regime="trend",
+            strategy_weights=StrategyWeights(), memory_update=None,
+            notes="test", size_multiplier=1.0,
+        )
+        coord.get_trading_decision = MagicMock(return_value=mock_decision)
+
+        # Risk Agent returns garbage data
+        risk_out = AgentOutput(
+            role=AgentRole.RISK,
+            data={"leverage": "not_a_number", "sz": None, "risk_pct": "bad"},
+        )
+        coord.last_pipeline_results = {
+            AgentRole.RISK: risk_out,
+            AgentRole.TRADE: AgentOutput(role=AgentRole.TRADE, data={"a": "go"}),
+        }
+
+        # Should not crash — falls back to defaults
+        result = coord.get_entry_decision(
+            signal_context={"symbol": "BTC", "side": "BUY", "entry": 50000,
+                           "sl": 49000, "confidence": 80},
+            market_context={},
+            portfolio_context={"equity": 1000},
+        )
+        assert isinstance(result, EntryDecision)
+        assert result.leverage >= 1.0  # Default fallback
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

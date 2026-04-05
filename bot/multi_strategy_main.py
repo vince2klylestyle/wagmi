@@ -6186,17 +6186,23 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             pass
 
         from llm.decision_types import EntryDecision
-        entry_decision = coordinator.get_entry_decision(
-            signal_context=signal_ctx,
-            market_context=market_ctx,
-            portfolio_context=portfolio_ctx,
-            model_for_trigger=model_for_trigger,
-        )
+        try:
+            entry_decision = coordinator.get_entry_decision(
+                signal_context=signal_ctx,
+                market_context=market_ctx,
+                portfolio_context=portfolio_ctx,
+                model_for_trigger=model_for_trigger,
+            )
+        except Exception as e:
+            logger.error(
+                f"[{trace_id}][{symbol}] LLM-FIRST coordinator error: {e}"
+            )
+            raise  # Let caller fall back to mechanical path
 
+        _thesis = (entry_decision.thesis or "")[:100]
         if entry_decision.action == "skip":
             logger.info(
-                f"[{trace_id}][{symbol}] LLM-FIRST SKIP: "
-                f"{entry_decision.thesis[:100]}"
+                f"[{trace_id}][{symbol}] LLM-FIRST SKIP: {_thesis}"
             )
             # Record for counterfactual tracking
             if self.counterfactual:
@@ -6209,7 +6215,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         tp1_price=raw_signal.tp1,
                         tp2_price=raw_signal.tp2,
                         confidence=raw_signal.confidence,
-                        reason=f"LLM_FIRST: {entry_decision.thesis[:100]}",
+                        reason=f"LLM_FIRST: {_thesis}",
                     )
                 except Exception:
                     pass
@@ -6222,6 +6228,14 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         ))
         qty = entry_decision.position_qty
         side = raw_signal.side
+
+        # Validate qty before proceeding
+        if qty <= 0 or raw_signal.entry <= 0:
+            logger.warning(
+                f"[{trace_id}][{symbol}] LLM-FIRST bad qty/entry: "
+                f"qty={qty}, entry={raw_signal.entry}"
+            )
+            return
 
         # Hard notional cap (15x equity)
         _MAX_NOTIONAL_MULT = 15.0
@@ -6317,12 +6331,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             )
             return
 
+        _thesis = (entry_decision.thesis or "")
+        _sizing = (entry_decision.sizing_rationale or "")
+        _debate = (entry_decision.debate_summary or "")
+        _regime = (entry_decision.regime or "unknown")
+
         logger.info(
             f"[{trace_id}][{symbol}] LLM-FIRST TRADE: {side} "
             f"qty={qty:.6f} @ ${actual_entry:.4f} "
             f"lev={leverage:.1f}x SL=${adj_sl:.4f} TP1=${adj_tp1:.4f} "
-            f"regime={entry_decision.regime} "
-            f"thesis={entry_decision.thesis[:60]}"
+            f"regime={_regime} thesis={_thesis[:60]}"
         )
 
         # Build entry reasons for position manager
@@ -6331,11 +6349,11 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "confidence": raw_signal.confidence,
             "strategies_agree": signal_ctx.get("strategies_agree", []),
             "num_agree": signal_ctx.get("num_agree", 1),
-            "regime": entry_decision.regime,
-            "thesis": entry_decision.thesis[:200],
-            "sizing_rationale": entry_decision.sizing_rationale[:200],
-            "risk_flags": entry_decision.risk_flags,
-            "debate_summary": entry_decision.debate_summary[:200],
+            "regime": _regime,
+            "thesis": _thesis[:200],
+            "sizing_rationale": _sizing[:200],
+            "risk_flags": entry_decision.risk_flags or [],
+            "debate_summary": _debate[:200],
             "llm_confidence": entry_decision.confidence,
             "llm_action": "go",
             "llm_agreed": True,
@@ -6346,7 +6364,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         trade_prof = TradeProfile(
             entry_type="LLM_FIRST",
             primary_driver=raw_signal.strategy or "ensemble",
-            regime=entry_decision.regime,
+            regime=_regime,
         )
 
         # Build fake LeverageDecision for compatibility
@@ -6355,8 +6373,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             leverage=leverage,
             mode="llm_first",
             tier="llm",
-            reason=f"LLM Risk Agent: {entry_decision.sizing_rationale[:80]}",
-            risk_multiplier=entry_decision.size_multiplier,
+            reason=f"LLM Risk Agent: {_sizing[:80]}",
+            risk_multiplier=entry_decision.size_multiplier or 1.0,
         )
 
         # OpsGuard duplicate check
@@ -6384,7 +6402,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             atr=raw_signal.atr,
             entry_reasons=entry_reasons,
             trade_profile=trade_prof,
-            notes=f"LLM-FIRST: {entry_decision.thesis[:200]}",
+            notes=f"LLM-FIRST: {_thesis[:200]}",
         )
 
         # Log trade
@@ -6399,8 +6417,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             metadata={
                 "confidence": raw_signal.confidence,
                 "llm_first": True,
-                "llm_regime": entry_decision.regime,
-                "llm_thesis": entry_decision.thesis[:100],
+                "llm_regime": _regime,
+                "llm_thesis": _thesis[:100],
                 "llm_leverage": leverage,
                 "llm_risk_pct": entry_decision.risk_pct,
             }
@@ -6413,8 +6431,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             f"Confidence: {raw_signal.confidence:.0f}%\n"
             f"Leverage: {leverage:.1f}x | Qty: {qty:.6f}\n"
             f"R:R: {signal_ctx.get('rr_tp1', 0):.2f}\n"
-            f"Regime: {entry_decision.regime}\n"
-            f"Thesis: {entry_decision.thesis[:100]}"
+            f"Regime: {_regime}\n"
+            f"Thesis: {_thesis[:100]}"
         )
 
     def _log_dual_track_llm_decision(
