@@ -185,3 +185,52 @@ Best entry patterns:
 - **HYPE BUY below avg (buying dips)**: 31% WR ← WORST PATTERN
 
 **Never buy HYPE dips (31% WR). BTC sells work best at rips (71%).**
+
+## 11. SIGNAL CLUSTERING — Wins come in bursts
+
+Average streak lengths are similar (3.0-3.2 for both), but MAX streaks differ:
+- BTC max win streak: **21 consecutive wins**
+- BTC max loss streak: 12
+- HYPE max loss streak: **16** (longest of any symbol)
+
+**Implication: ride win streaks (momentum sizing). Cut loss streaks faster.**
+
+## 12. BB SQUEEZE QUALITY — ATR compression predicts wins
+
+**BTC: ATR compression before BB signal → 78% WR** (n=9)
+**BTC: ATR expansion before BB signal → 38% WR** (n=8)
+
+This is the squeeze mechanism working: BB detects a squeeze (ATR compressing),
+then price breaks out. If ATR is already expanding (breakout already started),
+the edge is gone. **BB signals after squeeze >> BB signals during expansion.**
+
+Note: ETH is inverted (expansion = 58% WR). Different mechanism for ETH.
+
+## 13. BEST 2-STRATEGY COMBOS
+
+| Combo | n | WR | Avg Move |
+|-------|---|-----|----------|
+| **confidence_scorer+probability_engine** | 9 | **67%** | +0.10% |
+| bollinger_squeeze+confidence_scorer | 167 | 50% | +0.01% |
+| confidence_scorer+regime_trend | 18 | 50% | -0.41% |
+| bollinger_squeeze+regime_trend | 8 | 25% | -0.51% |
+
+BB+CS (167 signals, 50% WR) is the most common combo but mediocre.
+CS+PE is the best combo (67%) but rare (n=9).
+**BB+regime_trend is the WORST combo (25% WR) — never take this.**
+
+## 14. R:R IS INVERSELY PREDICTIVE
+
+| R:R | n | WR | Avg Move |
+|-----|---|-----|----------|
+| <1.0 | 6 | **100%** | +0.25% |
+| **1.0-1.5** | 449 | **57%** | **+0.15%** |
+| 1.5-2.0 | 11 | 27% | -1.23% |
+| 2.0+ | 926 | 46% | -0.10% |
+
+**Higher R:R = LOWER win rate.** 1.0-1.5 R:R is the sweet spot (57% WR, +0.15%/trade).
+The 2.0+ R:R signals have worse outcomes because wider TPs rarely get hit.
+
+**This confirms: our TP levels should be TIGHTER, not wider.**
+The mechanical system with 1.5-3.0 ATR TPs is overshooting.
+MFE data says median move is 0.46-0.90% — set TP1 there.
