@@ -3068,6 +3068,21 @@ class AgentCoordinator:
         if "_simulation" in snapshot:
             critic_data["simulation"] = snapshot["_simulation"]
 
+        # LLM-first signal quality data for comprehensive review
+        if "signal_metadata" in snapshot:
+            sm = snapshot["signal_metadata"]
+            critic_data["signal_quality"] = {
+                "chop_score": sm.get("chop_score"),
+                "win_prob": sm.get("win_prob"),
+                "ev_per_dollar": sm.get("ev_per_dollar"),
+                "fee_drag_pct": sm.get("fee_drag_pct"),
+                "rr_tp1": sm.get("rr_tp1"),
+                "stop_width_pct": sm.get("stop_width_pct"),
+                "num_agree": sm.get("num_agree"),
+                "regime_4h_aligned": sm.get("regime_4h_aligned"),
+                "would_pass_floor": sm.get("would_pass_confidence_floor"),
+            }
+
         return json.dumps(critic_data, separators=(",", ":"))
 
     def _is_high_stakes_trade(
