@@ -488,6 +488,17 @@ class AgentCoordinator:
         except Exception as e:
             logger.debug("[MULTI-AGENT] Network learning injection failed: %s", e)
 
+        # Dynamic stats: live rolling WR, PF, regime performance, calibration
+        # Replaces hardcoded historical stats in prompts with current data
+        try:
+            from llm.agents.dynamic_stats import get_all_dynamic_stats
+            _dyn_stats = get_all_dynamic_stats()
+            if _dyn_stats:
+                enriched_parts.append(_dyn_stats)
+                snapshot_data["_enr_dynamic_stats"] = _dyn_stats
+        except Exception as e:
+            logger.debug("[MULTI-AGENT] Dynamic stats enrichment failed: %s", e)
+
         enriched_context = "\n\n".join(enriched_parts) if enriched_parts else ""
         if enriched_context:
             snapshot_data["enriched_context"] = enriched_context
@@ -2700,6 +2711,296 @@ class AgentCoordinator:
             critic_data["simulation"] = snapshot["_simulation"]
 
         return json.dumps(critic_data, separators=(",", ":"))
+
+    def _is_high_stakes_trade(
+        self,
+        trade_out: AgentOutput,
+        risk_out: Optional[AgentOutput],
+        snapshot_data: dict,
+    ) -> bool:
+        """Determine if a trade warrants the structured debate protocol.
+
+        High-stakes when ANY of:
+          1. Trade Agent confidence > 0.70
+          2. Position would use > 10% of equity in risk
+          3. First trade after 3+ consecutive losses (extra scrutiny)
+        """
+        # Must be an active trade proposal
+        action = trade_out.data.get("a", trade_out.data.get("action", "skip"))
+        if action in ("skip", "flat"):
+            return False
+
+        # 1. High conviction
+        conf = float(trade_out.data.get("c", trade_out.data.get("confidence", 0)))
+        if conf > 0.70:
+            logger.info("[HIGH-STAKES] Triggered: confidence=%.0f%% > 70%%", conf * 100)
+            return True
+
+        # 2. Large position size (>10% equity at risk)
+        if risk_out and risk_out.ok:
+            sz_pct = float(risk_out.data.get(
+                "position_size_pct", risk_out.data.get("sz_pct", 0)
+            ))
+            if sz_pct > 10.0:
+                logger.info("[HIGH-STAKES] Triggered: position_size=%.1f%% > 10%%", sz_pct)
+                return True
+
+        # 3. First trade after 3+ consecutive losses
+        try:
+            survival = snapshot_data.get("survival", {})
+            streak = survival.get("streak", 0)
+            if isinstance(streak, (int, float)) and streak <= -3:
+                logger.info("[HIGH-STAKES] Triggered: loss_streak=%d (>=3 losses)", abs(int(streak)))
+                return True
+        except Exception:
+            pass
+        # Also check self_perf streak field (e.g. "L3" = 3 losses)
+        try:
+            sp_streak = snapshot_data.get("self_perf", {}).get("streak", "")
+            if isinstance(sp_streak, str) and sp_streak.startswith("L"):
+                loss_count = int(sp_streak[1:])
+                if loss_count >= 3:
+                    logger.info("[HIGH-STAKES] Triggered: self_perf streak=%s", sp_streak)
+                    return True
+        except (ValueError, TypeError):
+            pass
+
+        return False
+
+    def _build_critic_round1_input(
+        self,
+        snapshot: dict,
+        regime_out: AgentOutput,
+        trade_out: AgentOutput,
+        risk_out: Optional[AgentOutput],
+    ) -> dict:
+        """Build Round 1 Critic input WITHOUT confidence (prevents anchoring).
+
+        Returns a dict with thesis and evidence but no confidence score.
+        The Critic must evaluate the thesis on its merits alone.
+        """
+        td = trade_out.data
+        thesis = td.get("thesis", td.get("n", td.get("reasoning", "No thesis provided")))
+        side = td.get("side", td.get("s", ""))
+        action = td.get("a", td.get("action", ""))
+
+        evidence_parts = []
+        if td.get("evidence"):
+            evidence_parts.append(str(td["evidence"]))
+        if td.get("n"):
+            evidence_parts.append(td["n"])
+        regime = regime_out.data.get("rg", regime_out.data.get("regime", "unknown")) if regime_out.ok else "unknown"
+        regime_bias = regime_out.data.get("bias", "neutral") if regime_out.ok else "neutral"
+        evidence_parts.append(f"Regime: {regime}, Bias: {regime_bias}")
+
+        if risk_out and risk_out.ok:
+            risk_flags = risk_out.data.get("red_flags", risk_out.data.get("risks", []))
+            if risk_flags:
+                evidence_parts.append(f"Risk flags: {risk_flags}")
+
+        return {
+            "proposal_thesis": f"{action.upper()} {side} — {thesis}",
+            "proposal_evidence": "\n".join(evidence_parts) if evidence_parts else "No specific evidence cited",
+            "regime": regime,
+        }
+
+    def _run_structured_debate(
+        self,
+        trade_out: AgentOutput,
+        regime_out: AgentOutput,
+        risk_out: Optional[AgentOutput],
+        snapshot_data: dict,
+        model_for_trigger: Optional[str],
+    ) -> tuple:
+        """Run 2-round structured debate: Critic R1 (no confidence) + Trade rebuttal.
+
+        Returns:
+            (critic_out, debate_result) where debate_result is a dict or None on failure.
+        """
+        from llm.agents.prompts import CRITIC_ROUND1_PROMPT, TRADE_REBUTTAL_PROMPT
+
+        # ── Round 1: Critic evaluates thesis WITHOUT confidence ──
+        r1_input = self._build_critic_round1_input(
+            snapshot_data, regime_out, trade_out, risk_out
+        )
+
+        r1_prompt = CRITIC_ROUND1_PROMPT.format(**r1_input)
+
+        config = self.configs.get(AgentRole.CRITIC, AgentConfig(role=AgentRole.CRITIC))
+        model = config.model_override or model_for_trigger or _get_default_model(AgentRole.CRITIC)
+
+        raw_r1, usage_r1 = call_llm(
+            system_prompt=r1_prompt,
+            snapshot_json="{}",
+            model=model,
+            max_tokens=config.max_tokens or 512,
+            max_retries=1,
+            timeout=20,
+        )
+
+        try:
+            from llm.cost_tracker import get_cost_tracker
+            get_cost_tracker().record_call(
+                usage_r1.get("input_tokens", 0),
+                usage_r1.get("output_tokens", 0),
+                model,
+            )
+        except Exception:
+            pass
+
+        critic_r1_data = None
+        if raw_r1:
+            critic_r1_data = _parse_agent_json(raw_r1)
+
+        if not critic_r1_data:
+            logger.warning("[DEBATE] Critic Round 1 failed — falling back to simple critic")
+            return None, None
+
+        critic_out = AgentOutput(
+            role=AgentRole.CRITIC,
+            data=critic_r1_data,
+            input_tokens=usage_r1.get("input_tokens", 0),
+            output_tokens=usage_r1.get("output_tokens", 0),
+            model_used=model,
+        )
+
+        verdict = critic_r1_data.get("verdict", "approve").lower().strip()
+
+        # If Critic approves, no need for Round 2
+        if verdict == "approve":
+            logger.info("[DEBATE] Critic approved thesis on merit (no anchoring) — skip rebuttal")
+            return critic_out, {
+                "debate_occurred": True,
+                "debate_type": "structured_r1_only",
+                "verdict": "approve",
+                "winner": "trade",
+                "confidence_adjustment": 0.0,
+                "final_confidence": float(trade_out.data.get("c", trade_out.data.get("confidence", 0.5))),
+            }
+
+        # ── Round 2: Trade Agent rebuts Critic's challenge ──────
+        td = trade_out.data
+        thesis = td.get("thesis", td.get("n", td.get("reasoning", "")))
+        action = td.get("a", td.get("action", ""))
+
+        objections = critic_r1_data.get("objections", [])
+        objections_fmt = "\n".join(
+            f"  {i}. {obj.get('reason', '?')} (likelihood={obj.get('likelihood', '?')}, impact={obj.get('impact', '?')})"
+            for i, obj in enumerate(objections, 1)
+        ) if objections else "  (no specific objections)"
+
+        red_flags = critic_r1_data.get("red_flags", [])
+        red_flags_fmt = "\n".join(
+            f"  - {f}" for f in red_flags[:5]
+        ) if red_flags else "  (none)"
+
+        r2_prompt = TRADE_REBUTTAL_PROMPT.format(
+            original_thesis=thesis,
+            original_action=action.upper(),
+            critic_counter_thesis=critic_r1_data.get("counter_thesis") or "No explicit counter-thesis",
+            critic_objections_formatted=objections_fmt,
+            critic_red_flags=red_flags_fmt,
+        )
+
+        trade_config = self.configs.get(AgentRole.TRADE, AgentConfig(role=AgentRole.TRADE))
+        trade_model = trade_config.model_override or model_for_trigger or _get_default_model(AgentRole.TRADE)
+
+        raw_r2, usage_r2 = call_llm(
+            system_prompt=r2_prompt,
+            snapshot_json="{}",
+            model=trade_model,
+            max_tokens=trade_config.max_tokens or 512,
+            max_retries=1,
+            timeout=20,
+        )
+
+        try:
+            from llm.cost_tracker import get_cost_tracker
+            get_cost_tracker().record_call(
+                usage_r2.get("input_tokens", 0),
+                usage_r2.get("output_tokens", 0),
+                trade_model,
+            )
+        except Exception:
+            pass
+
+        rebuttal_data = None
+        if raw_r2:
+            rebuttal_data = _parse_agent_json(raw_r2)
+
+        if not rebuttal_data:
+            logger.warning("[DEBATE] Trade rebuttal failed — using Critic R1 verdict only")
+            return critic_out, {
+                "debate_occurred": True,
+                "debate_type": "structured_r1_only",
+                "verdict": verdict,
+                "winner": "critic",
+                "confidence_adjustment": -0.05,
+                "final_confidence": max(0.05, float(td.get("c", td.get("confidence", 0.5))) - 0.05),
+            }
+
+        # ── Merge debate results ──────────────────────────────
+        original_conf = float(td.get("c", td.get("confidence", 0.5)))
+        maintains_thesis = rebuttal_data.get("maintains_thesis", True)
+        rebuttal_conf = float(rebuttal_data.get("c", rebuttal_data.get("confidence", original_conf)))
+
+        if maintains_thesis:
+            # Trade Agent defended successfully -> confidence boost +5%
+            final_conf = min(1.0, original_conf + 0.05)
+            winner = "trade"
+            conf_adj = 0.05
+            logger.info(
+                "[DEBATE] Trade maintained thesis after challenge: "
+                "conf %.0f%% -> %.0f%% (+5%%)",
+                original_conf * 100, final_conf * 100,
+            )
+        else:
+            # Trade Agent revised thesis -> use revised confidence
+            final_conf = rebuttal_conf
+            winner = "critic"
+            conf_adj = final_conf - original_conf
+            logger.info(
+                "[DEBATE] Trade revised thesis after challenge: "
+                "conf %.0f%% -> %.0f%% (revised)",
+                original_conf * 100, final_conf * 100,
+            )
+
+        # Update trade_out with rebuttal results for downstream
+        trade_out.data["debate_rebuttal"] = {
+            "maintains_thesis": maintains_thesis,
+            "concessions": rebuttal_data.get("concessions", []),
+            "rebuttal_points": rebuttal_data.get("rebuttal_points", []),
+        }
+        critic_out.data["debate_round"] = 1
+        critic_out.data["debate_type"] = "structured"
+
+        # If rebuttal changed action, propagate
+        rebuttal_action = rebuttal_data.get("a", rebuttal_data.get("action"))
+        if rebuttal_action and rebuttal_action != action:
+            trade_out.data["a"] = rebuttal_action
+            trade_out.data["n"] = (
+                trade_out.data.get("n", "") +
+                f" | debate: {action}->{rebuttal_action}"
+            )
+
+        debate_result = {
+            "debate_occurred": True,
+            "debate_type": "structured_2round",
+            "verdict": verdict,
+            "winner": winner,
+            "confidence_adjustment": round(conf_adj, 3),
+            "final_confidence": round(final_conf, 3),
+            "original_confidence": round(original_conf, 3),
+            "maintains_thesis": maintains_thesis,
+            "objections_count": len(objections),
+            "concessions": rebuttal_data.get("concessions", []),
+            "cost_tokens": (
+                usage_r1.get("input_tokens", 0) + usage_r1.get("output_tokens", 0) +
+                usage_r2.get("input_tokens", 0) + usage_r2.get("output_tokens", 0)
+            ),
+        }
+
+        return critic_out, debate_result
 
     def _build_learning_input(self, trade_data: Dict[str, Any]) -> str:
         """Build learning agent input from closed trade data + context.

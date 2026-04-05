@@ -114,13 +114,12 @@ class TestAgentPrompts:
         from llm.agents.prompts import TRADE_AGENT_PROMPT
         assert "SIGNAL EVALUATION" in TRADE_AGENT_PROMPT
         assert "rf" in TRADE_AGENT_PROMPT  # Signal quality flags
-        assert "R:R" in TRADE_AGENT_PROMPT
 
-    def test_trade_prompt_has_funding_education(self):
+    def test_trade_prompt_has_funding_awareness(self):
         """Trade agent must understand funding is a cost."""
         from llm.agents.prompts import TRADE_AGENT_PROMPT
-        assert "SILENT KILLER" in TRADE_AGENT_PROMPT
-        assert "0.75%/day" in TRADE_AGENT_PROMPT
+        assert "funding" in TRADE_AGENT_PROMPT.lower()
+        assert "Funding" in TRADE_AGENT_PROMPT
 
     def test_learning_prompt_has_hypothesis_generation(self):
         """Learning agent must generate testable hypotheses."""

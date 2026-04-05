@@ -5402,6 +5402,39 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # ── LLM size multiplier: apply the meta-brain's sizing adjustment ──
         # In SIZING+ modes, the LLM can scale position size 0.5x-2.0x
+        #
+        # TODO(architecture): AUTHORITATIVE LLM SIZING REDESIGN
+        # Current problem: Risk Agent outputs sz=1.0 but 19 downstream multipliers
+        # compound to ~0.027x, crushing positions to dust. The LLM sz is applied
+        # AFTER the mechanical chain as just another multiplier on top.
+        #
+        # Target design (when LLM_MODE >= SIZING):
+        #   1. Calculate base_qty = (equity * risk_per_trade * llm_sz) / (stop_width * leverage)
+        #      where llm_sz is the Risk Agent's authoritative sizing (0.3-2.0)
+        #   2. SKIP the mechanical multiplier chain (lines 4794-4918):
+        #      - Skip: correlation guard, CorrelationGate, sector exposure, global bias,
+        #        portfolio risk engine, time-aware sizing, liquidity guard, reflection engine
+        #      (Risk Agent prompt now incorporates all these factors in its sz decision)
+        #   3. KEEP only safety caps after LLM sz:
+        #      - Circuit breaker (CB) override (hard safety, not sizing opinion)
+        #      - Notional cap (15x equity hard limit)
+        #      - Exchange minimum ($10 Hyperliquid floor)
+        #      - QTY floor (exchange round_qty ROUND_DOWN margin)
+        #   4. Formula: qty = risk_mgr.calculate_qty(entry, sl, leverage, risk_per_trade) * llm_sz
+        #      Then apply ONLY: CB cap, notional cap, exchange min floor.
+        #
+        # Implementation approach:
+        #   - Add an early branch after line 4788 (base qty calculation):
+        #     if self.llm_mode >= LLMMode.SIZING and llm_sz is not None:
+        #         qty = base_qty * llm_sz  # Risk Agent is the authority
+        #         # jump past mechanical chain to safety caps
+        #   - The vol-targeting (line 4754) that adjusts _sym_risk should also be
+        #     skipped when LLM is authoritative — Risk Agent accounts for vol regime.
+        #   - Keep adaptive_risk and RL policy as optional post-LLM adjustments
+        #     ONLY if they are safety-critical (e.g., streak circuit breaker).
+        #
+        # Depends on: moving llm_size_mult extraction earlier in the pipeline,
+        # before the mechanical sizing chain runs.
         llm_sz = getattr(candidate, 'llm_size_mult', None)
         if llm_sz is not None and llm_sz != 1.0 and self.llm_mode >= LLMMode.SIZING:
             # Learning Mode: constrain size adjustment during learning phases
