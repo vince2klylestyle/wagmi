@@ -129,10 +129,11 @@ _BASE_PROFILES: Dict[str, ExitParams] = {
         "floor_progress": 0.2, "floor_start": 0.40, "floor_max": 0.75,
     }),
     MEDIUM: _build_profile("MEDIUM", {
-        "tp1_atr": 1.5, "tp2_atr": 3.0, "sl_atr": 1.2, "tp1_pct": 0.50,
-        # Best backtest config: 12h hold, 1.2 SL, 1.5 TP1.
-        # $500→$738 (+47.6%), PF=1.13, BTC 60% WR +$481, 3-agree 86% WR.
-        # Wider targets let winners run to TP1 ($68 avg) and TP2 ($119 avg).
+        "tp1_atr": 1.0, "tp2_atr": 2.0, "sl_atr": 1.0, "tp1_pct": 0.50,
+        # 1,410-signal analysis: R:R 1.0-1.5 = 57% WR (best bucket).
+        # R:R 2.0+ = 46% WR (worse). Tighter TPs get hit more often.
+        # MFE data: BTC median 4h MFE = 0.46%, so TP1 at 1.0 ATR is reachable.
+        # SL at 1.0 ATR keeps R:R ~1.0 which is the sweet spot.
         "trailing": "medium", "trail_start": 0.80, "trail_end": 0.65,
         "floor_progress": 0.15, "floor_start": 0.40, "floor_max": 0.70,
     }),
