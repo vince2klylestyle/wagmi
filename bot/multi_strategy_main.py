@@ -55,7 +55,7 @@ from alerts.router import AlertRouter
 from alerts.telegram_bot import TelegramCommandBot
 from execution.trade_profile import classify_trade, apply_profile_to_signal
 from execution.dynamic_tp import optimize_tp_sl as dynamic_tp_optimize
-from execution.precision import validate_fill_price, get_min_qty, get_max_leverage, get_all_symbol_specs
+from execution.precision import validate_fill_price, get_min_qty, get_max_leverage, get_all_symbol_specs, round_qty
 
 # LLM meta-brain
 from llm.autonomy import LLMMode, get_llm_mode, should_call_llm, llm_has_veto, describe_mode
