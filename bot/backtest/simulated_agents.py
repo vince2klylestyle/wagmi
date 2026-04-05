@@ -450,6 +450,18 @@ def sim_critic_agent(signal, decision: SimDecision, df_1h=None) -> SimDecision:
         red_flags += 1
         veto_reasons.append(f"fee drag {fee_drag:.0f}%")
 
+    # Flag 7: HYPE at extreme vol (33% WR from 1,410-signal data)
+    if symbol == "HYPE" and signal.atr > 0 and signal.entry > 0:
+        atr_pct = signal.atr / signal.entry
+        if atr_pct > 0.015:  # >1.5% ATR = extreme for HYPE
+            red_flags += 2  # Double flag — this is catastrophic
+            veto_reasons.append(f"HYPE extreme vol ({atr_pct:.1%} ATR, 33% WR)")
+
+    # Flag 8: Buying HYPE dips (31% WR)
+    if symbol == "HYPE" and signal.side == "BUY":
+        red_flags += 1
+        veto_reasons.append("HYPE BUY (44% overall WR, 31% on dips)")
+
     # Veto if 3+ red flags
     if red_flags >= 3:
         decision.action = "skip"
