@@ -1261,6 +1261,26 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         logger.info(f"  Max positions: {self.config.max_open_positions}")
         logger.info(f"  Risk per trade: {self.config.risk_per_trade:.1%}")
         logger.info(f"  LLM meta-brain: {self.llm_mode.name} ({describe_mode(self.llm_mode)})")
+        _llm_first = getattr(self.config, 'llm_first_mode', False)
+        _llm_dual = getattr(self.config, 'llm_first_dual_track', False)
+        if _llm_first:
+            _multi = os.getenv("LLM_MULTI_AGENT", "false").lower() == "true"
+            _has_key = bool(os.getenv("ANTHROPIC_API_KEY", ""))
+            _mode_ok = self.llm_mode >= LLMMode.SIZING
+            if _multi and _mode_ok and _has_key:
+                logger.info(f"  LLM-FIRST: ACTIVE — brain before gates (9 agents)")
+            else:
+                _reasons = []
+                if not _multi: _reasons.append("LLM_MULTI_AGENT=false")
+                if not _mode_ok: _reasons.append(f"LLM_MODE={self.llm_mode.value} < SIZING(3)")
+                if not _has_key: _reasons.append("no ANTHROPIC_API_KEY")
+                logger.warning(
+                    f"  LLM-FIRST: DISABLED — prerequisites not met: "
+                    f"{', '.join(_reasons)}. Falling back to mechanical path."
+                )
+                self.config.llm_first_mode = False
+        elif _llm_dual:
+            logger.info(f"  LLM-FIRST DUAL-TRACK: logging LLM vs mechanical divergence")
         logger.info(f"  Signal monitor: {len(self.signal_monitor.channel_ids)} channels configured")
         logger.info("=" * 60)
 
