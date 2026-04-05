@@ -576,7 +576,7 @@ class PositionManager:
         # New logic: check macro position health. Healthy positions get extensions (up to 12h max).
         # Sick positions (losing momentum, wrong direction) close at base time stop.
         if pos.state == OPEN:
-            _now = sim_now or datetime.now(timezone.utc)
+            _now = sim_now or getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
             hold_hours = (_now - pos.open_time).total_seconds() / 3600
             time_stop_hours = getattr(self, '_time_stop_hours', 12)
 
@@ -1030,7 +1030,7 @@ class PositionManager:
         try:
             tel = _get_tel()
             if tel is not None:
-                _hold_s = (datetime.now(timezone.utc) - pos.open_time).total_seconds()
+                _hold_s = ((getattr(self, '_sim_now', None) or datetime.now(timezone.utc)) - pos.open_time).total_seconds()
                 tel.log(
                     "TP_HIT",
                     pos.symbol,
@@ -1327,7 +1327,7 @@ class PositionManager:
             if profile_max is not None:
                 max_hold_hours = min(max_hold_hours, profile_max)
 
-        now = datetime.now(timezone.utc)
+        now = getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
         if isinstance(pos.open_time, datetime):
             age_hours = (now - pos.open_time).total_seconds() / 3600
         else:
