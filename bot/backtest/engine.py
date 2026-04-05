@@ -1860,6 +1860,10 @@ class BacktestEngine:
         llm_thesis = signal.metadata.get("llm_thesis", "")
         position_notes = llm_thesis or llm_notes
 
+        # Set sim_now BEFORE open_position so cooldown check uses simulated time
+        if sim_dt:
+            self.pos_mgr._sim_now = sim_dt
+
         self.pos_mgr.open_position(
             symbol=signal.symbol,
             side=side,
