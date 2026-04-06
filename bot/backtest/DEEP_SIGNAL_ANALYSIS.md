@@ -268,3 +268,42 @@ The spread after 2-streaks (75% vs 29%) is even larger than 1-streaks (67% vs 34
 | BB + range | 31 | 58% | +0.15% |
 | CS + unknown | 92 | 61% | +0.03% |
 | **regime_trend + high_vol** | 22 | **27%** | **-0.46% (WORST)** |
+
+## 16. EARLY SIGNAL: 1h PREDICTS 4h with 67% ACCURACY
+
+| 1h Status | 4h Outcome | Rate |
+|-----------|------------|------|
+| **Winning at 1h** | **Win at 4h** | **67%** |
+| Winning at 1h | Lose at 4h | 33% |
+| Losing at 1h | Win at 4h | 33% |
+| **Losing at 1h** | **Lose at 4h** | **67%** |
+
+For BB signals: **73% accuracy** (win@1h -> win@4h).
+
+**EXIT RULE: Check position at 1h. If losing, 67% chance it stays losing. Cut it.**
+**BB exception: 56% recovery rate from 1h losers. Hold BB losers longer.**
+
+## 17. MFE TIMING: Peak moves happen at 8-12h
+
+| Symbol | 1h | 2h | 4h | 8h | 12h |
+|--------|-----|-----|-----|-----|------|
+| BTC | 21% | 10% | 15% | 20% | **34%** |
+| ETH | 20% | 8% | 15% | **24%** | **32%** |
+| SOL | 22% | 10% | 15% | **24%** | **30%** |
+| HYPE | 21% | 9% | 13% | **23%** | **34%** |
+
+34% of peak moves happen at 12h. Only 21% at 1h. The biggest moves develop LATE.
+This confirms: 12h time stop is correct. Don't cut winners early.
+
+## 18. REVERSAL RATES (losing at 1h, winning by 4-8h)
+
+| Strategy | Losing@1h | Recovered | Rate |
+|----------|-----------|-----------|------|
+| mean_reversion | 28 | 17 | **61%** |
+| **bollinger_squeeze** | 194 | 108 | **56%** |
+| confidence_scorer | 434 | 207 | 48% |
+| multi_tier_quality | 390 | 177 | 45% |
+| regime_trend | 43 | 12 | **28%** |
+
+BB and mean_reversion losers frequently reverse. regime_trend losers rarely do.
+**Hold BB losers longer (56% recovery). Cut regime_trend losers fast (28% recovery).**
