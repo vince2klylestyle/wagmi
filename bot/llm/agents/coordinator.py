@@ -3094,6 +3094,17 @@ class AgentCoordinator:
         except Exception:
             pass
 
+        # Veto counterfactual feedback: show Critic its recent veto outcomes
+        # so it can calibrate whether vetoes are helping or hurting
+        try:
+            _pt = getattr(self, '_perf_tracker_ref', None)
+            if _pt:
+                veto_stats = _pt.get_veto_stats() if hasattr(_pt, 'get_veto_stats') else None
+                if veto_stats:
+                    critic_data["veto_feedback"] = veto_stats
+        except Exception:
+            pass
+
         # Network learning: inject past lessons for better veto decisions
         if "network_lessons_critic" in snapshot:
             critic_data["network_lessons"] = snapshot["network_lessons_critic"]
