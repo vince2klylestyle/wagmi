@@ -499,6 +499,34 @@ class AgentCoordinator:
         except Exception as e:
             logger.debug("[MULTI-AGENT] Dynamic stats enrichment failed: %s", e)
 
+        # Self-teaching knowledge base: axioms, principles, hypotheses, anti-patterns
+        # This is the brain's accumulated wisdom — what it has LEARNED from trading.
+        # Previously disconnected: the knowledge base was built but never read by agents.
+        try:
+            from llm.self_teaching import get_teaching_engine
+            _teach = get_teaching_engine()
+            _knowledge_text = _teach.get_knowledge_for_prompt(
+                symbol=_enrich_symbol, regime=""
+            )
+            if _knowledge_text:
+                enriched_parts.append(f"KNOWLEDGE BASE:\n{_knowledge_text}")
+                snapshot_data["_enr_knowledge"] = _knowledge_text
+
+            # Curriculum level: what the LLM should be focused on learning
+            _curriculum = _teach.get_curriculum_report()
+            if _curriculum:
+                _level = _curriculum.get("current_level", 1)
+                _level_name = _curriculum.get("level_name", "PATTERN_RECOGNITION")
+                _focus = _curriculum.get("focus", "")
+                snapshot_data["curriculum_level"] = _level
+                snapshot_data["curriculum_focus"] = _focus
+                if _level >= 3:  # Level 3+ has predictive capability
+                    enriched_parts.append(
+                        f"CURRICULUM: Level {_level} ({_level_name}) — {_focus}"
+                    )
+        except Exception as e:
+            logger.debug("[MULTI-AGENT] Self-teaching knowledge injection failed: %s", e)
+
         enriched_context = "\n\n".join(enriched_parts) if enriched_parts else ""
         if enriched_context:
             snapshot_data["enriched_context"] = enriched_context
@@ -2675,7 +2703,11 @@ class AgentCoordinator:
 
         # Ensure all knowledge/learning fields are present with generous limits
         # (the Trade Agent is the decision-maker — don't starve it of context)
-        _ensure_field(trade_data, "knowledge", snapshot, max_len=1000)
+        # Knowledge from self-teaching system (axioms, principles, hypotheses)
+        if "_enr_knowledge" in snapshot and snapshot["_enr_knowledge"]:
+            trade_data["knowledge"] = snapshot["_enr_knowledge"][:1000]
+        else:
+            _ensure_field(trade_data, "knowledge", snapshot, max_len=1000)
         _ensure_field(trade_data, "deep_memory", snapshot, max_len=1000)
         _ensure_field(trade_data, "examples", snapshot, max_len=600)
         _ensure_field(trade_data, "growth", snapshot, max_len=500)
