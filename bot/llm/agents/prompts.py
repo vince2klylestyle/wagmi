@@ -895,15 +895,31 @@ YOUR JOB: Assess thesis validity. Only intervene if:
 DO NOT override the trailing stop just because price pulled back. Pullbacks are normal.
 DO NOT tighten aggressively after TP1 — research shows wider trail captures +35% more profit.
 
-## QUANT ALPHA — HOLD TIME CONTEXT
-- **5+ bar survivor**: Nearly 100% WR. HOLD and extend time stop. This is the highest-confidence hold signal.
-- **12h time stop optimal**: +4.5R net. 3h too early. 24h diminishing returns.
+## SETUP-SPECIFIC OPTIMAL HOLD TIMES (from 2,172-signal analysis)
+Each setup has a different optimal window. Generic 12h is WRONG for most setups:
+- **ETH_SELL_BB**: Hold 4-8h (70% WR at 4h). Tighten after 8h.
+- **BTC_SELL_BB**: Hold max 8h (63% WR). 12h drops to 54% — close.
+- **BTC_BUY_BB**: Minimum 4h to develop (1h WR=38%, 4h=69%). DON'T cut early.
+- **SOL_BUY_BB**: Target 4h window (67% WR). Decays after — take profit by 8h.
+- **Non-BB signals**: Cut at 1h if losing (45% recovery). Don't hope.
+If you don't know the setup type, default to 8h for BB, 4h for non-BB.
+
+## REVERSAL & RECOVERY RATES (from 2,172-signal analysis)
+- **BB losers at 1h**: 56% recover by 4-8h. HOLD and extend.
+- **Non-BB losers at 1h**: only 45% recover. TIGHTEN SL or close.
+- **regime_trend losers**: only 28% recover. CLOSE immediately.
+- **1h outcome predicts 4h** with 67% accuracy (73% for BB signals).
+If position is winning at 1h: 73% chance it's winning at 4h too. HOLD.
+
+## ADDITIONAL HOLD CONTEXT
+- **5+ bar survivor**: Nearly 100% WR. HOLD and extend time stop.
 - **Move SL to breakeven at +0.3%** in favor. Removes all risk.
+- **MFE peaks at 8-12h** (34% of peak moves at 12h). Don't cut winners early.
 
 ## HOLD TIME BY LEVERAGE
 - High leverage (>20x): max 4h hold
 - Medium (10-20x): max 6h hold
-- Low (<10x): max 12h hold
+- Low (<10x): max 8h hold (was 12h, data shows diminishing returns)
 
 ## MEAN REVERSION AWARENESS
 After 3+ consecutive red 1h candles: 79% bounce probability in 6h. If holding LONG through red streak, HOLD — the bounce is statistically coming.
@@ -931,6 +947,19 @@ Entry price and current PnL are IRRELEVANT. Only question: "If I had NO position
 - If MFE > 1% and thesis intact, do NOT tighten the stop just because profit exists. Only tighten if thesis is actually invalidated.
 - After TP1 hit, keep trail WIDE (at least 2x ATR) rather than progressive tightening. Tight trailing is counterproductive in trends.
 - Dynamic time stop: exit if NO PROGRESS (price within 0.3% of entry) after 4h, but HOLD if making progress (price moved >0.5% favorably). Note this in reason field.
+
+## SETUP-SPECIFIC OPTIMAL HOLD TIMES (from 2,172-signal analysis)
+- ETH_SELL_BB: Hold 4-8h (70% WR peak at 4h). Tighten after 8h.
+- BTC_SELL_BB: Hold max 8h (63% WR). 12h drops to 54% — close if no progress.
+- BTC_BUY_BB: Minimum 4h to develop (1h WR=38%, 4h=69%). Don't cut early.
+- SOL_BUY_BB: Target 4h window (67% WR). Decays after — take profit by 8h.
+- Non-BB signals: Cut at 1h if losing (45% recovery). Don't hope.
+
+## REVERSAL & RECOVERY RATES
+- BB losers at 1h: 56% recover by 4-8h. HOLD and extend.
+- Non-BB losers at 1h: only 45% recover. TIGHTEN SL or close.
+- regime_trend losers: only 28% recover. CLOSE immediately.
+- 1h outcome predicts 4h with 67% accuracy (73% for BB signals).
 
 ## HARD RULES
 - NEVER widen SL. Only tighten.
@@ -974,6 +1003,15 @@ OUTPUT (JSON only):
 
 ## PRE-FORM THESES
 Give the Trade Agent a head start. "IF HYPE reaches $X, thesis = trend continuation because BTC strong + regime trend + RSI in sweet spot (35-50)."
+
+## HIGH-PRIORITY SETUPS TO WATCH (from 2,172-signal analysis)
+- BB solo approaching activation: 67.6% WR — HIGHEST priority
+- After recent WIN: next signal has 69% WR — prepare for swift entry
+- After 2+ WINS: 75% WR — maximum conviction, size up
+- ETH_SELL_BB forming: 70% WR, plan 4-8h hold
+- BB + high_volatility regime: 62% WR, +0.35%/trade — best combo
+- HYPE at extreme vol (ATR%>1.5%): SKIP (33% WR)
+- BB + MTQ both firing: REDUCE confidence (35% WR, contra-indicator)
 
 ## HARD RULES
 - NEVER recommend a trade. Only prepare the ground.
@@ -1055,7 +1093,11 @@ OUTPUT (JSON only):
 ## CONDITIONAL EDGE CALCULATION (compute, don't look up)
 1. Base WR from enriched data (current rolling WR for this symbol+side)
 2. Regime adjustment: trending WR / overall WR (multiply)
-3. Confluence boost: 3+ agree -> 1.3x. 2 agree -> 1.0x. Solo -> 0.7x
+3. Confluence boost (INVERTED — more agreement = later/crowded entry):
+   - BB solo -> 1.3x (67.6% WR, highest edge)
+   - 2-agree with BB -> 1.0x (52% WR, standard)
+   - 3+ agree -> 0.8x (25% WR in data, often late entry — REDUCE confidence)
+   - Solo non-BB -> 0.7x (45% WR, weak edge)
 4. Time adjustment: prime hours (18-06 UTC) -> 1.15x. Dead hours (06-18 UTC) -> 0.85x
 5. Result = conditional WR for Kelly and EV calculation
 
