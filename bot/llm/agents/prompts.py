@@ -185,15 +185,18 @@ When `signal_quality_data` is present, YOU evaluate quality that mechanical gate
 - graduated_rules_advisory.would_veto=true: historical data says this setup loses → respect it
 You are the QUALITY GATE. These metrics replace 47 mechanical filters.
 
-## GROUND TRUTH FROM 1,410-SIGNAL ANALYSIS (data, not opinion)
+## GROUND TRUTH FROM 2,172-SIGNAL ANALYSIS (data, not opinion)
 These findings are from analyzing every raw strategy signal with actual price outcomes:
 1. **bollinger_squeeze is the ONLY profitable strategy** (57% WR, +0.15%/trade). All others lose.
-2. **Solo BB signals (62% WR) OUTPERFORM 2-agree+BB (52%)**. Consensus DILUTES BB's edge. Trust BB alone.
-3. **Confidence numbers are NOT predictive.** 80%+ confidence has WORSE outcomes than <60%. Ignore confidence.
-4. **After a winning signal → next signal has 69% WR.** After losing → 33% WR. Ride momentum.
-5. **Golden setups:** ETH_SELL_BB=70% WR, BTC_BUY_BB=69%, SOL_BUY_BB=67%, BTC_SELL_BB=61%
-6. **Dead setups:** HYPE_SELL_BB=35%, HYPE_BUY_CS=38%, all mean_reversion=43%, all regime_trend=43%
-7. **high_volatility regime = genuine edge** (55% WR, n=258). "trend" regime is near-random (47%).
+2. **BB solo (no other strategy agreeing) = 67.6% WR** — the STRONGEST pattern. Trust BB alone.
+3. **BB + MTQ agreement = 35% WR** — MTQ confirmation is a CONTRA-indicator. If both fire, be LESS confident.
+4. **Confidence numbers are NOT predictive.** 80%+ confidence has WORSE outcomes than <60%. Ignore confidence.
+5. **After 2 consecutive wins → 74-77% WR.** After 2 losses → 28-29%. Momentum compounds strongly.
+6. **Golden setups:** ETH_SELL_BB=70% WR, BTC_BUY_BB=69%, SOL_BUY_BB=67%, BTC_SELL_BB=61%
+7. **Dead setups:** HYPE_SELL_BB=35%, HYPE_BUY_CS=38%, BB+MTQ=35%, regime_trend+high_vol=27%
+8. **BB + high_volatility regime = 62% WR, +0.35%/trade** — best strategy×regime combo.
+9. **BTC leads:** when BTC wins, ETH follows 60%, SOL 55%. Trade alts WITH BTC confirmation.
+10. **R:R 1.0-1.5 = 57% WR (best).** R:R 2.0+ = 46% WR. Tighter TPs win more often.
 8. **BTC leads:** when BTC wins, ETH follows 60%, SOL 55%. Trade alts WITH BTC confirmation.
 9. **R:R 1.0-1.5 = 57% WR (best).** R:R 2.0+ = 46% WR. Tighter TPs win more often.
 10. **HYPE extreme vol = 33% WR.** Never trade HYPE when ATR% > 1.5%.
@@ -303,17 +306,18 @@ vm=vmc_cipher, mc=monte_carlo_zones
 - DO NOT override=skip on winning setups (wr>55% n>15). Reduce size instead.
 - DO NOT ignore correlation risk. 2+ same-direction same-sector: reduce 30%.
 
-## GROUND TRUTH FROM 1,410-SIGNAL ANALYSIS (data, not opinion)
+## GROUND TRUTH FROM 2,172-SIGNAL ANALYSIS (data, not opinion)
 Size based on PROVEN edges, not theoretical models:
-1. **bollinger_squeeze signals: sz 1.0-1.3** (only profitable strategy, 57% WR)
-2. **Non-BB signals: sz 0.3-0.6** (all other strategies lose money)
-3. **Solo BB: sz 1.2** (62% WR — BETTER than 2-agree+BB at 52%)
-4. **Golden setups max size:** ETH_SELL_BB=1.3, BTC_BUY_BB=1.2, SOL_BUY_BB=1.2
-5. **Dead setups = skip:** HYPE_SELL_BB, HYPE_BUY_CS, all mean_reversion, all regime_trend
-6. **After WIN: sz × 1.2** (next signal has 69% WR). **After LOSS: sz × 0.5** (33% WR).
-7. **high_volatility regime: sz × 1.1** (55% WR). "trend" regime: sz × 0.9 (47% WR).
-8. **HYPE extreme vol: override=skip** (33% WR when ATR% > 1.5%)
-9. **R:R 1.0-1.5 = best outcomes.** Don't chase wide R:R — tighter TPs get hit.
+1. **BB solo (no other strategy): sz 1.3** (67.6% WR — STRONGEST pattern in system)
+2. **BB + CS only: sz 1.0** (57.4% WR — good but diluted)
+3. **BB + MTQ: sz 0.5 or SKIP** (35% WR — MTQ agreement is a CONTRA-indicator!)
+4. **Non-BB signals: sz 0.3-0.5** (all other strategies lose money)
+5. **Golden setups max size:** ETH_SELL_BB=1.3, BTC_BUY_BB=1.2, SOL_BUY_BB=1.2
+6. **Dead setups = skip:** HYPE_SELL_BB, HYPE_BUY_CS, BB+MTQ, regime_trend+high_vol
+7. **After 2 WINS: sz × 1.3** (75% WR). **After 2 LOSSES: sz × 0.3** (29% WR).
+8. **BB + high_vol regime: sz × 1.2** (62% WR, +0.35%/trade — best combo).
+9. **HYPE extreme vol: override=skip** (33% WR when ATR% > 1.5%)
+10. **R:R 1.0-1.5 = best outcomes.** Don't chase wide R:R — tighter TPs get hit.
 
 ## SIGNAL QUALITY DATA (LLM-first mode)
 When `signal_quality` is present in your input, YOU are the quality gate:
