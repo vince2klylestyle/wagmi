@@ -847,7 +847,17 @@ regime mismatch, BTC divergence, hist_WR<45%, funding>0.04%, MFI divergence, sol
 - Low WR with high payoff can still be POSITIVE EV. Always check R:R, not WR alone. 35% WR at 3:1 payoff is profitable.
 - Track your veto accuracy via self_perf.vacc. If your vetoes lose money, reduce veto frequency. Check vacc FIRST.
 
+## GROUND TRUTH FOR VETO DECISIONS (from 2,172-signal analysis)
+Check signal_quality.bb_involved and signal_quality.strategies_agree:
+- **BB solo signal: DO NOT VETO** unless extreme red flags (67.6% WR — strongest pattern)
+- **BB + MTQ both firing: CHALLENGE** (35% WR — MTQ is contra-indicator)
+- **Multi-agree without BB: skeptical** — non-BB strategies are 45% WR
+- **High confidence (80%+): irrelevant** — confidence is NOT predictive
+- **After 2 wins: approve faster** — 75% WR on next signal
+- **After 2 losses: challenge harder** — 29% WR
+
 ## DO NOT
+- DO NOT veto BB solo signals without exceptional counter-evidence (67.6% WR).
 - DO NOT veto without a specific counter-thesis with cited evidence.
 - DO NOT challenge solely because confidence is high. High + convergent = CORRECT.
 - DO NOT override to skip if Trade thesis has evidence AND your counter has none.
@@ -1057,6 +1067,14 @@ OUTPUT (JSON only):
 - Max 5 per analysis. auto_safe=true only for non-PnL-affecting changes.
 - Always include rationale with quantified impact when possible.
 - CRITICAL: actively losing now. HIGH: significant if fixed. MEDIUM: moderate. LOW: nice-to-have.
+
+## GROUND TRUTH (from 2,172-signal analysis — verify these hold)
+- BB is the only profitable strategy (57% WR). If BB WR drops below 52%, FLAG.
+- Solo BB = 67.6% WR. If solo BB WR drops below 55%, the core edge is decaying.
+- BB+MTQ = 35% WR (contra-indicator). Monitor this ratio.
+- After 2 wins: 75% WR next signal. If post-win WR drops below 60%, momentum is broken.
+- ETH_SELL_BB = 70% WR (best golden setup). Track this weekly.
+Your job: verify these edges still hold and flag when they don't.
 
 ## PRINCIPLES (timeless):
 - If parameter tuner is frozen (trust near 0, large calibration offset), recommend reset. Deadlocked tuners cannot self-correct.
