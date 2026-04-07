@@ -1558,14 +1558,21 @@ class EnsembleStrategy:
                 _regime = self._current_regime.get(symbol, "unknown")
                 _regime_4h = self._current_regime_4h.get(symbol)
                 _sig = lone_signals[0]
-                # Strong bear regime + SELL signal, or strong bull + BUY signal
-                _strong_regimes_bear = {"trending_bear"}
+                # Directional regime + aligned signal → allow solo at half size
+                # Live data Apr 6: regime classified as trending_bull let BUYs through
+                # but SELL signals blocked because illiquid/ranging weren't in bear set.
+                # Added illiquid (crypto illiquid = drift down) and ranging to bear set
+                # so SELL signals get the same bypass opportunity as BUY signals.
+                _strong_regimes_bear = {"trending_bear", "illiquid"}
                 _strong_regimes_bull = {"trending_bull"}
+                # Also allow SELL in ranging — mean reversion from overbought
+                _moderate_regimes_sell = {"ranging"}
                 _regime_aligned = (
                     (_sig.side == "SELL" and _regime in _strong_regimes_bear) or
+                    (_sig.side == "SELL" and _regime in _moderate_regimes_sell) or
                     (_sig.side == "BUY" and _regime in _strong_regimes_bull)
                 )
-                if _regime_aligned and _sig.confidence >= 70.0:
+                if _regime_aligned and _sig.confidence >= 65.0:
                     _sig.metadata["regime_momentum_solo"] = True
                     _sig.metadata["risk_mult_override"] = 0.5
                     logger.info(
