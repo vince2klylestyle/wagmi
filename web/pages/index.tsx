@@ -6,10 +6,6 @@ import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { C, R, S, F, G, Glass, SP, fmtUsd, fmtPct, timeAgo } from '../src/theme';
 import { staggerContainer, fadeUp, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover, viewportTrigger, scrollStagger } from '../src/animations';
-import { GlowOrb } from '../components/ui/GlowOrb';
-import { ParticleField } from '../components/ui/ParticleField';
-import { GeometricBG } from '../components/ui/GeometricBG';
-import { Waveform } from '../components/ui/Waveform';
 import type { BacktestResult, ActivityEvent, LlmMarketView } from '../src/types';
 import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from 'lightweight-charts';
 import { resolveApiBase } from '../src/api';
@@ -1087,13 +1083,6 @@ export default function Home() {
 
   return (
     <div className="bg-aurora vignette" style={{ position: 'relative', overflow: 'hidden' }}>
-      {/* Atmospheric background layers */}
-      <GeometricBG variant="hexagon" opacity={0.03} />
-      <GlowOrb color="rgba(99,102,241,0.12)" size={400} top="-10%" left="10%" duration={18} />
-      <GlowOrb color="rgba(168,85,247,0.08)" size={350} top="30%" right="-5%" duration={22} delay={-5} />
-      <GlowOrb color="rgba(6,182,212,0.06)" size={300} bottom="10%" left="40%" duration={20} delay={-10} />
-      <ParticleField count={25} />
-      <Waveform opacity={0.08} height={60} />
 
       {/* ── API offline banner ─────────────────────────── */}
       {apiError && !loading && (

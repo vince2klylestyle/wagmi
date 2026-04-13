@@ -43,13 +43,6 @@ const IconBrain = () => (
   </svg>
 );
 
-const IconMore = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="5" cy="12" r="1.5" />
-    <circle cx="12" cy="12" r="1.5" />
-    <circle cx="19" cy="12" r="1.5" />
-  </svg>
-);
 
 const IconChevronLeft = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -86,7 +79,6 @@ const NAV_GROUPS: NavGroup[] = [
     icon: IconLightning,
     items: [
       { href: '/', label: 'Dashboard', desc: 'Bot overview & status' },
-      { href: '/charts', label: 'Live Charts', desc: 'Price action & zones' },
       { href: '/signals', label: 'Live Signals', desc: 'Real-time signal feed' },
       { href: '/copy-trade', label: 'Trade This', desc: "Copy the bot's trades" },
     ],
@@ -116,15 +108,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/ai-decisions', label: 'Decision Theater', desc: 'Watch the AI reason' },
       { href: '/agent-intelligence', label: 'Agent Intel', desc: 'Agent performance' },
       { href: '/strategies', label: 'How It Trades', desc: 'Strategy logic explainer' },
-    ],
-  },
-  {
-    label: 'More',
-    icon: IconMore,
-    items: [
-      { href: '/masterclass', label: "Nunu's Masterclass", desc: 'Complete trading course' },
-      { href: '/learn', label: 'Understand', desc: 'Learn how it all works' },
-      { href: '/about', label: 'About', desc: 'What is WAGMI?' },
     ],
   },
 ];

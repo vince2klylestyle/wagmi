@@ -28,14 +28,4 @@ export type { PageShellProps } from './PageShell';
 export { Stack, Row, Grid } from './Stack';
 export type { StackProps, RowProps, GridProps } from './Stack';
 
-export { GlowOrb } from './GlowOrb';
-export { ParticleField } from './ParticleField';
-export { LightBeam } from './LightBeam';
-export { GeometricBG } from './GeometricBG';
-export { Waveform } from './Waveform';
-export { DataConstellation } from './DataConstellation';
-
-export { NeuralNetwork } from './NeuralNetwork';
-export { SignalWaterfall } from './SignalWaterfall';
 export { ConfidenceRing } from './ConfidenceRing';
-export { DepthStack } from './DepthStack';

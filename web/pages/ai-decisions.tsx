@@ -21,8 +21,6 @@ import { motion } from 'framer-motion';
 import { C, R, S, F, G, SP, Glass, timeAgo } from '../src/theme';
 import { fadeUp, staggerContainer, staggerContainerSlow, orchestratedContainer } from '../src/animations';
 import { Card, StatCard, Badge, SectionHeader, EmptyState, Grid } from '../components/ui';
-import { GeometricBG } from '../components/ui/GeometricBG';
-import { GlowOrb } from '../components/ui/GlowOrb';
 import { apiFetch } from '../src/api';
 import type { LlmDecision, LlmFeedResponse } from '../src/types';
 
@@ -1254,8 +1252,6 @@ export default function AiDecisionsPage() {
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative' }}>
-        <GeometricBG variant="circuit" opacity={0.02} />
-        <GlowOrb color="rgba(99,102,241,0.08)" size={500} top="10%" right="5%" blur={120} />
 
         {/* ── Header ── */}
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>

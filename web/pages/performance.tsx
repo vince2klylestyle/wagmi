@@ -4,9 +4,6 @@ import { motion } from 'framer-motion';
 import { C, G, R, S, F, SP, Glass, fmtUsd, fmtPct } from '../src/theme';
 import { fadeUp, staggerContainer, staggerContainerSlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
 import { Card, StatCard, SectionHeader, Skeleton as SharedSkeleton, EmptyState, Grid } from '../components/ui';
-import { GeometricBG } from '../components/ui/GeometricBG';
-import { GlowOrb } from '../components/ui/GlowOrb';
-import { DataConstellation } from '../components/ui/DataConstellation';
 import { apiFetch } from '../src/api';
 import type { TradeHistoryResponse, TradeRecord, EquityCurveResponse, EquityCurvePoint, BacktestResult } from '../src/types';
 
@@ -2674,10 +2671,6 @@ export default function PerformancePage() {
       </Head>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px', position: 'relative' }}>
-        <GeometricBG variant="diamond" opacity={0.025} />
-        <DataConstellation opacity={0.05} pointCount={20} />
-        <GlowOrb color="rgba(99,102,241,0.1)" size={350} top="5%" left="15%" duration={20} />
-        <GlowOrb color="rgba(6,182,212,0.06)" size={280} bottom="15%" right="10%" duration={24} delay={-6} />
 
         {/* Header */}
         <div className="fade-in" style={{ marginBottom: 32 }}>

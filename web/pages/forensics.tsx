@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { C, G, R, F, S, Glass, SP, M, fmtUsd, fmtPct } from '../src/theme';
 import { fadeUp, staggerContainer, staggerContainerSlow } from '../src/animations';
-import { GeometricBG } from '../components/ui/GeometricBG';
 import type { TradeRecord, TradeHistoryResponse } from '../src/types';
 import { resolveApiBase } from '../src/api';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -3077,7 +3076,6 @@ export default function Forensics() {
 
   return (
     <motion.div className="bg-aurora" style={{ position: 'relative' }} variants={staggerContainerSlow} initial="hidden" animate="show">
-      <GeometricBG variant="diamond" opacity={0.02} />
       <div className="floating-orb orb-cyan" style={{ position: 'fixed', top: '15%', right: '10%' }} />
       {/* Header */}
       <motion.div variants={fadeUp} style={{ marginBottom: 28 }}>

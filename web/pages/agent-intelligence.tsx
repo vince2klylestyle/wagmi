@@ -28,10 +28,7 @@ import { C, R, S, F, G, SP, Glass, timeAgo } from '../src/theme';
 import { fadeUp, staggerContainer, staggerContainerSlow, hoverGlow, cinematicReveal, orchestratedContainer, magneticHover } from '../src/animations';
 import { apiFetch } from '../src/api';
 
-import { NeuralNetwork } from '../components/ui/NeuralNetwork';
 import { ConfidenceRing } from '../components/ui/ConfidenceRing';
-import { GeometricBG } from '../components/ui/GeometricBG';
-import { GlowOrb } from '../components/ui/GlowOrb';
 
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -306,10 +303,6 @@ export default function AgentIntelligence() {
         style={{ background: C.bg, minHeight: '100vh', padding: '24px 16px', maxWidth: 1200, margin: '0 auto', position: 'relative', overflow: 'hidden' }}
       >
 
-        {/* Neural cathedral atmosphere */}
-        <GeometricBG variant="circuit" opacity={0.03} />
-        <GlowOrb color="rgba(99,102,241,0.1)" size={350} top="-5%" right="20%" duration={20} />
-        <GlowOrb color="rgba(168,85,247,0.07)" size={280} bottom="10%" left="10%" duration={25} delay={-8} />
 
         {/* Header */}
         <motion.div
@@ -331,18 +324,6 @@ export default function AgentIntelligence() {
           </Link>
         </motion.div>
 
-        {/* Agent Neural Network Visualization */}
-        <motion.div variants={cinematicReveal} initial="hidden" animate="show" style={{ marginBottom: 32 }}>
-          <Card variant="crystal" refraction>
-            <div style={{ padding: '24px 20px 16px' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Agent Neural Network</div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>9 specialist agents orchestrated in real-time</div>
-              <NeuralNetwork height={320} agentData={
-                agents.length > 0 ? Object.fromEntries(agents.map(a => [a.role, { accuracy: a.accuracy, total_decisions: a.total_decisions }])) : undefined
-              } />
-            </div>
-          </Card>
-        </motion.div>
 
         {/* Team Calibration Summary */}
         {teamCal && Object.keys(teamCal).length > 0 && (
