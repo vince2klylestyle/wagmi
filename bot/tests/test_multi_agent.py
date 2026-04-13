@@ -29,7 +29,8 @@ class TestAgentBaseTypes:
     def test_agent_roles_all_defined(self):
         from llm.agents.base import AgentRole
         roles = list(AgentRole)
-        assert len(roles) == 22  # All specialist agents
+        assert len(roles) == 23  # All specialist agents (includes OVERRIDE)
+        assert AgentRole.OVERRIDE in roles
         assert AgentRole.REGIME in roles
         assert AgentRole.TRADE in roles
         assert AgentRole.RISK in roles

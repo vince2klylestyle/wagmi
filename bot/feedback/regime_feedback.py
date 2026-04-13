@@ -98,32 +98,37 @@ class RegimeStats:
         self._update_parameters()
 
     def _update_parameters(self):
-        """Recompute regime-specific parameters from recent trade data."""
+        """Recompute regime-specific parameters from recent trade data.
+
+        Uses PnL-per-trade, NOT win rate. The system runs at 35% WR by design
+        with 2.5:1 payoff ratio. WR-based thresholds at 50% would penalize
+        every profitable regime. PnL captures the actual edge.
+        """
         if self.total_trades < 5:
             return  # Not enough data
 
         recent = self.trades[-50:] if len(self.trades) >= 50 else self.trades
-        recent_wins = sum(1 for t in recent if t["is_win"])
-        recent_wr = recent_wins / len(recent) if recent else 0.5
+        recent_pnl = sum(t.get("pnl", 0) for t in recent)
+        avg_pnl = recent_pnl / len(recent) if recent else 0.0
 
-        # Adaptive confidence floor based on win rate
-        if recent_wr >= 0.65:
-            # Profitable regime: can afford lower floor
-            self.confidence_floor = max(55.0, 65.0 - (recent_wr - 0.65) * 30)
-        elif recent_wr >= 0.45:
+        # Adaptive confidence floor based on average PnL per trade
+        if avg_pnl > 1.0:
+            # Profitable regime: lower floor (earned trust)
+            self.confidence_floor = max(55.0, 65.0 - min(avg_pnl * 2, 10))
+        elif avg_pnl > -0.5:
             # Marginal regime: moderate floor
-            self.confidence_floor = 70.0
+            self.confidence_floor = 65.0
         else:
-            # Losing regime: high floor to filter
-            self.confidence_floor = min(90.0, 75.0 + (0.45 - recent_wr) * 50)
+            # Losing regime: raise floor
+            self.confidence_floor = min(80.0, 65.0 + min(abs(avg_pnl) * 3, 15))
 
-        # Risk multiplier based on win rate
-        if recent_wr >= 0.60:
-            self.risk_multiplier = min(1.3, 1.0 + (recent_wr - 0.60) * 1.0)
-        elif recent_wr >= 0.40:
+        # Risk multiplier based on PnL
+        if avg_pnl > 1.0:
+            self.risk_multiplier = min(1.3, 1.0 + min(avg_pnl / 10, 0.3))
+        elif avg_pnl > -0.5:
             self.risk_multiplier = 1.0
         else:
-            self.risk_multiplier = max(0.4, 1.0 - (0.40 - recent_wr) * 2.0)
+            self.risk_multiplier = max(0.5, 1.0 - min(abs(avg_pnl) / 5, 0.5))
 
         # Strategy weights: which strategies perform best in this regime?
         strat_wins: Dict[str, int] = {}
@@ -203,8 +208,13 @@ class RegimeFeedbackManager:
     weight recommendations based on observed performance in that regime.
     """
 
-    KNOWN_REGIMES = ["trend", "range", "panic", "high_volatility",
-                     "low_liquidity", "news_dislocation", "unknown"]
+    # Both quant_regime.py labels AND trade_profile.py labels
+    KNOWN_REGIMES = [
+        "trend", "trending_bull", "trending_bear", "consolidation",
+        "range", "ranging", "high_volatility", "panic",
+        "low_liquidity", "illiquid", "trending",
+        "news_dislocation", "unknown",
+    ]
 
     def __init__(self, data_dir: str = "data/feedback"):
         self.data_dir = Path(data_dir)

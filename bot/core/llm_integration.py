@@ -143,7 +143,29 @@ class LLMIntegrationMixin:
             )
 
         if result.decision is None:
-            # API error or validation failure -> default to proceed
+            # Fail-closed on API errors: skip trade rather than trade blind
+            if result.reason and "api_error" in str(result.reason):
+                logger.warning(
+                    f"[{trace_id}][{candidate.symbol}] LLM veto: "
+                    f"API error ({result.reason}), SKIPPING trade (fail-closed)"
+                )
+                from llm.decision_types import LLMDecision
+                flat_decision = LLMDecision(
+                    action="flat",
+                    confidence=0.0,
+                    regime="unknown",
+                    size_mult=0.0,
+                    reasoning=f"fail-closed: {result.reason}",
+                    raw_response="",
+                )
+                from llm.decision_engine import DecisionResult
+                return DecisionResult(
+                    decision=flat_decision,
+                    reason="fail_closed_api_error",
+                    source="safety",
+                    is_veto=True,
+                )
+            # Non-API failures (throttle, parse) still default to proceed
             logger.info(
                 f"[{trace_id}][{candidate.symbol}] LLM veto: "
                 f"no decision ({result.reason}), defaulting to proceed"

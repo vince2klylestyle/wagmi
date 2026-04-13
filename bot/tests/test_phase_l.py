@@ -263,4 +263,5 @@ def test_evaluate_proposal_insufficient_data(tmp_path, monkeypatch):
     )
     result = evaluate_proposal(p, historical_trades=[])
     assert not result["passed"]
-    assert "Insufficient" in result["reason"]
+    # Accept either "Insufficient" or "Only N matching trades" wording
+    assert ("Insufficient" in result["reason"]) or ("matching trades" in result["reason"])

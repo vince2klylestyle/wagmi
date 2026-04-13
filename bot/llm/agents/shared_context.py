@@ -36,15 +36,21 @@ REGIME_VOCABULARY = {
     "unknown": "Conflicting signals, insufficient data",
 }
 
-# Extended regime metadata with historical performance (from unified_context.py merge)
+# Extended regime metadata with LIVE performance (from 105 actual trades)
 REGIME_METADATA = {
-    "trend": {"avg_win_rate": 0.68, "avg_duration_h": (6, 18), "edge": "Highest profitability regime"},
-    "range": {"avg_win_rate": 0.52, "avg_duration_h": (4, 12), "edge": "Mean reversion only"},
-    "panic": {"avg_win_rate": 0.45, "avg_duration_h": (1, 4), "edge": "High variance, catches create reversals"},
-    "high_volatility": {"avg_win_rate": 0.48, "avg_duration_h": (2, 8), "edge": "Tight SL, better entry timing"},
-    "low_liquidity": {"avg_win_rate": 0.22, "avg_duration_h": (0, 0), "edge": "NO EDGE — always skip"},
-    "news_dislocation": {"avg_win_rate": 0.40, "avg_duration_h": (0.5, 2), "edge": "Unpredictable — wait"},
-    "unknown": {"avg_win_rate": 0.33, "avg_duration_h": (0, 0), "edge": "NO EDGE — always skip"},
+    "trending_bear": {"avg_win_rate": 0.75, "avg_duration_h": (4, 12), "edge": "THE GOLDEN REGIME: +$406 on 8 trades, $50.69/trade, PF=18.4. SHORT setups dominate.", "live_pnl": 405.55, "live_n": 8},
+    "trending": {"avg_win_rate": 0.57, "avg_duration_h": (4, 12), "edge": "Profitable: +$28 on 14 trades, PF=1.9. Both long and short work.", "live_pnl": 27.91, "live_n": 14},
+    "trending_bull": {"avg_win_rate": 0.67, "avg_duration_h": (4, 12), "edge": "Good: +$45 on 6 trades, $7.58/trade, PF=4546. LONG setups.", "live_pnl": 45.45, "live_n": 6},
+    "high_volatility": {"avg_win_rate": 0.50, "avg_duration_h": (1, 4), "edge": "Good: +$23 on 2 trades, PF=8.7. Small sample but promising.", "live_pnl": 22.79, "live_n": 2},
+    "illiquid": {"avg_win_rate": 0.33, "avg_duration_h": (2, 8), "edge": "Breakeven: +$0.08 on 36 trades. High volume, low WR. Be selective.", "live_pnl": 0.08, "live_n": 36},
+    "range": {"avg_win_rate": 0.14, "avg_duration_h": (2, 6), "edge": "LOSING: -$33 on 7 trades, PF=0.3. Most stopped in noise.", "live_pnl": -33.13, "live_n": 7},
+    "ranging": {"avg_win_rate": 0.19, "avg_duration_h": (2, 6), "edge": "LOSING: -$35 on 16 trades, PF=0.08. Same as range — avoid.", "live_pnl": -35.37, "live_n": 16},
+    "trend": {"avg_win_rate": 0.18, "avg_duration_h": (2, 8), "edge": "TRAP: -$200 on 11 trades, PF=0.15. WEAK trend (ADX 18-25), NOT real trending. Treat as range.", "live_pnl": -199.65, "live_n": 11},
+    "consolidation": {"avg_win_rate": 0.00, "avg_duration_h": (2, 8), "edge": "DISASTER: -$169 on 4 trades, 0% WR, PF=0. NEVER trade here.", "live_pnl": -169.18, "live_n": 4},
+    "panic": {"avg_win_rate": 0.45, "avg_duration_h": (1, 4), "edge": "No live data yet. Theory: high variance, reversals.", "live_pnl": 0, "live_n": 0},
+    "low_liquidity": {"avg_win_rate": 0.22, "avg_duration_h": (0, 0), "edge": "NO EDGE — always skip.", "live_pnl": 0, "live_n": 0},
+    "news_dislocation": {"avg_win_rate": 0.40, "avg_duration_h": (0.5, 2), "edge": "Unpredictable — wait.", "live_pnl": 0, "live_n": 0},
+    "unknown": {"avg_win_rate": 0.00, "avg_duration_h": (0, 0), "edge": "NO EDGE: -$6 on 1 trade. Skip.", "live_pnl": -6.04, "live_n": 1},
 }
 
 # High-edge setup types with historical performance
@@ -113,37 +119,52 @@ MARKET_AXIOMS = [
 # Based on 90d autocorrelation analysis (2026-03-24).
 ASSET_DNA = {
     "BTC": {
-        "personality": "trending on 6h/daily, noise on 1h",
+        "personality": "trending on 6h/daily, noise on 1h. Cleanest instrument overall.",
         "hourly_vol": 0.54,  # % per candle
         "autocorrelation_2h": 0.007,  # noise
         "autocorrelation_6h": 0.004,  # noise
         "big_move_pct": 6.8,  # % of candles with >1% move
-        "edge": "Follow 6h/daily trend. Ignore 1h microstructure.",
-        "avoid": "Mean-reversion against strong 6h trend",
-        "best_strategies": ["probability_engine", "confidence_scorer", "bollinger_squeeze"],
-        "worst_strategies": ["regime_trend"],  # PF=0.63
+        "edge": "BTC at 5-7x lev = sweet spot. BTC SHORT = +$55 live. BTC BUY shadow: 55% WR on 78 signals. BTC_BUY_BB = 69% WR.",
+        "avoid": "BTC at 7x+ leverage (-$302 on 29 trades). BTC solo in illiquid. Asia session shorts.",
+        "live_stats": "21 trades, 38% WR, +$31 net, PF=1.41. Normal MAE 0.37% — stops must be wider.",
+        "best_strategies": ["confidence_scorer", "bollinger_squeeze"],
+        "worst_strategies": [],
     },
     "SOL": {
-        "personality": "high-beta BTC follower, 1.4x BTC volatility",
+        "personality": "high-beta BTC follower. SOL SHORT in trending_bear = the golden setup. Sniper system's primary target.",
         "hourly_vol": 0.77,
-        "autocorrelation_2h": 0.009,  # noise, similar to BTC
+        "autocorrelation_2h": 0.009,
         "autocorrelation_6h": 0.010,
         "big_move_pct": 13.6,
-        "edge": "Same as BTC but wider stops needed. Follow BTC direction.",
-        "avoid": "Longs when BTC is in downtrend",
-        "best_strategies": ["probability_engine", "confidence_scorer"],
-        "worst_strategies": ["regime_trend"],
+        "edge": "SOL SHORT trending_bear = +$396 live. SOL SELL via BB/MTQ = 72% WR on 68 shadows. SOL SHORT = +$40 live on 26 trades.",
+        "avoid": "regime_trend SOL SELL = 0% WR on 149 shadows, -1.47% avg — NEVER TRADE THIS. SOL in consolidation/ranging. SOL at 7x+.",
+        "live_stats": "41 trades, 37% WR, +$25 net. W15: 55% WR, +$137! Sniper SOL SHORT: 23 trades +$48. MAE 0.47%.",
+        "best_strategies": ["confidence_scorer", "sniper_premium"],
+        "worst_strategies": ["regime_trend"],  # 0% WR on 177 shadow signals
     },
     "HYPE": {
-        "personality": "MEAN-REVERTING at 2-6h, extreme volatility",
+        "personality": "Volatile. WORST SYMBOL: -$36, 24% WR, PF=0.5. Only works in trending regimes.",
         "hourly_vol": 1.11,  # 2x BTC
-        "autocorrelation_2h": -0.044,  # NEGATIVE = mean-reverting
-        "autocorrelation_6h": -0.025,  # NEGATIVE = mean-reverting
-        "big_move_pct": 28.7,  # ~1 in 3 candles moves >1%
-        "edge": "Fade big moves. Mean-reversion > trend-following. Enter after exhaustion.",
-        "avoid": "Trend-following (regime_trend PF=0.09 on HYPE). NEVER follow trends on HYPE.",
-        "best_strategies": ["mean_reversion", "bollinger_squeeze", "funding_rate"],
-        "worst_strategies": ["regime_trend"],  # PF=0.09 — catastrophic
+        "autocorrelation_2h": -0.044,
+        "autocorrelation_6h": -0.025,
+        "big_move_pct": 28.7,
+        "edge": "bollinger_squeeze HYPE BUY = 61% WR on 196 shadows, +0.50% avg — BB is the ONLY edge on HYPE. HYPE BUY regime_trend = 80% WR on 40 shadows.",
+        "avoid": "HYPE in illiquid/ranging/consolidation. confidence_scorer HYPE = 21% WR live. HYPE LONG overall = -$34 live.",
+        "live_stats": "29 trades, 24% WR, -$36 net, PF=0.5. LOSING SYMBOL. 5x leverage ceiling.",
+        "best_strategies": ["bollinger_squeeze", "multi_tier_quality"],
+        "worst_strategies": ["confidence_scorer"],  # 21% WR on HYPE
+    },
+    "ETH": {
+        "personality": "Follows BTC but quieter. ETH SHORT in trending regimes is clean.",
+        "hourly_vol": 0.68,
+        "autocorrelation_2h": 0.005,
+        "autocorrelation_6h": 0.008,
+        "big_move_pct": 9.2,
+        "edge": "regime_trend ETH BUY = 100% WR on 135 shadow signals (+0.78% avg) — BEST SETUP IN SYSTEM. ETH_SELL_BB = 70% live WR. ETH LONG = +$32 live.",
+        "avoid": "regime_trend ETH SELL = 23% WR on 65 shadows — LOSING. ETH LONG in ranging (25% WR).",
+        "live_stats": "14 trades, 50% WR, +$39 net, PF=3.98. BEST per-trade PnL ($2.77). Strong W15: +$37.",
+        "best_strategies": ["confidence_scorer", "bollinger_squeeze"],
+        "worst_strategies": [],
     },
 }
 
@@ -671,21 +692,24 @@ def build_shared_context_block(
     """
     parts = []
 
+    # Existential frame: compact but unambiguous
+    parts.append(
+        "MISSION: Be profitable or die. Precision, not caution. "
+        "Take proven edge + regime match. Kill noise + bad regime."
+    )
+
     # System architecture (compact mental model)
     role_desc = AGENT_ROLES.get(agent_role, "")
     parts.append(f"SYSTEM: {SYSTEM_OVERVIEW}")
     if role_desc:
         parts.append(f"YOUR_ROLE({agent_role}): {role_desc}")
     parts.append(f"DECISION: {DECISION_FRAMEWORK}")
-    parts.append("KNOWN_ISSUES: " + " | ".join(KNOWN_ISSUES))
+    # KNOWN_ISSUES: top 2 most actionable only (saves ~200 chars)
+    parts.append("KNOWN_ISSUES: " + " | ".join(KNOWN_ISSUES[:2]))
 
-    # Market axioms (compact) — include quant rules (items 10-16) alongside core rules
+    # Market axioms: 5 core only (drop the extra quant rules which are covered by role prompts)
     if include_axioms:
-        # Core rules (first 5) + quant rules (items 10+: HTF alignment, asset DNA, session)
-        _core = MARKET_AXIOMS[:5]
-        _quant = [a for a in MARKET_AXIOMS[10:] if a]  # HTF, asset DNA, session rules
-        axiom_block = "AXIOMS: " + " | ".join(_core + _quant[:4])  # Cap at 9 to control tokens
-        parts.append(axiom_block)
+        parts.append("AXIOMS: " + " | ".join(MARKET_AXIOMS[:5]))
 
     # Per-asset DNA: tell agents the character of what they're trading
     _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")

@@ -37,9 +37,12 @@ class BlockerType(Enum):
     REGIME_MISMATCH = "regime_mismatch"
     CONFIDENCE_FLOOR = "confidence_floor"
     COOLDOWN_ACTIVE = "cooldown_active"
+    NEGATIVE_EV = "negative_ev"                # LLM can override with regime-specific edge
+    ANTI_ROUNDTRIP = "anti_roundtrip"          # LLM can override confirmed edges
     # These are NEVER overrideable
     DAILY_LOSS_LIMIT = "daily_loss_limit"
     MAX_POSITIONS = "max_positions"
+    DUPLICATE_POSITION = "duplicate_position"  # Structural: never double-down
 
 
 # Blockers that CAN be overridden by the LLM
@@ -49,12 +52,15 @@ OVERRIDEABLE_BLOCKERS = {
     BlockerType.REGIME_MISMATCH,
     BlockerType.CONFIDENCE_FLOOR,
     BlockerType.COOLDOWN_ACTIVE,
+    BlockerType.NEGATIVE_EV,
+    BlockerType.ANTI_ROUNDTRIP,
 }
 
-# Blockers that can NEVER be overridden
+# Blockers that can NEVER be overridden (hard safety limits)
 HARD_BLOCKERS = {
     BlockerType.DAILY_LOSS_LIMIT,
     BlockerType.MAX_POSITIONS,
+    BlockerType.DUPLICATE_POSITION,
 }
 
 

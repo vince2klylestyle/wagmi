@@ -215,7 +215,7 @@ class BotPerceptionAPIClient:
 
     def __init__(self, base_url: str = "http://localhost:3000"):
         self.base_url = base_url
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=5.0)  # Reduced from 30s
 
         # Cache for last snapshots
         self.last_summary: Optional[BotSummarySnapshot] = None
@@ -224,6 +224,11 @@ class BotPerceptionAPIClient:
         self.agent_brains: Dict[str, AgentBrainSnapshot] = {}
         self.last_debate: Optional[AgentDebate] = None
         self.last_telemetry: Optional[PipelineTelemetry] = None
+
+        # Dashboard availability check — avoid spamming requests when no dashboard is running
+        self._dashboard_available: bool = False
+        self._last_availability_check: float = 0.0
+        self._availability_check_interval: float = 300.0  # Re-check every 5 min
 
     @retry_on_network_error(max_retries=3)
     async def fetch_summary(self) -> Optional[BotSummarySnapshot]:
@@ -473,12 +478,31 @@ class BotPerceptionAPIClient:
             logger.debug(f"Error fetching telemetry: {e}")
             return None
 
+    async def _check_dashboard_available(self) -> bool:
+        """Quick check if dashboard is reachable. Caches result."""
+        now = time.time()
+        if now - self._last_availability_check < self._availability_check_interval:
+            return self._dashboard_available
+        self._last_availability_check = now
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/summary", timeout=2.0)
+            self._dashboard_available = response.status_code == 200
+        except Exception:
+            self._dashboard_available = False
+        if not self._dashboard_available:
+            logger.debug("[PERCEPTION] Dashboard not reachable — skipping perception fetch")
+        return self._dashboard_available
+
     @retry_on_network_error(max_retries=3)
     async def fetch_complete_perception(self) -> Dict[str, Any]:
         """
         Fetch EVERYTHING in parallel.
         Complete bot perception in one call.
         """
+        # Skip if dashboard is not running
+        if not await self._check_dashboard_available():
+            return {"timestamp": time.time(), "summary": None, "strategies": {}, "llm": {}, "agents": {}, "debate": None, "pipeline": None}
+
         logger.info("Fetching complete bot perception...")
 
         # Parallel requests

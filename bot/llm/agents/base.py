@@ -41,6 +41,8 @@ class AgentRole(str, Enum):
     RISK_GUARD = "risk_guard"              # Risk gate and position override checks
     AGENT_ROUTER = "agent_router"          # Orchestration router (decides which agents to call)
     CONSENSUS_BUILDER = "consensus_builder" # Final decision merger (execute or skip)
+    # ── Override System: Educated bypass of mechanical blocks ────
+    OVERRIDE = "override"                  # LLM-reasoned override for blocked signals
 
 
 @dataclass
@@ -76,55 +78,55 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
     AgentRole.REGIME: AgentConfig(
         role=AgentRole.REGIME,
         max_tokens=2048,
-        timeout_s=15.0,
+        timeout_s=30.0,
         required=True,
     ),
     AgentRole.TRADE: AgentConfig(
         role=AgentRole.TRADE,
         max_tokens=3072,
-        timeout_s=20.0,
+        timeout_s=60.0,  # p95 latency is 42s, 45s was cutting it close
         required=True,
     ),
     AgentRole.RISK: AgentConfig(
         role=AgentRole.RISK,
         max_tokens=2048,
-        timeout_s=15.0,
+        timeout_s=20.0,
         required=False,
     ),
     AgentRole.LEARNING: AgentConfig(
         role=AgentRole.LEARNING,
         max_tokens=2048,
-        timeout_s=15.0,
+        timeout_s=20.0,
         required=False,
     ),
     AgentRole.CRITIC: AgentConfig(
         role=AgentRole.CRITIC,
         max_tokens=3072,
-        timeout_s=20.0,
+        timeout_s=60.0,  # p95 latency is 42s, match Trade agent
         required=False,
     ),
     AgentRole.EXIT: AgentConfig(
         role=AgentRole.EXIT,
         max_tokens=1024,
-        timeout_s=10.0,
+        timeout_s=25.0,  # Raised from 10s: 68 timeouts in session, Haiku needs 15-25s in production
         required=False,
     ),
     AgentRole.SCOUT: AgentConfig(
         role=AgentRole.SCOUT,
         max_tokens=1536,  # Was 768, caused JSON truncation
-        timeout_s=10.0,
+        timeout_s=30.0,  # Raised from 10s: 108 timeouts in session, worst performer, needs room
         required=False,
     ),
     AgentRole.OVERSEER: AgentConfig(
         role=AgentRole.OVERSEER,
         max_tokens=2048,
-        timeout_s=30.0,
+        timeout_s=40.0,  # Raised from 30s: has largest input context (system-wide state)
         required=False,
     ),
     AgentRole.QUANT: AgentConfig(
         role=AgentRole.QUANT,
         max_tokens=1536,
-        timeout_s=15.0,
+        timeout_s=25.0,  # Raised from 15s: 42 timeouts in session, runs stats on large context
         required=False,
     ),
     # ── Phase 3 Strategic Agents ────────────────────────────────
@@ -206,6 +208,12 @@ DEFAULT_AGENT_CONFIGS: Dict[AgentRole, AgentConfig] = {
         role=AgentRole.CONSENSUS_BUILDER,
         max_tokens=1536,  # Needs to synthesize all agent outputs
         timeout_s=10.0,
+        required=False,
+    ),
+    AgentRole.OVERRIDE: AgentConfig(
+        role=AgentRole.OVERRIDE,
+        max_tokens=1024,   # Decisive reasoning, not verbose
+        timeout_s=25.0,    # Sonnet needs time, but override is rare
         required=False,
     ),
 }

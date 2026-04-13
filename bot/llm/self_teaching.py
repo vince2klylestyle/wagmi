@@ -934,7 +934,8 @@ class LearningCycleEngine:
             if "favors longs" in content:
                 long_wr = self._calc_side_wr(trades, "long")
                 if long_wr is not None:
-                    correct = long_wr >= 0.55
+                    # System baseline is 35% WR — 40%+ for a side = edge
+                    correct = long_wr >= 0.40
                     self.knowledge.validate(h["content"], correct, f"Long WR={long_wr:.0%}")
                     if correct:
                         self.curriculum.hypotheses_validated += 1
@@ -945,7 +946,7 @@ class LearningCycleEngine:
             elif "favors shorts" in content:
                 short_wr = self._calc_side_wr(trades, "short")
                 if short_wr is not None:
-                    correct = short_wr >= 0.55
+                    correct = short_wr >= 0.40  # Above system baseline
                     self.knowledge.validate(h["content"], correct, f"Short WR={short_wr:.0%}")
                     if correct:
                         self.curriculum.hypotheses_validated += 1

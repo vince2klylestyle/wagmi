@@ -603,9 +603,36 @@ class AgentCoordinator:
         if regime_out.data.get("expected_duration_h"):
             scratchpad.write("regime", "expected_duration_h", regime_out.data["expected_duration_h"])
 
-        # ── Step 1.5: Quant Agent (optional) ─────────────────────
+        # ── Step 1.25: Tiered Pipeline Router ───────────────────
+        # Decide if this signal deserves full pipeline, standard, or early-skip.
+        # Cuts API cost by 50-70% by not calling Quant/Risk/Critic on low-quality signals.
+        # Enabled via env flag AGENT_TIERED_ROUTING=true (default: disabled for safety)
+        _tier = 3  # Default: run everything (current behavior)
+        if os.getenv("AGENT_TIERED_ROUTING", "false").lower() == "true":
+            _tier = self._decide_pipeline_tier(snapshot_data, regime_out)
+
+            if _tier == 1:
+                # Early skip: log and return a FLAT decision without calling any more agents
+                # LLMDecision is already imported at module level (line 51) — don't shadow
+                self.last_pipeline_results = pipeline_results
+                _skip_decision = LLMDecision(
+                    action="flat",
+                    confidence=0.0,
+                    regime=regime_out.data.get("rg", "unknown"),
+                    size_mult=0.0,
+                    reasoning="Tier 1 skip: low-quality regime + weak signal — no LLM judgment needed",
+                    raw_response="{\"action\":\"flat\",\"reasoning\":\"tier_1_skip\"}",
+                )
+                return _skip_decision
+
+        # ── Step 1.5: Quant Agent (Tier 3 only when routing enabled) ─────────────────────
         quant_out = None
-        if self.configs.get(AgentRole.QUANT, AgentConfig(role=AgentRole.QUANT)).enabled:
+        _quant_enabled = self.configs.get(AgentRole.QUANT, AgentConfig(role=AgentRole.QUANT)).enabled
+        # Skip Quant in Tier 2 (normal signals don't need statistical deep-dive)
+        if _tier == 2 and os.getenv("AGENT_TIERED_ROUTING", "false").lower() == "true":
+            _quant_enabled = False
+            logger.debug("[ROUTER] Tier 2: skipping Quant agent")
+        if _quant_enabled:
             quant_input = self._build_quant_input(snapshot_data, regime_out)
             quant_out = self._call_agent(
                 AgentRole.QUANT, quant_input, model_for_trigger
@@ -1478,6 +1505,174 @@ class AgentCoordinator:
 
             return out.data
         return None
+
+    def _decide_pipeline_tier(
+        self,
+        snapshot_data: dict,
+        regime_out: "AgentOutput",
+    ) -> int:
+        """Decide which pipeline tier to run based on signal + regime quality.
+
+        Tier 1 (minimal — regime only, skip full pipeline):
+          - Regime is low_liquidity / unknown AND no quality signal
+          - Returns a FLAT decision immediately, saves 5-7 agent calls
+
+        Tier 2 (standard — Regime + Trade + Critic):
+          - Normal signal with no proven edge, average quality
+          - Runs Trade + Critic for main decision, skips Quant/Risk details
+
+        Tier 3 (full — all agents):
+          - Proven edge (setup_mfe CONFIRMED_EDGE) AND regime matches
+          - OR very high conviction (3+ strategies, conf >= 75)
+          - OR large position size consideration
+          - Runs full pipeline with all defense layers
+
+        Returns: 1, 2, or 3
+        """
+        try:
+            regime = regime_out.data.get("rg", "unknown") if regime_out and regime_out.ok else "unknown"
+            regime_conf = float(regime_out.data.get("conf", 0.5)) if regime_out and regime_out.ok else 0.3
+
+            # Extract signal quality from snapshot
+            signal_conf = 0.0
+            n_agree = 0
+            has_edge = False
+            edge_wr = 0
+            edge_n = 0
+
+            # Find the primary signal in market snapshot
+            markets = snapshot_data.get("m", []) or []
+            if isinstance(markets, list):
+                for mkt in markets:
+                    if not isinstance(mkt, dict):
+                        continue
+                    sigs = mkt.get("sg") or mkt.get("sigs") or []
+                    if sigs and isinstance(sigs, list):
+                        for s in sigs:
+                            if isinstance(s, dict):
+                                _c = float(s.get("confidence", s.get("c", 0)))
+                                _n = int(s.get("num_agree", s.get("na", 1)))
+                                if _c > signal_conf:
+                                    signal_conf = _c
+                                if _n > n_agree:
+                                    n_agree = _n
+
+            # Check for proven edge on this symbol+side from setup_mfe
+            g = snapshot_data.get("g", {}) or {}
+            setup_mfe = g.get("setup_mfe", {}) if isinstance(g, dict) else {}
+            for setup_key, data in (setup_mfe.items() if isinstance(setup_mfe, dict) else []):
+                if isinstance(data, dict):
+                    _wr = float(data.get("wr", 0))
+                    _n = int(data.get("n", 0))
+                    if _wr >= 55 and _n >= 20:
+                        has_edge = True
+                        if _wr > edge_wr:
+                            edge_wr = _wr
+                            edge_n = _n
+
+            # ── Tier 1: Skip conditions ──
+            # Dead market + no signal quality = log and skip, zero extra cost
+            if regime in ("low_liquidity", "unknown") and signal_conf < 60 and n_agree < 2:
+                logger.info(
+                    f"[ROUTER] Tier 1 (skip): regime={regime} conf={signal_conf:.0f} "
+                    f"n_agree={n_agree} — saving 5+ agent calls"
+                )
+                return 1
+
+            # ── Tier 3: Full pipeline conditions ──
+            # Proven edge OR very high conviction OR regime transition
+            if has_edge and regime in ("trend", "trending", "trending_bull", "trending_bear"):
+                logger.info(
+                    f"[ROUTER] Tier 3 (full): proven edge WR={edge_wr:.0f}% "
+                    f"n={edge_n} + regime={regime} match"
+                )
+                return 3
+            if n_agree >= 3 and signal_conf >= 65:
+                logger.info(
+                    f"[ROUTER] Tier 3 (full): multi-strat consensus "
+                    f"n_agree={n_agree} conf={signal_conf:.0f}"
+                )
+                return 3
+            if signal_conf >= 75:
+                logger.info(
+                    f"[ROUTER] Tier 3 (full): high conviction conf={signal_conf:.0f}"
+                )
+                return 3
+
+            # ── Tier 2: Everything else (normal signal, no proven edge) ──
+            logger.info(
+                f"[ROUTER] Tier 2 (standard): regime={regime} conf={signal_conf:.0f} "
+                f"n_agree={n_agree} edge={has_edge}"
+            )
+            return 2
+
+        except Exception as e:
+            logger.debug(f"[ROUTER] Decision error: {e} — defaulting to Tier 2")
+            return 2
+
+    def evaluate_override(
+        self,
+        override_context,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask the OverrideAgent whether a mechanical block should be bypassed.
+
+        This is the "educated override" path: when a mechanical filter blocks a
+        signal, we hand the full context to the OverrideAgent. It reasons about
+        the block using regime-specific edge data and returns an override decision.
+
+        Args:
+            override_context: An OverrideContext with full block/signal/edge data
+
+        Returns:
+            {
+                "decision": "override" | "confirm_block",
+                "confidence": float,
+                "summary": str,
+                "reasoning": str,
+                "edge_citation": str,
+                "corrected_ev": float | None,
+                "key_risks": list[str],
+            }
+            or None on failure (treat as confirm_block).
+        """
+        try:
+            import json
+            from llm.agents.base import AgentRole
+
+            # Build compact input from context
+            ctx_dict = override_context.to_prompt_dict()
+            input_json = json.dumps(ctx_dict, separators=(",", ":"))
+
+            # Call the OverrideAgent (Sonnet for reasoning depth)
+            out = self._call_agent(
+                AgentRole.OVERRIDE,
+                input_json,
+                fallback_model="claude-sonnet-4-5-20250929",
+            )
+
+            if not out or not out.ok:
+                logger.warning(
+                    f"[OVERRIDE] Agent call failed for {override_context.symbol} "
+                    f"{override_context.side}: "
+                    f"{out.error if out else 'no output'} — confirming block"
+                )
+                return None
+
+            result = out.data
+            decision = result.get("decision", "confirm_block")
+            confidence = float(result.get("confidence", 0.0))
+            summary = result.get("summary", "")
+
+            logger.info(
+                f"[OVERRIDE] {override_context.symbol} {override_context.side} "
+                f"block={override_context.block_type} -> "
+                f"{decision} conf={confidence:.2f}: {summary[:120]}"
+            )
+            return result
+
+        except Exception as e:
+            logger.warning(f"[OVERRIDE] Evaluation error: {e}")
+            return None
 
     def get_exit_intelligence(
         self,
@@ -2684,6 +2879,15 @@ class AgentCoordinator:
             except Exception:
                 pass
 
+        # Surface historical edge data (setup_mfe) for regime context
+        try:
+            _g = snapshot.get("g", {}) or {}
+            _setup_mfe = _g.get("setup_mfe", {}) if isinstance(_g, dict) else {}
+            if _setup_mfe:
+                regime_data["edge_data"] = _setup_mfe
+        except Exception:
+            pass
+
         return json.dumps(regime_data, separators=(",", ":"))
 
     def _build_trade_input(self, snapshot: dict, regime_out: AgentOutput, quant_out: Optional[AgentOutput] = None) -> str:
@@ -2706,6 +2910,17 @@ class AgentCoordinator:
         trade_data = dict(snapshot)
         # Inject regime agent's output so trade agent knows the classified regime
         trade_data["regime_analysis"] = regime_out.data
+
+        # Surface historical edge data prominently (was buried in g.setup_mfe)
+        # This is CRITICAL: the Trade Agent must see WR/PF/n for the exact
+        # symbol+side it's evaluating to reason about whether the setup has proven edge.
+        try:
+            _g = snapshot.get("g", {}) or {}
+            _setup_mfe = _g.get("setup_mfe", {}) if isinstance(_g, dict) else {}
+            if _setup_mfe:
+                trade_data["edge_data"] = _setup_mfe
+        except Exception:
+            pass
 
         # Compute and inject confluence quality scoring
         confluence = _compute_confluence_from_snapshot(
@@ -3066,6 +3281,16 @@ class AgentCoordinator:
         }
         if risk_out and risk_out.ok:
             critic_data["risk_assessment"] = risk_out.data
+
+        # Surface historical edge data for the Critic (same as Trade Agent gets)
+        # Critic needs this to check: "does this setup have proven edge in this regime?"
+        try:
+            _g = snapshot.get("g", {}) or {}
+            _setup_mfe = _g.get("setup_mfe", {}) if isinstance(_g, dict) else {}
+            if _setup_mfe:
+                critic_data["edge_data"] = _setup_mfe
+        except Exception:
+            pass
 
         # Inject confluence quality so Critic can assess agreement type
         confluence = _compute_confluence_from_snapshot(

@@ -63,15 +63,15 @@ class TestRegimeStrategyWeighterPriors:
         mult = self.weighter.get_regime_multiplier("high_volatility", "bollinger_squeeze")
         assert mult == 1.3
 
-    def test_consolidation_even_weights(self):
-        """Consolidation should have near-even weights (1.0 ± 0.2 for most, regime_trend demoted)."""
+    def test_consolidation_heavily_demoted(self):
+        """Consolidation is 0% WR, -$169 live — all strategies should be demoted."""
         for strategy in ["confidence_scorer", "bollinger_squeeze", "probability_engine",
                          "mean_reversion"]:
             mult = self.weighter.get_regime_multiplier("consolidation", strategy)
-            assert 0.8 <= mult <= 1.2, f"{strategy} in consolidation should be near 1.0, got {mult}"
-        # regime_trend is globally demoted (PF=0.95) — 0.6x in non-trending regimes
+            assert 0.3 <= mult <= 0.7, f"{strategy} in consolidation should be demoted (0.3-0.7), got {mult}"
+        # regime_trend in consolidation = guaranteed loss
         mult = self.weighter.get_regime_multiplier("consolidation", "regime_trend")
-        assert mult == 0.6, f"regime_trend in consolidation should be 0.6 (demoted), got {mult}"
+        assert mult == 0.3, f"regime_trend in consolidation should be 0.3 (worst), got {mult}"
 
     def test_unknown_strategy_returns_1(self):
         """Unknown strategy should return 1.0 (no adjustment)."""
@@ -358,11 +358,11 @@ class TestDefaultRegimeFit:
             assert len(strategies) >= 5, f"Regime {regime} only has {len(strategies)} strategies"
 
     def test_multipliers_in_valid_range(self):
-        """All multipliers should be in [0.5, 1.5] range."""
+        """All multipliers should be in [0.3, 1.5] range (0.3 for disaster regimes)."""
         for regime, strategies in DEFAULT_REGIME_FIT.items():
             for strategy, mult in strategies.items():
-                assert 0.5 <= mult <= 1.5, (
-                    f"{regime}/{strategy} multiplier {mult} outside [0.5, 1.5]"
+                assert 0.3 <= mult <= 1.5, (
+                    f"{regime}/{strategy} multiplier {mult} outside [0.3, 1.5]"
                 )
 
     def test_core_strategies_in_all_regimes(self):

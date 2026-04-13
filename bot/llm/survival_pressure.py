@@ -215,34 +215,36 @@ def _update_survival_score(state: SurvivalState):
         return
 
     # Component 1: Overall win rate (0-25 points)
+    # System runs at 35% WR by design with 2:1+ payoff ratio.
+    # Thresholds centered on 35% baseline, not 50%.
     overall_wr = state.total_wins / state.total_trades
-    if overall_wr >= 0.60:
-        score += 25
-    elif overall_wr >= 0.50:
-        score += 15
-    elif overall_wr >= 0.45:
-        score += 5
+    if overall_wr >= 0.50:
+        score += 25  # Well above baseline
     elif overall_wr >= 0.40:
-        score -= 5
+        score += 15  # Above baseline
+    elif overall_wr >= 0.30:
+        score += 5   # Near baseline (35% = normal)
+    elif overall_wr >= 0.20:
+        score -= 5   # Below baseline
     else:
         score -= 15
-        warnings.append(f"CRITICAL: Overall WR {overall_wr:.0%} — below survival threshold")
+        warnings.append(f"CRITICAL: Overall WR {overall_wr:.0%} — well below 35% system baseline")
 
     # Component 2: Recent win rate (last 20 trades, 0-25 points)
     recent_20 = state.recent_outcomes[-20:]
     if len(recent_20) >= 10:
         recent_wr = sum(1 for o in recent_20 if o == "WIN") / len(recent_20)
-        if recent_wr >= 0.60:
+        if recent_wr >= 0.50:
             score += 25
-        elif recent_wr >= 0.50:
-            score += 15
-        elif recent_wr >= 0.45:
-            score += 5
         elif recent_wr >= 0.40:
+            score += 15
+        elif recent_wr >= 0.30:
+            score += 5   # Near 35% baseline = normal
+        elif recent_wr >= 0.20:
             score -= 5
         else:
             score -= 15
-            warnings.append(f"DANGER: Recent WR {recent_wr:.0%} — losing money")
+            warnings.append(f"DANGER: Recent WR {recent_wr:.0%} — well below baseline")
 
     # Component 3: PnL trajectory (0-25 points)
     recent_pnl_20 = state.recent_pnls[-20:]

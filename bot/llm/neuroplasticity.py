@@ -263,15 +263,17 @@ def detect_surprise(state: Dict, setup_key: str, won: bool,
     The brain learns MORE from surprises than from expected outcomes.
     """
     # Expected win, got loss (or vice versa)
-    expected_win = expected_wr > 0.55
+    # System baseline is 35% WR — a 40% WR trade "winning" is not surprising.
+    # Only surprises relative to the setup's expected WR matter.
+    expected_win = expected_wr > 0.45  # Above-average for our system = expected win
     surprise_magnitude = 0
 
     if expected_win and not won:
         # Expected to win but lost — investigate why
-        surprise_magnitude = expected_wr - 0.5  # Higher expected WR = more surprising
+        surprise_magnitude = expected_wr - 0.35  # vs system baseline
     elif not expected_win and won:
         # Expected to lose but won — found hidden edge?
-        surprise_magnitude = 0.5 - expected_wr
+        surprise_magnitude = 0.35 - expected_wr  # how far below baseline
 
     if surprise_magnitude < 0.1:
         return None  # Not surprising enough
@@ -468,7 +470,7 @@ def run_neuroplasticity_cycle(trade_data: Optional[Dict] = None) -> Dict:
 
         # 4. Surprise detection
         strength = get_setup_strength(state, setup_key)
-        expected_wr = strength["wr"] if strength["n"] >= 5 else 0.5
+        expected_wr = strength["wr"] if strength["n"] >= 5 else 0.35  # System baseline
         results["surprise"] = detect_surprise(state, setup_key, won, expected_wr)
 
         # Add observation for consolidation

@@ -89,6 +89,7 @@ class EnsembleStrategy:
         self._lead_lag_engine = None  # Optional: LeadLagBoostEngine for BTC lead-lag confidence boost
         self._ev_calibrator = None  # Optional: EVCalibrator for adaptive EV threshold
         self._regime_strategy_weighter = None  # Optional: RegimeStrategyWeighter for regime-aware weight adjustments
+        self._override_coordinator = None  # Optional: AgentCoordinator for LLM-reasoned overrides
         # Regime-aware min_votes: current regime per symbol (set externally by engine)
         self._current_regime: Dict[str, str] = {}  # symbol -> regime string (1h)
         self._current_regime_4h: Dict[str, str] = {}  # symbol -> regime string (4h)
@@ -789,7 +790,10 @@ class EnsembleStrategy:
         if not signals:
             return None
 
-        # ── Voting / consensus (keep — we still need direction agreement) ──
+        # ── Voting / consensus ──
+        # In LLM-first mode (evaluate_raw), we allow solo signals through
+        # because the LLM will make the quality decision. The min_votes
+        # requirement is a mechanical filter the LLM should override.
         effective_min_votes = self._get_effective_min_votes(symbol)
         if error_count > 0 and active_count > 0:
             degraded = max(2, min(effective_min_votes, active_count - error_count))
@@ -802,16 +806,20 @@ class EnsembleStrategy:
             for sig in signals:
                 sig.metadata["chop_score"] = round(chop_score, 3)
 
+        # LLM-first bypass: allow min_votes=1 so solo signals reach the LLM.
+        # The LLM decides if a solo signal is worth taking, not the ensemble.
+        _llm_first_min = 1
+
         if self.mode == "voting":
-            result = self._voting(symbol, signals, effective_min_votes)
+            result = self._voting(symbol, signals, _llm_first_min)
         elif self.mode == "weighted_veto":
-            result = self._weighted_veto(symbol, signals, effective_min_votes)
+            result = self._weighted_veto(symbol, signals, _llm_first_min)
         elif self.mode == "weighted":
             result = self._weighted(symbol, signals)
         elif self.mode == "best":
             result = self._best(symbol, signals)
         else:
-            result = self._voting(symbol, signals, effective_min_votes)
+            result = self._voting(symbol, signals, _llm_first_min)
 
         if result is None:
             return None
@@ -1632,7 +1640,7 @@ class EnsembleStrategy:
         # signals through while filtering the noise majority.
         # When a 3rd+ strategy also agrees, apply moderate penalty.
         _REDUNDANT_CLUSTERS = {
-            frozenset({"bollinger_squeeze", "confidence_scorer"}): 0.85,  # Reduced from 0.78 (22%→15%). Paper trading: BB solo 78% WR, penalty was too harsh.
+            frozenset({"bollinger_squeeze", "confidence_scorer"}): 0.95,  # Reduced from 0.85 (15%→5%). BB+CS 2-agree is proven profitable — 15% penalty was blocking valid signals below the floor.
             # confidence_scorer + vmc_cipher: REMOVED. vmc_cipher has independent oscillator logic (82% solo WR).
         }
         for side_signals in [buy_signals, sell_signals]:
@@ -1665,10 +1673,10 @@ class EnsembleStrategy:
         # EXCEPTION: HYPE BUY is an empirically validated A+ setup (89% WR, 201 tests).
         # Toxic combos that were measured on aggregate data may not apply to HYPE BUY.
         _LOSING_COMBOS = {
-            frozenset({"confidence_scorer", "multi_tier_quality"}),              # PF 0.08 — toxic on aggregate
+            # CS+MTQ REMOVED from global blacklist: +$55 on BTC/ETH (60% WR, best combo).
+            # Original PF 0.08 was from HYPE data only. LLM can judge per-trade.
             frozenset({"regime_trend", "vmc_cipher"}),                          # PF 0.39, 29% WR — consistently losing
             frozenset({"probability_engine", "regime_trend"}),                  # PF 0.0, 0% WR in multiple runs
-            frozenset({"bollinger_squeeze", "confidence_scorer", "regime_trend"}),  # PF 0.0 in 3-agree
         }
         # Proven setups exempt from losing combo blocks — their empirical WR
         # overrides aggregate PF data measured across all symbols/sides.
@@ -2160,8 +2168,11 @@ class EnsembleStrategy:
         _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
         _PROVEN_SETUP_FLOOR = {
             # (symbol, side): minimum deflation factor (= proven_WR / typical_raw_conf)
-            # HYPE BUY: 89% WR / ~70% avg raw conf ≈ floor deflation ~0.85
-            ("HYPE", "BUY"): 0.85,
+            # Prevents win_prob from being crushed below proven levels
+            ("HYPE", "BUY"): 0.85,   # 89% WR on 201 shadow signals
+            ("BTC", "SELL"): 0.70,    # +$55 live, 38% WR, trending_bear golden setup
+            ("ETH", "BUY"): 0.80,     # 100% WR on 135 shadow signals from regime_trend
+            ("SOL", "SELL"): 0.70,    # +$40 live, 72% WR on 68 shadow signals (BB/MTQ)
         }
         _setup_floor = _PROVEN_SETUP_FLOOR.get((_base_sym, side))
         if _setup_floor is not None and _deflation < _setup_floor:
@@ -2221,10 +2232,12 @@ class EnsembleStrategy:
             )
             # Check adaptive EV calibrator for override
             _ev_override = False
+            _ev_override_source = ""
             if hasattr(self, '_ev_calibrator') and self._ev_calibrator is not None:
                 try:
                     if self._ev_calibrator.should_override(ev_per_dollar, n_agree):
                         _ev_override = True
+                        _ev_override_source = "ev_calibrator"
                         logger.info(
                             f"[ENSEMBLE] {symbol} {side} MARGINAL-EV OVERRIDE: "
                             f"EV={ev_per_dollar:.4f} n_agree={n_agree} "
@@ -2232,6 +2245,103 @@ class EnsembleStrategy:
                         )
                 except Exception:
                     pass
+
+            # ── LLM-reasoned override: ask the OverrideAgent ──
+            # Only if calibrator didn't already override, signal has real quality,
+            # and this symbol+side has historical edge data.
+            if (not _ev_override
+                    and n_agree >= 2  # Require at least 2 strategies agreeing
+                    and combined_conf >= 60  # Minimum quality threshold
+                    and hasattr(self, '_override_coordinator')
+                    and self._override_coordinator is not None):
+                try:
+                    from llm.override_context import build_override_context
+                    from llm.override_ledger import get_override_ledger, OverrideRecord
+                    import time as _time
+
+                    # Build minimal signal-like object for context
+                    class _SigLike:
+                        def __init__(self):
+                            self.entry = entry
+                            self.sl = best_sl
+                            self.tp1 = best_tp1
+                            self.tp2 = best_tp2
+                            self.confidence = combined_conf
+                            self.metadata = {
+                                "num_agree": n_agree,
+                                "volume_ratio": _vol_ratio if '_vol_ratio' in dir() else 1.0,
+                                "regime": self._current_regime.get(symbol, "unknown"),
+                            }
+
+                    ctx = build_override_context(
+                        symbol=symbol,
+                        side=side,
+                        block_type="negative_ev",
+                        block_reason=(
+                            f"EV={ev_per_dollar:.4f} using WP={win_prob:.2f}, "
+                            f"R:R={rr_tp1:.2f}, fee_drag={fee_drag:.3f}"
+                        ),
+                        block_details={
+                            "ev": round(ev_per_dollar, 4),
+                            "win_prob_used": round(win_prob, 2),
+                            "rr_tp1": round(rr_tp1, 2),
+                            "rr_tp2": round(rr_tp2, 2) if rr_tp2 else 0,
+                            "fee_drag": round(fee_drag, 3),
+                            "n_agree": n_agree,
+                            "combined_conf": round(combined_conf, 1),
+                        },
+                        signal=_SigLike(),
+                    )
+
+                    # Only ask LLM if we have edge data — otherwise don't waste a call
+                    if ctx.edge_n >= 20 and ctx.edge_wr >= 55:
+                        decision = self._override_coordinator.evaluate_override(ctx)
+                        if decision and decision.get("decision") == "override":
+                            _agent_conf = float(decision.get("confidence", 0.0))
+                            if _agent_conf >= 0.75:
+                                _ev_override = True
+                                _ev_override_source = "llm_override_agent"
+                                # Log to ledger
+                                try:
+                                    ledger = get_override_ledger()
+                                    rec = OverrideRecord(
+                                        override_id="",
+                                        timestamp=_time.time(),
+                                        symbol=symbol,
+                                        side=side,
+                                        block_type="negative_ev",
+                                        block_reason=ctx.block_reason,
+                                        block_details=ctx.block_details,
+                                        confidence=combined_conf,
+                                        num_strategies_agree=n_agree,
+                                        strategies_firing=[s.strategy for s in signals],
+                                        regime_1h=ctx.regime_1h,
+                                        volume_ratio=ctx.volume_ratio,
+                                        edge_data={
+                                            "setup_key": ctx.edge_setup_key,
+                                            "wr": ctx.edge_wr,
+                                            "pf": ctx.edge_pf,
+                                            "n": ctx.edge_n,
+                                            "verdict": ctx.edge_verdict,
+                                        },
+                                        override_decision="override",
+                                        override_agent_confidence=_agent_conf,
+                                        override_agent_reasoning=decision.get("reasoning", ""),
+                                        evidence_cited=[decision.get("edge_citation", "")],
+                                        override_approved=True,
+                                        approval_reason=decision.get("summary", ""),
+                                        outcome="pending",
+                                    )
+                                    ledger.record_override(rec)
+                                except Exception as _le:
+                                    logger.debug(f"[OVERRIDE] Ledger error: {_le}")
+                                logger.info(
+                                    f"[ENSEMBLE] {symbol} {side} LLM-OVERRIDE APPROVED: "
+                                    f"conf={_agent_conf:.2f} edge={ctx.edge_setup_key} "
+                                    f"WR={ctx.edge_wr:.0f}% ({decision.get('summary', '')[:80]})"
+                                )
+                except Exception as _oe:
+                    logger.debug(f"[OVERRIDE] EV override eval error: {_oe}")
 
             # Record rejection for adaptive outcome tracking
             if self._rejection_outcome_tracker is not None:
@@ -2247,7 +2357,7 @@ class EnsembleStrategy:
             if not _ev_override:
                 logger.info(f"[ENSEMBLE] {symbol} {side} negative EV BLOCKED — no override")
                 return None
-            # Continue to signal construction (EV calibrator override active)
+            # Continue to signal construction (override active: source={_ev_override_source})
 
         # Propagate chop_score from input signals (attached by chop detector pre-merge)
         _chop_score = max(

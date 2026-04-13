@@ -268,8 +268,9 @@ class SizingOptimizer:
         """
         base = 5.0
 
-        # WR scaling (linear: 50% → 1.0x, 71% → 1.42x, 85% → 1.7x)
-        wr_mult = max(win_rate / 0.50, 0.5)
+        # WR scaling centered on 35% system baseline (not 50%)
+        # 35% → 1.0x, 50% → 1.43x, 70% → 2.0x
+        wr_mult = max(win_rate / 0.35, 0.5)
 
         # Payoff scaling (sqrt: 1.5 → 1.22x, 2.0 → 1.41x)
         payoff_mult = math.sqrt(max(payoff, 0.5))

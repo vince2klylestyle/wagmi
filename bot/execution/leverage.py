@@ -115,10 +115,10 @@ class LeverageManager:
         #
         # Kelly-optimal per symbol (factoring 5min noise + WR):
         _SCALP_KELLY_LEV = {
-            "BTC": 10.0,   # Tightest noise, most liquid — can handle 10x scalps
-            "ETH": 8.0,    # Similar to BTC but slightly noisier
-            "SOL": 7.0,    # More volatile, moderate leverage
-            "HYPE": 5.0,   # Noisiest — still viable for scalps at 5x
+            "BTC": 7.0,    # Capped: data shows 5-7x optimal, 7-9x loses
+            "ETH": 7.0,    # Capped at 7x
+            "SOL": 7.0,    # Already at 7x
+            "HYPE": 5.0,   # Already at 5x
         }
         _sym_clean = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").split("/")[0]
         FULL_KELLY_LEV = _SCALP_KELLY_LEV.get(_sym_clean, 7.0)

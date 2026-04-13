@@ -63,22 +63,22 @@ class AdaptiveRiskManager:
             elif wins == 1:
                 mult *= 0.75  # 1/5 = reduce risk
 
-        # Factor 2: Regime-specific WR
+        # Factor 2: Regime-specific WR (centered on 35% system baseline)
         if regime and regime in self._regime_wr:
             rd = self._regime_wr[regime]
             if rd["total"] >= 8:
                 rwr = rd["wins"] / rd["total"]
-                if rwr >= 0.65:
-                    mult *= 1.10  # Proven profitable regime
-                elif rwr < 0.40:
-                    mult *= 0.80  # Proven unprofitable regime
+                if rwr >= 0.50:
+                    mult *= 1.10  # Well above system baseline
+                elif rwr < 0.20:
+                    mult *= 0.80  # Well below system baseline
 
-        # Factor 3: Symbol-specific WR (passed from feedback system)
+        # Factor 3: Symbol-specific WR (centered on 35% baseline)
         if symbol_wr > 0:
-            if symbol_wr >= 0.65:
-                mult *= 1.10  # Proven symbol
-            elif symbol_wr < 0.35:
-                mult *= 0.80  # Proven loser symbol
+            if symbol_wr >= 0.50:
+                mult *= 1.10  # Above baseline
+            elif symbol_wr < 0.20:
+                mult *= 0.80  # Well below baseline
 
         # Clamp
         mult = max(_MIN_RISK_MULT, min(_MAX_RISK_MULT, mult))
@@ -214,8 +214,10 @@ class AdaptiveSizer:
         wr = wins / total
 
         # Base heat: linear map from WR to heat
-        # WR 0.60 → heat +1.0, WR 0.40 → heat -1.0, WR 0.50 → heat 0.0
-        base_heat = (wr - 0.50) / 0.10  # 10% WR = 1.0 heat unit
+        # System runs at 35% WR by design (high payoff ratio). Centering on
+        # 50% would make every symbol "cold" and cut sizing on profitable setups.
+        # WR 0.50 → heat +1.0, WR 0.35 → heat 0.0, WR 0.20 → heat -1.0
+        base_heat = (wr - 0.35) / 0.15  # 15% WR deviation = 1.0 heat unit
 
         # Streak bonus: consecutive wins/losses at tail accelerate heat
         streak = self._get_streak(outcomes)

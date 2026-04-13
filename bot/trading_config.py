@@ -793,29 +793,34 @@ REGIME_SL_TP_SCALARS = {
 
 # Regime-aware risk sizing: bet bigger where edge is proven, smaller where it isn't.
 # 30-day backtest: consolidation 78% WR (+$3.2k), trending_bull 40% WR (-$4k).
+# Updated 2026-04-12 from 105 live trades. Comments show ACTUAL live performance.
 REGIME_RISK_MULTIPLIERS = {
-    "trending_bull":    0.85,   # Full Kelly approach: trade every regime, let Kelly size handle risk
-    "trending_bear":    0.70,   # Was 0.30 — need trades to collect data. Kelly sizes down via WR naturally.
-    "trend":            1.0,    # Our core edge — full size
-    "consolidation":    1.0,    # Best regime: 47% WR, +$4k PnL — full size
-    "range":            0.85,   # Was 0.75 — need data collection, keep executable
-    "high_volatility":  0.85,   # Was 0.75 — vol is where money is made
-    "panic":            0.50,   # Extreme conditions — still half size (was 0.3)
-    "low_liquidity":    0.60,   # Was 0.40
-    "news_dislocation": 0.50,   # Was 0.3
-    "unknown":          0.75,   # Was 0.5 — need data, need executable trades to get it
+    "trending_bear":    1.0,    # THE GOLDEN REGIME: +$406, 75% WR, PF=18.4 — FULL SIZE
+    "trending_bull":    1.0,    # +$45, 67% WR, PF=4546 — FULL SIZE
+    "trending":         0.90,   # +$28, 57% WR, PF=1.9 — near full
+    "high_volatility":  0.85,   # +$23, 50% WR, PF=8.7 — small sample but promising
+    "illiquid":         0.70,   # $0, 33% WR — breakeven, reduced
+    "trend":            0.50,   # TRAP: -$200, 18% WR, PF=0.15 — weak ADX, treat like range
+    "range":            0.50,   # -$33, 14% WR, PF=0.3 — losing regime
+    "ranging":          0.50,   # -$35, 19% WR, PF=0.08 — losing regime
+    "consolidation":    0.30,   # DISASTER: -$169, 0% WR, PF=0 — minimum size
+    "panic":            0.50,   # No live data — cautious
+    "low_liquidity":    0.40,   # No edge — minimal
+    "news_dislocation": 0.50,   # Unpredictable — cautious
+    "unknown":          0.50,   # No data — cautious
 }
 
 
-# Symbol-specific risk scaling: size based on validated edge per symbol.
-# BTC: PF=12.64, 75% WR over 150d — full conviction
-# SOL: PF=0.67, 33% WR over 90d — marginal, reduce
-# HYPE: PF=0.0, 0% WR over 90d — minimal until more data
+# Symbol-specific risk scaling from 105 live trades (2026-04-12).
+# ETH: PF=3.98, 50% WR, +$39 — best per-trade avg ($2.77)
+# BTC: PF=1.41, 38% WR, +$31 — clean when leverage controlled
+# SOL: PF=1.05, 37% WR, +$25 — high variance, W15 was +$137
+# HYPE: PF=0.50, 24% WR, -$36 — WORST SYMBOL, losing consistently
 SYMBOL_RISK_MULTIPLIERS = {
-    "BTC":  0.90,  # Was 1.0 → 0.90. Slight haircut, still near-full size.
-    "ETH":  0.85,  # Was default 0.6 → 0.85. Major liquid asset, deserves near-full size.
-    "SOL":  0.80,  # Was 0.5 → 0.80. Previous value crushed sizing below exchange minimums.
-    "HYPE": 0.85,  # Was 0.5 → 0.85. Was causing MIN_QTY rejections (qty < 1.0 HYPE min).
+    "ETH":  1.0,   # Best symbol by PnL/trade. Full size.
+    "BTC":  0.90,  # Solid but needs leverage control (<=7x).
+    "SOL":  0.80,  # High variance. Great in trending_bear, bad elsewhere.
+    "HYPE": 0.60,  # LOSING SYMBOL: -$36, 24% WR, PF=0.5. Reduce until data improves.
 }
 
 # Symbol+side risk scaling: penalize specific directional trades with weak edge.

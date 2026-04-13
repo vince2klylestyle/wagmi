@@ -62,12 +62,13 @@ class TestHeatComputation:
         assert heat == -1.0
 
     def test_balanced_near_neutral(self, sizer):
-        """50/50 win rate → heat near 0.0."""
+        """50/50 win rate → positive heat (system baseline is 35% WR)."""
         for _ in range(10):
             sizer.record_outcome("BTC", True)
             sizer.record_outcome("BTC", False)
         heat = sizer.get_heat("BTC")
-        assert -0.3 <= heat <= 0.3
+        # 50% WR is ABOVE system baseline of 35%, so heat should be positive
+        assert 0.0 <= heat <= 1.0
 
     def test_winning_streak_positive_heat(self, sizer):
         """60%+ WR → positive heat."""
@@ -432,14 +433,15 @@ class TestEdgeCases:
         assert sizer.get_heat("BTC") > 0.0
 
     def test_alternating_wl_near_neutral(self, sizer):
-        """WLWLWLWLWL → near neutral (no streak, 50% WR)."""
+        """WLWLWLWLWL → positive heat (50% WR is above 35% system baseline)."""
         for _ in range(10):
             sizer.record_outcome("BTC", True)
             sizer.record_outcome("BTC", False)
         heat = sizer.get_heat("BTC")
         mult = sizer.get_sizing_multiplier("BTC")
-        assert -0.3 <= heat <= 0.3
-        assert 0.85 <= mult <= 1.15
+        # 50% WR is above 35% baseline, so heat is positive
+        assert 0.0 <= heat <= 1.0
+        assert 1.0 <= mult <= 1.5
 
     def test_rapid_regime_change(self, small_window_sizer):
         """Quick switch from hot to cold."""

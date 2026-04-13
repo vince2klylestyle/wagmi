@@ -77,17 +77,21 @@ def _load_recent_trades(max_trades: int = 100) -> List[dict]:
 
 
 def _wr_label(wr: float, n: int) -> str:
-    """Human-readable label for a win rate given sample size."""
+    """Human-readable label for a win rate given sample size.
+
+    System runs at 35% WR with 2:1 payoff ratio. Labels are relative to
+    system baseline, not 50%. 35% WR = NORMAL, not "weak".
+    """
     if n < 3:
         return "INSUFFICIENT DATA"
     if n < 10:
         return "LOW SAMPLE"
-    if wr >= 0.60:
+    if wr >= 0.55:
         return "STRONG"
-    if wr >= 0.45:
-        return "MARGINAL"
-    if wr >= 0.30:
-        return "WEAK"
+    if wr >= 0.35:
+        return "NORMAL"
+    if wr >= 0.20:
+        return "BELOW AVG"
     return "TOXIC"
 
 
@@ -131,6 +135,31 @@ def get_current_edge_map(max_trades: int = 100) -> str:
     total_wins = sum(1 for t in trades if t["won"])
     overall_wr = total_wins / total_n if total_n > 0 else 0
     lines.append(f"  OVERALL: {overall_wr:.0%} WR ({total_n} trades)")
+
+    # Add regime-specific edges (symbol+side+regime)
+    regime_groups: Dict[str, List[dict]] = defaultdict(list)
+    for t in trades:
+        regime = t.get("regime", "")
+        if regime:
+            key = f"{t['symbol']}_{t['side']}_{regime}"
+            regime_groups[key].append(t)
+
+    # Show top regime-specific edges (n>=3, sorted by PnL)
+    regime_edges = []
+    for key, group in regime_groups.items():
+        n = len(group)
+        if n < 3:
+            continue
+        wins = sum(1 for t in group if t["won"])
+        total_pnl = sum(t["pnl"] for t in group)
+        regime_edges.append((key, n, wins / n, total_pnl))
+
+    if regime_edges:
+        regime_edges.sort(key=lambda x: -x[3])
+        lines.append("  REGIME-SPECIFIC (n>=3):")
+        for key, n, wr, pnl in regime_edges[:8]:
+            label = _wr_label(wr, n)
+            lines.append(f"    {key}: {wr:.0%} WR ({n}), ${pnl:+.2f} — {label}")
 
     return "\n".join(lines)
 

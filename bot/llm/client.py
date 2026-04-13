@@ -32,7 +32,7 @@ def _get_client():
         if not api_key:
             logger.warning("ANTHROPIC_API_KEY not set, LLM calls will fail")
             return None
-        return anthropic.Anthropic(api_key=api_key)
+        return anthropic.Anthropic(api_key=api_key, max_retries=0)
     except ImportError:
         logger.warning("anthropic package not installed (pip install anthropic)")
         return None

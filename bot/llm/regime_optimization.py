@@ -160,26 +160,26 @@ class RegimeOptimizer:
         """
         Calculate optimal confidence floor for a regime.
 
-        Logic:
-        - Higher win rate = lower floor (signals more reliable)
-        - Positive PnL = lower floor (signals making money)
-        - Negative PnL = raise floor (signals losing money)
+        Uses PnL as primary signal, WR as secondary. System runs at 35% WR
+        by design — WR thresholds centered on 50% penalize every regime.
         """
         base_floor = self.DEFAULT_REGIME_FLOORS.get(regime, 65.0)
 
-        # Adjustment for win rate
-        if win_rate > 0.60:
-            # Good win rate—lower the floor
-            floor = base_floor - 10
-        elif win_rate > 0.55:
-            floor = base_floor - 5
-        elif win_rate < 0.45:
-            # Poor win rate—raise the floor
-            floor = base_floor + 10
+        # Primary: PnL-based adjustment
+        if avg_pnl > 1.0:
+            floor = base_floor - min(avg_pnl * 2, 10)  # Profitable = lower floor
+        elif avg_pnl < -1.0:
+            floor = base_floor + min(abs(avg_pnl) * 2, 10)  # Losing = raise floor
         else:
             floor = base_floor
 
-        # Adjustment for PnL
+        # Secondary: WR adjustment (centered on 35% system baseline)
+        if win_rate > 0.50:
+            floor -= 5  # Notably above baseline
+        elif win_rate < 0.20:
+            floor += 5  # Notably below baseline
+
+        # PnL negative still raises floor
         if avg_pnl < 0:
             floor = min(90.0, floor + 5)  # Cap at 90%
         elif avg_pnl > 0:

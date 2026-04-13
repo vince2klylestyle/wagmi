@@ -1210,13 +1210,17 @@ class RiskFilterChain:
         meta["num_agree"] = num_strategies_agree
 
         # ── Soft Gate: Leverage-scaled EV floor ──
+        # Was 0.22/0.28 — blocked 69% of leveraged signals including
+        # proven setups (BTC SHORT trending_bear with +$55 live edge).
+        # System runs at 35% WR: win_prob=0.35 at R:R=2.0 gives EV=0.05.
+        # Lowered to 0.08 (matches MIN_SIGNAL_EV) to stop double-blocking.
         ev = meta.get("ev_per_dollar")
         if ev is not None and leverage > 2.0:
             n_agree = meta.get("num_agree", 0)
             if leverage > 4.0:
-                lev_ev_floor = 0.22 if n_agree >= 3 else 0.28
+                lev_ev_floor = 0.06 if n_agree >= 3 else 0.10
             else:
-                lev_ev_floor = 0.20
+                lev_ev_floor = 0.08
             annotations.append(FilterAnnotation(
                 gate="lev_ev_floor",
                 passed=ev >= lev_ev_floor,

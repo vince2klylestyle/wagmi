@@ -608,7 +608,7 @@ class CounterfactualLearner:
                     "count": data["total"],
                     "win_rate": round(wr * 100, 1),
                     "avg_pnl": round(data["pnl_sum"] / data["total"], 3),
-                    "has_edge": wr > 0.5 and data["pnl_sum"] > 0,
+                    "has_edge": data["pnl_sum"] > 0,  # PnL-based edge, not WR (system is 35% WR)
                 }
 
         return {

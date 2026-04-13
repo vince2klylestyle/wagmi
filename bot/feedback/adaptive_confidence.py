@@ -284,21 +284,21 @@ class AdaptiveConfidenceFloor:
         """Compute how much to lower the floor based on earned trust.
 
         Trust comes from:
-        1. Overall win rate being good
+        1. Overall PnL being positive (not WR — our system is 35% WR by design)
         2. Calibration being accurate (confidence predicts well)
         3. Having enough data
         """
         bonus = 0.0
 
-        # Win rate bonus: if we're winning >55%, earn trust
-        total_wins = sum(b.wins for b in self.bins)
+        # PnL-based trust: if total PnL is positive, we've earned trust
+        total_pnl = sum(b.total_pnl for b in self.bins)
         total = sum(b.total for b in self.bins)
         if total >= 20:
-            wr = total_wins / total
-            if wr > 0.55:
-                bonus += (wr - 0.55) * 20  # Up to 4% bonus at 75% win rate
-            elif wr < 0.45:
-                bonus -= (0.45 - wr) * 30  # Penalty for poor performance
+            avg_pnl = total_pnl / total
+            if avg_pnl > 0.5:
+                bonus += min(avg_pnl * 2, 4.0)  # Up to 4% bonus for profitable trading
+            elif avg_pnl < -1.0:
+                bonus -= min(abs(avg_pnl) * 1.5, 5.0)  # Penalty for net negative
 
         # Calibration bonus: if our confidence predictions are accurate
         if len(self.calibration_errors) >= 20:
@@ -320,48 +320,66 @@ class AdaptiveConfidenceFloor:
     def _update_strategy_floor(
         self, strategy: str, confidence: float, win: bool, pnl: float
     ):
-        """Update per-strategy floor using exponential moving average."""
+        """Update per-strategy floor using PnL-weighted exponential moving average.
+
+        PnL-based: a $33 trailing win at 70% confidence should lower the floor
+        far more than a $3 loss at the same confidence raises it.
+        """
         alpha = 0.1  # Learning rate
 
-        if win and pnl > 0:
-            # Won at this confidence — lower the strategy floor toward it
-            target = max(confidence - 5, ABSOLUTE_MIN_FLOOR)
+        if pnl > 0:
+            # Profitable trade — lower floor proportional to PnL magnitude
+            # Bigger wins = more trust = lower floor target
+            drop = min(pnl / 5.0, 10.0)  # $50 win → drop 10 pts max
+            target = max(confidence - drop, ABSOLUTE_MIN_FLOOR)
         else:
-            # Lost — raise the floor slightly above this confidence
-            target = min(confidence + 3, ABSOLUTE_MAX_FLOOR)
+            # Loss — raise floor proportional to loss magnitude
+            raise_amt = min(abs(pnl) / 10.0, 5.0)  # $50 loss → raise 5 pts max
+            target = min(confidence + raise_amt, ABSOLUTE_MAX_FLOOR)
 
         current = self.strategy_floors.get(strategy, DEFAULT_FLOOR)
         self.strategy_floors[strategy] = current * (1 - alpha) + target * alpha
 
     def _update_symbol_adjustment(self, symbol: str, win: bool, pnl: float):
-        """Update per-symbol confidence adjustment."""
+        """Update per-symbol confidence adjustment using PnL, not win/loss.
+
+        A 35% WR system with 2.5:1 payoff is profitable — WR-based updates
+        would poison every symbol toward +3 (raise floor). Use PnL instead:
+        big win = lower floor (earned trust), small loss = small raise.
+        """
         alpha = 0.1
         current = self.symbol_adjustments.get(symbol, 0.0)
 
-        if win:
-            # Performing well on this symbol, lower the bar slightly
-            target = -2.0
+        # PnL-proportional target: scale by magnitude, cap at +/-3
+        if pnl > 0:
+            # Bigger wins earn more trust (but cap at -3)
+            target = max(-3.0, -min(pnl / 10.0, 3.0))
         else:
-            # Performing poorly, raise the bar
-            target = 3.0
+            # Losses raise floor proportionally (but cap at +3)
+            target = min(3.0, min(abs(pnl) / 10.0, 3.0))
 
         self.symbol_adjustments[symbol] = current * (1 - alpha) + target * alpha
         # Clamp
         self.symbol_adjustments[symbol] = max(-5.0, min(10.0, self.symbol_adjustments[symbol]))
 
     def _update_regime_adjustment(self, regime: str, win: bool, pnl: float):
-        """Update per-regime confidence adjustment."""
+        """Update per-regime confidence adjustment using PnL, not win/loss.
+
+        Same fix as symbol: a 35% WR system is profitable via payoff ratio.
+        WR-based updates drift all regimes toward +3 (floor raised) even when
+        the regime is profitable. Use PnL magnitude as the signal.
+        """
         alpha = 0.1
         current = self.regime_adjustments.get(regime, 0.0)
 
-        if win:
-            target = -2.0
+        # PnL-proportional target: scale by magnitude, cap at +/-3
+        if pnl > 0:
+            target = max(-3.0, -min(pnl / 10.0, 3.0))
         else:
-            target = 3.0
+            target = min(3.0, min(abs(pnl) / 10.0, 3.0))
 
         self.regime_adjustments[regime] = current * (1 - alpha) + target * alpha
-        # Wider bounds: a regime with 30% WR over 15+ trades should raise floor
-        # by 8+ points, not just 5. Similarly, strong regimes earn more trust.
+        # Wider bounds for regimes
         self.regime_adjustments[regime] = max(-8.0, min(15.0, self.regime_adjustments[regime]))
 
     def get_report(self) -> Dict[str, Any]:

@@ -645,6 +645,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             trailing_atr_mult=config.trailing_stop_atr_mult,
             time_stop_hours=config.time_stop_hours,
         )
+        # Per-symbol execution lock: prevents duplicate entries when two signals
+        # for the same symbol race through the pipeline simultaneously.
+        self._executing_symbols: set = set()
+        self._executing_lock = threading.Lock()
         self.leverage_mgr = LeverageManager(
             enable_leverage=config.enable_leverage,
             max_leverage=config.max_leverage,
@@ -821,6 +825,15 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             except Exception as ev_e:
                 logger.debug(f"[INIT] EVCalibrator unavailable: {ev_e}")
                 self._ev_calibrator = None
+            # Wire LLM-reasoned override coordinator into ensemble
+            # Allows OverrideAgent to bypass EV blocks when regime-specific edge is proven
+            try:
+                from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+                if is_multi_agent_enabled():
+                    self.ensemble._override_coordinator = get_coordinator()
+                    logger.info("[INIT] LLM Override Coordinator wired into ensemble EV gate")
+            except Exception as oc_e:
+                logger.debug(f"[INIT] Override coordinator unavailable: {oc_e}")
             # Wire cross-asset correlation boost into ensemble
             try:
                 from feedback.correlation_boost import CrossAssetCorrelationBoost
@@ -4252,17 +4265,44 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except Exception:
             pass
 
-        # Anti-round-trip: same-direction re-entry after a win needs 10% more confidence
+        # Anti-round-trip: same-direction re-entry after a win needs more confidence.
+        # Threshold: 75% for unknown setups, 70% for CONFIRMED_EDGE setups
+        # (symbol+side with WR >= 55% and n >= 20 in backtest data).
+        # Rationale: confirmed edges are the exact patterns we want to repeat;
+        # requiring 75% blocks legitimate re-entries on our best setups.
         last_side = self._last_close_side.get(symbol)
         was_win = self._last_close_win.get(symbol, False)
-        if was_win and last_side == side and signal_result.confidence < 75:
-            log_rejection(symbol, "ANTI_ROUNDTRIP",
-                          confidence=signal_result.confidence)
-            logger.info(
-                f"[{trace_id}][{symbol}] Anti-round-trip: same-dir re-entry "
-                f"after win needs >=75% conf (got {signal_result.confidence:.0f}%)"
-            )
-            return
+        if was_win and last_side == side:
+            # Check for confirmed edge on this symbol+side
+            _roundtrip_threshold = 75.0
+            try:
+                from llm.deep_memory import get_deep_memory
+                _dm = get_deep_memory()
+                _bt = _dm.strategy_fps.get_all().get("_quant_backtest_2026_03_26", {})
+                _setup_key = f"{symbol}_{'BUY' if side == 'LONG' else 'SELL'}"
+                _setup = _bt.get(_setup_key, {})
+                # WR is stored as 0-100 (percentage), not 0-1 decimal
+                _wr = _setup.get("wr", 0)
+                _n = _setup.get("total", 0)
+                if _wr >= 55 and _n >= 20:
+                    _roundtrip_threshold = 70.0
+                    logger.info(
+                        f"[{trace_id}][{symbol}] Confirmed edge detected "
+                        f"({_setup_key}: {_wr:.0f}% WR, n={_n}) — "
+                        f"roundtrip threshold lowered to 70%"
+                    )
+            except Exception:
+                pass
+
+            if signal_result.confidence < _roundtrip_threshold:
+                log_rejection(symbol, "ANTI_ROUNDTRIP",
+                              confidence=signal_result.confidence)
+                logger.info(
+                    f"[{trace_id}][{symbol}] Anti-round-trip: same-dir re-entry "
+                    f"after win needs >={_roundtrip_threshold:.0f}% conf "
+                    f"(got {signal_result.confidence:.0f}%)"
+                )
+                return
 
         # ── Signal Flagger: cheap heuristic flag evaluation ──
         # Runs on every signal (no LLM call). Flags interesting characteristics
@@ -4453,8 +4493,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         logger.debug(f"Signal override feedback error: {e}")
 
                 if not _override_ok:
-                    logger.info(f"[{trace_id}][{symbol}] Feedback floor bypassed (aggressive): {fb_reason}")
-                    # Aggressive mode: don't return, let it through
+                    logger.info(f"[{trace_id}][{symbol}] Feedback floor BLOCKED: {fb_reason}")
+                    # Data collection phase complete (100+ trades). Enforce the floor.
+                    return
         except Exception as e:
             logger.warning(f"[{trace_id}][{symbol}] Feedback loop error (proceeding): {e}")
 
@@ -4862,6 +4903,27 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         )
         if qty <= 0:
             return
+
+        # ── LLM AUTHORITATIVE SIZING: skip mechanical multiplier chain ──
+        # When LLM is in SIZING+ mode, the Risk Agent's sz output (0.3-2.0)
+        # replaces the 19 mechanical multipliers. Only safety caps remain.
+        _llm_authority_active = False
+        if self.llm_mode >= LLMMode.SIZING:
+            _candidate = self._active_candidates.get(symbol)
+            _llm_sz_early = getattr(_candidate, 'llm_size_mult', None) if _candidate else None
+            if _llm_sz_early is not None and _llm_sz_early > 0:
+                _llm_sz_early = max(0.3, min(2.0, _llm_sz_early))
+                _original_qty = qty  # Save for MIN_NOTIONAL floor check
+                qty = qty * _llm_sz_early
+                # Apply ONLY circuit breaker cap (hard safety)
+                if cb_constraints.get("constrained"):
+                    qty = qty * cb_constraints["size_multiplier"]
+                logger.info(
+                    f"[{trace_id}][{symbol}] LLM AUTHORITATIVE SIZING: "
+                    f"base_qty * {_llm_sz_early:.2f} = {qty:.6f} "
+                    f"(skipping {19} mechanical multipliers)"
+                )
+                _llm_authority_active = True
 
         # Circuit breaker override: reduce size during CB
         if cb_constraints.get("constrained"):
@@ -5511,20 +5573,37 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         #
         # Depends on: moving llm_size_mult extraction earlier in the pipeline,
         # before the mechanical sizing chain runs.
-        llm_sz = getattr(candidate, 'llm_size_mult', None)
-        if llm_sz is not None and llm_sz != 1.0 and self.llm_mode >= LLMMode.SIZING:
-            # Learning Mode: constrain size adjustment during learning phases
-            if _LEARNING_MODE_AVAILABLE and is_learning_mode_active():
-                try:
-                    _, llm_sz, _lm_reason = apply_learning_constraints(
-                        llm_action="proceed",
-                        llm_confidence=candidate.llm_confidence or 0.5,
-                        llm_size_multiplier=llm_sz,
-                        signal_confidence=signal_result.confidence,
-                    )
-                except Exception:
-                    pass
-            llm_sz = max(0.5, min(2.0, llm_sz))  # Safety clamp
+        # ── LLM AUTHORITATIVE SIZING RESTORE ──
+        # If LLM authority bypass was active, the mechanical chain ran but
+        # we now RESTORE qty to the LLM-decided value (base_qty * llm_sz).
+        # The mechanical chain's modifications are discarded.
+        if _llm_authority_active:
+            _pre_restore = qty
+            qty = _original_qty * _llm_sz_early  # Restore to LLM-decided size
+            # Re-apply ONLY circuit breaker (hard safety)
+            if cb_constraints.get("constrained"):
+                qty = qty * cb_constraints["size_multiplier"]
+            logger.info(
+                f"[{trace_id}][{symbol}] LLM SIZING RESTORED: "
+                f"mechanical={_pre_restore:.6f} → LLM={qty:.6f} "
+                f"(base * {_llm_sz_early:.2f})"
+            )
+        else:
+            # Non-LLM path: apply the old LLM-sz-as-multiplier logic
+            llm_sz = getattr(candidate, 'llm_size_mult', None)
+            if llm_sz is not None and llm_sz != 1.0 and self.llm_mode >= LLMMode.SIZING:
+                # Learning Mode: constrain size adjustment during learning phases
+                if _LEARNING_MODE_AVAILABLE and is_learning_mode_active():
+                    try:
+                        _, llm_sz, _lm_reason = apply_learning_constraints(
+                            llm_action="proceed",
+                            llm_confidence=candidate.llm_confidence or 0.5,
+                            llm_size_multiplier=llm_sz,
+                            signal_confidence=signal_result.confidence,
+                        )
+                    except Exception:
+                        pass
+                llm_sz = max(0.5, min(2.0, llm_sz))  # Safety clamp
             qty = qty * llm_sz
             logger.info(
                 f"[{trace_id}][{symbol}] LLM size mult: qty * {llm_sz:.2f} = {qty:.6f}"
@@ -5842,10 +5921,23 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             except Exception as _sim_err:
                 logger.debug(f"[{trace_id}][{symbol}] Pre-trade sim error: {_sim_err}")
 
+        # Per-symbol execution lock: atomic check-and-acquire prevents two signals
+        # for the same symbol from racing through the pipeline simultaneously.
+        with self._executing_lock:
+            if symbol in self._executing_symbols:
+                logger.warning(
+                    f"[{trace_id}][{symbol}] DUPLICATE BLOCKED by execution lock: "
+                    f"another signal is already being executed. Aborting."
+                )
+                return
+            self._executing_symbols.add(symbol)
+
         # Final duplicate position guard — last line of defense before order submission.
         # Checks both position manager state AND ops guard to prevent the
         # 9-BTC-SHORT-in-one-day bug where multiple code paths could open duplicates.
         if self.pos_mgr.has_open_position(symbol):
+            with self._executing_lock:
+                self._executing_symbols.discard(symbol)
             logger.warning(
                 f"[{trace_id}][{symbol}] DUPLICATE BLOCKED at execution gate: "
                 f"position already exists. Aborting order."
@@ -5857,6 +5949,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             open_positions=self.pos_mgr.get_open_positions(),
         )
         if not _dup_check["allowed"]:
+            with self._executing_lock:
+                self._executing_symbols.discard(symbol)
             logger.warning(
                 f"[{trace_id}][{symbol}] DUPLICATE BLOCKED by OpsGuard: "
                 f"{_dup_check['reason']}"
@@ -5954,6 +6048,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             notes=_llm_notes[:200],
             setup_type=_setup_type,
         )
+
+        # Release execution lock — position is now registered, duplicate checks will see it
+        with self._executing_lock:
+            self._executing_symbols.discard(symbol)
 
         # Pipeline telemetry: record successful trade
         try: _get_pt().finish_journey(symbol, traded=True, qty=qty, notional=qty * actual_entry, leverage=lev_decision.leverage)
@@ -6215,7 +6313,41 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "circuit_breaker_proximity": getattr(
                 self.risk_mgr, 'circuit_breaker_proximity', 1.0
             ),
+            "consecutive_losses": getattr(
+                self.risk_mgr.circuit_breaker, 'consecutive_losses', 0
+            ) if hasattr(self.risk_mgr, 'circuit_breaker') else 0,
         }
+
+        # Enrich signal context with edge data and behavioral patterns
+        # so the LLM can make truly informed decisions
+        try:
+            from llm.deep_memory import get_deep_memory
+            _dm = get_deep_memory()
+            _bt = _dm.strategy_fps.get_all().get("_quant_backtest_2026_03_26", {})
+            _setup_key = f"{symbol.replace('/USDC:USDC','').replace('/USDT:USDT','')}_{'BUY' if raw_signal.side == 'BUY' else 'SELL'}"
+            _setup = _bt.get(_setup_key, {})
+            if _setup and _setup.get("total", 0) > 0:
+                signal_ctx["edge_data"] = {
+                    "setup_key": _setup_key,
+                    "wr": _setup.get("wr", 0),
+                    "pf": _setup.get("pf", 0),
+                    "n": _setup.get("total", 0),
+                    "verdict": _setup.get("verdict", ""),
+                    "best_hours": _setup.get("best_hours_utc", ""),
+                }
+        except Exception:
+            pass
+
+        # Add reflection/exhaustion context if available
+        try:
+            if hasattr(self, '_reflection_engine') and self._reflection_engine:
+                _refl = self._reflection_engine.get_entry_context(
+                    symbol, raw_signal.side, current_price
+                ) if hasattr(self._reflection_engine, 'get_entry_context') else None
+                if _refl:
+                    signal_ctx["reflection"] = _refl
+        except Exception:
+            pass
 
         # Get model routing from trigger system
         model_for_trigger = None

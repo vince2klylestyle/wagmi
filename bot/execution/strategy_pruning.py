@@ -141,7 +141,8 @@ def evaluate_strategy(
         }
 
     # Check if strategy was previously reduced but is now performing well
-    if ev > 0 and wr > 0.50 and current_weight < 0.9:
+    # System runs at 35% WR by design — positive EV is the real edge signal
+    if ev > 0 and wr > 0.30 and current_weight < 0.9:
         new_weight = min(current_weight / WEIGHT_REDUCTION_FACTOR, 1.0)
         reason = (
             f"Positive EV ({ev:.3f}) with WR {wr:.1%} over {trades} trades. "

@@ -311,8 +311,9 @@ class ParameterTuner:
             win_rate = sum(1 for p in window_pnls if p > 0) / max(len(window_pnls), 1)
             avg_pnl = sum(window_pnls) / max(len(window_pnls), 1)
 
-            # Consider the change beneficial if WR > 45% or avg PnL > 0
-            was_correct = win_rate > 0.45 or avg_pnl > 0
+            # Consider the change beneficial if avg PnL > 0 (primary) or WR above baseline
+            # System runs at 35% WR — use PnL as primary validation metric
+            was_correct = avg_pnl > 0 or win_rate > 0.35
 
             self.validate_suggestion(v["param"], was_correct)
             v["validated"] = True

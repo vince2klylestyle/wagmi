@@ -307,14 +307,18 @@ class SignalQualityScorer:
     def _wr_to_score(self, win_rate: float) -> float:
         """Convert a win rate to a quality score multiplier.
 
-        50% win rate = 1.0 (neutral)
-        75% win rate = 1.2 (boost)
-        25% win rate = 0.8 (penalty)
-        0%  win rate = 0.5 (harsh penalty for consistently losing)
+        IMPORTANT: This system runs at 35% WR by design (high payoff ratio).
+        A 50%-neutral WR baseline would penalize EVERY signal in the system.
+        Baseline is set to 35% WR = 1.0 (neutral) to match system reality.
+
+        20% WR = 0.85 (penalty — below system average)
+        35% WR = 1.0 (neutral — system average)
+        50% WR = 1.1 (boost — above average)
+        65% WR = 1.2 (strong boost)
         """
-        # Linear mapping: 0% -> 0.5, 50% -> 0.9, 100% -> 1.3
-        # Wider range punishes truly bad signals harder
-        return 0.5 + win_rate * 0.8
+        # Linear mapping centered on 35% WR instead of 50%
+        # 0% -> 0.65, 35% -> 1.0, 70% -> 1.35
+        return 0.65 + win_rate
 
     @staticmethod
     def _hour_to_session(hour: int) -> str:
@@ -376,22 +380,23 @@ class SignalQualityScorer:
         return report
 
     def get_symbol_confidence_floor(self, symbol: str, base_floor: float = 65.0) -> float:
-        """Compute adjusted confidence floor based on symbol difficulty.
+        """Compute adjusted confidence floor based on symbol profitability.
 
-        Symbols where we consistently lose need HIGHER confidence to trade.
-        Symbols where we consistently win can have LOWER floors.
-
-        Formula: floor = base_floor * (1 + difficulty * 0.3)
-        Where difficulty = 1.0 - symbol_win_rate
+        Uses PnL-per-trade, NOT win rate. Our system is 35% WR by design —
+        WR-based difficulty would raise floors on every symbol, blocking
+        profitable setups. PnL captures the actual edge (high payoff ratio).
         """
         sym_data = self.by_symbol.get(symbol)
         if not sym_data or sym_data["total"] < 5:
             return base_floor  # Not enough data
 
-        wr = self._recent_win_rate(sym_data)
-        difficulty = 1.0 - wr
-        adjusted = base_floor * (1 + difficulty * 0.3)
-        # Cap: don't make floor impossibly high or too low
+        avg_pnl = sym_data.get("pnl", 0.0) / sym_data["total"]
+        # Positive avg PnL = lower floor (earned trust), negative = raise floor
+        if avg_pnl > 0:
+            adjustment = max(-5, -min(avg_pnl * 2, 5))  # Up to -5 floor reduction
+        else:
+            adjustment = min(10, min(abs(avg_pnl) * 1.5, 10))  # Up to +10 floor raise
+        adjusted = base_floor + adjustment
         adjusted = max(base_floor - 5, min(base_floor + 15, adjusted))
         return round(adjusted, 1)
 

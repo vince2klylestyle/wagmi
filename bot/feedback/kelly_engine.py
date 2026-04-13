@@ -31,16 +31,17 @@ KELLY_CAP = 1.0          # Maximum half-Kelly weight
 DEFAULT_LOOKBACK = 30    # Default rolling window for Kelly computation
 MIN_TRADES_FOR_KELLY = 3 # Lowered from 5: we have 7 total trades, can't afford to wait
 
-# ── Initial calibration from backtest data ───────────────────
-# These seed the system before live trades accumulate.
-# Added ensemble and sniper_premium from actual live trade data.
+# ── Initial calibration from LIVE data (105 trades) ──────────
+# Updated 2026-04-12 from actual live performance. System runs at
+# 35% WR with 2.0:1 payoff ratio — old backtest priors (56-71% WR)
+# were wildly optimistic and caused Kelly to over-size.
 BACKTEST_PRIORS: Dict[str, Dict[str, float]] = {
-    "confidence_scorer": {"win_rate": 0.71, "payoff_ratio": 2.0},
-    "bollinger_squeeze": {"win_rate": 0.60, "payoff_ratio": 1.73},
-    "regime_trend": {"win_rate": 0.56, "payoff_ratio": 1.5},
-    "ensemble": {"win_rate": 0.57, "payoff_ratio": 1.5},  # From live: 4W/3L, shorts print
-    "sniper_premium": {"win_rate": 0.50, "payoff_ratio": 1.5},  # Conservative prior
-    "multi_tier_quality": {"win_rate": 0.55, "payoff_ratio": 1.4},
+    "confidence_scorer": {"win_rate": 0.37, "payoff_ratio": 2.0},   # 41 trades, +$28, #1 earner
+    "bollinger_squeeze": {"win_rate": 0.57, "payoff_ratio": 1.73},  # 7 trades, +$20, best WR
+    "regime_trend": {"win_rate": 0.38, "payoff_ratio": 1.5},        # 8 trades, -$14 as primary
+    "ensemble": {"win_rate": 0.35, "payoff_ratio": 2.0},            # 82 trades, +$10, PF=1.05
+    "sniper_premium": {"win_rate": 0.35, "payoff_ratio": 2.1},      # 23 trades, +$48
+    "multi_tier_quality": {"win_rate": 0.13, "payoff_ratio": 1.4},  # 8 trades, -$39 as primary
 }
 
 # ── Persistence ──────────────────────────────────────────────

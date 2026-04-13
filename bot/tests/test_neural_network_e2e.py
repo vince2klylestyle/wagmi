@@ -146,20 +146,20 @@ class TestCoordinatorDataFlow:
 
 
 class TestGroundTruthInPrompts:
-    """Verify the 2,172-signal ground truth is in agent prompts."""
+    """Verify ground truth data is in agent prompts."""
 
     def test_trade_agent_has_ground_truth(self):
         from llm.agents.prompts import AGENT_PROMPTS
         trade_prompt = AGENT_PROMPTS["trade"]
         assert "GROUND TRUTH" in trade_prompt
-        assert "2,172" in trade_prompt
-        assert "bollinger_squeeze" in trade_prompt
+        assert "101 LIVE TRADES" in trade_prompt
+        assert "trailing" in trade_prompt.lower()
 
     def test_risk_agent_has_ground_truth(self):
         from llm.agents.prompts import AGENT_PROMPTS
         risk_prompt = AGENT_PROMPTS["risk"]
         assert "GROUND TRUTH" in risk_prompt
-        assert "BB solo" in risk_prompt
+        assert "101 LIVE TRADES" in risk_prompt
 
     def test_exit_agent_has_setup_holds(self):
         from llm.agents.prompts import AGENT_PROMPTS
