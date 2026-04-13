@@ -1826,10 +1826,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     context=mem_ctx,
                 )
 
-            # Check periodic fallback (5-minute heartbeat)
-            if self._llm_triggers.event_count == 0:
-                if self._llm_triggers.check_periodic():
-                    self._llm_triggers.add(LLMTrigger.PERIODIC)
+            # Periodic heartbeat DISABLED to conserve LLM credits.
+            # The LLM only fires on actual signals now (PRE_TRADE triggers).
+            # Re-enable when credits are not a concern.
+            # if self._llm_triggers.event_count == 0:
+            #     if self._llm_triggers.check_periodic():
+            #         self._llm_triggers.add(LLMTrigger.PERIODIC)
 
             # Fire if any trigger should run
             if self._llm_triggers.should_fire():
@@ -3772,7 +3774,30 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except Exception:
             pass
 
-        signal_result = self.ensemble.evaluate(symbol, data)
+        # HYBRID MODE: Mechanical consensus (min_votes=2) is the primary path.
+        # But when LLM is active, ALSO check for proven solo setups that the
+        # LLM can evaluate. This lets the LLM take trades mechanical blocks.
+        signal_result = self.ensemble.evaluate(symbol, data)  # Always run mechanical first
+
+        # If mechanical returned None (solo signal blocked), check if this is a
+        # proven solo setup the LLM should evaluate
+        if signal_result is None and self.llm_mode >= LLMMode.SIZING:
+            _raw = self.ensemble.evaluate_raw(symbol, data)
+            if _raw is not None:
+                _base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+                _PROVEN_SOLOS = {
+                    ("BTC", "SELL"),   # +$55 live, trending_bear golden
+                    ("ETH", "BUY"),    # 100% WR on 135 shadow signals
+                    ("SOL", "SELL"),   # +$44 live, 72% shadow WR via BB/MTQ
+                }
+                if (_base, _raw.side) in _PROVEN_SOLOS and _raw.confidence >= 65:
+                    # Route to LLM for evaluation — it decides, not us
+                    signal_result = _raw
+                    signal_result.metadata["llm_solo_evaluation"] = True
+                    logger.info(
+                        f"[{symbol}] PROVEN SOLO → LLM: {_base} {_raw.side} "
+                        f"conf={_raw.confidence:.0f}% (proven edge, LLM decides)"
+                    )
 
         # ── EARLY: Sniper Signal Evaluation (before regime gating can null the signal) ──
         # Route ALL raw strategy signals to sniper, even if ensemble rejected them.
@@ -4062,7 +4087,29 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _llm_first = getattr(self.config, 'llm_first_mode', False)
         _llm_dual_track = getattr(self.config, 'llm_first_dual_track', False)
 
+        # Cost gate: skip LLM entirely for low-confidence signals (not worth the cost)
+        _sig_conf = signal_result.confidence if hasattr(signal_result, 'confidence') else 0
+        if _sig_conf < 65:
+            logger.info(
+                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_sig_conf:.0f}% < 65% threshold"
+            )
+            # Fall through to mechanical path (no LLM cost incurred)
+            _llm_first = False
+            _llm_dual_track = False
+
         if _llm_first and self.llm_mode >= LLMMode.SIZING:
+            _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+
+            # Cooldown: don't re-evaluate same symbol+side within 5 minutes
+            # Prevents burning credits on the same signal firing every 60s
+            _llm_eval_key = f"{_base_sym}_{signal_result.side}"
+            if not hasattr(self, '_llm_eval_cooldowns'):
+                self._llm_eval_cooldowns = {}
+            _last_eval = self._llm_eval_cooldowns.get(_llm_eval_key, 0)
+            if time.time() - _last_eval < 600:  # 10 minute cooldown to conserve credits
+                return  # Already evaluated this setup recently
+            self._llm_eval_cooldowns[_llm_eval_key] = time.time()
+
             try:
                 self._process_symbol_llm_first(
                     symbol, sym_cfg, signal_result, data, open_pos,
@@ -5377,7 +5424,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             risk_reward_tp1=rr1,
         )
 
-        if llm_has_veto(self.llm_mode):
+        # Cost gate: skip LLM veto for low-confidence signals (not worth the cost)
+        _veto_conf = signal_result.confidence if hasattr(signal_result, 'confidence') else 0
+        if llm_has_veto(self.llm_mode) and _veto_conf < 65:
+            logger.info(
+                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_veto_conf:.0f}% < 65% threshold"
+            )
+        elif llm_has_veto(self.llm_mode):
             veto_result = self._llm_veto_check(candidate, trace_id)
             if veto_result is not None:
                 # LLM vetoed this trade

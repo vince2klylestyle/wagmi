@@ -69,6 +69,15 @@ def call_llm(
     if client is None:
         return None, {"input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "error": "no_client"}
 
+    # Hard budget check — block call if daily budget exceeded
+    try:
+        from llm.cost_tracker import get_cost_tracker
+        if get_cost_tracker().get_budget_used_pct() >= 1.0:
+            logger.warning("[LLM] BUDGET EXCEEDED — blocking API call")
+            return None, {"input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "error": "budget_exceeded"}
+    except Exception:
+        pass
+
     usage = {"input_tokens": 0, "output_tokens": 0, "latency_ms": 0}
 
     for attempt in range(max_retries + 1):
@@ -126,6 +135,13 @@ def call_llm(
                 "cache_read_tokens": cache_read,
                 "cache_create_tokens": cache_create,
             }
+
+            # Track cost for EVERY call — prevents undercounting
+            try:
+                from llm.cost_tracker import get_cost_tracker
+                get_cost_tracker().record_call(in_tok, out_tok, model)
+            except Exception:
+                pass
 
             logger.info(
                 f"[LLM] Call OK: {in_tok} in / {out_tok} out / {elapsed_ms}ms "

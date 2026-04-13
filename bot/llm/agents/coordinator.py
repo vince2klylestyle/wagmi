@@ -234,8 +234,21 @@ class AgentCoordinator:
         # Lazy-initialized enrichment modules
         self._background_thinker: Optional[Any] = None
         self._pre_trade_simulator: Optional[Any] = None
+        # Regime cache: avoid re-calling Regime Agent when regime hasn't changed
+        # Structure: {symbol: {"result": AgentOutput, "timestamp": time.time()}}
+        self._regime_cache: Dict[str, Dict[str, Any]] = {}
+        self._regime_cache_ttl: float = 30 * 60  # 30 minutes
 
     # ── Public API ──────────────────────────────────────────────
+
+    def invalidate_regime_cache(self, symbol: Optional[str] = None) -> None:
+        """Clear regime cache for a symbol or all symbols."""
+        if symbol:
+            self._regime_cache.pop(symbol, None)
+            logger.info(f"[MULTI-AGENT] Regime cache invalidated for {symbol}")
+        else:
+            self._regime_cache.clear()
+            logger.info("[MULTI-AGENT] Regime cache fully cleared")
 
     def get_trading_decision(
         self,
@@ -560,11 +573,38 @@ class AgentCoordinator:
             if _val:
                 snapshot_data[_key] = _val
 
-        # ── Step 1: Regime Agent ────────────────────────────────
-        regime_input = self._build_regime_input(snapshot_data)
-        regime_out = self._call_agent(
-            AgentRole.REGIME, regime_input, model_for_trigger
-        )
+        # ── Step 1: Regime Agent (cached — 30 min TTL) ─────────
+        _regime_symbol = ""
+        _regime_markets = snapshot_data.get("m", [])
+        if _regime_markets and isinstance(_regime_markets, list) and _regime_markets:
+            _regime_symbol = _regime_markets[0].get("s", _regime_markets[0].get("sym", ""))
+
+        _cached = self._regime_cache.get(_regime_symbol)
+        if (
+            _cached
+            and _regime_symbol
+            and (time.time() - _cached["timestamp"]) < self._regime_cache_ttl
+        ):
+            regime_out = _cached["result"]
+            logger.info(
+                f"[MULTI-AGENT] Regime cache HIT for {_regime_symbol} "
+                f"(age={time.time() - _cached['timestamp']:.0f}s)"
+            )
+        else:
+            regime_input = self._build_regime_input(snapshot_data)
+            regime_out = self._call_agent(
+                AgentRole.REGIME, regime_input, model_for_trigger
+            )
+            # Cache successful results
+            if regime_out.ok and _regime_symbol:
+                self._regime_cache[_regime_symbol] = {
+                    "result": regime_out,
+                    "timestamp": time.time(),
+                }
+                logger.info(
+                    f"[MULTI-AGENT] Regime cache MISS for {_regime_symbol} — cached new result"
+                )
+
         pipeline_results[AgentRole.REGIME] = regime_out
 
         if not regime_out.ok:
@@ -703,9 +743,44 @@ class AgentCoordinator:
                 logger.debug("[MULTI-AGENT] Pre-trade simulation failed: %s", e)
 
         # ── Step 2: Trade Agent ─────────────────────────────────
+        # Cost optimization: default to Haiku for Trade Agent, promote to
+        # Sonnet only when signal quality warrants it (saves ~4x per call).
+        trade_model_for_trigger = model_for_trigger
+        try:
+            from llm.usage_tiers import MODEL_HAIKU, MODEL_SONNET
+            _regime = regime_out.data.get("rg", "unknown") if regime_out and regime_out.ok else "unknown"
+            _sig_conf = 0.0
+            _sig_n_agree = 0
+            for _mkt in (snapshot_data.get("m", []) or []):
+                if not isinstance(_mkt, dict):
+                    continue
+                for _s in (_mkt.get("sg") or _mkt.get("sigs") or []):
+                    if isinstance(_s, dict):
+                        _sig_conf = max(_sig_conf, float(_s.get("confidence", _s.get("c", 0))))
+                        _sig_n_agree = max(_sig_n_agree, int(_s.get("num_agree", _s.get("na", 1))))
+            _promote_to_sonnet = (
+                _sig_n_agree >= 2
+                or _sig_conf >= 75
+                or _regime in ("trending_bear", "trending_bull")
+            )
+            if _promote_to_sonnet:
+                trade_model_for_trigger = MODEL_SONNET
+                logger.info(
+                    f"[COST] Trade Agent → Sonnet (n_agree={_sig_n_agree} "
+                    f"conf={_sig_conf:.0f} regime={_regime})"
+                )
+            else:
+                trade_model_for_trigger = MODEL_HAIKU
+                logger.info(
+                    f"[COST] Trade Agent → Haiku (n_agree={_sig_n_agree} "
+                    f"conf={_sig_conf:.0f} regime={_regime})"
+                )
+        except Exception as e:
+            logger.debug(f"[COST] Trade model routing failed: {e}")
+
         trade_input = self._build_trade_input(snapshot_data, regime_out, quant_out)
         trade_out = self._call_agent(
-            AgentRole.TRADE, trade_input, model_for_trigger
+            AgentRole.TRADE, trade_input, trade_model_for_trigger
         )
         pipeline_results[AgentRole.TRADE] = trade_out
 
@@ -1641,7 +1716,7 @@ class AgentCoordinator:
 
             # Build compact input from context
             ctx_dict = override_context.to_prompt_dict()
-            input_json = json.dumps(ctx_dict, separators=(",", ":"))
+            input_json = json.dumps(ctx_dict, separators=(",", ":"), default=str)
 
             # Call the OverrideAgent (Sonnet for reasoning depth)
             out = self._call_agent(
@@ -1763,7 +1838,7 @@ class AgentCoordinator:
         if market_data and market_data.get("enriched_context"):
             exit_data["enriched"] = market_data["enriched_context"]
 
-        return json.dumps(exit_data, separators=(",", ":"))
+        return json.dumps(exit_data, separators=(",", ":"), default=str)
 
     def run_scout(
         self,
@@ -1792,7 +1867,7 @@ class AgentCoordinator:
         if not self.configs.get(AgentRole.SCOUT, AgentConfig(role=AgentRole.SCOUT)).enabled:
             return None
 
-        scout_input = json.dumps(scout_data, separators=(",", ":"))
+        scout_input = json.dumps(scout_data, separators=(",", ":"), default=str)
         out = self._call_agent(AgentRole.SCOUT, scout_input, model_for_trigger)
 
         if out.ok:
@@ -2508,6 +2583,15 @@ class AgentCoordinator:
         fallback_model: Optional[str] = None,
     ) -> AgentOutput:
         """Call a single specialist agent."""
+        # Budget check: stop all calls if daily budget exceeded
+        try:
+            from llm.cost_tracker import get_cost_tracker
+            if get_cost_tracker().get_budget_used_pct() >= 1.0:
+                logger.warning(f"[COORD] BUDGET EXCEEDED — skipping {role.value} agent call")
+                return AgentOutput(role=role, data={}, error="budget_exceeded")
+        except Exception:
+            pass
+
         config = self.configs.get(role, DEFAULT_AGENT_CONFIGS.get(role))
         if config is None or not config.enabled:
             return AgentOutput(role=role, data={}, error="disabled")
@@ -2774,7 +2858,7 @@ class AgentCoordinator:
             except Exception:
                 pass
 
-        return json.dumps(quant_data, separators=(",", ":"))
+        return json.dumps(quant_data, separators=(",", ":"), default=str)
 
     def _compute_regime_fallback(self, snapshot: dict) -> str:
         """Technical regime classification when LLM returns 'unknown'.
@@ -2888,7 +2972,7 @@ class AgentCoordinator:
         except Exception:
             pass
 
-        return json.dumps(regime_data, separators=(",", ":"))
+        return json.dumps(regime_data, separators=(",", ":"), default=str)
 
     def _build_trade_input(self, snapshot: dict, regime_out: AgentOutput, quant_out: Optional[AgentOutput] = None) -> str:
         """Build trade agent input: FULL context for the main decision-maker.
@@ -3104,7 +3188,7 @@ class AgentCoordinator:
             if sm.get("graduated_rules_advisory"):
                 trade_data["graduated_rules_advisory"] = sm["graduated_rules_advisory"]
 
-        return json.dumps(trade_data, separators=(",", ":"))
+        return json.dumps(trade_data, separators=(",", ":"), default=str)
 
     def _build_risk_input(
         self, snapshot: dict, regime_out: AgentOutput, trade_out: AgentOutput,
@@ -3255,7 +3339,7 @@ class AgentCoordinator:
             if sm.get("graduated_rules_advisory"):
                 risk_data["graduated_rules_advisory"] = sm["graduated_rules_advisory"]
 
-        return json.dumps(risk_data, separators=(",", ":"))
+        return json.dumps(risk_data, separators=(",", ":"), default=str)
 
     def _build_critic_input(
         self,
@@ -3409,7 +3493,7 @@ class AgentCoordinator:
                 "mechanical_floor": sm.get("mechanical_floor"),
             }
 
-        return json.dumps(critic_data, separators=(",", ":"))
+        return json.dumps(critic_data, separators=(",", ":"), default=str)
 
     def _is_high_stakes_trade(
         self,
@@ -3536,7 +3620,7 @@ class AgentCoordinator:
             td_in_ctx = _ctx.get("trade_decision", {})
             td_in_ctx.pop("c", None)
             td_in_ctx.pop("confidence", None)
-            _critic_context = json.dumps(_ctx, separators=(",", ":"))
+            _critic_context = json.dumps(_ctx, separators=(",", ":"), default=str)
         except Exception:
             pass
 
@@ -3766,7 +3850,7 @@ class AgentCoordinator:
                 relevant["prior_knowledge"] = summary[:400]
         except Exception:
             pass
-        return json.dumps(relevant, separators=(",", ":"))
+        return json.dumps(relevant, separators=(",", ":"), default=str)
 
     # ── Output merger ───────────────────────────────────────────
 

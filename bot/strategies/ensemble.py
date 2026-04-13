@@ -1498,7 +1498,7 @@ class EnsembleStrategy:
         #   regime_trend: 43% WR — losing
         #   mean_reversion: 43% WR — losing
         # Solo BB outperforms 2-agree+BB (62% vs 52% WR). Consensus DILUTES BB edge.
-        _PROVEN_SOLO_STRATEGIES = {"bollinger_squeeze", "probability_engine"}
+        _PROVEN_SOLO_STRATEGIES = {"bollinger_squeeze"}  # ONLY BB: 57% live WR, 64% shadow. probability_engine REMOVED: 0% primary WR
         _HYPE_SOLO_STRATEGIES = set()  # Disabled: confidence_scorer solo is coinflip (49% WR)
         # 60-day backtest: solo signals peak at 57-67% confidence. 70% threshold
         # blocks nearly all solo signals. 60% captures the bulk of the edge.
@@ -1507,12 +1507,11 @@ class EnsembleStrategy:
         # Symbol+regime combos where solo signals have validated edge
         # Only allow solo trades in trending regimes with high confidence
         # Ranging regime solo trades have been consistent losers (-$7 net from trade data)
+        # TIGHTENED from live data: solo trades net -$12.27 EXCEPT SOL SHORT (+$47).
+        # Only allow solos with PROVEN profitable combos.
         _SYMBOL_REGIME_SOLO = {
-            ("BTC", "trend"):          {"min_conf": 75.0, "risk_mult": 0.5},
-            ("BTC", "trending_bull"):  {"min_conf": 75.0, "risk_mult": 0.5},
-            ("BTC", "trending_bear"):  {"min_conf": 75.0, "risk_mult": 0.5},
-            ("SOL", "trend"):          {"min_conf": 75.0, "risk_mult": 0.5},
-            ("HYPE", "trend"):         {"min_conf": 75.0, "risk_mult": 0.5},
+            ("BTC", "trending_bear"):  {"min_conf": 75.0, "risk_mult": 0.5},  # +$55 live
+            # REMOVED: BTC/trend (-$5), BTC/trending_bull (unproven), SOL/trend (unproven), HYPE/trend (-$9)
         }
 
         if len(buy_signals) < min_v and len(sell_signals) < min_v:
@@ -1571,13 +1570,12 @@ class EnsembleStrategy:
                 # but SELL signals blocked because illiquid/ranging weren't in bear set.
                 # Added illiquid (crypto illiquid = drift down) and ranging to bear set
                 # so SELL signals get the same bypass opportunity as BUY signals.
-                _strong_regimes_bear = {"trending_bear", "illiquid"}
+                # ONLY trending_bear for SELL solos — live data: +$406, 75% WR
+                # REMOVED: illiquid ($0 edge), ranging (-$35 edge) — both losers for solos
+                _strong_regimes_bear = {"trending_bear"}
                 _strong_regimes_bull = {"trending_bull"}
-                # Also allow SELL in ranging — mean reversion from overbought
-                _moderate_regimes_sell = {"ranging"}
                 _regime_aligned = (
                     (_sig.side == "SELL" and _regime in _strong_regimes_bear) or
-                    (_sig.side == "SELL" and _regime in _moderate_regimes_sell) or
                     (_sig.side == "BUY" and _regime in _strong_regimes_bull)
                 )
                 if _regime_aligned and _sig.confidence >= 65.0:

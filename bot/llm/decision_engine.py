@@ -489,6 +489,10 @@ def get_trading_decision(
                 try:
                     cost_tracker = get_cost_tracker()
                     routed_model = cost_tracker.get_safe_model(routed_model, trigger_reason)
+                    if routed_model == "__BUDGET_EXCEEDED__":
+                        logger.warning("[LLM-ENGINE] BUDGET EXCEEDED — skipping LLM call entirely")
+                        return LLMDecision(action="flat", confidence=0.0, regime="budget_exceeded",
+                                         size_multiplier=0.0, reasoning="Daily budget exceeded")
                 except Exception as ce:
                     logger.debug(f"[LLM-ENGINE] Cost tracker check failed: {ce}")
             call_kwargs["model"] = routed_model

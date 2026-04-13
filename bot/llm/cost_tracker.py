@@ -31,7 +31,8 @@ _COST_PATH = os.path.join(_COST_DIR, "cost_tracker.json")
 
 # Model pricing per 1M tokens (input, output) — must match usage_tiers.py
 _MODEL_PRICING = {
-    "claude-haiku-4-5-20251001": (1.0, 5.0),
+    # Actual Anthropic pricing as of 2026-04
+    "claude-haiku-4-5-20251001": (0.80, 4.0),
     "claude-sonnet-4-5-20250929": (3.0, 15.0),
     "claude-opus-4-20250115": (15.0, 75.0),
 }
@@ -135,6 +136,14 @@ class CostTracker:
             return preferred_model  # No budget set = unlimited
 
         budget_pct = self._today_spend / self.daily_budget
+
+        # TRUE HARD STOP: no more API calls once budget exceeded
+        if budget_pct >= 1.0:
+            logger.warning(
+                f"[COST] BUDGET EXCEEDED (${self._today_spend:.2f}/${self.daily_budget:.2f}). "
+                f"ALL LLM calls blocked until tomorrow."
+            )
+            return "__BUDGET_EXCEEDED__"  # Caller must check and skip
 
         # Hard limit: everything goes to Haiku
         if budget_pct >= _HARD_LIMIT_PCT:
