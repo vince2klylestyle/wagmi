@@ -84,9 +84,9 @@ class TestFormatTradeOpened:
         assert "OPENED" in msg
         assert "BTC" in msg
         assert "SHORT" in msg
-        assert "84,500.00" in msg
-        assert "3.2x" in msg
-        assert "$45.00" in msg
+        assert "84,500" in msg
+        assert "3x" in msg
+        assert "$45" in msg
         assert "82%" in msg
         assert "regime_trend" in msg
 
@@ -132,7 +132,7 @@ class TestFormatTradeClosed:
         assert "SHORT" in msg
         assert "+$15.40" in msg
         assert "4h32m" in msg
-        assert "TP2 hit" in msg
+        assert "TP2" in msg
 
     def test_losing_close(self):
         record = {
@@ -150,7 +150,7 @@ class TestFormatTradeClosed:
         assert "ETH" in msg
         assert "LONG" in msg
         assert "-$8.50" in msg
-        assert "stopped out" in msg
+        assert "SL" in msg
 
     def test_trailing_win(self):
         record = {
@@ -164,7 +164,7 @@ class TestFormatTradeClosed:
             "exit_reason": "TRAILING_WIN",
         }
         msg = format_trade_closed(record)
-        assert "trailing win" in msg
+        assert "trail-W" in msg
 
     def test_missing_exit_reason(self):
         record = {
@@ -251,25 +251,25 @@ class TestFormatDailySummary:
             worst_trade={"symbol": "ETH", "pnl": -3.40},
             active_positions=2,
         )
-        assert "DAILY SUMMARY" in msg
-        assert "12 trades" in msg
-        assert "58% WR" in msg
+        assert "DAILY REPORT" in msg
+        assert "12" in msg
+        assert "58%" in msg
         assert "+$18.50" in msg
         assert "SOL" in msg
         assert "+$8.20" in msg
         assert "ETH" in msg
         assert "-$3.40" in msg
-        assert "Active positions: 2" in msg
+        assert "2 positions" in msg
 
     def test_zero_trades(self):
         msg = format_daily_summary(total_trades=0, wins=0, net_pnl=0)
-        assert "0 trades" in msg
-        assert "0% WR" in msg
+        assert "0" in msg
+        assert "0%" in msg
 
     def test_no_best_worst(self):
         msg = format_daily_summary(total_trades=3, wins=2, net_pnl=5.0)
-        assert "DAILY SUMMARY" in msg
-        assert "3 trades" in msg
+        assert "DAILY REPORT" in msg
+        assert "3" in msg
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -428,7 +428,7 @@ class TestTelegramAlertBridge:
             active_positions=2,
         )
         assert msg is not None
-        assert "DAILY SUMMARY" in msg
+        assert "DAILY REPORT" in msg
         mock_post.assert_called_once()
 
 

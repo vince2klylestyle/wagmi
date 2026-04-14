@@ -52,7 +52,7 @@ def _fmt_hold_time(seconds: float) -> str:
 
 
 def format_trade_opened(record: Dict[str, Any]) -> str:
-    """Format a TRADE_OPENED event for Telegram."""
+    """Format a TRADE_OPENED event for Telegram — compact scannable format."""
     symbol = record.get("symbol", "???")
     side = record.get("side", "???")
     entry = record.get("entry", 0)
@@ -60,23 +60,24 @@ def format_trade_opened(record: Dict[str, Any]) -> str:
     position_size = record.get("position_size", 0)
     strategy = record.get("strategy", "")
     confidence = record.get("confidence", 0)
+    num_agree = record.get("num_agree", 0)
+    brain_note = record.get("brain_note", "")
 
     direction = "LONG" if side in ("BUY", "LONG") else "SHORT"
-    parts = [
-        f"OPENED: {symbol} {direction} @ ${_fmt_price(entry)}"
-        f" | {leverage:.1f}x leverage"
-    ]
-    if position_size > 0:
-        parts[0] += f" | ${position_size:,.2f} position"
-    if confidence > 0:
-        parts[0] += f" | confidence: {confidence:.0f}%"
+    size_str = f" | ${position_size:,.0f}" if position_size > 0 else ""
+    conf_str = f" | {confidence:.0f}%" if confidence > 0 else ""
+    agree_str = f" ({num_agree}A)" if num_agree > 1 else ""
+
+    line = f"OPENED {symbol} {direction} @ {_fmt_price(entry)} | {leverage:.0f}x{size_str}{conf_str}{agree_str}"
     if strategy:
-        parts.append(f"Strategy: {strategy}")
-    return "\n".join(parts)
+        line += f"\n{strategy}"
+    if brain_note:
+        line += f"\nBrain: {brain_note}"
+    return line
 
 
 def format_trade_closed(record: Dict[str, Any]) -> str:
-    """Format a TRADE_CLOSED / TP_HIT / SL_HIT event for Telegram."""
+    """Format a TRADE_CLOSED / TP_HIT / SL_HIT event — compact scannable format."""
     symbol = record.get("symbol", "???")
     side = record.get("side", "???")
     exit_price = record.get("exit_price", record.get("exit", 0))
@@ -84,38 +85,32 @@ def format_trade_closed(record: Dict[str, Any]) -> str:
     pnl = record.get("pnl", 0)
     hold_time = record.get("hold_time", record.get("duration_s", 0))
     exit_reason = record.get("exit_reason", record.get("reason", ""))
+    brain_note = record.get("brain_note", "")
 
     direction = "LONG" if side in ("BUY", "LONG") else "SHORT"
-    pnl_pct = (pnl / (entry_price * record.get("position_size", 1)) * 100) if entry_price > 0 else 0
-    # If position_size not available, try to compute from leverage
-    if entry_price > 0 and pnl != 0 and abs(pnl_pct) > 1000:
-        # Fallback: just show dollar PnL without %
-        pnl_pct = 0
-
     hold_str = _fmt_hold_time(hold_time)
 
-    # Map exit reasons to readable labels
+    # Compact exit reason
     reason_labels = {
-        "TP2": "TP2 hit",
-        "TP1_FULL": "TP1 hit (full)",
-        "SL": "stopped out",
-        "TRAILING_STOP": "trailing stop",
-        "TRAILING_WIN": "trailing win",
-        "EARLY_EXIT": "early exit",
-        "EMERGENCY": "emergency close",
-        "HOLD_LIMIT": "hold limit",
-        "LIQUIDATION_AVOID": "liquidation avoid",
+        "TP2": "TP2", "TP1_FULL": "TP1", "SL": "SL",
+        "TRAILING_STOP": "trail", "TRAILING_WIN": "trail-W",
+        "EARLY_EXIT": "early", "EMERGENCY": "EMRG",
+        "HOLD_LIMIT": "time", "LIQUIDATION_AVOID": "liq-avoid",
     }
     reason_label = reason_labels.get(exit_reason, exit_reason or "closed")
 
     pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-    line = f"CLOSED: {symbol} {direction} @ ${_fmt_price(exit_price)}"
-    line += f" | {pnl_str}"
-    if pnl_pct != 0:
-        pct_str = f"+{pnl_pct:.1f}%" if pnl_pct >= 0 else f"-{abs(pnl_pct):.1f}%"
-        line += f" ({pct_str})"
-    line += f" | held {hold_str} | {reason_label}"
+    pnl_pct = 0.0
+    if entry_price > 0:
+        pos_size = record.get("position_size", 1)
+        if pos_size > 0:
+            pnl_pct = pnl / pos_size * 100
+    pct_part = f" ({pnl_pct:+.1f}%)" if abs(pnl_pct) > 0.01 and abs(pnl_pct) < 1000 else ""
 
+    line = f"CLOSED {symbol} {direction} {pnl_str}{pct_part}"
+    line += f"\nHold: {hold_str} | Entry: {_fmt_price(entry_price)} > Exit: {_fmt_price(exit_price)} | {reason_label}"
+    if brain_note:
+        line += f"\nBrain: {brain_note}"
     return line
 
 
@@ -157,13 +152,19 @@ def format_daily_summary(
     best_trade: Optional[Dict[str, Any]] = None,
     worst_trade: Optional[Dict[str, Any]] = None,
     active_positions: int = 0,
+    equity: float = 0,
+    llm_cost: float = 0,
+    llm_budget: float = 0,
+    brain_note: str = "",
 ) -> str:
-    """Format a daily summary for Telegram."""
+    """Format a daily summary for Telegram — compact dashboard format."""
+    losses = total_trades - wins
     wr = (wins / total_trades * 100) if total_trades > 0 else 0
     pnl_str = f"+${net_pnl:,.2f}" if net_pnl >= 0 else f"-${abs(net_pnl):,.2f}"
-    parts = [
-        f"DAILY SUMMARY: {total_trades} trades | {wr:.0f}% WR | {pnl_str}"
-    ]
+
+    parts = [f"DAILY REPORT"]
+    parts.append(f"P&L: {pnl_str} | Trades: {total_trades} ({wins}W {losses}L) | WR: {wr:.0f}%")
+
     details = []
     if best_trade:
         sym = best_trade.get("symbol", "?")
@@ -176,8 +177,15 @@ def format_daily_summary(
         details.append(f"Worst: {sym} {w_str}")
     if details:
         parts.append(" | ".join(details))
+
+    if equity > 0:
+        parts.append(f"Equity: ${equity:,.2f}")
+    if llm_budget > 0:
+        parts.append(f"Brain: ${llm_cost:.2f}/${llm_budget:.2f} used")
     if active_positions > 0:
-        parts.append(f"Active positions: {active_positions}")
+        parts.append(f"Open: {active_positions} positions")
+    if brain_note:
+        parts.append(f"Brain says: '{brain_note}'")
     return "\n".join(parts)
 
 
@@ -207,6 +215,7 @@ class TelegramAlertBridge:
         self.telegram_chat_id = telegram_chat_id
         self.send_timeout = send_timeout
         self._enabled = bool(telegram_token and telegram_chat_id)
+        self._command_bot = None  # Set by TelegramCommandBot for quiet/digest mode
 
     @property
     def enabled(self) -> bool:
@@ -215,11 +224,17 @@ class TelegramAlertBridge:
     def on_trade_event(self, record: Dict[str, Any]) -> Optional[str]:
         """
         Called when a trade event is logged. Formats and sends Telegram alert.
+        Respects quiet/digest mode from TelegramCommandBot.
 
         Returns the formatted message (for testing), or None if skipped.
         """
         event = record.get("event", "")
         if event not in self.ALERT_EVENTS:
+            return None
+
+        # Quiet mode: suppress trade alerts (only circuit breakers + daily summary pass through)
+        if self._command_bot and getattr(self._command_bot, '_quiet_mode', False):
+            logger.debug(f"Telegram alert suppressed (quiet mode): {event}")
             return None
 
         try:
@@ -230,11 +245,35 @@ class TelegramAlertBridge:
             else:
                 return None
 
+            # Digest mode: buffer instead of sending immediately
+            if self._command_bot and getattr(self._command_bot, '_digest_mode', False):
+                self._command_bot._digest_buffer.append(msg)
+                # Flush every 30 minutes
+                import time as _t
+                _now = _t.time()
+                _last = getattr(self._command_bot, '_last_digest_ts', 0)
+                if _now - _last >= 1800:  # 30 min
+                    self._flush_digest()
+                    self._command_bot._last_digest_ts = _now
+                return msg
+
             self._send(msg)
             return msg
         except Exception as e:
             logger.warning(f"Telegram alert formatting failed: {e}")
             return None
+
+    def _flush_digest(self):
+        """Send buffered digest messages as one combined message."""
+        if not self._command_bot:
+            return
+        buf = self._command_bot._digest_buffer
+        if not buf:
+            return
+        n = len(buf)
+        combined = f"Digest ({n} events):\n\n" + "\n---\n".join(buf[-10:])  # Last 10
+        self._send(combined)
+        self._command_bot._digest_buffer = []
 
     def send_circuit_breaker(
         self,
