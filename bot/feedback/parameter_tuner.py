@@ -176,7 +176,14 @@ class ParameterTuner:
                 )
 
         if calibration_offset is not None:
-            target = max(-15, min(15, calibration_offset))
+            # Finding 2 (2026-04-15): the old ±15 cap let the offset drift to
+            # -9.28 during losing streaks, which then killed signal flow and
+            # created a feedback deadlock (no trades → no learning →
+            # persistent negative offset). Cap tightened to ±3 so the offset
+            # can correct bias but can't single-handedly starve the ensemble.
+            # Fix confidence-vs-WR calibration upstream if bigger correction
+            # is actually needed.
+            target = max(-3, min(3, calibration_offset))
             self.params.calibration_offset = self._gradual_move(
                 self.params.calibration_offset, target, max_step * 30
             )

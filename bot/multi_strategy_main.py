@@ -1718,13 +1718,21 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                     and self.alerts.telegram_token
                                     and self.alerts.telegram_chat_id):
                                 try:
-                                    from alerts.premium_filter import evaluate_for_alert, AlertTier
+                                    from alerts.premium_filter import (
+                                        evaluate_for_alert, AlertTier,
+                                        is_watch_deduped, mark_watch_sent,
+                                    )
                                     from alerts.premium_telegram import format_premium_watch_alert
                                     for _ne in _new_entries:
                                         _ne_side = "BUY" if _ne.side == "BUY" else "SELL"
+                                        _ne_strategy = _ne.setup_type or "anticipatory"
+                                        # Dedup: skip if same (symbol, side, strategy) WATCH
+                                        # was sent in the last 30 min.
+                                        if is_watch_deduped(_ne.symbol, _ne_side, _ne_strategy):
+                                            continue
                                         _ne_dec = evaluate_for_alert(
                                             symbol=_ne.symbol, side=_ne_side,
-                                            strategy=_ne.setup_type or "anticipatory",
+                                            strategy=_ne_strategy,
                                             confidence=70.0,  # anticipatory defaults
                                             num_agree=1,
                                             regime="",
@@ -1742,13 +1750,14 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                                 leverage=_ne.leverage,
                                                 confidence=70.0,
                                                 decision=_ne_dec,
-                                                strategy=_ne.setup_type or "anticipatory",
+                                                strategy=_ne_strategy,
                                                 regime="", num_agree=1, total_strategies=0,
                                             )
                                             self.alerts._send_telegram(_watch_msg)
+                                            mark_watch_sent(_ne.symbol, _ne_side, _ne_strategy)
                                             logger.info(
                                                 f"[WATCH-ALERT] Sent for {_ne.symbol} {_ne_side} "
-                                                f"@ ${_ne.target_price:.2f} ({_ne.setup_type})"
+                                                f"@ ${_ne.target_price:.2f} ({_ne_strategy})"
                                             )
                                 except Exception as _we:
                                     logger.debug(f"Watch alert dispatch failed: {_we}")

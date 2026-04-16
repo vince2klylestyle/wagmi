@@ -34,6 +34,7 @@ _SHADOW_BLOCKS in ensemble.py.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Optional, Tuple
@@ -56,14 +57,15 @@ class AlertTier(Enum):
 # grade: "premium" = 100+ samples with strong edge, can EXECUTE alone
 #        "standard" = 40-100 samples with edge, needs more confirmation
 _SHADOW_EDGES: Dict[Tuple[str, str, str], Dict[str, object]] = {
-    # Premium edges — high-sample, strong WR
+    # Rebuilt 2026-04-16 from bot/data/shadow_ledger.csv (3,835 resolved).
+    # All "premium" grade: n>=65, positive avg_ret, WR >= 55%.
     ("ETH", "BUY", "regime_trend"):        {"wr": 1.00, "n": 135, "grade": "premium"},
     ("HYPE", "BUY", "bollinger_squeeze"):  {"wr": 0.612, "n": 196, "grade": "premium"},
+    ("BTC", "BUY", "regime_trend"):        {"wr": 0.685, "n": 111, "grade": "premium"},  # upgraded from standard
     ("SOL", "SELL", "multi_tier_quality"): {"wr": 0.721, "n": 68, "grade": "premium"},
     ("SOL", "SELL", "bollinger_squeeze"):  {"wr": 0.721, "n": 68, "grade": "premium"},
-    # Standard edges — smaller sample, requires more confirmation
-    ("BTC", "BUY", "regime_trend"):        {"wr": 0.551, "n": 78, "grade": "standard"},
-    ("HYPE", "BUY", "regime_trend"):       {"wr": 0.80, "n": 40, "grade": "standard"},
+    # Standard edges — smaller sample or thinner edge
+    ("HYPE", "BUY", "regime_trend"):       {"wr": 0.80, "n": 40, "grade": "standard"},  # WR great but tiny avg_ret
 }
 
 # Shadow-ledger-verified money losers. NEVER send alerts for these.
@@ -77,9 +79,58 @@ _SHADOW_BLOCKS: frozenset = frozenset({
 # Regimes that historically kill each setup. Sourced from
 # project_autonomous_session_2026_04_15 Finding 7 + per-regime analysis.
 # (symbol, side) -> set of regime strings to avoid.
+#
+# Note: two regime classifiers exist — trade_profile outputs "illiquid",
+# quant_regime.py outputs "low_liquidity". We accept both as aliases for
+# the same underlying condition. Regime strings are normalized to lower
+# case at lookup time.
 _ADVERSE_REGIMES: Dict[Tuple[str, str], frozenset] = {
-    ("HYPE", "BUY"): frozenset({"illiquid"}),  # 8.3% WR on 12 HYPE LONGs in illiquid
+    # HYPE in illiquid: 8.3% WR on 12 HYPE LONGs (Finding 7)
+    # HYPE in ranging:  14.3% WR on 7 HYPE LONGs (Finding 7)
+    # HYPE in trending: 33.3% WR on 6 HYPE LONGs (marginal — not adding to block yet)
+    ("HYPE", "BUY"): frozenset({"illiquid", "low_liquidity", "ranging", "range"}),
 }
+
+# Regime aliases — normalize different classifier outputs.
+_REGIME_ALIASES: Dict[str, str] = {
+    "low_liquidity": "illiquid",
+    "low-liquidity": "illiquid",
+    "lowliquidity": "illiquid",
+    "low_vol": "low_volatility",
+    "hi_vol": "high_volatility",
+    "trending": "trend",  # trade_profile uses "trending", some use "trend"
+}
+
+
+def _normalize_regime(regime: str) -> str:
+    """Lowercase and apply aliases to regime string."""
+    r = (regime or "").lower().strip()
+    return _REGIME_ALIASES.get(r, r)
+
+
+# ─── Dedup for WATCH alerts ──────────────────────────────────────────
+# In-memory rate limit on WATCH alerts. Key: (symbol, side, strategy).
+# Stores last alert timestamp. Prevents anticipatory engine from
+# spamming the same setup every scan cycle.
+_WATCH_ALERT_COOLDOWN_S = 1800  # 30 minutes between same-setup WATCHes
+_last_watch_alert: Dict[Tuple[str, str, str], float] = {}
+
+
+def is_watch_deduped(symbol: str, side: str, strategy: str) -> bool:
+    """Return True if a WATCH alert for this setup was sent within cooldown.
+
+    Call BEFORE sending a WATCH. If returns True, skip the alert.
+    Call mark_watch_sent() after successful send.
+    """
+    key = ((symbol or "").upper(), (side or "").upper(), (strategy or "").lower())
+    last = _last_watch_alert.get(key, 0)
+    return (time.time() - last) < _WATCH_ALERT_COOLDOWN_S
+
+
+def mark_watch_sent(symbol: str, side: str, strategy: str) -> None:
+    """Record that a WATCH alert was sent for this setup."""
+    key = ((symbol or "").upper(), (side or "").upper(), (strategy or "").lower())
+    _last_watch_alert[key] = time.time()
 
 
 @dataclass
@@ -171,13 +222,13 @@ def evaluate_for_alert(
             reason=f"shadow-blocked: {key} is a verified money loser",
         )
 
-    # 2. Adverse regime check
+    # 2. Adverse regime check (with alias normalization)
     adverse_regimes = _ADVERSE_REGIMES.get((symbol_up, side_bs), frozenset())
-    regime_l = (regime or "").lower()
-    if regime_l in adverse_regimes:
+    regime_n = _normalize_regime(regime)
+    if regime_n in adverse_regimes:
         return AlertDecision(
             tier=AlertTier.NONE,
-            reason=f"adverse regime: {symbol_up} {side_bs} historically weak in '{regime_l}'",
+            reason=f"adverse regime: {symbol_up} {side_bs} historically weak in '{regime_n}'",
         )
 
     # 3. Look up shadow edge
