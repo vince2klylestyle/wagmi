@@ -413,16 +413,165 @@ class RiskManager:
         max_portfolio_leverage: float = 5.0,
         circuit_breaker: Optional[CircuitBreaker] = None,
         max_risk_multiplier: float = 1.5,
+        load_persisted_equity: bool = True,
     ):
-        self.equity = starting_equity
+        # Persisted equity (2026-04-16 fix): restore cumulative equity
+        # from disk if available. Previously every bot restart reset
+        # equity to `starting_equity`, losing all real gains from prior
+        # sessions. User noticed their phone showed $495 after a +$28
+        # session because midnight UTC reset + restart erased progress.
+        # Falls back to computing from trades.csv if no state file.
+        #
+        # Tests and backtests pass load_persisted_equity=False so they
+        # get exactly the starting_equity they asked for (no state-file
+        # interference).
+        if load_persisted_equity:
+            effective_start, _used_persisted = self._load_persisted_equity_with_flag(starting_equity)
+        else:
+            effective_start = starting_equity
+            _used_persisted = False
+        self.equity = effective_start
+        self._starting_equity_config = starting_equity  # for reference / reset
+        # Only persist future equity updates if we actually loaded persisted
+        # state on init (i.e., we're the real bot, not a test with a wildly
+        # different starting_equity that triggered the safety fallback).
+        self._should_persist_equity = bool(load_persisted_equity and _used_persisted)
         self.risk_per_trade = risk_per_trade
         self.max_open_positions = max_open_positions
         self.max_portfolio_leverage = max_portfolio_leverage
         self.max_risk_multiplier = max_risk_multiplier
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
-        self.circuit_breaker.peak_equity = starting_equity
+        self.circuit_breaker.peak_equity = max(effective_start, starting_equity)
         # Last sizing breakdown for attribution/debugging
         self.last_sizing_breakdown: Dict[str, Any] = {}
+
+    @classmethod
+    def _load_persisted_equity_with_flag(cls, fallback: float) -> tuple[float, bool]:
+        """Load persisted equity and return (equity, used_persisted).
+
+        Returns (equity_value, True) when we actually loaded a persisted
+        state that's consistent with the caller's starting_equity context.
+        Returns (fallback, False) when we fell back (e.g., test context).
+        """
+        val = cls._load_persisted_equity(fallback)
+        # If the returned value differs from fallback, we loaded a persisted one.
+        # This is an approximation but good enough given the 10x guard inside.
+        used_persisted = (abs(val - fallback) > 0.01)
+        return val, used_persisted
+
+    @staticmethod
+    def _load_persisted_equity(fallback: float) -> float:
+        """Load persisted equity from state file or compute from trades.csv.
+
+        Tries in order:
+        1. Read `bot/data/risk_equity_state.json` (fast path, single value)
+        2. Compute `fallback + sum(trades.csv pnl column)` (reconstruct)
+        3. Return `fallback` (fresh start)
+
+        Safety: if the persisted equity is wildly different from the
+        caller's `fallback` (10x difference), trust the caller — this
+        is usually a test or backtest that passed a specific value.
+        """
+        import json
+        import os
+        import csv
+        state_path = os.path.join("data", "risk_equity_state.json")
+        try:
+            if os.path.exists(state_path):
+                with open(state_path, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+                val = float(state.get("equity", fallback))
+                # Sanity check: reject state if it's 10x off from fallback.
+                # Tests commonly pass starting_equity=10000 while real bot
+                # uses ~$500 — a 20x difference means this is NOT the
+                # matching context for this state file.
+                if fallback > 0:
+                    ratio = max(val / fallback, fallback / val) if val > 0 else 0
+                    if ratio > 10:
+                        logger.debug(
+                            f"[RISK] Persisted equity ${val:.2f} is {ratio:.1f}x off "
+                            f"from fallback ${fallback:.2f}; using fallback (likely test context)"
+                        )
+                        return fallback
+                logger.info(
+                    f"[RISK] Loaded persisted equity: ${val:.2f} "
+                    f"(saved {state.get('saved_at', 'unknown')})"
+                )
+                return val
+        except Exception as e:
+            logger.warning(f"[RISK] Could not load equity state: {e}")
+
+        # Fallback: reconstruct from trades.csv
+        trades_path = os.path.join("data", "trades.csv")
+        try:
+            if os.path.exists(trades_path):
+                with open(trades_path, "r", encoding="utf-8") as f:
+                    r = csv.reader(f)
+                    header = next(r, None)
+                    if header and "pnl" in header:
+                        pnl_idx = header.index("pnl")
+                        total_pnl = 0.0
+                        n = 0
+                        for row in r:
+                            try:
+                                total_pnl += float(row[pnl_idx])
+                                n += 1
+                            except (ValueError, IndexError):
+                                continue
+                        if n > 0:
+                            reconstructed = fallback + total_pnl
+                            logger.info(
+                                f"[RISK] Reconstructed equity from {n} trades: "
+                                f"${fallback:.2f} + ${total_pnl:+.2f} = ${reconstructed:.2f}"
+                            )
+                            return reconstructed
+        except Exception as e:
+            logger.warning(f"[RISK] Could not reconstruct equity from trades.csv: {e}")
+
+        logger.info(f"[RISK] Using fallback starting equity: ${fallback:.2f}")
+        return fallback
+
+    def save_equity_state(self) -> None:
+        """Persist current equity to disk for restart continuity.
+
+        Safety: never save non-sensical values (negative equity, or values
+        wildly different from the starting config). Tests running huge
+        simulated losses should not corrupt the live equity state file.
+        """
+        import json
+        import os
+        from datetime import datetime, timezone
+        # Sanity check — refuse to persist obvious test pollution.
+        cfg_start = getattr(self, "_starting_equity_config", 0.0)
+        if self.equity <= 0:
+            logger.debug(
+                f"[RISK] Refusing to save non-positive equity ${self.equity:.2f} — "
+                f"likely test context"
+            )
+            return
+        if cfg_start > 0:
+            # If current equity is 5x+ different from the starting config,
+            # it's likely a test with different scale. Don't pollute state.
+            ratio = max(self.equity / cfg_start, cfg_start / self.equity)
+            if ratio > 5:
+                logger.debug(
+                    f"[RISK] Refusing to save equity ${self.equity:.2f} — "
+                    f"{ratio:.1f}x off from starting ${cfg_start:.2f} (test context)"
+                )
+                return
+        state_path = os.path.join("data", "risk_equity_state.json")
+        try:
+            os.makedirs(os.path.dirname(state_path), exist_ok=True)
+            tmp_path = state_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "equity": round(self.equity, 4),
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                    "peak_equity": round(self.circuit_breaker.peak_equity, 4),
+                }, f, indent=2)
+            os.replace(tmp_path, state_path)
+        except Exception as e:
+            logger.warning(f"[RISK] Could not save equity state: {e}")
 
     def can_open_position(self, current_open: int, confidence: float = 0.0,
                           cb_conf_override_pct: float = 0.92,
@@ -545,6 +694,11 @@ class RiskManager:
         """
         self.equity += pnl
         self.circuit_breaker.record_trade(pnl, self.equity, sim_time=sim_time)
+        # Persist equity to disk so bot restarts don't lose progress.
+        # Skip persistence for tests/backtests — only save when init
+        # actually loaded a matching persisted state (i.e., real bot).
+        if getattr(self, "_should_persist_equity", False):
+            self.save_equity_state()
 
     def is_trading_allowed(self, confidence: float = 0.0,
                             cb_conf_override_pct: float = 0.92,

@@ -942,16 +942,63 @@ class TelegramCommandBot:
 
         Built 2026-04-16 per user's ask: "I want a visually appealing
         easy-to-scan one-screen morning view when I wake up."
-        """
-        from datetime import datetime, timezone
-        lines = ["☀️ *Morning Briefing*", f"_{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_", ""]
 
-        # Equity + daily PnL
+        Updated 2026-04-16 to show BOTH windows — today (since UTC
+        midnight, matches circuit breaker daily_pnl) AND last 7 days.
+        The single daily_pnl number was confusing when big wins landed
+        just before UTC midnight.
+        """
+        from datetime import datetime, timezone, timedelta
+        import csv
+        now = datetime.now(timezone.utc)
+        lines = ["☀️ *Morning Briefing*", f"_{now.strftime('%Y-%m-%d %H:%M UTC')}_", ""]
+
+        # Read trades.csv once, compute multiple windows.
+        trades_today = []      # since UTC midnight (matches daily_pnl)
+        trades_24h = []        # rolling last 24h
+        trades_7d = []         # rolling last 7 days
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_7d = now - timedelta(days=7)
+        try:
+            with open("bot/data/trades.csv", "r", encoding="utf-8") as f:
+                r = csv.reader(f)
+                next(r)
+                today_str = now.strftime("%Y-%m-%d")
+                for row in r:
+                    try:
+                        ts = row[0]
+                        pnl = float(row[10])
+                        tdt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if tdt.tzinfo is None:
+                            tdt = tdt.replace(tzinfo=timezone.utc)
+                        if ts.startswith(today_str):
+                            trades_today.append(pnl)
+                        if tdt >= cutoff_24h:
+                            trades_24h.append(pnl)
+                        if tdt >= cutoff_7d:
+                            trades_7d.append(pnl)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        def _winline(emoji_pfx, label, trades):
+            if not trades:
+                return f"{emoji_pfx} *{label}*: no trades"
+            n = len(trades)
+            wins = sum(1 for p in trades if p > 0)
+            net = sum(trades)
+            emoji = "📈" if net > 0 else ("📉" if net < 0 else "➡️")
+            return f"{emoji} *{label}*: {n} trades, {wins}W/{n-wins}L, net ${net:+.2f}"
+
+        # Equity + multiple PnL windows
         try:
             equity = self.bot.risk_mgr.equity if self.bot else 0
-            daily_pnl = self.bot.risk_mgr.circuit_breaker.daily_pnl if self.bot else 0
-            emoji = "📈" if daily_pnl > 0 else ("📉" if daily_pnl < 0 else "➡️")
-            lines.append(f"{emoji} *Equity*: ${equity:,.2f}  |  *Today*: ${daily_pnl:+,.2f}")
+            lines.append(f"💰 *Equity*: ${equity:,.2f}")
+            lines.append(_winline("  ", "Today (since UTC 00:00)", trades_today))
+            lines.append(_winline("  ", "Last 24h rolling", trades_24h))
+            lines.append(_winline("  ", "Last 7d rolling", trades_7d))
+            lines.append("")
         except Exception:
             lines.append("📊 Equity: unavailable")
 
@@ -961,36 +1008,14 @@ class TelegramCommandBot:
                 open_pos = [
                     p for p in self.bot.pos_mgr.positions.values() if p.qty > 0
                 ]
-                lines.append(f"💼 *Open*: {len(open_pos)} positions")
+                lines.append(f"💼 *Open*: {len(open_pos)} position{'s' if len(open_pos) != 1 else ''}")
                 for p in open_pos[:5]:
                     side_emoji = "🟢" if p.side == "LONG" else "🔴"
                     lines.append(
                         f"  {side_emoji} {p.symbol} {p.side} @ ${p.entry:.4g} ({p.state})"
                     )
-        except Exception:
-            pass
-
-        # Today's closed trades
-        try:
-            import csv
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            closed = []
-            with open("bot/data/trades.csv", "r", encoding="utf-8") as f:
-                r = csv.reader(f)
-                next(r)
-                for row in r:
-                    if row[0].startswith(today):
-                        try:
-                            closed.append(float(row[10]))
-                        except Exception:
-                            pass
-            if closed:
-                wins = sum(1 for p in closed if p > 0)
-                net = sum(closed)
-                lines.append(
-                    f"📝 *Closed today*: {len(closed)} trades, "
-                    f"{wins}W/{len(closed)-wins}L, net ${net:+.2f}"
-                )
+                if not open_pos:
+                    lines.append("  (flat — scanning)")
         except Exception:
             pass
 
@@ -998,9 +1023,10 @@ class TelegramCommandBot:
         try:
             from alerts.premium_filter import _last_watch_alert, _WATCH_ALERT_COOLDOWN_S
             import time as _t
-            now = _t.time()
-            recent = [k for k, t in _last_watch_alert.items() if (now - t) < _WATCH_ALERT_COOLDOWN_S]
+            now_ts = _t.time()
+            recent = [k for k, t in _last_watch_alert.items() if (now_ts - t) < _WATCH_ALERT_COOLDOWN_S]
             if recent:
+                lines.append("")
                 lines.append(f"🔔 *Watching* ({len(recent)} setups forming) — use /watch for details")
         except Exception:
             pass

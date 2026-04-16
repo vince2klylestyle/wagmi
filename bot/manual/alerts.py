@@ -124,6 +124,26 @@ def format_sniper_alert(sniper: SniperSignal, equity: float = 100) -> str:
     except Exception as e:
         logger.warning(f"[SNIPER-ALERT] Execution helper failed: {e}")
 
+    # ── QUICK ACTION: pre-filled /trade command (2026-04-16 UX fix) ──
+    # User can paste this back into Telegram to log the manual trade.
+    # Eliminates the 5-arg parsing friction audit flagged as #1 UX win.
+    lines.append(f"")
+    lines.append(f"\U0001f4cb QUICK LOG — copy-paste after your fill:")
+    lines.append(f"```")
+    lines.append(f"/trade {sniper.symbol} {sniper.side} {sniper.entry:g} {sniper.leverage:.0f}x {sniper.qty:.4f}")
+    lines.append(f"```")
+    lines.append(f"/close {sniper.symbol}  \u2190 when done")
+
+    # ── ASK CLAUDE: pre-formatted prompt for second opinion ──
+    lines.append(f"")
+    lines.append(f"\U0001f4ac ASK CLAUDE (copy-paste):")
+    lines.append(f"```")
+    lines.append(f"{direction} {sniper.symbol} @ ${sniper.entry:g} {sniper.leverage:.0f}x")
+    lines.append(f"SL ${sniper.sl:g} scalpTP ${sniper.tp_scalp:g} swingTP ${sniper.tp_swing:g}")
+    lines.append(f"{sniper.tier} tier, {sniper.confidence:.0f}% conf, {sniper.num_agree} agree, regime={sniper.regime}")
+    lines.append(f"Take it?")
+    lines.append(f"```")
+
     lines.append(f"\u2550" * 32)
 
     return "\n".join(lines)
@@ -179,7 +199,7 @@ class ManualSniperAlerter:
         return f"{sniper.symbol}_{sniper.side}_{bucket}"
 
     def send_sniper_alert(self, sniper: SniperSignal, equity: float = 100) -> bool:
-        """Send a sniper signal alert to Telegram (with dedup)."""
+        """Send a sniper signal alert to Telegram (with dedup + shadow check)."""
         if not self.config.telegram_token or not self.config.telegram_chat_id:
             logger.warning("[SNIPER-ALERT] No Telegram credentials configured")
             return False
@@ -195,6 +215,28 @@ class ManualSniperAlerter:
                 f"(cooldown {self.ALERT_COOLDOWN_S // 60}m)"
             )
             return False
+
+        # ── Shadow-ledger secondary filter (2026-04-16 safety add) ──
+        # Sniper audit flagged that sniper can fire on setups the premium
+        # filter blocks as money losers (HYPE_BUY_multi_tier_quality etc).
+        # Block outright if the underlying (symbol, side, strategy) is in
+        # the shadow-verified loser list. Never silently push a
+        # known-negative-EV setup to the user as "SNIPER tier".
+        try:
+            from alerts.premium_filter import _SHADOW_BLOCKS
+            primary_driver = getattr(sniper, "primary_driver", "") or ""
+            strategies = getattr(sniper, "strategies", []) or []
+            key_drivers = [primary_driver.lower()] + [s.lower() for s in strategies if isinstance(s, str)]
+            shadow_key_side = "BUY" if sniper.side == "BUY" else "SELL"
+            for d in key_drivers:
+                if (sniper.symbol.upper(), shadow_key_side, d) in _SHADOW_BLOCKS:
+                    logger.info(
+                        f"[SNIPER-ALERT] BLOCKED — {sniper.symbol} {sniper.side} via "
+                        f"{d} is a shadow-ledger-verified money loser"
+                    )
+                    return False
+        except Exception as _ex:
+            logger.debug(f"[SNIPER-ALERT] Shadow-filter check error (non-fatal): {_ex}")
 
         self._last_alert[key] = now
         msg = format_sniper_alert(sniper, equity)

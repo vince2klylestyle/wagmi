@@ -636,24 +636,42 @@ class PositionManager:
         # 1a2. Data-driven 1h assessment (from 2,172-signal analysis):
         # If position is losing at 1h mark, 67% chance it stays losing.
         # Exception: BB signals recover 56% of the time — hold BB losers to 4h.
+        #
+        # Finding 20 trail audit (2026-04-16): this tightening creates 59
+        # premature stops over 30 days for ~$87 of leaked alpha. The 67%
+        # stat is SURVIVOR BIAS — it counts "didn't recover" = "hit SL",
+        # but with wider original SL, many would have recovered past 1h.
+        # We now apply this ONLY to SCALP entries (short horizon — 1h is
+        # meaningful) and skip MEDIUM/TREND where 1h is too early to judge.
+        # Also adding confidence_scorer to the exception list (largest
+        # premature-stop contributor per audit Part B).
         if pos.state == OPEN:
             _now_1h = sim_now or getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
             _hold_h = (_now_1h - pos.open_time).total_seconds() / 3600
             if 0.9 <= _hold_h <= 1.5:  # ~1h mark (window to avoid checking every tick)
                 _pnl_pct = (current_price - pos.entry) / pos.entry if is_long else (pos.entry - current_price) / pos.entry
                 if _pnl_pct < -0.001:  # Losing at 1h (>0.1% adverse)
-                    _is_bb = "bollinger_squeeze" in (pos.entry_reasons or {}).get("strategies_agree", []) or \
-                             (pos.entry_reasons or {}).get("primary_driver") == "bollinger_squeeze"
-                    if not _is_bb:
-                        # Non-BB loser at 1h: 67% stays losing, only 45% recover.
-                        # Tighten SL to reduce max loss.
+                    _trade_prof = getattr(pos, "trade_profile", None)
+                    _entry_type = getattr(_trade_prof, "entry_type", "") if _trade_prof else ""
+                    _driver = (pos.entry_reasons or {}).get("primary_driver", "") if pos.entry_reasons else ""
+                    _is_bb = ("bollinger_squeeze" in (pos.entry_reasons or {}).get("strategies_agree", [])
+                              or _driver == "bollinger_squeeze")
+                    _is_cs = _driver == "confidence_scorer"
+                    # Only tighten for SCALP profile AND not BB/CS drivers.
+                    # MEDIUM and TREND profiles: skip entirely (1h too early).
+                    _should_tighten = (
+                        _entry_type == "SCALP"
+                        and not _is_bb
+                        and not _is_cs
+                    )
+                    if _should_tighten:
                         _tight_sl = pos.entry  # Tighten to breakeven
                         if is_long and _tight_sl < pos.sl:
                             pass  # SL already tighter than breakeven
                         elif is_long:
                             pos.sl = _tight_sl
                             logger.info(
-                                f"[{symbol}] 1H ASSESSMENT: non-BB losing ({_pnl_pct:.2%}), "
+                                f"[{symbol}] 1H ASSESSMENT (SCALP only): non-BB/CS losing ({_pnl_pct:.2%}), "
                                 f"tightening SL to breakeven (67% chance stays losing)"
                             )
                         elif not is_long and _tight_sl > pos.sl:
@@ -661,13 +679,19 @@ class PositionManager:
                         elif not is_long:
                             pos.sl = _tight_sl
                             logger.info(
-                                f"[{symbol}] 1H ASSESSMENT: non-BB losing ({_pnl_pct:.2%}), "
+                                f"[{symbol}] 1H ASSESSMENT (SCALP only): non-BB/CS losing ({_pnl_pct:.2%}), "
                                 f"tightening SL to breakeven (67% chance stays losing)"
                             )
                     else:
+                        # MEDIUM/TREND or BB/CS driver — let the trade breathe
+                        _skip_reason = (
+                            "BB driver (56% recovery)" if _is_bb else
+                            "CS driver (premature-stop leak)" if _is_cs else
+                            f"{_entry_type} profile (1h too early)"
+                        )
                         logger.debug(
-                            f"[{symbol}] 1H ASSESSMENT: BB losing ({_pnl_pct:.2%}), "
-                            f"holding (56% recovery rate for BB)"
+                            f"[{symbol}] 1H ASSESSMENT: losing ({_pnl_pct:.2%}), "
+                            f"NOT tightening — {_skip_reason}"
                         )
 
         # 1b. Early exit: cut position if momentum accelerating toward SL
