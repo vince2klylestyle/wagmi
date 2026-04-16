@@ -1399,6 +1399,148 @@ The lesson: when I see a structural issue in code, I should verify it against re
 
 ---
 
+## Finding 21 — Telegram Alert Direction Inversion Bug (fixed)
+
+**Status: FIXED in `bot/alerts/enhanced_telegram.py:74`.**
+
+The user pasted me an ETH alert at 04:17 UTC that said:
+```
+SHORT ETH [B] 67% | 5x
+Entry: $2,356.01
+SL: $2,310.44 | TP1: $2,449.83 | TP2: $2,542.76
+```
+
+But the math is wrong for a SHORT — SL below entry and TP above is LONG direction. Checking the bot log, the actual trade was opened LONG at 03:53:22:
+
+```
+[ETH] State: IDLE -> OPEN (OPEN LONG @ 2356.01)
+[REFLECT] ENTRY ETH LONG @ $2356.01 | codes=[RE3,EXH] | reentry#7 conf=67%
+```
+
+Root cause at `enhanced_telegram.py:74`:
+```python
+direction = "LONG" if side == "BUY" else "SHORT"
+```
+
+Callers pass `side="LONG"` (from `multi_strategy_main.py:4300`), so `"LONG" == "BUY"` evaluates False and direction is set to `"SHORT"`. **Every Telegram alert the bot has ever sent has been showing the INVERTED direction.**
+
+If the user had trusted the header and taken it as a short, the "SL $2,310" is actually below entry — which means for a short it would be a *target*, not a stop. They would have sized wrong and been stopped out almost immediately as ETH climbed.
+
+Fixed to accept both conventions:
+```python
+_side_upper = (side or "").upper()
+direction = "LONG" if _side_upper in ("BUY", "LONG") else "SHORT"
+```
+
+Only 1 Telegram alert had ever actually fired from this bot (per the log), so the blast radius is small. Fix validated with 4 parametric tests (BUY/LONG both show LONG; SELL/SHORT both show SHORT).
+
+---
+
+## Phase 4 (2026-04-16 overnight) — Premium Alert System
+
+User feedback at ~04:20 UTC: "the current alerts aren't high quality and don't help me trade — maybe we should get to the point we are spotting where I should be buying or selling with the signals. Like predict." Plus: "visually appealing, easy to use, intuitive, connects straight to you."
+
+Built overnight with user's explicit permission for autonomous code work.
+
+### Architecture — two-tier premium alert system
+
+**Core insight**: the bot was sending ~170 raw ensemble signals per day to Telegram, most of them 1/9 strategies agreeing, illiquid regime, 65-70% confidence — i.e., noise. Meanwhile the shadow ledger (3,835 entries) already identifies exactly which `(symbol, side, strategy)` combos have proven edge. Route all alerts through that filter.
+
+### New files
+
+**`bot/alerts/premium_filter.py`** (260 lines) — decides whether a signal deserves user attention and what tier:
+
+- `AlertTier.EXECUTE` — act now, all conditions met, 1-3/day target
+- `AlertTier.WATCH` — setup forming, get ready, 3-8/day target
+- `AlertTier.NONE` — filtered, do not send
+
+Data structures match the Finding 11 rebuild:
+- `_SHADOW_EDGES` — 6 verified positive-edge combos (ETH_BUY_regime_trend 100% WR, HYPE_BUY_bollinger_squeeze 61% WR, etc.)
+- `_SHADOW_BLOCKS` — 4 money-loser combos (SOL_SELL_regime_trend 0% WR, etc.)
+- `_ADVERSE_REGIMES` — regime-specific filters (HYPE BUY in illiquid = 8% WR, block)
+
+Tier rules:
+- `EXECUTE`: premium edge (≥80% floor, 100+ samples) + conf ≥75 + 2+ strats | OR standard edge + conf ≥82 + 3+ strats + favorable regime
+- `WATCH`: premium/standard edge + conf ≥65 | OR explicit anticipatory pre-stage
+- `NONE`: everything else
+
+Size suggestion: `notional = max_loss_usd / stop_pct`, capped at 40% of equity. Given $10 max-loss and 1% stop, that's ~$1,000 notional.
+
+**`bot/alerts/premium_telegram.py`** (210 lines) — phone-first formatter:
+
+Sample EXECUTE alert output:
+
+```
+🎯 EXECUTE 🟢 LONG HYPE @ $44.50
+    5x | conf 80% | 61% WR (premium)
+
+━━━ LEVELS ━━━
+Entry  $44.50
+Stop   $44.06   (-0.99%)
+TP1    $45.50   (+2.25% · 2.3R)
+TP2    $46.50   (+4.49% · 4.6R)
+
+━━━ SIZE ━━━
+Notional  $1,010
+Qty       22.7000 HYPE
+Max loss  $10 if SL hits
+
+━━━ WHY ━━━
+Shadow:   61% WR on 196 samples
+Setup:    driver=bollinger_squeeze · 3/9 agree · regime=trending_bull
+
+━━━ SANITY ━━━
+✓ LONG: SL below entry, TP above
+  You WIN if price rises
+
+━━━ ACTION ━━━
+1️⃣  Open trade on Hyperliquid at ~$44.50
+2️⃣  Log it via Telegram:
+    /trade HYPE BUY 44.50 5x 22.7000
+3️⃣  Close with: /close HYPE
+
+💬 ASK CLAUDE (copy-paste):
+```
+LONG HYPE @ $44.50 5x
+SL $44.06 TP1 $45.50 TP2 $46.50
+driver=bollinger_squeeze conf=80% regime=trending_bull
+61% shadow WR, 3 strats. Take it?
+```
+
+WATCH alerts follow similar structure but explicitly say "Don't execute yet" and list what still needs to happen.
+
+### Wiring
+
+`bot/multi_strategy_main.py:6260-6360` — replaced the raw `format_signal_telegram` call with a premium-filter gate. Signals below the bar are logged with `[ALERT SKIP]` but NOT sent to Telegram. Discord still gets raw signals (that's the bot-operator channel, not the user-trading channel).
+
+`bot/multi_strategy_main.py:1711` — anticipatory engine hook. When `scan_for_setups()` returns new pre-staged entries, fire WATCH alerts for each. User gets advance notice before the setup triggers.
+
+### Env-var kill switch
+
+`PREMIUM_ALERTS_ENABLED=false` in `bot/.env` reverts to the old noisy behavior. Default is `true` (enabled).
+
+### Tests
+
+17/17 tests passing in `bot/tests/test_premium_filter.py`. Coverage:
+- Shadow blocks always filter NONE
+- Adverse regimes filter NONE
+- Premium edges route to EXECUTE with good consensus
+- Low confidence → WATCH
+- Solo signals → WATCH
+- Standard edges need higher confidence bar
+- Size math validated (max_loss cap, 40% equity cap)
+- Formatter direction sanity (LONG vs SHORT rendering)
+- Tonight's actual ETH 67% alert → correctly filtered to NONE
+
+### User experience
+
+Before (typical day): 172 alerts, most noise, 1-in-50 worth acting on
+After (expected): 3-8 WATCH + 1-3 EXECUTE = 4-11 alerts, every one worth attention
+
+The `/trade` command and `/close` command are already wired in `telegram_bot.py`, so the user can log entries/exits from their phone with zero terminal work. The "Ask Claude" copy-paste block gives them a pre-formatted prompt to paste into Claude Code for second opinion.
+
+---
+
 ## Open Loops / Deeper Dives Not Yet Done
 
 - Why BTC generates zero `SIGNAL_GENERATED` events despite BB Squeeze firing SELL frequently. Confirmed it's directional conflict (BB Squeeze SELL vs confidence_scorer BUY), but haven't mapped *why* this disagreement is permanent on BTC and not other symbols.

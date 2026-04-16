@@ -1708,7 +1708,50 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         except Exception:
                             pass
                         if _ant_1h is not None and not _ant_1h.empty:
-                            self._anticipation_engine.scan_for_setups(_ant_sym, _ant_1h, _ant_5m)
+                            _new_entries = self._anticipation_engine.scan_for_setups(_ant_sym, _ant_1h, _ant_5m)
+                            # Fire WATCH alerts for newly-staged anticipatory entries (2026-04-16)
+                            # These are setups the engine expects to trigger soon. User
+                            # gets advance notice so they're ready when EXECUTE fires.
+                            if (_new_entries
+                                    and os.environ.get("PREMIUM_ALERTS_ENABLED", "true").lower() in ("1", "true", "yes")
+                                    and self.alerts
+                                    and self.alerts.telegram_token
+                                    and self.alerts.telegram_chat_id):
+                                try:
+                                    from alerts.premium_filter import evaluate_for_alert, AlertTier
+                                    from alerts.premium_telegram import format_premium_watch_alert
+                                    for _ne in _new_entries:
+                                        _ne_side = "BUY" if _ne.side == "BUY" else "SELL"
+                                        _ne_dec = evaluate_for_alert(
+                                            symbol=_ne.symbol, side=_ne_side,
+                                            strategy=_ne.setup_type or "anticipatory",
+                                            confidence=70.0,  # anticipatory defaults
+                                            num_agree=1,
+                                            regime="",
+                                            entry=_ne.target_price,
+                                            sl=_ne.sl, tp1=_ne.tp, tp2=_ne.tp,
+                                            leverage=_ne.leverage,
+                                            equity=self.risk_mgr.equity,
+                                            anticipatory_prestage=True,
+                                        )
+                                        if _ne_dec.tier == AlertTier.WATCH:
+                                            _watch_msg = format_premium_watch_alert(
+                                                symbol=_ne.symbol, side=_ne_side,
+                                                entry=_ne.target_price,
+                                                sl=_ne.sl, tp1=_ne.tp, tp2=_ne.tp,
+                                                leverage=_ne.leverage,
+                                                confidence=70.0,
+                                                decision=_ne_dec,
+                                                strategy=_ne.setup_type or "anticipatory",
+                                                regime="", num_agree=1, total_strategies=0,
+                                            )
+                                            self.alerts._send_telegram(_watch_msg)
+                                            logger.info(
+                                                f"[WATCH-ALERT] Sent for {_ne.symbol} {_ne_side} "
+                                                f"@ ${_ne.target_price:.2f} ({_ne.setup_type})"
+                                            )
+                                except Exception as _we:
+                                    logger.debug(f"Watch alert dispatch failed: {_we}")
 
                 # 2. Build indicators dict for trigger checking
                 _ant_indicators = {}
@@ -6258,37 +6301,123 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Send signal alert (enhanced format with actionable data)
         tier = signal_result.metadata.get("tier", "")
         try:
-            # Fetch historical win rates for context
+            # Fetch historical win rates for context (used by Discord/dashboard)
             _sp = get_signal_performance(7, symbol=symbol)
             _sym_wr = _sp.get("by_symbol", {}).get(symbol, {}).get("win_rate", 0)
             _sym_trades = _sp.get("by_symbol", {}).get(symbol, {}).get("trades", 0)
             _strat_wr = _sp.get("by_strategy", {}).get(signal_result.strategy, {}).get("win_rate", 0)
-            _enhanced_signal = format_signal_telegram(
-                symbol=symbol,
-                side=side,
-                confidence=signal_result.confidence,
-                entry=actual_entry,
-                sl=signal_result.sl,
-                tp1=signal_result.tp1,
-                tp2=signal_result.tp2,
-                leverage=lev_decision.leverage,
-                strategies_agree=signal_result.metadata.get("strategies_agree"),
-                num_agree=signal_result.metadata.get("num_agree", 1),
-                total_strategies=len(self.strategies),
-                regime=trade_prof.regime or "",
-                equity=self.risk_mgr.equity,
-                risk_per_trade=self.config.risk_per_trade,
-                win_rate_symbol=_sym_wr,
-                win_rate_strategy=_strat_wr,
-                total_trades_symbol=_sym_trades,
-                ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
-                fee_drag_pct=entry_reasons.get("fee_drag_pct", 0),
-                setup_type=entry_reasons.get("primary_driver", ""),
-                solo_trade=signal_result.metadata.get("solo_trade", False),
-            )
-            # Send enhanced to Telegram, normal to Discord
-            if self.alerts.telegram_token and self.alerts.telegram_chat_id:
-                self.alerts._send_telegram(_enhanced_signal)
+
+            # ── PREMIUM ALERT FILTER (2026-04-16) ──
+            # Only send Telegram alerts for shadow-ledger-verified setups.
+            # The old behavior sent every ensemble signal to Telegram (~170/day),
+            # most of them low quality. Now we route through premium_filter
+            # which enforces a shadow-verified quality bar. Disable by setting
+            # PREMIUM_ALERTS_ENABLED=false in .env if you want the old firehose.
+            _premium_enabled = os.environ.get(
+                "PREMIUM_ALERTS_ENABLED", "true"
+            ).lower() in ("1", "true", "yes")
+
+            _telegram_msg = None
+            _alert_decision = None
+
+            if _premium_enabled:
+                try:
+                    from alerts.premium_filter import evaluate_for_alert, AlertTier
+                    from alerts.premium_telegram import (
+                        format_premium_execute_alert,
+                        format_premium_watch_alert,
+                        format_signal_skipped_debug,
+                    )
+
+                    _alert_decision = evaluate_for_alert(
+                        symbol=symbol,
+                        side=side,
+                        strategy=signal_result.strategy,
+                        confidence=signal_result.confidence,
+                        num_agree=signal_result.metadata.get("num_agree", 1),
+                        regime=trade_prof.regime or signal_result.metadata.get("regime", ""),
+                        entry=actual_entry,
+                        sl=signal_result.sl,
+                        tp1=signal_result.tp1,
+                        tp2=signal_result.tp2,
+                        leverage=lev_decision.leverage,
+                        strategies_agree=signal_result.metadata.get("strategies_agree"),
+                        equity=self.risk_mgr.equity,
+                        ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
+                    )
+
+                    if _alert_decision.tier == AlertTier.EXECUTE:
+                        _telegram_msg = format_premium_execute_alert(
+                            symbol=symbol, side=side,
+                            entry=actual_entry, sl=signal_result.sl,
+                            tp1=signal_result.tp1, tp2=signal_result.tp2,
+                            leverage=lev_decision.leverage,
+                            confidence=signal_result.confidence,
+                            decision=_alert_decision,
+                            strategy=signal_result.strategy,
+                            regime=trade_prof.regime or "",
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                        )
+                    elif _alert_decision.tier == AlertTier.WATCH:
+                        _telegram_msg = format_premium_watch_alert(
+                            symbol=symbol, side=side,
+                            entry=actual_entry, sl=signal_result.sl,
+                            tp1=signal_result.tp1, tp2=signal_result.tp2,
+                            leverage=lev_decision.leverage,
+                            confidence=signal_result.confidence,
+                            decision=_alert_decision,
+                            strategy=signal_result.strategy,
+                            regime=trade_prof.regime or "",
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                        )
+                    else:
+                        # Alert filtered. Log the skip reason so we can audit filter quality.
+                        logger.info(
+                            format_signal_skipped_debug(
+                                symbol=symbol, side=side,
+                                decision=_alert_decision,
+                                confidence=signal_result.confidence,
+                            )
+                        )
+                except Exception as _pe:
+                    logger.warning(
+                        f"[{trace_id}][{symbol}] Premium filter error: {_pe}. "
+                        f"Falling back to no alert."
+                    )
+
+            # Fallback path: if premium filter disabled, use old raw-signal alert
+            if not _premium_enabled:
+                _telegram_msg = format_signal_telegram(
+                    symbol=symbol,
+                    side=side,
+                    confidence=signal_result.confidence,
+                    entry=actual_entry,
+                    sl=signal_result.sl,
+                    tp1=signal_result.tp1,
+                    tp2=signal_result.tp2,
+                    leverage=lev_decision.leverage,
+                    strategies_agree=signal_result.metadata.get("strategies_agree"),
+                    num_agree=signal_result.metadata.get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    regime=trade_prof.regime or "",
+                    equity=self.risk_mgr.equity,
+                    risk_per_trade=self.config.risk_per_trade,
+                    win_rate_symbol=_sym_wr,
+                    win_rate_strategy=_strat_wr,
+                    total_trades_symbol=_sym_trades,
+                    ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
+                    fee_drag_pct=entry_reasons.get("fee_drag_pct", 0),
+                    setup_type=entry_reasons.get("primary_driver", ""),
+                    solo_trade=signal_result.metadata.get("solo_trade", False),
+                )
+
+            # Send only if we have a message (premium may filter to None)
+            if _telegram_msg and self.alerts.telegram_token and self.alerts.telegram_chat_id:
+                self.alerts._send_telegram(_telegram_msg)
+
+            # Discord still always gets the raw signal (that channel is bot-operator-focused)
             self.alerts.send_signal(signal_result, lev_decision.leverage, tier)
         except Exception:
             self.alerts.send_signal(signal_result, lev_decision.leverage, tier)
