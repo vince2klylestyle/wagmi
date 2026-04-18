@@ -64,6 +64,23 @@ Post on X
   vision)
 - **`linter`** — catches banned words (cinematic, epic, 4k...) and warns
   when a prompt lacks named lens/film/lighting/time/composition
+- **`deep_linter`** — extends linter with a 0-100 craft-coverage score
+  across 8 weighted dimensions, with operator-facing tips per miss
+- **`format_suggest`** — infers image vs video from the intent and ranks
+  the top-N format slugs via keyword heuristics
+- **`auto_codex`** — extracts named craft tokens (35mm f/1.4, Portra 400,
+  window light…) from winning prompts; auto-appends them to the codex so
+  patterns compound
+- **`topics`** — append-only queue of ideas/trends at
+  `data/topics/queue.yaml`; drain in batches on a schedule
+- **`scheduler`** — tiny cron-style runner: every minute, fire any job
+  whose time has come; jobs pull N topics, build bundles, deliver
+- **`telegram_bot`** — brief delivery on your phone. Commands match the
+  CLI. Photo uploads → reference library. `/winner` auto-extracts
+  patterns into the codex.
+- **`export`** — pack a finished piece into a post-ready folder with
+  `final.<ext>`, `caption.txt`, `alt_text.txt`, `reply_hook.txt`,
+  `README.md` — one folder to open on your phone and post from
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -102,10 +119,11 @@ Post on X
 
 ```bash
 cd memegine
-pip install -e .          # core, offline-only
+pip install -e .              # core, offline-only
 # optional:
-# pip install -e .[online]  # adds Anthropic SDK for programmatic use later
-# pip install -e .[dev]     # adds pytest
+# pip install -e '.[online]'    # adds Anthropic SDK for programmatic use
+# pip install -e '.[telegram]'  # adds python-telegram-bot (bot + scheduler push)
+# pip install -e '.[dev]'       # adds pytest
 ```
 
 **Requires**: Python 3.10+, FFmpeg on PATH (for the editor module).
@@ -147,6 +165,77 @@ memegine refs recent -n 20
 memegine history recent -n 20
 memegine history show <id>
 memegine history search "<text>"
+```
+
+### Topic queue (trend intake → scheduled batches)
+```bash
+memegine topics add "trader dumping at 3am" --tags reaction,night --priority 4
+memegine topics list
+memegine topics pop -n 3                # take top 3, mark used
+memegine topics stats
+memegine topics remove <id>
+```
+
+### Scheduler (automated daily batches)
+```bash
+memegine schedule add morning --hour 8 --n 3 --kind any
+memegine schedule add distill  --hour 23 --action weekly_distill --days 6  # Sunday
+memegine schedule list
+memegine schedule fire <id>             # manual trigger (use from cron)
+memegine schedule run --poll 30         # blocking loop (tmux / screen)
+memegine schedule run --telegram        # deliver results to your bot chat
+```
+
+### Format suggest & deep lint
+```bash
+memegine suggest "trader dumping at 3am" -n 3
+memegine score "<prompt>"               # 0-100 craft-coverage score + tips
+memegine score "<prompt>" --motion      # grades a motion prompt
+```
+
+### Post-ready export
+```bash
+memegine post build final.png \
+  --caption "it's 3am and he is not ok" \
+  --alt "portrait of a trader at 3am, neon + tungsten mix" \
+  --tags reaction,night
+memegine post list
+# → data/posts/<date>_<slug>_<id>/final.png + caption.txt + README.md
+```
+
+### Codex (extended)
+```bash
+memegine codex auto-winner "<prompt>" "why it worked"   # logs + auto-extracts
+memegine codex distill --n 200 --min 2                  # mine frequent patterns
+```
+
+### Telegram bot
+```bash
+# one-time setup
+export MEMEGINE_TELEGRAM_BOT_TOKEN=...
+export MEMEGINE_TELEGRAM_ALLOWED_USER_IDS=12345678
+# optional: chat id for scheduler deliveries
+export MEMEGINE_TELEGRAM_CHAT_ID=12345678
+
+memegine bot config-check               # verifies env vars, doesn't start bot
+memegine bot run                        # blocking polling bot
+
+# In the chat (from your phone):
+#   /piece <intent>                      auto-picks format, full bundle
+#   /brief <intent> [f:<slug>]           image brief
+#   /shots <intent>                      shot list
+#   /caption <concept>                   X caption brief
+#   /variants <n> <prompt>               variant brief
+#   /suggest <intent>                    top 3 format picks
+#   /lint <prompt>                       deep lint with 0-100 score
+#   /topic <text>                        append to topic queue
+#   /topics                              list queued topics
+#   /codex                               show codex head
+#   /winner <prompt> ||| <why>           log + auto-extract patterns
+#   /flop <what> ||| <why>               log to kill list
+#   /refs                                10 most recent refs
+#   /reverse [context]                   reverse the next photo you send
+#   <send a photo>                       → added to reference library
 ```
 
 ### Music-synced edits
@@ -252,9 +341,18 @@ slash commands are faster than the CLI:
 cd memegine && python -m pytest tests/ -v
 ```
 
-Current: 61 tests across 6 files. Editor tests use real FFmpeg + PIL (no
+Current: 137+ tests across 13 files. Editor tests use real FFmpeg + PIL (no
 mocks), so they verify actual output. Skip editor/grading tests if FFmpeg
 isn't installed (they auto-skip via pytest marker).
+
+New test files:
+- `test_topics.py` — topic queue (add, pop, stats, priority)
+- `test_format_suggest.py` — intent → format ranking
+- `test_deep_linter.py` — 0-100 craft-coverage score
+- `test_auto_codex.py` — pattern extraction from winners
+- `test_export.py` — post-ready folder layout
+- `test_scheduler.py` — cron matching, daily batch, fire
+- `test_telegram_bot.py` — bot module imports + helpers (no network)
 
 ---
 
@@ -266,8 +364,17 @@ isn't installed (they auto-skip via pytest marker).
   reliably for you.
 - **Train your eye** — save 20-40 reference images from top creators you
   admire. Run `/reverse` on them. Internalize the patterns.
-- **V2 ideas**: Telegram-bot delivery of briefs, Discord integration for
-  ref library, scheduled brief batches, auto-export to posting templates.
+- **Wire up the bot** — set `MEMEGINE_TELEGRAM_BOT_TOKEN` and allowlist,
+  run `memegine bot run` in tmux. Now your brief pipeline lives on your
+  phone.
+- **Schedule a daily batch** — `memegine schedule add morning --hour 8
+  --n 3 --delivery telegram`, then drop topics in throughout the day
+  via `/topic` from your phone. Next morning, the bot delivers three
+  briefs.
+- **V3 ideas**: Discord integration for ref library, auto-posting to X
+  via dry-run + confirm flow, reference vision-embedding search (local,
+  via CLIP), idea grading (predict which topic will land before you
+  run it).
 
 ---
 

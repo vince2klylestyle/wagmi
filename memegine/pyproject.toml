@@ -20,6 +20,9 @@ dependencies = [
 online = [
     "anthropic>=0.40.0",
 ]
+telegram = [
+    "python-telegram-bot>=21.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

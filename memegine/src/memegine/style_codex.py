@@ -6,7 +6,8 @@ from pathlib import Path
 from .config import settings
 
 
-def read(path: Path = settings.codex_path) -> str:
+def read(path: Path | None = None) -> str:
+    path = path or settings.codex_path
     if not path.exists():
         return ""
     return path.read_text()
@@ -15,8 +16,9 @@ def read(path: Path = settings.codex_path) -> str:
 def append_entry(
     section: str,
     body: str,
-    path: Path = settings.codex_path,
+    path: Path | None = None,
 ) -> None:
+    path = path or settings.codex_path
     """Append a timestamped note under the named section.
 
     Section is matched case-insensitively by the header line (## Section).
@@ -50,9 +52,9 @@ def append_entry(
     path.write_text("\n".join(lines) + ("\n" if not existing.endswith("\n") else ""))
 
 
-def log_winner(prompt: str, why: str, path: Path = settings.codex_path) -> None:
+def log_winner(prompt: str, why: str, path: Path | None = None) -> None:
     append_entry("Proven Prompt Patterns", f'"{prompt}" — {why}', path)
 
 
-def log_flop(what: str, why: str, path: Path = settings.codex_path) -> None:
+def log_flop(what: str, why: str, path: Path | None = None) -> None:
     append_entry("Kill List", f"{what} — {why}", path)

@@ -13,8 +13,12 @@ from rich.syntax import Syntax
 from . import (
     archive,
     audio as audio_mod,
+    auto_codex,
     copy_writer,
+    deep_linter,
     editor,
+    export as export_mod,
+    format_suggest,
     grading,
     image_ops,
     linter,
@@ -23,8 +27,10 @@ from . import (
     prompt_engine,
     reference_lib,
     reverse_engineer,
+    scheduler,
     shot_list,
     style_codex,
+    topics,
     transitions as transitions_mod,
     variants as variants_mod,
 )
@@ -571,6 +577,306 @@ def refs_search(
 def refs_recent(n: int = typer.Option(10, "-n")) -> None:
     for e in reference_lib.recent(n):
         console.print(f"[bold]{e['id']}[/] {e['filename']}  {e.get('added_at', '')}  {e.get('notes', '')[:80]}")
+
+
+# ---------------------------------------------------------------------------
+# Topic queue — drop intents / trends into a file, drain them in batches.
+# ---------------------------------------------------------------------------
+
+topics_app = typer.Typer(help="Topic queue: drop intents/trends, drain in batches.")
+app.add_typer(topics_app, name="topics")
+
+
+@topics_app.command("add")
+def topics_add(
+    text: str = typer.Argument(..., help="Intent / topic text."),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags."),
+    kind: str = typer.Option("any", "--kind", help="image | video | any"),
+    format_hint: Optional[str] = typer.Option(None, "--format", help="Force a format slug."),
+    priority: int = typer.Option(3, "--priority", "-p", help="1 (low) .. 5 (urgent)"),
+) -> None:
+    """Append a topic to the queue."""
+    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+    t = topics.add(
+        text, tags=tag_list, kind=kind, format_hint=format_hint, priority=priority
+    )
+    console.print(f"[green]queued[/] {t.id} (priority {t.priority}): {t.text}")
+
+
+@topics_app.command("list")
+def topics_list(
+    n: int = typer.Option(20, "-n"),
+    status: str = typer.Option("queued", "--status", help="queued | used | skipped"),
+) -> None:
+    rows = topics.list_queued(limit=n, status=status)
+    if not rows:
+        console.print("[dim]none[/]")
+        return
+    for t in rows:
+        console.print(
+            f"[bold]{t['id']}[/] p={t.get('priority', 3)}  "
+            f"kind={t.get('kind', 'any')}  {t.get('text', '')[:80]}"
+        )
+
+
+@topics_app.command("pop")
+def topics_pop(
+    n: int = typer.Option(1, "-n"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Don't mark as used."),
+) -> None:
+    picked = topics.pop(n=n, mark_used=not dry_run)
+    if not picked:
+        console.print("[dim]queue empty[/]")
+        return
+    for t in picked:
+        console.print(f"[bold]{t['id']}[/]  {t.get('text', '')[:100]}")
+
+
+@topics_app.command("remove")
+def topics_remove(topic_id: str = typer.Argument(...)) -> None:
+    if topics.remove(topic_id):
+        console.print(f"[yellow]removed[/] {topic_id}")
+    else:
+        console.print(f"[red]not found[/] {topic_id}")
+        raise typer.Exit(code=1)
+
+
+@topics_app.command("stats")
+def topics_stats() -> None:
+    st = topics.stats()
+    console.print(
+        f"total={st['total']}  queued={st.get('queued', 0)}  "
+        f"used={st.get('used', 0)}  skipped={st.get('skipped', 0)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scheduler — cron-style automated brief batches.
+# ---------------------------------------------------------------------------
+
+schedule_app = typer.Typer(help="Scheduler: automated brief batches.")
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.command("add")
+def schedule_add(
+    name: str = typer.Argument(..., help="Human-readable job name."),
+    hour: int = typer.Option(..., "--hour", help="0-23 local hour."),
+    minute: int = typer.Option(0, "--minute"),
+    days: Optional[str] = typer.Option(
+        None, "--days", help="Comma-separated 0-6 (Mon-Sun). Default: daily.",
+    ),
+    action: str = typer.Option("daily_batch", "--action", help="daily_batch | weekly_distill"),
+    n_topics: int = typer.Option(3, "--n", help="Topics per fire (daily_batch only)."),
+    kind: str = typer.Option("any", "--kind"),
+    delivery: str = typer.Option("file", "--delivery", help="file | telegram | stdout"),
+) -> None:
+    dow = [int(d) for d in days.split(",")] if days else None
+    job = scheduler.add(
+        name=name, hour=hour, minute=minute, days_of_week=dow,
+        action=action, n_topics=n_topics, kind=kind, delivery=delivery,
+    )
+    console.print(f"[green]scheduled[/] {job.id} {job.name} at {job.hour:02d}:{job.minute:02d}")
+
+
+@schedule_app.command("list")
+def schedule_list() -> None:
+    rows = scheduler.list_jobs()
+    if not rows:
+        console.print("[dim]no jobs[/]")
+        return
+    for j in rows:
+        on = "on " if j.get("enabled", True) else "OFF"
+        console.print(
+            f"[bold]{j['id']}[/] {on}  {j.get('hour', 0):02d}:{j.get('minute', 0):02d}  "
+            f"{j.get('action', '-'):<16} n={j.get('n_topics', '-')} kind={j.get('kind', 'any')}  {j['name']}"
+        )
+
+
+@schedule_app.command("remove")
+def schedule_remove(job_id: str = typer.Argument(...)) -> None:
+    if scheduler.remove(job_id):
+        console.print(f"[yellow]removed[/] {job_id}")
+    else:
+        console.print(f"[red]not found[/] {job_id}")
+        raise typer.Exit(code=1)
+
+
+@schedule_app.command("enable")
+def schedule_enable(job_id: str = typer.Argument(...)) -> None:
+    if scheduler.set_enabled(job_id, True):
+        console.print(f"[green]enabled[/] {job_id}")
+    else:
+        raise typer.Exit(code=1)
+
+
+@schedule_app.command("disable")
+def schedule_disable(job_id: str = typer.Argument(...)) -> None:
+    if scheduler.set_enabled(job_id, False):
+        console.print(f"[yellow]disabled[/] {job_id}")
+    else:
+        raise typer.Exit(code=1)
+
+
+@schedule_app.command("fire")
+def schedule_fire(job_id: str = typer.Argument(...)) -> None:
+    """Fire a job manually (use from cron / Task Scheduler)."""
+    res = scheduler.fire(job_id)
+    console.print(
+        f"[green]fired[/] {res.job_id}  bundles={res.bundles}  note={res.note}"
+    )
+
+
+@schedule_app.command("run")
+def schedule_run(
+    poll: int = typer.Option(30, "--poll", help="Seconds between checks."),
+    telegram_notify: bool = typer.Option(
+        False, "--telegram", help="Also push results to the configured telegram chat."
+    ),
+) -> None:
+    """Blocking scheduler loop. Runs jobs as their time comes around."""
+    deliver = None
+    if telegram_notify:
+        from . import telegram_bot
+        cfg = telegram_bot.BotConfig.from_env()
+        deliver = lambda job, result: telegram_bot.send_scheduler_result(cfg, job, result)
+    console.print(f"[bold]scheduler running[/] poll={poll}s telegram_notify={telegram_notify}")
+    scheduler.run_loop(poll_seconds=poll, deliver=deliver)
+
+
+# ---------------------------------------------------------------------------
+# Format suggest — intent → ranked format slugs.
+# ---------------------------------------------------------------------------
+
+
+@app.command("suggest")
+def suggest_cmd(
+    intent: str = typer.Argument(...),
+    kind: Optional[str] = typer.Option(None, "--kind", help="image | video (filter)"),
+    top_n: int = typer.Option(3, "-n"),
+) -> None:
+    """Suggest the top-N format slugs for a rough intent."""
+    console.print(f"inferred kind: [cyan]{format_suggest.infer_kind(intent)}[/]")
+    for p in format_suggest.suggest(intent, top_n=top_n, kind=kind):
+        console.print(
+            f"  [bold]{p.slug}[/]  ({p.kind})  score=[yellow]{p.score}[/]  hits={p.reasons}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Deep lint — score a prompt 0-100 for craft coverage.
+# ---------------------------------------------------------------------------
+
+
+@app.command("score")
+def score_cmd(
+    prompt: str = typer.Argument(...),
+    motion: bool = typer.Option(False, "--motion"),
+) -> None:
+    """Score a prompt 0-100 for craft coverage with line-by-line breakdown."""
+    sc = deep_linter.score(prompt, kind="motion" if motion else "image")
+    grade = deep_linter.grade(sc.score)
+    console.print(f"[bold]grade {grade}[/]")
+    console.print(sc.as_text())
+    if sc.banned:
+        raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# Post / export — pack a finished piece into a post-ready folder.
+# ---------------------------------------------------------------------------
+
+post_app = typer.Typer(help="Post-ready export bundles.")
+app.add_typer(post_app, name="post")
+
+
+@post_app.command("build")
+def post_build(
+    media: Path = typer.Argument(..., exists=True, readable=True, help="Final media file."),
+    caption: str = typer.Option(..., "--caption", "-c", help="Post body text."),
+    alt_text: str = typer.Option("", "--alt", help="Accessibility description."),
+    reply_hook: str = typer.Option("", "--reply", help="Optional follow-up reply."),
+    tags: Optional[str] = typer.Option(None, "--tags"),
+    from_bundle: Optional[str] = typer.Option(None, "--from-bundle", help="Source pipeline bundle id."),
+    from_ref: Optional[str] = typer.Option(None, "--from-ref", help="Source reference id."),
+) -> None:
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    bundle = export_mod.build(
+        media_path=media, caption=caption, alt_text=alt_text, reply_hook=reply_hook,
+        tags=tag_list, source_bundle_id=from_bundle, source_ref_id=from_ref,
+    )
+    console.print(f"[green]post bundle[/] {bundle.id} → {bundle.folder}")
+
+
+@post_app.command("list")
+def post_list(n: int = typer.Option(20, "-n")) -> None:
+    for b in export_mod.list_recent(n):
+        console.print(f"[bold]{b.get('id')}[/]  {b.get('caption', '')[:70]}")
+
+
+# ---------------------------------------------------------------------------
+# Codex — extended with auto-extract winners.
+# ---------------------------------------------------------------------------
+
+
+@codex_app.command("distill")
+def codex_distill(
+    n_briefs: int = typer.Option(200, "--n", help="How many recent archived briefs to scan."),
+    min_frequency: int = typer.Option(2, "--min", help="Keep only patterns seen >= N times."),
+) -> None:
+    """Mine recent briefs for common craft patterns and write to codex."""
+    recent = archive.read_recent(n=n_briefs)
+    prompts = [r.get("user", "") for r in recent]
+    dist = auto_codex.distill_to_codex(prompts, min_frequency=min_frequency)
+    for cat, items in dist.items():
+        if items:
+            console.print(f"{cat}: " + ", ".join(f"{v}×{c}" for v, c in items[:5]))
+
+
+@codex_app.command("auto-winner")
+def codex_auto_winner(
+    prompt: str = typer.Argument(..., help="The winning prompt."),
+    why: str = typer.Argument(..., help="Why it worked."),
+) -> None:
+    """Log a winner AND auto-extract named patterns (lens, film, lighting, etc.)."""
+    patterns = auto_codex.record_winner(prompt, why)
+    if patterns.is_empty():
+        console.print("[yellow]no extractable craft tokens — codex got the raw line only[/]")
+    else:
+        console.print(f"[green]logged[/] → {patterns.as_codex_line()}")
+
+
+# ---------------------------------------------------------------------------
+# Telegram bot.
+# ---------------------------------------------------------------------------
+
+bot_app = typer.Typer(help="Telegram bot: brief delivery to your phone.")
+app.add_typer(bot_app, name="bot")
+
+
+@bot_app.command("run")
+def bot_run() -> None:
+    """Blocking poll-mode bot. Set MEMEGINE_TELEGRAM_BOT_TOKEN and MEMEGINE_TELEGRAM_ALLOWED_USER_IDS."""
+    from . import telegram_bot  # lazy, optional dep
+    cfg = telegram_bot.BotConfig.from_env()
+    console.print(
+        f"[bold cyan]bot starting[/] allowlist={sorted(cfg.allowed_user_ids)} "
+        f"scheduler_chat={cfg.chat_id_for_scheduler}"
+    )
+    telegram_bot.run_bot(cfg)
+
+
+@bot_app.command("config-check")
+def bot_config_check() -> None:
+    """Verify env vars are set without starting the bot."""
+    from . import telegram_bot
+    cfg = telegram_bot.BotConfig.from_env()
+    token_state = "SET" if cfg.token else "MISSING"
+    console.print(
+        f"token: [bold]{token_state}[/]\n"
+        f"allowlist: {sorted(cfg.allowed_user_ids) or 'EMPTY (bot will refuse to start)'}\n"
+        f"scheduler_chat: {cfg.chat_id_for_scheduler or 'not set'}"
+    )
 
 
 if __name__ == "__main__":
