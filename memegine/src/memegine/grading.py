@@ -91,6 +91,54 @@ PRESETS: dict[str, str] = {
         "curves=master='0/0 0.15/0.1 0.5/0.58 0.85/0.95 1/1',"
         "eq=saturation=0.5:contrast=1.2"
     ),
+    # VHS-era tape look — lifted blacks, chroma bleed, slight noise
+    "vhs_90s": (
+        "curves=master='0/0.06 0.5/0.5 1/0.9',"
+        "eq=saturation=0.85:contrast=0.92,"
+        "hue=h=2,"
+        "noise=alls=8:allf=t"
+    ),
+    # Deep teal highlights, analog feel
+    "analog_teal": (
+        "curves=r='0/0 0.5/0.48 1/0.95':g='0/0 0.5/0.52 1/1':b='0/0.05 0.5/0.58 1/1',"
+        "eq=saturation=1.05:contrast=1.02"
+    ),
+    # Airy, pale, photographic — for daylight / lifestyle
+    "high_key": (
+        "curves=master='0/0.08 0.5/0.55 1/1',"
+        "eq=saturation=0.85:brightness=0.04:contrast=0.95"
+    ),
+    # Flat documentary — low contrast, desaturated, neutral
+    "doc_flat": (
+        "curves=master='0/0.05 0.5/0.5 1/0.95',"
+        "eq=saturation=0.7:contrast=0.9"
+    ),
+    # Punchy saturated sports look
+    "sports_punch": (
+        "curves=master='0/0 0.3/0.25 0.7/0.78 1/1',"
+        "eq=saturation=1.3:contrast=1.12"
+    ),
+    # Warm golden-amber sepia-adjacent — nostalgic / memory
+    "nostalgic_warm": (
+        "curves=r='0/0.04 0.5/0.58 1/1':g='0/0.02 0.5/0.52 1/0.96':b='0/0 0.5/0.42 1/0.82',"
+        "eq=saturation=0.9:contrast=0.98"
+    ),
+    # Cool corporate / tech — slight blue shift, high contrast
+    "tech_cool": (
+        "curves=r='0/0 0.5/0.48 1/0.98':b='0/0.04 0.5/0.54 1/1',"
+        "eq=saturation=0.92:contrast=1.08"
+    ),
+    # Rich forest / gorpcore — green push, earthy shadows
+    "forest_green": (
+        "curves=r='0/0 0.5/0.48 1/0.95':g='0/0.03 0.5/0.55 1/1':b='0/0.02 0.5/0.48 1/0.94',"
+        "eq=saturation=1.05:contrast=1.03"
+    ),
+    # Cyberpunk magenta-cyan
+    "cyber_neon": (
+        "curves=r='0/0.04 0.5/0.56 1/1':b='0/0.08 0.5/0.58 1/1',"
+        "eq=saturation=1.4:contrast=1.1,"
+        "hue=h=12"
+    ),
 }
 
 

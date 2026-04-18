@@ -26,6 +26,7 @@ from . import (
     render_variants,
     reverse_engineer,
     scorer,
+    sfx as sfx_mod,
     shot_list,
     style_codex,
     telegram_bot as telegram_mod,
@@ -603,6 +604,78 @@ def music_transition(
 ) -> None:
     """Apply a single transition between two clips (preview / testing use)."""
     out = transitions_mod.apply_preset(clip_a, clip_b, dst, preset)
+    console.print(f"[green]wrote[/] {out}")
+
+
+sfx_app = typer.Typer(help="SFX synthesizers (whoosh, impact, riser, click).")
+app.add_typer(sfx_app, name="sfx")
+
+
+@sfx_app.command("whoosh")
+def sfx_whoosh(
+    dst: Path = typer.Argument(...),
+    duration: float = typer.Option(0.3, "-d"),
+    direction: str = typer.Option("up", help="up | down"),
+    level: float = typer.Option(0.8, "--level"),
+) -> None:
+    """Synthesize a whoosh."""
+    out = sfx_mod.whoosh(dst, duration=duration, direction=direction, level=level)
+    console.print(f"[green]wrote[/] {out}")
+
+
+@sfx_app.command("impact")
+def sfx_impact(
+    dst: Path = typer.Argument(...),
+    intensity: str = typer.Option("hard", help="hard | soft | cinematic"),
+    duration: float = typer.Option(0.5, "-d"),
+) -> None:
+    """Synthesize an impact / hit."""
+    out = sfx_mod.impact(dst, intensity=intensity, duration=duration)
+    console.print(f"[green]wrote[/] {out}")
+
+
+@sfx_app.command("riser")
+def sfx_riser(
+    dst: Path = typer.Argument(...),
+    duration: float = typer.Option(2.0, "-d"),
+    start_hz: float = typer.Option(100.0, "--start-hz"),
+    end_hz: float = typer.Option(2000.0, "--end-hz"),
+) -> None:
+    """Synthesize a riser (swept tone)."""
+    out = sfx_mod.riser(dst, duration=duration, start_hz=start_hz, end_hz=end_hz)
+    console.print(f"[green]wrote[/] {out}")
+
+
+@sfx_app.command("click")
+def sfx_click(
+    dst: Path = typer.Argument(...),
+    bpm: int = typer.Option(120, "--bpm"),
+    beats: int = typer.Option(8, "--beats"),
+) -> None:
+    """Synthesize a metronome click track (for music-edit testing)."""
+    out = sfx_mod.click_track(dst, bpm=bpm, beats=beats)
+    console.print(f"[green]wrote[/] {out}")
+
+
+@sfx_app.command("layer")
+def sfx_layer(
+    video: Path = typer.Argument(..., exists=True, readable=True),
+    dst: Path = typer.Argument(...),
+    cue: list[str] = typer.Option(
+        ...,
+        "--cue",
+        help="Format: <sfx_path>:<time_sec>. Repeat for multiple cues.",
+    ),
+) -> None:
+    """Layer multiple SFX onto a video at specified timestamps.
+
+    Example: --cue whoosh.m4a:0.5 --cue impact.m4a:1.2
+    """
+    cues: list[tuple[Path, float]] = []
+    for c in cue:
+        path_str, _, time_str = c.rpartition(":")
+        cues.append((Path(path_str), float(time_str)))
+    out = sfx_mod.layer_sfx(video, dst, sfx_cues=cues)
     console.print(f"[green]wrote[/] {out}")
 
 
