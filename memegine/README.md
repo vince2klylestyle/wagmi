@@ -149,6 +149,20 @@ memegine history show <id>
 memegine history search "<text>"
 ```
 
+### Music-synced edits
+```bash
+memegine music beats <audio.mp3>                              # BPM + beats + estimated drop
+memegine music plan <audio.mp3> "<intent>" <clip1> <clip2>    # ask Claude to plan the edit
+memegine music hardcut out.mp4 music.mp3 a.mp4 b.mp4 c.mp4    # N clips, 1 cut per beat
+memegine music build out.mp4 music.mp3 clips...               # accelerating cuts into a drop
+memegine music slam out.mp4 music.mp3 clip.mp4 --slam 3.0     # slow-mo into a beat, snap
+memegine music impact out.mp4 music.mp3 clips...              # flashes between cuts
+memegine music reveal out.mp4 music.mp3 still.png --duration 8 # slow push on a still
+memegine music trailer out.mp4 music.mp3 clips... --slam 6.0  # build + slam + held hero
+memegine music transitions                                     # list transition presets
+memegine music transition out.mp4 a.mp4 b.mp4 --preset flash_white
+```
+
 ### Editor (the "no CapCut" layer)
 ```bash
 memegine edit aspect <src> <dst> --ratio 9:16 --fit cover

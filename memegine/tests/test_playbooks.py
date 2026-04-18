@@ -5,7 +5,7 @@ from memegine import prompt_engine
 
 def test_playbooks_exist():
     base = Path(__file__).resolve().parents[1] / "data" / "playbooks"
-    required = ["grok-imagine-patterns", "video-img2vid-patterns", "meme-typography", "x-content-playbook"]
+    required = ["grok-imagine-patterns", "video-img2vid-patterns", "meme-typography", "x-content-playbook", "music-edit-patterns"]
     for name in required:
         p = base / f"{name}.md"
         assert p.exists(), f"missing playbook: {p}"
@@ -41,6 +41,8 @@ def test_video_prompt_includes_video_playbook():
     )
     assert "grok-imagine-patterns" in user
     assert "video-img2vid-patterns" in user
+    # music-edit is now bundled with video briefs too
+    assert "music-edit-patterns" in user
 
 
 def test_prompt_can_exclude_playbooks():

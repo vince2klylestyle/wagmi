@@ -12,17 +12,20 @@ from rich.syntax import Syntax
 
 from . import (
     archive,
+    audio as audio_mod,
     copy_writer,
     editor,
     grading,
     image_ops,
     linter,
+    music_edit,
     pipeline as pipeline_mod,
     prompt_engine,
     reference_lib,
     reverse_engineer,
     shot_list,
     style_codex,
+    transitions as transitions_mod,
     variants as variants_mod,
 )
 from .config import settings
@@ -355,6 +358,181 @@ def edit_two_panel(
 ) -> None:
     """Stack two images into a meme two-panel layout (4:5)."""
     out = image_ops.two_panel(top, bottom, dst)
+    console.print(f"[green]wrote[/] {out}")
+
+
+music_app = typer.Typer(help="Music-synced edits. Beat detection + template rendering.")
+app.add_typer(music_app, name="music")
+
+
+@music_app.command("plan")
+def music_plan(
+    audio_file: Path = typer.Argument(..., exists=True, readable=True),
+    intent: str = typer.Argument(..., help="Rough intent for the edit."),
+    clips: list[Path] = typer.Argument(..., help="Available clip files, in order."),
+) -> None:
+    """Assemble a music-edit planning brief (paste into Claude Code / Claude.ai).
+
+    Analyzes the audio, reads the clip list, and prints the SYSTEM + USER
+    blocks that ask Claude to plan the whole edit (template, segments,
+    transitions, text overlays, exact CLI command).
+    """
+    from . import music_brief
+    settings.ensure_dirs()
+    grid = audio_mod.analyze(audio_file)
+    drop = audio_mod.find_drop(grid)
+    clip_descs = [str(c) for c in clips]
+    system, user = music_brief.build_music_brief(
+        intent,
+        music_metadata={
+            "path": str(audio_file),
+            "tempo_bpm": grid.tempo_bpm,
+            "duration_sec": grid.duration,
+            "beats": grid.beats,
+            "drop_sec": drop,
+        },
+        clips_description=clip_descs,
+    )
+    archive.save(kind="music_plan", intent=intent, system=system, user=user, extra={"clips": clip_descs})
+    _print_prompt(system, user, "Music-edit plan brief")
+
+
+@music_app.command("beats")
+def music_beats(
+    audio_file: Path = typer.Argument(..., exists=True, readable=True, help="Audio file (mp3/wav/m4a)."),
+) -> None:
+    """Print detected BPM + beat timestamps."""
+    grid = audio_mod.analyze(audio_file)
+    console.print(f"[bold]{audio_file.name}[/]")
+    console.print(f"  tempo: [cyan]{grid.tempo_bpm:.1f} BPM[/]  duration: {grid.duration:.2f}s  beats: {len(grid.beats)}")
+    console.print(f"  avg interval: {grid.avg_beat_interval:.3f}s")
+    console.print(f"  first 12 beats: {[f'{t:.2f}' for t in grid.beats[:12]]}")
+    drop = audio_mod.find_drop(grid)
+    if drop is not None:
+        console.print(f"  estimated drop: [yellow]{drop:.2f}s[/]")
+
+
+@music_app.command("hardcut")
+def music_hardcut(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clips: list[Path] = typer.Argument(..., help="Clips in order (will be cycled if fewer than beats allow)."),
+    beats_per_cut: int = typer.Option(1, "--bpc", help="Beats between cuts (1 = cut every beat; 2 = every 2 beats)."),
+    start_beat: int = typer.Option(0, "--start", help="Which beat index to begin on."),
+) -> None:
+    """Hard-cut montage: one cut per beat (or per N beats). Music carried through."""
+    out = music_edit.hard_cut_montage(
+        clips, music, dst, beats_per_cut=beats_per_cut, start_beat=start_beat,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("build")
+def music_build(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clips: list[Path] = typer.Argument(...),
+    start_beat: int = typer.Option(0, "--start"),
+    start_per_cut: int = typer.Option(4, "--start-per-cut"),
+    end_per_cut: int = typer.Option(1, "--end-per-cut"),
+) -> None:
+    """Rhythmic build: cuts accelerate from long to short."""
+    out = music_edit.rhythmic_build(
+        clips, music, dst,
+        start_beat=start_beat, start_per_cut=start_per_cut, end_per_cut=end_per_cut,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("slam")
+def music_slam(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clip: Path = typer.Argument(..., exists=True, readable=True),
+    slam: float = typer.Option(-1.0, "--slam", help="Time of the slam beat in seconds. Negative = auto-detect drop."),
+    ramp_in: float = typer.Option(1.5, "--ramp-in", help="Seconds of slow-mo before the slam."),
+    slow: float = typer.Option(0.4, "--slow", help="Slow-mo factor (0.4 = 40% speed)."),
+    post: float = typer.Option(1.0, "--post", help="Seconds at normal speed after the slam."),
+) -> None:
+    """Slow-mo speed ramp into a beat, snap to normal speed on the beat."""
+    slam_val = None if slam < 0 else slam
+    out = music_edit.speed_ramp_slam(
+        clip, music, dst,
+        slam_beat_sec=slam_val, ramp_in_sec=ramp_in, slow_factor=slow, post_slam_sec=post,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("impact")
+def music_impact(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clips: list[Path] = typer.Argument(...),
+    flash: str = typer.Option("white", "--flash", help="white | black"),
+    flash_frames: int = typer.Option(2, "--frames"),
+    beats_per_cut: int = typer.Option(1, "--bpc"),
+) -> None:
+    """Hard cuts between clips with a N-frame flash on each transition."""
+    out = music_edit.impact_frame_chain(
+        clips, music, dst,
+        flash_color=flash, flash_frames=flash_frames, beats_per_cut=beats_per_cut,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("reveal")
+def music_reveal(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clip: Path = typer.Argument(..., exists=True, readable=True),
+    duration: float = typer.Option(8.0, "--duration", "-d"),
+    audio_start: float = typer.Option(0.0, "--audio-start"),
+) -> None:
+    """One clip or still, slow push-in, music underneath. The 'vibe' template."""
+    out = music_edit.aesthetic_slow_reveal(
+        clip, music, dst, duration=duration, audio_start=audio_start,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("trailer")
+def music_trailer(
+    dst: Path = typer.Argument(...),
+    music: Path = typer.Argument(..., exists=True, readable=True),
+    clips: list[Path] = typer.Argument(..., help="Last clip is the hero held through the slam."),
+    slam: float = typer.Option(-1.0, "--slam", help="Slam time in seconds. Negative = auto-detect."),
+    pre_build: float = typer.Option(6.0, "--pre-build"),
+    post_slam: float = typer.Option(2.0, "--post-slam"),
+) -> None:
+    """Trailer: long cuts -> accelerating -> slam -> held hero shot."""
+    slam_val = None if slam < 0 else slam
+    out = music_edit.trailer_build(
+        clips, music, dst,
+        slam_beat_sec=slam_val, pre_build_seconds=pre_build, post_slam_seconds=post_slam,
+    )
+    console.print(f"[green]wrote[/] {out}")
+
+
+@music_app.command("transitions")
+def music_list_transitions() -> None:
+    """List available transition presets."""
+    console.print("[bold]Transition presets[/]")
+    for p in transitions_mod.list_presets():
+        cfg = transitions_mod.TRANSITION_PRESETS[p]
+        console.print(f"  {p}  ({cfg['type']}, {cfg['duration']}s)")
+    console.print("\n[bold]Raw xfade types[/]")
+    console.print("  " + ", ".join(transitions_mod.list_transitions()))
+
+
+@music_app.command("transition")
+def music_transition(
+    dst: Path = typer.Argument(...),
+    clip_a: Path = typer.Argument(..., exists=True, readable=True),
+    clip_b: Path = typer.Argument(..., exists=True, readable=True),
+    preset: str = typer.Option(..., "--preset", "-p", help="e.g. flash_white, whip_left, zoom_punch"),
+) -> None:
+    """Apply a single transition between two clips (preview / testing use)."""
+    out = transitions_mod.apply_preset(clip_a, clip_b, dst, preset)
     console.print(f"[green]wrote[/] {out}")
 
 

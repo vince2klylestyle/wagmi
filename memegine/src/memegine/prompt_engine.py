@@ -66,6 +66,7 @@ def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DI
     names = ["grok-imagine-patterns"]
     if format_kind == "video":
         names.append("video-img2vid-patterns")
+        names.append("music-edit-patterns")
     names += ["meme-typography"]
     out_parts = []
     for n in names:

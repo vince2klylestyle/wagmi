@@ -11,6 +11,9 @@ dependencies = [
     "rich>=13.0",
     "pyyaml>=6.0",
     "pillow>=10.0",
+    "numpy>=1.24",
+    "librosa>=0.10",
+    "soundfile>=0.12",
 ]
 
 [project.optional-dependencies]
