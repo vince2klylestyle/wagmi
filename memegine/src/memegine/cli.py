@@ -20,6 +20,7 @@ from . import (
     export as export_mod,
     format_suggest,
     grading,
+    idea_grader,
     image_ops,
     linter,
     music_edit,
@@ -553,10 +554,19 @@ def refs_add(
     source: str = typer.Option("", "--source", help="Where this came from, e.g. 'grok', 'shot'."),
     prompt: str = typer.Option("", "--prompt", help="Prompt that produced it, if known."),
     notes: str = typer.Option("", "--notes", help="Why it's a keeper."),
+    winner: bool = typer.Option(
+        False, "--winner", help="Mark as a winner + auto-extract patterns into the codex."
+    ),
 ) -> None:
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
-    entry = reference_lib.add(image, tags=tag_list, source=source, prompt=prompt, notes=notes)
+    entry = reference_lib.add(
+        image, tags=tag_list, source=source, prompt=prompt, notes=notes, winner=winner
+    )
     console.print(f"[green]Added ref[/] {entry.id} → {entry.filename}")
+    if winner and prompt:
+        patterns = auto_codex.extract(prompt)
+        if not patterns.is_empty():
+            console.print(f"[cyan]extracted patterns:[/] {patterns.as_codex_line()}")
 
 
 @refs_app.command("search")
@@ -780,6 +790,47 @@ def score_cmd(
     console.print(sc.as_text())
     if sc.banned:
         raise typer.Exit(code=1)
+
+
+@app.command("grade-idea")
+def grade_idea_cmd(
+    intent: str = typer.Argument(..., help="The rough intent / topic text."),
+) -> None:
+    """Grade an intent 0-100 for landability (specificity, emotion, format-fit)."""
+    g = idea_grader.grade(intent)
+    console.print(f"[bold]{g.letter}  {g.score}/100[/]")
+    console.print(g.as_text())
+    if g.format_hits:
+        console.print(f"[cyan]matching formats:[/] {', '.join(g.format_hits)}")
+
+
+@app.command("execute")
+def execute_cmd(
+    intent: str = typer.Argument(..., help="Rough operator intent."),
+    format: Optional[str] = typer.Option(None, "--format", "-f", help="Format slug (auto-picks if omitted)."),
+    model: Optional[str] = typer.Option(None, "--model", help="Override Anthropic model id."),
+) -> None:
+    """Run the brief through Claude and return the finished prompt + variants.
+
+    Requires ANTHROPIC_API_KEY and `pip install -e '.[online]'`.
+    """
+    from . import executor as ex
+    if not ex.api_key_available():
+        console.print("[red]ANTHROPIC_API_KEY not set[/] — use `memegine prompt` for offline mode.")
+        raise typer.Exit(code=1)
+    slug = format or format_suggest.best(intent, kind="image")
+    brief = ex.execute_prompt_brief(intent, slug, model=model)
+    console.print(f"[green]executed[/] format={slug} model={brief.model}")
+    console.print(Panel(brief.prompt or "(no prompt)", title="PROMPT", border_style="cyan"))
+    if brief.variants:
+        console.print(Panel("\n".join(f"- {v}" for v in brief.variants), title="VARIANTS"))
+    if brief.captions:
+        lines = []
+        for c in brief.captions[:5]:
+            lines.append(
+                f"[{c.get('length', '?')}] {c.get('text', '')}" if isinstance(c, dict) else str(c)
+            )
+        console.print(Panel("\n".join(lines), title="CAPTIONS"))
 
 
 # ---------------------------------------------------------------------------

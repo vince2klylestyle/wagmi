@@ -24,6 +24,8 @@ Commands:
   /formats                           list all format slugs
   /suggest <intent>                  top 3 format suggestions
   /lint <prompt>                     deep lint with score
+  /grade <intent>                    idea grader 0-100 (landability)
+  /execute <intent>                  run brief via Claude API (if key set)
   /topic <text>                      append to topic queue
   /topics                            list queued topics (top 10)
   /codex                             show style codex head
@@ -169,6 +171,8 @@ HELP_TEXT = """Memegine bot — brief delivery
 /formats                list all formats
 /suggest <intent>       top 3 format suggestions
 /lint <prompt>          deep lint with 0-100 score
+/grade <intent>         idea grader 0-100 (landability)
+/execute <intent>       run brief via Claude API (if key set)
 /topic <text>           append to topic queue
 /topics                 list queued topics (top 10)
 /codex                  show head of style codex
@@ -192,7 +196,9 @@ def _build_handlers(cfg: BotConfig):
         auto_codex,
         copy_writer,
         deep_linter,
+        executor as ex_mod,
         format_suggest,
+        idea_grader,
         pipeline as pipeline_mod,
         prompt_engine,
         reference_lib,
@@ -331,6 +337,40 @@ def _build_handlers(cfg: BotConfig):
         sc = deep_linter.score(prompt)
         letter = deep_linter.grade(sc.score)
         await _reply_long(update, f"grade {letter}\n{sc.as_text()}")
+
+    async def grade_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        intent = " ".join(context.args or []).strip()
+        if not intent:
+            await update.message.reply_text("usage: /grade <intent>")
+            return
+        g = idea_grader.grade(intent)
+        body = g.as_text()
+        if g.format_hits:
+            body += "\n  matches: " + ", ".join(g.format_hits)
+        await _reply_long(update, body)
+
+    async def execute_cmd_handler(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        args = " ".join(context.args or []).strip()
+        intent, forced_slug = _parse_prompt_with_format(args)
+        if not intent:
+            await update.message.reply_text("usage: /execute <intent> [f:<slug>]")
+            return
+        if not ex_mod.api_key_available():
+            await update.message.reply_text(
+                "ANTHROPIC_API_KEY not set — use /piece or /brief for offline mode."
+            )
+            return
+        slug = forced_slug or format_suggest.best(intent, kind="image")
+        try:
+            brief = ex_mod.execute_prompt_brief(intent, slug)
+        except Exception as exc:
+            await update.message.reply_text(f"execute failed: {exc}")
+            return
+        await _reply_long(update, ex_mod.summarize(brief))
 
     async def topic_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
@@ -477,6 +517,8 @@ def _build_handlers(cfg: BotConfig):
         "formats": formats_cmd,
         "suggest": suggest_cmd,
         "lint": lint_cmd,
+        "grade": grade_cmd,
+        "execute": execute_cmd_handler,
         "topic": topic_cmd,
         "topics": topics_cmd,
         "codex": codex_cmd,

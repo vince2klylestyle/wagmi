@@ -75,6 +75,32 @@ FORMAT_TRIGGERS: dict[str, list[str]] = {
         "ken burns", "kenburns", "slow push", "zoom on", "still to video",
         "still push", "photo to video",
     ],
+    "photoreal_self_avatar": [
+        "self avatar", "self-avatar", "recurring character", "mascot",
+        "protagonist", "my avatar", "kilroy", "the operator", "market-anon",
+        "same character", "consistent face",
+    ],
+    "screenshot_terminal": [
+        "terminal", "bloomberg", "tradingview", "order book", "exchange ui",
+        "hyperliquid", "binance", "dydx", "screenshot terminal", "screen",
+        "perps", "positions page",
+    ],
+    "ticker_scroll_overlay": [
+        "chyron", "lower third", "ticker", "news overlay", "breaking news bar",
+        "scroll overlay", "wire service", "news crawl",
+    ],
+    "found_footage_still": [
+        "found footage", "archival", "documentary still", "90s doc",
+        "vhs still", "tape look", "historical record", "handheld archive",
+    ],
+    "zine_pullquote": [
+        "pullquote", "pull quote", "zine", "magazine layout", "editorial layout",
+        "headline piece", "photo plus quote",
+    ],
+    "vhs_ad_spoof": [
+        "infomercial", "vhs ad", "commercial still", "800 number",
+        "call now", "19.99", "tv commercial", "rec room ad",
+    ],
 }
 
 # Strong intent cues for the "kind" (image vs video) when operator hasn't said.

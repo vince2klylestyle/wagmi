@@ -229,3 +229,117 @@ formats:
     slot_hints:
       start_crop: ["full frame", "wide", "centered medium"]
       end_crop: ["tight on subject face", "tight on hands", "tight on detail"]
+
+  - slug: photoreal_self_avatar
+    kind: image
+    description: |
+      Photoreal portrait of a recurring self-avatar / mascot character —
+      consistent face, wardrobe, location cues across multiple pieces.
+      Your project's protagonist. Aim for the same fictional person
+      over and over so the character becomes recognizable.
+    prompt_scaffold: |
+      {avatar_name}, {physical_descriptor}, {wardrobe}, in
+      {location_and_time_of_day}, {lens_and_film}, {lighting_setup},
+      {composition_rule}, expression: {emotion}, photoreal, same face
+      across pieces (keep eyes/jawline consistent), no CGI.
+    good_models: [aurora, flux_pro_via_grok, nano_banana]
+    slot_hints:
+      avatar_name: ["Kilroy", "the Operator", "the Intern", "Market-anon"]
+      wardrobe: [
+        "black hoodie, laptop bag",
+        "rumpled button-up, loose tie",
+        "puffer jacket, cap pulled low",
+      ]
+      emotion: ["cope", "smug resignation", "quiet dread", "unbothered"]
+
+  - slug: screenshot_terminal
+    kind: image
+    description: |
+      Screenshot-style image of a Bloomberg / terminal / exchange
+      interface with a punchline embedded in the data. Ideogram
+      territory. The joke IS the numbers.
+    prompt_scaffold: |
+      Screenshot of a {terminal_type} showing {data_content}.
+      Header: "{header_text}". Main panel shows {panel_content}.
+      One row is highlighted in {highlight_color} reading "{punchline_row}".
+      Monospace data font, dark background, serif heading,
+      pixel-accurate UI chrome, no watermarks.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      terminal_type: [
+        "Bloomberg terminal", "TradingView chart", "Hyperliquid perps UI",
+        "Binance order book", "dYdX positions page",
+      ]
+      highlight_color: ["red", "amber", "green", "white"]
+
+  - slug: ticker_scroll_overlay
+    kind: image
+    description: |
+      News-chyron lower-third with an absurd ticker scroll under a straight
+      photoreal image. The ticker and chyron sell the deadpan.
+    prompt_scaffold: |
+      Photoreal image of {subject_and_scene}, {lens_and_film},
+      {lighting_setup}, {time_of_day}. Lower third: news chyron in
+      red and white reading "{chyron_headline}". Below the chyron, a
+      scrolling ticker reads: "{ticker_text}". Broadcast-grade sans-serif,
+      thin red divider, no watermark, aspect 16:9.
+    good_models: [ideogram_via_grok, aurora]
+    slot_hints:
+      chyron_headline: ["< 8 words", "deadpan wire-service register"]
+      ticker_text: ["20-40 words, comma-separated one-liners"]
+
+  - slug: found_footage_still
+    kind: image
+    description: |
+      A single frame that looks pulled from a 90s documentary — 4:3,
+      slight color cast, VHS-scan lines implied not shown. The
+      "historical record" aesthetic for fictional events.
+    prompt_scaffold: |
+      Documentary-style still frame from archival footage, aspect 4:3,
+      {subject_and_scene}, shot on {lens_and_film} (Canon XL1 DV look
+      or VHS tape color cast), {lighting_setup} (available light only,
+      no lighting kit), {time_of_day}, handheld framing, slight
+      motion blur, slight chromatic aberration, low contrast,
+      no CGI, no digital sharpening.
+    good_models: [aurora, flux_pro_via_grok]
+
+  - slug: zine_pullquote
+    kind: image
+    description: |
+      Magazine / zine layout — hero photo left, huge serif pull-quote
+      right. For "the headline is the piece" content. No body copy,
+      no captions — the quote does everything.
+    prompt_scaffold: |
+      Editorial magazine layout, aspect 4:5, split vertical.
+      Left half: photo of {subject_and_scene}, {lens_and_film},
+      {lighting_setup}. Right half: full-bleed serif pull-quote
+      reading "{quote_text}" in {serif_style}, left-aligned, ample
+      white space. Attribution line small at bottom reading
+      "{attribution}". No body copy, no page numbers.
+    good_models: [ideogram_via_grok, aurora]
+    slot_hints:
+      serif_style: ["Playfair Display", "Didot", "Caslon", "Garamond"]
+      quote_text: ["one sentence, <= 20 words"]
+      attribution: ["one line, italicized", "source-style"]
+
+  - slug: vhs_ad_spoof
+    kind: image
+    description: |
+      Fake VHS-era commercial still — infomercial aesthetic. Bright
+      studio lighting, wooden-set background, subject holding product,
+      faded blocky text overlay. For nostalgia-bait "buy now" gags.
+    prompt_scaffold: |
+      1980s-1990s television commercial still frame, {subject_holding}
+      against a {studio_backdrop}, flat studio key light + fill,
+      shot on VHS tape, slightly oversaturated colors, small scanline
+      artifacts, blocky yellow-and-red chyron at bottom reading
+      "{offer_text}" (e.g. "$19.99 — CALL NOW"), 800-number overlay,
+      4:3 aspect.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      studio_backdrop: [
+        "wood-paneled rec room wall",
+        "gradient blue studio cyclorama",
+        "stacked products on shelf",
+      ]
+      offer_text: ["< 8 words, all-caps, dollar amount"]

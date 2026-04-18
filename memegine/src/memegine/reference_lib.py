@@ -41,8 +41,16 @@ def add(
     source: str = "",
     prompt: str = "",
     notes: str = "",
+    winner: bool = False,
 ) -> ReferenceEntry:
-    """Copy an image into the reference library and record it in the index."""
+    """Copy an image into the reference library and record it in the index.
+
+    When winner=True AND prompt is non-empty, also appends the prompt as
+    a winning pattern to the style codex and auto-extracts the named
+    craft tokens (lens, film, lighting, time, composition, camera move)
+    into the 'Compounded Patterns' section. This is the main compounding
+    loop: every winner tagged as such makes the next brief sharper.
+    """
     image_path = Path(image_path)
     if not image_path.exists():
         raise FileNotFoundError(image_path)
@@ -53,11 +61,15 @@ def add(
     if not dest.exists():
         shutil.copy2(image_path, dest)
 
+    tag_list = list(tags or [])
+    if winner and "winner" not in tag_list:
+        tag_list.append("winner")
+
     entry = ReferenceEntry(
         id=ref_id,
         filename=dest.name,
         added_at=datetime.utcnow().isoformat() + "Z",
-        tags=tags or [],
+        tags=tag_list,
         source=source,
         prompt=prompt,
         notes=notes,
@@ -66,6 +78,12 @@ def add(
     entries = [e for e in entries if e.get("id") != ref_id]
     entries.append(asdict(entry))
     _save_index(entries)
+
+    if winner and prompt.strip():
+        # Lazy import — auto_codex depends on style_codex which reads settings.
+        from . import auto_codex
+        auto_codex.record_winner(prompt, notes or "(marked winner)", tags=tag_list)
+
     return entry
 
 

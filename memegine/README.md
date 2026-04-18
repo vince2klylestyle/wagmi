@@ -81,6 +81,12 @@ Post on X
 - **`export`** — pack a finished piece into a post-ready folder with
   `final.<ext>`, `caption.txt`, `alt_text.txt`, `reply_hook.txt`,
   `README.md` — one folder to open on your phone and post from
+- **`idea_grader`** — score an intent 0-100 for landability before you
+  spend a brief on it. Checks specificity, emotion, format-friendliness,
+  concrete hooks, subject naming; flags vague words and AI-slop.
+- **`executor`** — optional Claude API path. If `ANTHROPIC_API_KEY` is
+  set, run the brief through Claude and return the finished Grok prompt
+  directly instead of a paste-able SYSTEM+USER block.
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -96,11 +102,13 @@ Post on X
 
 ### The data
 
-- **`data/formats/library.yaml`** — 14 format templates (photoreal_portrait,
+- **`data/formats/library.yaml`** — 20 format templates (photoreal_portrait,
   meme_two_panel, drake_yes_no, photoreal_scene_motion, lore_drop,
   cope_chart, npc_wojak_row, split_screen_then_now, photoreal_product_shot,
   photoreal_street_scene, reaction_shot_meme, fake_news_headline,
-  video_single_take_reaction, video_kenburns_still)
+  video_single_take_reaction, video_kenburns_still, photoreal_self_avatar,
+  screenshot_terminal, ticker_scroll_overlay, found_footage_still,
+  zine_pullquote, vhs_ad_spoof)
 - **`data/playbooks/`** — four craft bibles Claude reads on every brief:
   - `grok-imagine-patterns.md` — prompt craft for Nano Banana / Aurora /
     Ideogram / Flux via Grok
@@ -191,6 +199,19 @@ memegine schedule run --telegram        # deliver results to your bot chat
 memegine suggest "trader dumping at 3am" -n 3
 memegine score "<prompt>"               # 0-100 craft-coverage score + tips
 memegine score "<prompt>" --motion      # grades a motion prompt
+```
+
+### Idea grader (pre-brief landability score)
+```bash
+memegine grade-idea "trader at 3am, cope face, 12% drawdown"
+# → grade A  score 100/100
+```
+
+### Live Claude execution (optional, requires API key)
+```bash
+export ANTHROPIC_API_KEY=sk-...
+memegine execute "trader at 3am" --format photoreal_portrait
+# → prints finished Grok-ready prompt + variants + captions directly
 ```
 
 ### Post-ready export
@@ -341,11 +362,11 @@ slash commands are faster than the CLI:
 cd memegine && python -m pytest tests/ -v
 ```
 
-Current: 137+ tests across 13 files. Editor tests use real FFmpeg + PIL (no
-mocks), so they verify actual output. Skip editor/grading tests if FFmpeg
-isn't installed (they auto-skip via pytest marker).
+Current: 110+ tests in the core (offline) path, plus editor/grading/music
+FFmpeg-backed tests. Skip FFmpeg-dependent tests if FFmpeg isn't
+installed (they auto-skip via pytest marker).
 
-New test files:
+V2 test files:
 - `test_topics.py` — topic queue (add, pop, stats, priority)
 - `test_format_suggest.py` — intent → format ranking
 - `test_deep_linter.py` — 0-100 craft-coverage score
@@ -353,6 +374,10 @@ New test files:
 - `test_export.py` — post-ready folder layout
 - `test_scheduler.py` — cron matching, daily batch, fire
 - `test_telegram_bot.py` — bot module imports + helpers (no network)
+- `test_idea_grader.py` — pre-brief landability scoring
+- `test_executor.py` — Claude-powered live execution (mocked)
+- `test_refs_winner.py` — --winner flag pattern compounding
+- `test_new_formats.py` — V2 formats load + assemble cleanly
 
 ---
 
