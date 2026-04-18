@@ -13,6 +13,7 @@ from rich.syntax import Syntax
 from . import (
     archive,
     audio as audio_mod,
+    capture as capture_mod,
     copy_writer,
     editor,
     grading,
@@ -25,6 +26,7 @@ from . import (
     reverse_engineer,
     shot_list,
     style_codex,
+    telegram_bot as telegram_mod,
     transitions as transitions_mod,
     variants as variants_mod,
 )
@@ -534,6 +536,75 @@ def music_transition(
     """Apply a single transition between two clips (preview / testing use)."""
     out = transitions_mod.apply_preset(clip_a, clip_b, dst, preset)
     console.print(f"[green]wrote[/] {out}")
+
+
+capture_app = typer.Typer(help="Idea queue — save rough thoughts for later briefs.")
+app.add_typer(capture_app, name="capture")
+
+
+@capture_app.command("add")
+def capture_add(
+    intent: str = typer.Argument(..., help="Rough thought to save."),
+) -> None:
+    """Quick-save a rough thought to the idea queue."""
+    settings.ensure_dirs()
+    c = capture_mod.add(intent)
+    console.print(f"[green]captured[/] {c.id}  {c.created_at[:19]}")
+
+
+@capture_app.command("list")
+def capture_list(
+    all_: bool = typer.Option(False, "--all", help="Include consumed/discarded"),
+) -> None:
+    """List captures (pending by default; --all for everything)."""
+    rows = capture_mod.list_all() if all_ else capture_mod.list_pending()
+    if not rows:
+        console.print("[dim]queue is empty[/]")
+        return
+    for c in rows:
+        marker = {"pending": "[cyan]●[/]", "consumed": "[green]✓[/]", "discarded": "[red]✗[/]"}.get(c.status, "?")
+        console.print(f"{marker} [bold]{c.id}[/]  {c.created_at[:19]}  {c.intent[:90]}")
+
+
+@capture_app.command("discard")
+def capture_discard(capture_id: str = typer.Argument(...)) -> None:
+    """Mark a capture as discarded."""
+    res = capture_mod.discard(capture_id)
+    if res is None:
+        console.print(f"[red]not found:[/] {capture_id}")
+        raise typer.Exit(code=1)
+    console.print(f"[yellow]discarded[/] {res.id}")
+
+
+@capture_app.command("consume")
+def capture_consume(
+    capture_id: str = typer.Argument(...),
+    format: str = typer.Option(..., "--format", "-f"),
+) -> None:
+    """Convert a capture into a full piece brief (runs pipeline + marks consumed)."""
+    c = capture_mod.find(capture_id)
+    if c is None:
+        console.print(f"[red]not found:[/] {capture_id}")
+        raise typer.Exit(code=1)
+    settings.ensure_dirs()
+    bundle = pipeline_mod.build(c.intent, kind="image", format_slug=format, include_copy=True)
+    capture_mod.mark_consumed(c.id, bundle.id)
+    console.print(f"[green]consumed[/] {c.id} -> bundle {bundle.id}  folder={bundle.folder}")
+
+
+telegram_app = typer.Typer(help="Telegram bot (cockpit).")
+app.add_typer(telegram_app, name="telegram")
+
+
+@telegram_app.command("run")
+def telegram_run() -> None:  # pragma: no cover
+    """Start the Telegram bot in polling mode.
+
+    Requires env vars:
+      TELEGRAM_BOT_TOKEN
+      MEMEGINE_TELEGRAM_OPERATOR_CHAT_ID
+    """
+    telegram_mod.run()
 
 
 refs_app = typer.Typer(help="Manage the reference library.")
