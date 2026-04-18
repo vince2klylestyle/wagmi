@@ -23,7 +23,9 @@ from . import (
     pipeline as pipeline_mod,
     prompt_engine,
     reference_lib,
+    render_variants,
     reverse_engineer,
+    scorer,
     shot_list,
     style_codex,
     telegram_bot as telegram_mod,
@@ -134,6 +136,72 @@ def lint_prompt(
     console.print(result.as_text())
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("score")
+def score_prompt(
+    prompt: str = typer.Argument(..., help="Production prompt to score."),
+    motion: bool = typer.Option(False, "--motion", help="Score as a motion prompt."),
+) -> None:
+    """Score a production prompt 0-100 against craft criteria.
+
+    Use as a gate before pasting into Grok — revise anything under 70.
+    """
+    result = scorer.score(prompt, kind="motion" if motion else "image")
+    console.print(result.as_text())
+    if result.score < 55:
+        raise typer.Exit(code=1)
+
+
+render_app = typer.Typer(help="Render variants from a master file (aspect x grade matrix).")
+app.add_typer(render_app, name="render")
+
+
+@render_app.command("aspects")
+def render_aspects(
+    src: Path = typer.Argument(..., exists=True, readable=True),
+    dst_dir: Path = typer.Argument(...),
+    ratios: str = typer.Option("9:16,1:1,16:9", "--ratios", help="Comma-separated aspect ratios."),
+    fit: str = typer.Option("cover", "--fit"),
+) -> None:
+    """Render into multiple aspect ratios."""
+    rs = tuple(r.strip() for r in ratios.split(","))
+    outs = render_variants.render_aspect_variants(src, dst_dir, ratios=rs, fit=fit)
+    for p in outs:
+        console.print(f"[green]wrote[/] {p}")
+
+
+@render_app.command("grades")
+def render_grades(
+    src: Path = typer.Argument(..., exists=True, readable=True),
+    dst_dir: Path = typer.Argument(...),
+    presets: str = typer.Option(
+        "portra_400,cinestill_800t,teal_orange,moody_film",
+        "--presets",
+        help="Comma-separated grading presets.",
+    ),
+) -> None:
+    """Render with multiple color-grading presets."""
+    ps = tuple(p.strip() for p in presets.split(","))
+    outs = render_variants.render_grade_variants(src, dst_dir, presets=ps)
+    for p in outs:
+        console.print(f"[green]wrote[/] {p}")
+
+
+@render_app.command("matrix")
+def render_matrix(
+    src: Path = typer.Argument(..., exists=True, readable=True),
+    dst_dir: Path = typer.Argument(...),
+    ratios: str = typer.Option("9:16,1:1", "--ratios"),
+    presets: str = typer.Option("portra_400,cinestill_800t", "--presets"),
+    fit: str = typer.Option("cover", "--fit"),
+) -> None:
+    """Render the full aspect x grade matrix (R x P outputs)."""
+    rs = tuple(r.strip() for r in ratios.split(","))
+    ps = tuple(p.strip() for p in presets.split(","))
+    outs = render_variants.render_matrix(src, dst_dir, ratios=rs, presets=ps, fit=fit)
+    for p in outs:
+        console.print(f"[green]wrote[/] {p}")
 
 
 @app.command("shots")
