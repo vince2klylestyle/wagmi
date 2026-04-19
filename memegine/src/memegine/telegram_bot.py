@@ -188,6 +188,10 @@ HELP_TEXT = """Memegine bot — brief delivery
 /stats [daily|weekly]   activity report
 /perf-summary           engagement summary by format/pattern/hour
 /doctor                 run health check
+/journal [days]         chronological feed across all stores
+/next                   one-screen "what should I make?" dashboard
+/session_start [name]   mark start of a working block
+/session_end            close current session
 /status                 queue + counts
 /reverse [context]      reverse-brief the next photo you send
 Photo upload (no command) → added to the reference library.
@@ -212,11 +216,14 @@ def _build_handlers(cfg: BotConfig):
         format_suggest,
         fragments as fragments_mod,
         idea_grader,
+        journal as journal_mod,
+        next_action,
         performance,
         pipeline as pipeline_mod,
         prompt_engine,
         reference_lib,
         reverse_engineer,
+        session as session_mod,
         shot_list as shot_list_mod,
         stats as stats_mod,
         style_codex,
@@ -423,6 +430,40 @@ def _build_handlers(cfg: BotConfig):
             return
         report = doctor_mod.run()
         await _reply_long(update, report.as_text())
+
+    async def journal_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        args = context.args or []
+        days = None
+        if args and args[0].isdigit():
+            days = int(args[0])
+        entries = journal_mod.collect(days=days, limit=30)
+        await _reply_long(update, journal_mod.as_text(entries))
+
+    async def next_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        dash = next_action.compute()
+        await _reply_long(update, dash.as_text())
+
+    async def session_start_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        name = " ".join(context.args or []).strip() or "telegram session"
+        event = session_mod.start(name=name)
+        await update.message.reply_text(
+            f"started session {event.session_id}  name={event.name}"
+        )
+
+    async def session_end_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        event = session_mod.end()
+        if event is None:
+            await update.message.reply_text("no open session")
+            return
+        await update.message.reply_text(f"ended session {event.session_id}")
 
     async def formats_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
@@ -652,6 +693,10 @@ def _build_handlers(cfg: BotConfig):
         "stats": stats_cmd_handler,
         "perf_summary": perf_summary_cmd,
         "doctor": doctor_cmd,
+        "journal": journal_cmd,
+        "next": next_cmd,
+        "session_start": session_start_cmd,
+        "session_end": session_end_cmd,
         "status": status_cmd,
         "reverse": reverse_cmd,
         "_photo": photo_handler,

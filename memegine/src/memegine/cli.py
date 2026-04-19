@@ -27,14 +27,17 @@ from . import (
     grading,
     idea_grader,
     image_ops,
+    journal as journal_mod,
     linter,
     music_edit,
+    next_action,
     performance,
     pipeline as pipeline_mod,
     prompt_engine,
     reference_lib,
     reverse_engineer,
     scheduler,
+    session as session_mod,
     shot_list,
     stats as stats_mod,
     style_codex,
@@ -1213,6 +1216,84 @@ def perf_top(n: int = typer.Option(10, "-n")) -> None:
             f"likes={e.get('likes', 0)}  rt={e.get('reposts', 0)}  "
             f"replies={e.get('replies', 0)}  url={e.get('post_url') or '-'}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Sessions — mark start/end of working blocks.
+# ---------------------------------------------------------------------------
+
+session_app = typer.Typer(help="Mark session boundaries for bucketing activity.")
+app.add_typer(session_app, name="session")
+
+
+@session_app.command("start")
+def session_start(
+    name: str = typer.Argument("", help="Optional session name."),
+    notes: str = typer.Option("", "--notes"),
+) -> None:
+    event = session_mod.start(name=name, notes=notes)
+    console.print(f"[green]started[/] session {event.session_id}  name={event.name or '-'}")
+
+
+@session_app.command("end")
+def session_end(notes: str = typer.Option("", "--notes")) -> None:
+    event = session_mod.end(notes=notes)
+    if event is None:
+        console.print("[yellow]no open session[/]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]ended[/] session {event.session_id}")
+
+
+@session_app.command("current")
+def session_current() -> None:
+    s = session_mod.current()
+    if s is None:
+        console.print("[dim]no session open[/]")
+        return
+    console.print(
+        f"[bold]{s.get('session_id')}[/]  name={s.get('name') or '-'}  "
+        f"started={s.get('at', '')[:19]}"
+    )
+
+
+@session_app.command("list")
+def session_list(n: int = typer.Option(20, "-n")) -> None:
+    for s in session_mod.list_sessions()[:n]:
+        dur = s.get("duration_sec")
+        dur_str = f"{dur//60}m" if dur else "open"
+        console.print(
+            f"[bold]{s['session_id'][:8]}[/]  "
+            f"{s.get('started_at', '?')[:19]}  dur={dur_str}  {s.get('name', '-')}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Journal — unified feed.
+# ---------------------------------------------------------------------------
+
+
+@app.command("journal")
+def journal_cmd(
+    days: Optional[int] = typer.Option(None, "--days", "-d"),
+    limit: int = typer.Option(50, "--limit", "-n"),
+) -> None:
+    """Print a reverse-chronological feed of everything memegine has logged."""
+    entries = journal_mod.collect(days=days, limit=limit)
+    # Plain print — avoids Rich's cp1252 issues on Windows consoles.
+    print(journal_mod.as_text(entries))
+
+
+# ---------------------------------------------------------------------------
+# Next — "what now" dashboard.
+# ---------------------------------------------------------------------------
+
+
+@app.command("next")
+def next_cmd() -> None:
+    """One-screen dashboard: queue, last winner, top format, recommendations."""
+    dash = next_action.compute()
+    # Plain print — avoids Rich's cp1252 issues on Windows consoles.
+    print(dash.as_text())
 
 
 if __name__ == "__main__":

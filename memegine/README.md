@@ -111,6 +111,16 @@ Post on X
   memegine expands them inline. Ten categories seeded: LENS, FILM,
   LIGHTING, TIME_OF_DAY, COMPOSITION, MOOD, SUBJECT, LOCATION, NEGATIVE,
   CAMERA_MOVE. Operator adds more as patterns prove out.
+- **`session`** — mark the start and end of a working block. Stats can
+  bucket by session instead of calendar day — different energy, different
+  output. CLI: `memegine session start/end/list`.
+- **`journal`** — reverse-chronological unified feed across archive,
+  refs, posts, and session markers. One view of "what have I done
+  lately?". CLI: `memegine journal --days 7`.
+- **`next_action`** — one-screen "what should I make?" dashboard.
+  Summarizes queue, last winner, top-performing format, and produces a
+  ranked list of concrete next moves tailored to the current state.
+  CLI: `memegine next`.
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -298,6 +308,17 @@ memegine fragments validate "LENS.35mm_1_4 FILM.unknown_stock"
 ```bash
 memegine variants-last -n 6
 # → uses the prompt from your most recent ref tagged `winner`
+```
+
+### Sessions, journal, and "next moves" dashboard
+```bash
+memegine session start "afternoon-hero"    # mark the start of a working block
+memegine session current
+memegine session end
+memegine session list                       # history with durations
+
+memegine journal --days 7                   # unified chronological feed
+memegine next                               # "what should I make?" dashboard
 ```
 
 ### Performance tracking (close the feedback loop)

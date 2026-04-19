@@ -90,6 +90,41 @@ def _has_negative_section(text: str) -> bool:
     return " no " in tail and tail.count(" no ") >= 2
 
 
+def _fragment_hints() -> dict[str, str]:
+    """Return per-category hint strings that reference named fragments from
+    the library. If fragments aren't loaded or the category is empty, the
+    hint falls back to a free-text suggestion.
+    """
+    try:
+        from . import fragments
+        lib = fragments.load()
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+
+    def _pick(cat: str, n: int = 2) -> list[str]:
+        names = list(lib.get(cat, {}).keys())[:n]
+        return [f"{cat}.{name}" for name in names]
+
+    lens = _pick("LENS", 2)
+    film = _pick("FILM", 2)
+    if lens or film:
+        out["lens_or_stock"] = "use " + ", ".join(lens + film[:2])
+    lighting = _pick("LIGHTING", 2)
+    if lighting:
+        out["lighting"] = "use " + ", ".join(lighting)
+    time_ = _pick("TIME_OF_DAY", 2)
+    if time_:
+        out["time_or_condition"] = "use " + ", ".join(time_)
+    comp = _pick("COMPOSITION", 2)
+    if comp:
+        out["composition"] = "use " + ", ".join(comp)
+    neg = _pick("NEGATIVE", 1)
+    if neg:
+        out["negative_terms"] = "use " + neg[0]
+    return out
+
+
 def score(prompt: str, *, kind: str = "image") -> CraftScore:
     """Score a prompt 0-100 across weighted craft dimensions."""
     base = linter.lint(prompt, kind=kind)
@@ -112,6 +147,11 @@ def score(prompt: str, *, kind: str = "image") -> CraftScore:
         if hits.get(cat):
             total += w
 
+    # Fragment-aware suggestions: if the fragments library has relevant
+    # snippets, mention them by code so the operator can drop in a proven
+    # token instead of re-inventing the phrasing.
+    fragment_hints = _fragment_hints()
+
     suggestions: list[str] = []
     if not hits["no_banned_words"]:
         suggestions.append(
@@ -119,19 +159,23 @@ def score(prompt: str, *, kind: str = "image") -> CraftScore:
         )
     if not hits["lens_or_stock"]:
         suggestions.append(
-            "name a lens or film stock (e.g. '35mm f/1.4', 'Portra 400', 'Cinestill 800T')"
+            "name a lens or film stock — "
+            + fragment_hints.get("lens_or_stock", "e.g. '35mm f/1.4', 'Portra 400'")
         )
     if not hits["lighting"]:
         suggestions.append(
-            "name the lighting (e.g. 'hard window light', 'neon + tungsten mix')"
+            "name the lighting — "
+            + fragment_hints.get("lighting", "e.g. 'hard window light'")
         )
     if not hits["time_or_condition"]:
         suggestions.append(
-            "add time/weather (e.g. 'dusk', '3am', 'overcast', 'foggy street')"
+            "add time/weather — "
+            + fragment_hints.get("time_or_condition", "e.g. 'dusk', '3am'")
         )
     if not hits["composition"]:
         suggestions.append(
-            "name the composition rule ('rule of thirds, subject left', 'centered close-up')"
+            "name the composition rule — "
+            + fragment_hints.get("composition", "e.g. 'rule of thirds, subject left'")
         )
     if not hits["location_or_subject"]:
         suggestions.append(
@@ -143,7 +187,8 @@ def score(prompt: str, *, kind: str = "image") -> CraftScore:
         )
     if not hits["negative_terms"]:
         suggestions.append(
-            "end with a 'no X, no Y' clause (e.g. 'no extra fingers, no warped text, no lens flare')"
+            "end with a 'no X, no Y' clause — "
+            + fragment_hints.get("negative_terms", "e.g. 'no extra fingers, no warped text'")
         )
 
     if kind == "motion":
