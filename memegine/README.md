@@ -163,6 +163,17 @@ Post on X
   expected section (North Star, Voice & Tone, Visual DNA, Proven
   Patterns, Compounded Patterns, Core Patterns, Weekly Distill, Kill
   List, Voice Notes). CLI: `memegine codex init`.
+- **`last`** — show the most recent brief, winner, post, and session
+  in one view. The "where was I?" command. CLI: `memegine last`.
+  Bot: `/last`.
+- **`search`** — unified substring search across briefs, refs, posts,
+  codex entries, and topics. Answers "when did I brief this?" /
+  "which winner was about X?". CLI: `memegine search "<query>"`.
+  Bot: `/search`.
+- **`format_health`** — classifies each format as healthy / watch /
+  candidate-for-deprecation based on average engagement vs. the median
+  across formats. Flags under-performers once they have ≥ 5 posts of
+  data. CLI: `memegine format-health`.
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -410,6 +421,13 @@ export MEMEGINE_TELEGRAM_CHAT_ID=12345678
 memegine schedule add morning-brief --hour 7 --action morning_brief
 memegine schedule run --telegram
 # → every morning at 7am: dashboard + last 48h journal + top perf + top topics
+```
+
+### Quick recall
+```bash
+memegine last                           # last brief/winner/post/session
+memegine search "3am kitchen"           # find across all stores
+memegine format-health                  # which formats are performing?
 ```
 
 ### Like-winner (clone your last winner's craft)

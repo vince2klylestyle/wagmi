@@ -1498,6 +1498,37 @@ def like_winner_cmd(
     print(result.as_text())
 
 
+@app.command("last")
+def last_cmd() -> None:
+    """Show the most recent brief / winner / post / session."""
+    from . import last
+    print(last.compute().as_text())
+
+
+@app.command("search")
+def search_cmd(
+    query: str = typer.Argument(..., help="Text to search for."),
+    stores: Optional[str] = typer.Option(
+        None, "--stores",
+        help="Comma-separated subset: brief,ref,post,codex,topic",
+    ),
+    limit: int = typer.Option(50, "-n"),
+) -> None:
+    """Search briefs + refs + posts + codex + topics in one go."""
+    from . import search as search_mod
+    store_list = [s.strip() for s in stores.split(",")] if stores else None
+    result = search_mod.run(query, stores=store_list, limit=limit)
+    print(result.as_text())
+
+
+@app.command("format-health")
+def format_health_cmd() -> None:
+    """Report which formats are healthy vs candidates for deprecation."""
+    from . import format_health
+    report = format_health.evaluate()
+    print(report.as_text())
+
+
 @codex_app.command("init")
 def codex_init_cmd(
     force: bool = typer.Option(False, "--force", help="Overwrite existing codex."),

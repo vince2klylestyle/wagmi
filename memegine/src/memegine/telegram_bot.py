@@ -196,6 +196,9 @@ HELP_TEXT = """Memegine bot — brief delivery
 /codex_audit            duplicates / contradictions in the codex
 /fix_prompt <prompt>    auto-insert fragments to plug missing craft
 /like_winner <intent>   clone last winner's craft for a new subject
+/last                   last brief/winner/post/session in one view
+/search <query>         search across briefs/refs/posts/codex/topics
+/format_health          classify formats by performance
 /status                 queue + counts
 /reverse [context]      reverse-brief the next photo you send
 Photo upload (no command) → added to the reference library.
@@ -518,6 +521,29 @@ def _build_handlers(cfg: BotConfig):
             return
         await _reply_long(update, result.as_text())
 
+    async def last_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        from . import last
+        await _reply_long(update, last.compute().as_text())
+
+    async def search_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        query = " ".join(context.args or []).strip()
+        if not query:
+            await update.message.reply_text("usage: /search <query>")
+            return
+        from . import search as search_mod
+        result = search_mod.run(query, limit=30)
+        await _reply_long(update, result.as_text())
+
+    async def format_health_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        from . import format_health
+        await _reply_long(update, format_health.evaluate().as_text())
+
     async def formats_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
             return
@@ -754,6 +780,9 @@ def _build_handlers(cfg: BotConfig):
         "codex_audit": codex_audit_cmd,
         "fix_prompt": fix_prompt_cmd,
         "like_winner": like_winner_cmd,
+        "last": last_cmd,
+        "search": search_cmd,
+        "format_health": format_health_cmd,
         "status": status_cmd,
         "reverse": reverse_cmd,
         "_photo": photo_handler,
