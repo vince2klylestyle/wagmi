@@ -1892,6 +1892,72 @@ def campaigns_status_cmd(
         raise typer.Exit(code=1)
 
 
+calendar_app = typer.Typer(help="Scheduled publish timestamps per topic.")
+app.add_typer(calendar_app, name="calendar")
+
+
+@calendar_app.command("schedule")
+def calendar_schedule_cmd(
+    topic_id: str = typer.Argument(...),
+    publish_at: str = typer.Argument(..., help="ISO timestamp (2026-04-21T08:00:00Z)."),
+) -> None:
+    from . import calendar
+    try:
+        ok = calendar.schedule(topic_id, publish_at)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    console.print(
+        f"[green]scheduled[/] {topic_id} at {publish_at}" if ok
+        else "[red]topic not found[/]"
+    )
+
+
+@calendar_app.command("unschedule")
+def calendar_unschedule_cmd(topic_id: str = typer.Argument(...)) -> None:
+    from . import calendar
+    if calendar.unschedule(topic_id):
+        console.print(f"[yellow]unscheduled[/] {topic_id}")
+    else:
+        console.print("[red]no schedule found[/]")
+        raise typer.Exit(code=1)
+
+
+@calendar_app.command("list")
+def calendar_list_cmd(
+    future_only: bool = typer.Option(True, "--future/--all"),
+) -> None:
+    from . import calendar
+    print(calendar.summary_text(future_only=future_only))
+
+
+@calendar_app.command("due")
+def calendar_due_cmd(
+    grace: int = typer.Option(30, "--grace",
+                               help="Grace window in minutes."),
+) -> None:
+    from . import calendar
+    due = calendar.list_due(grace_minutes=grace)
+    if not due:
+        print("=== calendar — nothing due ===")
+        return
+    lines = [f"=== calendar — {len(due)} due now ==="]
+    for e in due:
+        lines.append(f"  {e.publish_at[:19]}  p={e.priority}  {e.topic_id}  {e.text[:70]}")
+    print("\n".join(lines))
+
+
+@refs_app.command("normalize-tags")
+def refs_normalize_tags_cmd(
+    apply_changes: bool = typer.Option(False, "--apply",
+                                        help="Actually write changes. Default: preview only."),
+) -> None:
+    """Canonicalize tags across the ref library (lowercase, dedup, synonyms)."""
+    from . import tag_normalize
+    report = tag_normalize.apply() if apply_changes else tag_normalize.preview()
+    print(report.as_text())
+
+
 project_app = typer.Typer(help="Archive / restore the full memegine state.")
 app.add_typer(project_app, name="project")
 
