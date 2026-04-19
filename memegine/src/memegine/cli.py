@@ -1176,6 +1176,31 @@ perf_app = typer.Typer(help="Log post engagement and query performance by format
 app.add_typer(perf_app, name="perf")
 
 
+@perf_app.command("paste")
+def perf_paste(
+    text: str = typer.Argument(..., help="Pasted engagement block."),
+    post_bundle: Optional[str] = typer.Option(None, "--bundle"),
+    format: Optional[str] = typer.Option(None, "--format"),
+    url: str = typer.Option("", "--url"),
+    posted_at: str = typer.Option("", "--posted-at"),
+    window: str = typer.Option("24h", "--window"),
+) -> None:
+    """Parse pasted X analytics (likes/RT/replies/views) and log to performance."""
+    from . import engagement_parser
+    entry, parsed = engagement_parser.log_from_paste(
+        text, post_bundle_id=post_bundle, format_slug=format,
+        post_url=url, posted_at=posted_at, window=window,
+    )
+    if entry is None:
+        console.print("[yellow]nothing parsed — no engagement fields detected[/]")
+        raise typer.Exit(code=1)
+    console.print(
+        f"[green]logged[/] id={entry.id}  "
+        f"likes={parsed.likes}  rt={parsed.reposts}  "
+        f"replies={parsed.replies}  views={parsed.impressions}"
+    )
+
+
 @perf_app.command("log")
 def perf_log(
     likes: int = typer.Option(0, "--likes"),

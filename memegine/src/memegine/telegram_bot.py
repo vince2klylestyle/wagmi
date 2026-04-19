@@ -187,7 +187,8 @@ HELP_TEXT = """Memegine bot — brief delivery
 /flop <what ||| why>    log flop
 /refs                   10 most recent refs
 /stats [daily|weekly]   activity report
-/perf-summary           engagement summary by format/pattern/hour
+/perf_summary           engagement summary by format/pattern/hour
+/perf_paste <block>     parse pasted X stats and log to performance
 /doctor                 run health check
 /journal [days]         chronological feed across all stores
 /next                   one-screen "what should I make?" dashboard
@@ -434,6 +435,25 @@ def _build_handlers(cfg: BotConfig):
         if not await guard(update):
             return
         await _reply_long(update, performance.summary_text())
+
+    async def perf_paste_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        text = " ".join(context.args or []).strip()
+        if not text:
+            await update.message.reply_text(
+                "usage: /perf_paste <paste your X stats block>"
+            )
+            return
+        from . import engagement_parser
+        entry, parsed = engagement_parser.log_from_paste(text)
+        if entry is None:
+            await update.message.reply_text("nothing parsed — no fields detected")
+            return
+        await update.message.reply_text(
+            f"logged {entry.id}  likes={parsed.likes} rt={parsed.reposts} "
+            f"replies={parsed.replies} views={parsed.impressions}"
+        )
 
     async def doctor_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
@@ -772,6 +792,7 @@ def _build_handlers(cfg: BotConfig):
         "refs": refs_cmd,
         "stats": stats_cmd_handler,
         "perf_summary": perf_summary_cmd,
+        "perf_paste": perf_paste_cmd,
         "doctor": doctor_cmd,
         "journal": journal_cmd,
         "next": next_cmd,
