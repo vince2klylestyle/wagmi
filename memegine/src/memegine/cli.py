@@ -1337,5 +1337,133 @@ def codex_audit_cmd() -> None:
     print(audit.as_text())
 
 
+# ---------------------------------------------------------------------------
+# Batch execute — run a batch through Claude (API key required).
+# ---------------------------------------------------------------------------
+
+
+@app.command("batch-execute")
+def batch_execute_cmd(
+    theme: str = typer.Argument(..., help="The piece theme."),
+    n: int = typer.Option(4, "-n"),
+    formats: Optional[str] = typer.Option(None, "--formats"),
+    by_perf: bool = typer.Option(False, "--by-perf"),
+    model: Optional[str] = typer.Option(None, "--model"),
+) -> None:
+    """Generate N briefs AND run each through Claude, returning finished prompts."""
+    from . import batch_exec
+    slugs = [f.strip() for f in formats.split(",")] if formats else None
+    try:
+        result = batch_exec.execute(
+            theme=theme, n=n, formats=slugs, by_performance=by_perf, model=model,
+        )
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    print(batch_exec.summary_text(result))
+
+
+# ---------------------------------------------------------------------------
+# Trend reader — RSS/JSON → topic queue.
+# ---------------------------------------------------------------------------
+
+trends_app = typer.Typer(help="Pull topic candidates from configured feeds.")
+app.add_typer(trends_app, name="trends")
+
+
+@trends_app.command("add-feed")
+def trends_add_feed(
+    name: str = typer.Argument(..., help="Unique feed name."),
+    url: str = typer.Argument(..., help="Feed URL."),
+    kind: str = typer.Option("rss", "--kind", help="rss | atom | jsonl | json"),
+    source: str = typer.Option("", "--source"),
+    max_items: int = typer.Option(5, "--max"),
+    priority: int = typer.Option(3, "--priority"),
+    tags: Optional[str] = typer.Option(None, "--tags"),
+) -> None:
+    from . import trend_reader
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    cfg = trend_reader.add_feed(
+        name=name, url=url, kind=kind, source=source,
+        max_items=max_items, priority=priority, tags=tag_list,
+    )
+    console.print(f"[green]added feed[/] {cfg.name}  → {cfg.url}")
+
+
+@trends_app.command("list")
+def trends_list() -> None:
+    from . import trend_reader
+    for f in trend_reader.load_feeds():
+        console.print(
+            f"[bold]{f.name}[/]  {f.kind}  max={f.max_items}  priority={f.priority}  {f.url}"
+        )
+
+
+@trends_app.command("fetch")
+def trends_fetch(
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Fetch all configured feeds and append new titles to the topic queue."""
+    from . import trend_reader
+    results = trend_reader.fetch_all(dry_run=dry_run)
+    for r in results:
+        status = f"[red]ERROR {r.error}[/]" if r.error else f"added={r.added}  skipped={r.skipped}"
+        console.print(f"{r.feed}: {status}")
+
+
+# ---------------------------------------------------------------------------
+# CSV exports.
+# ---------------------------------------------------------------------------
+
+csv_app = typer.Typer(help="Export memegine stores to CSV.")
+app.add_typer(csv_app, name="export-csv")
+
+
+@csv_app.command("archive")
+def csv_archive(
+    destination: Path = typer.Argument(..., help="CSV output path."),
+    limit: int = typer.Option(5000, "-n"),
+) -> None:
+    from . import exports_csv
+    count = exports_csv.export_archive(destination, limit=limit)
+    console.print(f"[green]wrote {count} rows → {destination}[/]")
+
+
+@csv_app.command("refs")
+def csv_refs(destination: Path = typer.Argument(...)) -> None:
+    from . import exports_csv
+    count = exports_csv.export_refs(destination)
+    console.print(f"[green]wrote {count} rows → {destination}[/]")
+
+
+@csv_app.command("perf")
+def csv_perf(destination: Path = typer.Argument(...)) -> None:
+    from . import exports_csv
+    count = exports_csv.export_performance(destination)
+    console.print(f"[green]wrote {count} rows → {destination}[/]")
+
+
+# ---------------------------------------------------------------------------
+# Combined serve — bot + scheduler in one process.
+# ---------------------------------------------------------------------------
+
+
+@app.command("serve")
+def serve_cmd(
+    poll: int = typer.Option(30, "--poll"),
+    scheduler_only: bool = typer.Option(False, "--scheduler-only"),
+) -> None:
+    """Start the bot + scheduler in one process."""
+    from . import serve as serve_mod
+    opts = serve_mod.ServeOptions(
+        poll_seconds=poll, scheduler_only=scheduler_only,
+    )
+    try:
+        serve_mod.run(opts)
+    except Exception as exc:
+        console.print(f"[red]serve failed: {exc}[/]")
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()

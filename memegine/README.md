@@ -129,6 +129,20 @@ Post on X
   candidates (entries that 'use X' and 'avoid X' at once), and heavy
   sections that are candidates for `codex distill` / `codex graduate`.
   CLI: `memegine codex audit`. Bot: `/codex_audit`.
+- **`batch_exec`** — if `ANTHROPIC_API_KEY` is set, runs every item in
+  a batch through Claude in one call, writes per-item JSON, lints each
+  resulting prompt, and flags a winner. CLI: `memegine batch-execute`.
+- **`trend_reader`** — pulls topic candidates from configured RSS /
+  Atom / JSON / JSONL feeds, dedupes against the topic queue, and
+  appends new ones. stdlib-urllib only; no external deps.
+  Config at `data/trends/feeds.yaml`. CLI: `memegine trends
+  add-feed/list/fetch`.
+- **`exports_csv`** — dump archive, refs, or performance logs to CSV
+  for Excel/pandas analysis. CLI: `memegine export-csv
+  archive/refs/perf <dst>`.
+- **`serve`** — start the Telegram bot AND the scheduler in a single
+  process, with graceful SIGINT shutdown. One command, one tmux pane,
+  one tail. CLI: `memegine serve`.
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -330,6 +344,35 @@ memegine x prepare <post_bundle_id>
 memegine codex audit
 # → reports duplicate entries, contradictions (e.g. "use X" AND "avoid X"),
 #   and heavy sections that should be distilled/graduated
+```
+
+### Batch execute (API-key only)
+```bash
+memegine batch-execute "a theme" -n 4 --by-perf
+# → generates 4 briefs, runs each through Claude, lints the results,
+#   returns the winner. Zero copy-paste for key-holders.
+```
+
+### Trend intake from external feeds
+```bash
+memegine trends add-feed nyt https://www.nytimes.com/svc/.../rss --kind rss --priority 3
+memegine trends list
+memegine trends fetch          # dry-run: --dry-run
+# → new titles appended to the topic queue with source=trend:<feed-name>
+```
+
+### CSV exports (external analysis)
+```bash
+memegine export-csv archive exports/archive.csv --n 5000
+memegine export-csv refs exports/refs.csv
+memegine export-csv perf exports/perf.csv
+```
+
+### One-command serve (bot + scheduler in one process)
+```bash
+memegine serve --poll 30
+# → runs both in the same process; Ctrl-C stops cleanly.
+memegine serve --scheduler-only   # no Telegram bot, just the scheduler
 ```
 
 ### Performance-weighted batch

@@ -28,6 +28,8 @@ note that too. Claude reads this before writing any new prompt.
 <!-- Append real winners here as they happen. -->
 - (empty — will grow)
 
+- (2026-04-18) "win" — (marked winner) [winner]
+- (2026-04-18) "win" — (marked winner) [winner]
 ## Proven Model Routing (Grok)
 - Text-on-image memes → Grok Imagine with Ideogram/Aurora selection
 - Character consistency across multi-panel → Nano Banana via Grok
