@@ -1795,6 +1795,21 @@ def preflight_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command("inspire")
+def inspire_cmd(
+    image: Path = typer.Argument(..., exists=True, readable=True,
+                                  help="Inspiration image to borrow craft from."),
+    intent: str = typer.Argument(..., help="The new intent to shoot."),
+    model: Optional[str] = typer.Option(None, "--model"),
+) -> None:
+    """Photo → piece: inherit an image's craft tokens for a new subject."""
+    from . import inspire
+    result = inspire.run(image, intent, model=model)
+    print(result.as_text())
+    if result.error:
+        raise typer.Exit(code=1)
+
+
 project_app = typer.Typer(help="Archive / restore the full memegine state.")
 app.add_typer(project_app, name="project")
 
