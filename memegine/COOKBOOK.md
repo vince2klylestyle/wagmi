@@ -223,6 +223,49 @@ weeks, the compounding becomes obvious. Every brief inherits more.
 
 ---
 
+## 11. Bootstrap from an editor's archive (30 min, one-time)
+
+You have a folder on Dropbox or Google Drive from editors you've worked
+with — 50, 100, 200 pieces they've signed off on. Seed the whole
+codex from it:
+
+```bash
+# 1. Make sure Dropbox / GDrive is syncing the folder locally.
+ls ~/Dropbox/the-archive-folder   # confirm it's there
+
+# 2. Bulk ingest. Images go straight to refs; videos get sampled
+#    (default 5 frames each). Folder hierarchy becomes tags.
+memegine corpus ingest ~/Dropbox/the-archive-folder --frames 5
+
+# 3. (optional) If you have ANTHROPIC_API_KEY, run Claude vision
+#    across every ingested ref to extract named craft tokens.
+#    Cost: ~$0.003 per image. 100 images = $0.30.
+memegine corpus reverse
+
+# 4. Distill the aggregated tokens into the codex.
+memegine corpus distill
+# → writes dominant lens / film / lighting / time-of-day into
+#   "Visual DNA" and tokens seen 5+ times into "Core Patterns"
+
+# 5. Inspect what memegine learned.
+memegine corpus stats
+
+# 6. Quality-check the codex by eye.
+memegine codex show
+
+# 7. From now on, every new brief inherits the archive's craft
+#    signal automatically.
+```
+
+You skipped 10+ weeks of manual codex curation. Day-1 briefs are as
+sharp as month-3 briefs.
+
+Pro tip: if different editors produced different looks (not all of
+which are "the look"), ingest each editor's sub-folder separately
+with `--tag-prefix editor:alice` so you can filter later.
+
+---
+
 ## Anti-patterns (things to NOT do)
 
 - **Don't brief vague intents.** `grade-idea` first. Anything D or F

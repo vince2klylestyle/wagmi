@@ -37,6 +37,37 @@ OK unless you plan to use the editor / music modules.
 
 ---
 
+## Bootstrap from real work (the fast path)
+
+If you already have a folder of confirmed-good pieces (from editors,
+prior projects, a reference archive), start here instead of an empty
+codex:
+
+```bash
+# 1. Point memegine at the folder. Dropbox / Google Drive sync paths
+#    work natively — they're just local folders on your machine.
+memegine corpus ingest "~/Dropbox/my-editor-archive"
+
+# 2. (optional, needs ANTHROPIC_API_KEY)
+#    Use Claude vision to extract craft tokens from each reference.
+#    ~$0.003 per image; budget accordingly.
+memegine corpus reverse
+
+# 3. Aggregate extracted tokens into the codex. Promotes the dominant
+#    lens / film / lighting / time-of-day to "Visual DNA", and tokens
+#    seen 5+ times to "Core Patterns".
+memegine corpus distill
+
+# 4. See what memegine learned.
+memegine corpus stats
+```
+
+You now have a codex seeded from real ground-truth work. Every future
+brief inherits the actual patterns from the actual archive — week-1
+briefs get the compounding that would normally take months.
+
+---
+
 ## The five commands that matter first
 
 ### 1. Seed your codex

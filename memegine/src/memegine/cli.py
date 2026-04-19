@@ -1581,6 +1581,71 @@ def cheatsheet_cmd() -> None:
     print(cheatsheet.render())
 
 
+# ---------------------------------------------------------------------------
+# Corpus — bulk ingest a folder of confirmed-good editor work.
+# ---------------------------------------------------------------------------
+
+corpus_app = typer.Typer(help="Ingest / reverse / distill a folder of confirmed-good pieces.")
+app.add_typer(corpus_app, name="corpus")
+
+
+@corpus_app.command("ingest")
+def corpus_ingest_cmd(
+    folder: Path = typer.Argument(..., exists=True, readable=True,
+                                   help="Folder (Dropbox/GDrive sync path is fine)."),
+    frames_per_video: int = typer.Option(5, "--frames", help="Frames to extract per video."),
+    tag_prefix: Optional[str] = typer.Option(None, "--tag-prefix"),
+) -> None:
+    """Walk folder, copy images + sampled video frames into the reference library."""
+    from . import corpus
+    result = corpus.ingest(
+        folder, frames_per_video=frames_per_video, tag_prefix=tag_prefix,
+    )
+    print(result.as_text())
+
+
+@corpus_app.command("reverse")
+def corpus_reverse_cmd(
+    limit: Optional[int] = typer.Option(None, "--limit", help="Process at most N refs."),
+    all_refs: bool = typer.Option(False, "--all",
+                                   help="Re-process refs that already have extracted patterns."),
+    model: Optional[str] = typer.Option(None, "--model"),
+) -> None:
+    """Use Claude vision to extract craft tokens from every ingested ref."""
+    from . import corpus_reverse
+    try:
+        results = corpus_reverse.reverse_all(
+            only_new=not all_refs, limit=limit, model=model,
+        )
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    print(corpus_reverse.summary(results))
+
+
+@corpus_app.command("distill")
+def corpus_distill_cmd(
+    dna_share: float = typer.Option(0.3, "--dna-share",
+                                     help="Fraction of refs needed for a Visual DNA promotion."),
+    core_min: int = typer.Option(5, "--core-min",
+                                  help="Absolute count for Core Patterns promotion."),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Aggregate extracted_patterns into codex Visual DNA + Core Patterns."""
+    from . import corpus_distill
+    report = corpus_distill.distill(
+        dna_min_share=dna_share, core_min_count=core_min, dry_run=dry_run,
+    )
+    print(report.as_text())
+
+
+@corpus_app.command("stats")
+def corpus_stats_cmd() -> None:
+    """Show what memegine has learned from the ingested corpus."""
+    from . import corpus_distill
+    print(corpus_distill.stats_text())
+
+
 @app.command("quick")
 def quick_cmd(
     intent: str = typer.Argument(..., help="Rough intent."),
