@@ -1782,6 +1782,44 @@ def consistency_cmd(
     print(consistency.check(prompt).as_text())
 
 
+project_app = typer.Typer(help="Archive / restore the full memegine state.")
+app.add_typer(project_app, name="project")
+
+
+@project_app.command("archive")
+def project_archive_cmd(
+    destination: Optional[Path] = typer.Option(
+        None, "--out", "-o",
+        help="Zip destination. Default: memegine-snapshot-YYYYMMDD-HHMMSS.zip",
+    ),
+) -> None:
+    """Snapshot every data subdir (codex, refs, logs, etc.) into a zip."""
+    from . import project
+    result = project.archive(destination)
+    console.print(
+        f"[green]archived[/] {result.destination}  "
+        f"({result.files_included} files, {result.bytes_written:,} bytes)"
+    )
+
+
+@project_app.command("restore")
+def project_restore_cmd(
+    source: Path = typer.Argument(..., exists=True, readable=True),
+    force: bool = typer.Option(False, "--force",
+                                help="Overwrite an existing non-empty data dir."),
+) -> None:
+    """Extract a memegine snapshot zip into the data dir."""
+    from . import project
+    try:
+        result = project.restore(source, force=force)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    console.print(
+        f"[green]restored[/] {result.restored_files} files from {result.source}"
+    )
+
+
 @app.command("quick")
 def quick_cmd(
     intent: str = typer.Argument(..., help="Rough intent."),

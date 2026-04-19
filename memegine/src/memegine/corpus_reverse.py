@@ -128,16 +128,47 @@ def _extract_one(ref: dict, client, model: str | None) -> ReverseResult:
     return result
 
 
+def synthesize_prompt(patterns: dict) -> str:
+    """Compose a Grok-ready prompt from extracted vision tokens.
+
+    Lets a reverse-extracted ref serve as a `like-winner` seed even if
+    the operator had no sidecar prompt during ingest.
+    """
+    if not isinstance(patterns, dict):
+        return ""
+    parts: list[str] = []
+    for key in ("subject", "location_type"):
+        v = patterns.get(key, "")
+        if isinstance(v, str) and v.strip():
+            parts.append(v.strip())
+    for key in ("lens", "film_stock", "lighting", "time_of_day",
+                "weather", "composition", "color_palette", "mood"):
+        v = patterns.get(key, "")
+        if isinstance(v, str) and v.strip():
+            parts.append(v.strip())
+    if not parts:
+        return ""
+    parts.append(
+        "no extra fingers, no warped text, no logo watermarks, "
+        "no lens flares unless specified, no CGI look"
+    )
+    return ", ".join(parts)
+
+
 def reverse_all(
     *,
     only_new: bool = True,
     limit: int | None = None,
     model: str | None = None,
+    synthesize_prompts: bool = True,
 ) -> list[ReverseResult]:
     """Run Claude vision on every ref and persist extracted tokens.
 
     only_new: if True, skip refs that already have `extracted_patterns`.
     limit: process at most N refs (to keep costs bounded on first run).
+    synthesize_prompts: if True, also set the ref's `prompt` field to a
+    synthesized string built from extracted tokens — only when the ref
+    has no prompt already. Makes the ref usable by `like-winner`.
     """
     from . import executor
     if not executor.api_key_available():
@@ -165,10 +196,16 @@ def reverse_all(
         res = _extract_one(r, client, model)
         results.append(res)
         if res.extracted:
-            # Persist extracted_patterns on the ref index entry.
+            # Persist extracted_patterns on the ref index entry. Also
+            # synthesize a prompt field when it's empty so downstream
+            # compounding features can use this ref as a seed.
             for existing in refs:
                 if existing["id"] == r["id"]:
                     existing["extracted_patterns"] = res.extracted
+                    if synthesize_prompts and not (existing.get("prompt") or "").strip():
+                        synthesized = synthesize_prompt(res.extracted)
+                        if synthesized:
+                            existing["prompt"] = synthesized
                     break
             reference_lib._save_index(refs)
     return results
