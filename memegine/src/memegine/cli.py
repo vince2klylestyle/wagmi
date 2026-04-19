@@ -2040,6 +2040,59 @@ def weekly_report_cmd(
         print(result.markdown)
 
 
+@app.command("brainstorm")
+def brainstorm_cmd(
+    seed: str = typer.Argument(..., help="Seed idea to spin off 5 variants from."),
+    model: Optional[str] = typer.Option(None, "--model"),
+) -> None:
+    """Claude brainstorm: seed → 5 distinct spinoff intents."""
+    from . import brainstorm
+    result = brainstorm.generate(seed, model=model)
+    print(result.as_text())
+    if result.error:
+        raise typer.Exit(code=1)
+
+
+@refs_app.command("filter")
+def refs_filter_cmd(
+    tags: str = typer.Argument(..., help="Comma-separated tags (AND)."),
+    limit: int = typer.Option(30, "-n"),
+    winners_only: bool = typer.Option(False, "--winners"),
+) -> None:
+    """List refs whose tags contain ALL given tags (intersection)."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    tag_set = set(tag_list)
+    all_refs = reference_lib._load_index()
+    hits = []
+    for r in all_refs:
+        t = set(r.get("tags", []) or [])
+        if not tag_set.issubset(t):
+            continue
+        if winners_only and "winner" not in t:
+            continue
+        hits.append(r)
+    hits.sort(key=lambda r: r.get("added_at", ""), reverse=True)
+    hits = hits[:limit]
+    if not hits:
+        print("(no matches)")
+        return
+    for r in hits:
+        tags_preview = ",".join(r.get("tags", []) or [])
+        notes = (r.get("notes") or r.get("prompt", "") or "")[:60]
+        print(f"  {r['id']}  [{tags_preview}]  {notes}")
+
+
+@app.command("snapshot-diff")
+def snapshot_diff_cmd(
+    a: Path = typer.Argument(..., exists=True, readable=True),
+    b: Path = typer.Argument(..., exists=True, readable=True),
+) -> None:
+    """Diff two project archive zips."""
+    from . import snapshot_diff
+    report = snapshot_diff.diff(a, b)
+    print(report.as_text())
+
+
 project_app = typer.Typer(help="Archive / restore the full memegine state.")
 app.add_typer(project_app, name="project")
 
