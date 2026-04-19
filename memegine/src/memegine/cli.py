@@ -1677,6 +1677,32 @@ def refs_thumbs_cmd(
     print(thumbnails.summary_text(result))
 
 
+@corpus_app.command("find")
+def corpus_find_cmd(
+    query: str = typer.Argument(..., help="Keywords (e.g. 'kitchen 3am cope')"),
+    limit: int = typer.Option(20, "-n"),
+    winners_only: bool = typer.Option(False, "--winners"),
+) -> None:
+    """Craft-aware search over refs. Ranks by matches in extracted_patterns."""
+    from . import corpus_find
+    print(corpus_find.find_text(query, limit=limit, winners_only=winners_only))
+
+
+@corpus_app.command("video-insights")
+def corpus_video_insights_cmd(
+    folder: Path = typer.Argument(..., exists=True, readable=True,
+                                   help="Folder containing videos (Dropbox/GDrive sync path)."),
+) -> None:
+    """Probe every video in a folder for duration / fps / aspect ratio."""
+    from . import video_meta
+    try:
+        insights = video_meta.analyze_folder(folder)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    print(insights.as_text())
+
+
 @app.command("quick")
 def quick_cmd(
     intent: str = typer.Argument(..., help="Rough intent."),
