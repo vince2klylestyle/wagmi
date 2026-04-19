@@ -1554,6 +1554,26 @@ def format_health_cmd() -> None:
     print(report.as_text())
 
 
+@app.command("validate")
+def validate_cmd() -> None:
+    """Fail-fast validation of formats, fragments, playbooks, and data stores."""
+    from . import validate
+    report = validate.run()
+    print(report.as_text())
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("self-test")
+def self_test_cmd() -> None:
+    """Run a synthetic operator end-to-end against a temporary data dir."""
+    from . import self_test
+    report = self_test.run()
+    print(report.as_text())
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
 @app.command("env")
 def env_cmd() -> None:
     """Print relevant memegine env vars (secrets masked)."""
