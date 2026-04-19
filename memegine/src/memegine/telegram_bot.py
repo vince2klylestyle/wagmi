@@ -206,6 +206,8 @@ HELP_TEXT = """Memegine bot — brief delivery
 /find <keywords>        craft-aware search across refs
 /corpus_stats           what memegine learned from the corpus
 /brief_claude           Claude-powered 3-intent briefer (API key)
+/contact_sheet          grid image of winners, sent inline
+/preflight <prompt>     one-gate lint + score + consistency
 /status                 queue + counts
 /reverse [context]      reverse-brief the next photo you send
 Photo upload (no command) → added to the reference library.
@@ -602,8 +604,60 @@ def _build_handlers(cfg: BotConfig):
         if not query:
             await update.message.reply_text("usage: /find <keywords>")
             return
-        from . import corpus_find
-        await _reply_long(update, corpus_find.find_text(query, limit=10))
+        from . import corpus_find, thumbnails
+        hits = corpus_find.find(query, limit=5)
+        if not hits:
+            await update.message.reply_text(f"no refs matched '{query}'")
+            return
+        lines = [f"=== {len(hits)} hits for '{query}' ==="]
+        for h in hits:
+            lines.append(f"{h.ref_id}  [{h.score}] {(h.notes or h.prompt)[:60]}")
+        await update.message.reply_text("\n".join(lines))
+        # Then send thumbnails (if generated).
+        for h in hits:
+            thumb = thumbnails.thumb_path_for(h.ref_id)
+            if thumb is None:
+                continue
+            try:
+                with thumb.open("rb") as f:
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=f,
+                        caption=f"{h.ref_id}  score={h.score}",
+                    )
+            except Exception:
+                continue
+
+    async def contact_sheet_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        from . import contact_sheet
+        try:
+            result = contact_sheet.generate()
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+        try:
+            with open(result.destination, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id, photo=f,
+                    caption=f"contact sheet — {result.n_refs} refs",
+                )
+        except Exception as exc:
+            await update.message.reply_text(
+                f"sheet at {result.destination} (couldn't send inline: {exc})"
+            )
+
+    async def preflight_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        prompt = " ".join(context.args or []).strip()
+        if not prompt:
+            await update.message.reply_text("usage: /preflight <prompt>")
+            return
+        from . import brief_preflight
+        report = brief_preflight.check(prompt)
+        await _reply_long(update, report.as_text())
 
     async def corpus_stats_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
@@ -863,6 +917,8 @@ def _build_handlers(cfg: BotConfig):
         "find": corpus_find_cmd,
         "corpus_stats": corpus_stats_cmd,
         "brief_claude": morning_brief_claude_cmd,
+        "contact_sheet": contact_sheet_cmd,
+        "preflight": preflight_cmd,
         "status": status_cmd,
         "reverse": reverse_cmd,
         "_photo": photo_handler,

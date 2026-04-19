@@ -1782,6 +1782,19 @@ def consistency_cmd(
     print(consistency.check(prompt).as_text())
 
 
+@app.command("preflight")
+def preflight_cmd(
+    prompt: str = typer.Argument(..., help="Prompt to pre-flight before Grok."),
+    motion: bool = typer.Option(False, "--motion"),
+) -> None:
+    """One-command pre-ship gate: lint + score + consistency."""
+    from . import brief_preflight
+    report = brief_preflight.check(prompt, motion=motion)
+    print(report.as_text())
+    if report.verdict == "FAIL":
+        raise typer.Exit(code=1)
+
+
 project_app = typer.Typer(help="Archive / restore the full memegine state.")
 app.add_typer(project_app, name="project")
 
