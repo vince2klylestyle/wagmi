@@ -64,7 +64,9 @@ def test_variant_brief_structure():
 
 
 def test_reverse_brief_includes_path_and_rules():
+    # The path is run through Path() and printed, which normalizes separators
+    # per the OS. Check just the stem to stay cross-platform.
     sys, user = reverse_engineer.build_reverse_brief("/tmp/fake.png", context="for a trader portrait")
     assert "recreate_prompt" in sys
-    assert "/tmp/fake.png" in user
+    assert "fake.png" in user
     assert "for a trader portrait" in user

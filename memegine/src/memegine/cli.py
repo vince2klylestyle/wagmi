@@ -19,14 +19,17 @@ from . import (
     copy_writer,
     deep_linter,
     discord_webhook,
+    doctor,
     editor,
     export as export_mod,
     format_suggest,
+    fragments,
     grading,
     idea_grader,
     image_ops,
     linter,
     music_edit,
+    performance,
     pipeline as pipeline_mod,
     prompt_engine,
     reference_lib,
@@ -1040,6 +1043,176 @@ def codex_graduate_cmd(
         return
     for cat, items in promoted.items():
         console.print(f"{cat}: " + ", ".join(f"{v}×{c}" for v, c in items[:5]))
+
+
+# ---------------------------------------------------------------------------
+# Doctor — health check.
+# ---------------------------------------------------------------------------
+
+
+@app.command("doctor")
+def doctor_cmd() -> None:
+    """Run the memegine health check."""
+    report = doctor.run()
+    console.print(report.as_text())
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# Variants from last winner — 1-command compounding shortcut.
+# ---------------------------------------------------------------------------
+
+
+@app.command("variants-last")
+def variants_last_cmd(
+    n: int = typer.Option(6, "-n", help="Number of variants."),
+    axes: Optional[str] = typer.Option(
+        None, "--axes",
+        help="Comma-separated axes to vary (default: TIME_OF_DAY,LENS,FILM_STOCK,LIGHTING,COMPOSITION,MOOD).",
+    ),
+) -> None:
+    """Pull the most recent winner prompt and build a variant brief from it."""
+    axis_list = [a.strip() for a in axes.split(",")] if axes else None
+    try:
+        vb = variants_mod.build_from_last_winner(n_variants=n, axes=axis_list)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    archive.save(kind="variants_last", intent="last_winner", system=vb.system, user=vb.user, extra={"n": n})
+    _print_prompt(vb.system, vb.user, f"Variants-from-last-winner  n={n}")
+
+
+# ---------------------------------------------------------------------------
+# Fragments — named reusable craft snippets.
+# ---------------------------------------------------------------------------
+
+fragments_app = typer.Typer(help="Named reusable craft snippets (LENS.35mm_1_4, LIGHTING.harsh_window, ...).")
+app.add_typer(fragments_app, name="fragments")
+
+
+@fragments_app.command("list")
+def fragments_list(
+    category: Optional[str] = typer.Argument(None, help="If given, list fragments in this category only."),
+) -> None:
+    if category:
+        names = fragments.list_names(category)
+        if not names:
+            console.print(f"[dim]no fragments in category {category}[/]")
+            return
+        for n in names:
+            body = fragments.get(category, n)
+            console.print(f"  [bold]{category}.{n}[/]  [dim]{body[:80]}[/]")
+    else:
+        for cat in fragments.list_categories():
+            names = fragments.list_names(cat)
+            console.print(f"[bold]{cat}[/]  ({len(names)})  {', '.join(names)}")
+
+
+@fragments_app.command("show")
+def fragments_show(
+    token: str = typer.Argument(..., help="CATEGORY.name — e.g. LIGHTING.harsh_window"),
+) -> None:
+    if "." not in token:
+        console.print("[red]expected CATEGORY.name[/]")
+        raise typer.Exit(code=1)
+    cat, name = token.split(".", 1)
+    body = fragments.get(cat, name)
+    if body is None:
+        console.print(f"[red]not found: {token}[/]")
+        raise typer.Exit(code=1)
+    console.print(f"[bold]{cat}.{name}[/]")
+    console.print(body)
+
+
+@fragments_app.command("expand")
+def fragments_expand(
+    text: str = typer.Argument(..., help="Text with fragment tokens to expand."),
+    missing: str = typer.Option("keep", "--missing", help="keep | drop | error"),
+) -> None:
+    try:
+        expanded = fragments.expand(text, missing=missing)
+    except KeyError as exc:
+        console.print(f"[red]unknown fragment: {exc}[/]")
+        raise typer.Exit(code=1)
+    console.print(expanded)
+
+
+@fragments_app.command("validate")
+def fragments_validate(
+    text: str = typer.Argument(..., help="Text to check for unknown fragment tokens."),
+) -> None:
+    unknown = fragments.validate(text)
+    if not unknown:
+        console.print("[green]all fragment tokens resolve[/]")
+        return
+    for cat, name in unknown:
+        console.print(f"  [yellow]unknown:[/] {cat}.{name}")
+    raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# Performance tracking.
+# ---------------------------------------------------------------------------
+
+perf_app = typer.Typer(help="Log post engagement and query performance by format/pattern/hour.")
+app.add_typer(perf_app, name="perf")
+
+
+@perf_app.command("log")
+def perf_log(
+    likes: int = typer.Option(0, "--likes"),
+    reposts: int = typer.Option(0, "--rt", help="Reposts / retweets."),
+    replies: int = typer.Option(0, "--replies"),
+    quotes: int = typer.Option(0, "--quotes"),
+    impressions: int = typer.Option(0, "--impressions"),
+    bookmarks: int = typer.Option(0, "--bookmarks"),
+    format: Optional[str] = typer.Option(None, "--format"),
+    post_bundle: Optional[str] = typer.Option(None, "--bundle"),
+    url: str = typer.Option("", "--url"),
+    posted_at: str = typer.Option("", "--posted-at", help="ISO timestamp of when the post went live."),
+    window: str = typer.Option("24h", "--window", help="24h | 7d | 30d"),
+    patterns: Optional[str] = typer.Option(None, "--patterns", help="Comma-separated craft tokens."),
+    notes: str = typer.Option("", "--notes"),
+) -> None:
+    """Log engagement for a post."""
+    pat_list = [p.strip() for p in patterns.split(",")] if patterns else None
+    entry = performance.log(
+        post_bundle_id=post_bundle, post_url=url, format_slug=format,
+        patterns=pat_list, posted_at=posted_at,
+        likes=likes, reposts=reposts, replies=replies, quotes=quotes,
+        impressions=impressions, bookmarks=bookmarks,
+        window=window, notes=notes,
+    )
+    console.print(f"[green]logged[/] {entry.id}  score≈{performance._score_entry(asdict_or_dict(entry)):.1f}")
+
+
+def asdict_or_dict(obj):
+    """Small util for older dataclass objects that don't convert with vars."""
+    from dataclasses import asdict, is_dataclass
+    return asdict(obj) if is_dataclass(obj) else dict(obj)
+
+
+@perf_app.command("summary")
+def perf_summary() -> None:
+    """Print a performance summary (by format, by pattern, by hour)."""
+    console.print(performance.summary_text())
+
+
+@perf_app.command("by-format")
+def perf_by_format() -> None:
+    for slug, n, avg in performance.by_format():
+        console.print(f"  {slug:<28} n={n:<3}  avg={avg:.1f}")
+
+
+@perf_app.command("top")
+def perf_top(n: int = typer.Option(10, "-n")) -> None:
+    for e in performance.top_n(n):
+        console.print(
+            f"  [{e.get('format_slug', '-')}]  "
+            f"likes={e.get('likes', 0)}  rt={e.get('reposts', 0)}  "
+            f"replies={e.get('replies', 0)}  url={e.get('post_url') or '-'}"
+        )
 
 
 if __name__ == "__main__":

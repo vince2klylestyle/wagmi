@@ -98,6 +98,19 @@ Post on X
   same way it pushes to Telegram.
 - **`stats`** — daily / weekly / all-time activity report across
   briefs + refs + codex + topics + posts.
+- **`performance`** — operator logs engagement (likes, RT, replies) per
+  post. Aggregates by format, by codex pattern, by hour-of-day so the
+  operator can see *which formats/patterns/times actually land*.
+- **`doctor`** — health check that validates data dirs are writable,
+  ffmpeg is on PATH, format library + playbooks load cleanly, codex is
+  readable, optional API keys (Anthropic/Telegram/Discord) are
+  consistent.
+- **`fragments`** — named reusable craft snippets at
+  `data/fragments/library.yaml`. Operator references them by code
+  (`LENS.35mm_1_4`, `FILM.cinestill_800t`, `LIGHTING.harsh_window`) and
+  memegine expands them inline. Ten categories seeded: LENS, FILM,
+  LIGHTING, TIME_OF_DAY, COMPOSITION, MOOD, SUBJECT, LOCATION, NEGATIVE,
+  CAMERA_MOVE. Operator adds more as patterns prove out.
 - **`archive`** — every brief saved to `data/logs/briefs-YYYY-MM-DD.jsonl`;
   `memegine history` surfaces them
 - **`pipeline`** — one command, one folder, every brief for a whole piece
@@ -263,6 +276,38 @@ memegine from-topic <topic_id>       # builds a pipeline bundle, marks topic use
 memegine codex graduate --threshold 5 --n 500
 # → scans recent briefs, promotes lens/film/lighting seen >= 5 times
 #   to 'Core Patterns' section at the top of the codex
+```
+
+### Doctor (health check)
+```bash
+memegine doctor
+# validates data dirs, ffmpeg, format library, playbooks, codex, config
+```
+
+### Fragments (named reusable craft snippets)
+```bash
+memegine fragments list
+memegine fragments show LENS.35mm_1_4
+memegine fragments expand "Trader, LENS.35mm_1_4, LIGHTING.harsh_window, TIME_OF_DAY.3am"
+# → fully expanded prompt, ready for Grok
+memegine fragments validate "LENS.35mm_1_4 FILM.unknown_stock"
+# → reports unknown tokens
+```
+
+### Variants from last winner (one-command compounding)
+```bash
+memegine variants-last -n 6
+# → uses the prompt from your most recent ref tagged `winner`
+```
+
+### Performance tracking (close the feedback loop)
+```bash
+memegine perf log --likes 820 --rt 140 --replies 35 \
+  --format photoreal_portrait --patterns "35mm f/1.4,cinestill 800t" \
+  --posted-at 2026-04-18T03:12:00Z --url https://x.com/me/status/123
+memegine perf summary        # by format, by pattern, by hour
+memegine perf by-format      # sorted by avg engagement
+memegine perf top -n 10      # top-N posts by score
 ```
 
 ### Post-ready export

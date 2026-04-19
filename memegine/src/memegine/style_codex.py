@@ -10,7 +10,7 @@ def read(path: Path | None = None) -> str:
     path = path or settings.codex_path
     if not path.exists():
         return ""
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def append_entry(
@@ -18,14 +18,14 @@ def append_entry(
     body: str,
     path: Path | None = None,
 ) -> None:
-    path = path or settings.codex_path
     """Append a timestamped note under the named section.
 
     Section is matched case-insensitively by the header line (## Section).
     If the section doesn't exist, it's created at the bottom of the file.
     """
+    path = path or settings.codex_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    existing = path.read_text() if path.exists() else ""
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
     stamp = dt.date.today().isoformat()
     entry = f"- ({stamp}) {body.strip()}"
 

@@ -167,7 +167,7 @@ def list_recent(n: int = 20, posts_dir: Path | None = None) -> list[dict]:
         meta_path = f / "meta.json"
         if meta_path.exists():
             try:
-                out.append(json.loads(meta_path.read_text()))
+                out.append(json.loads(meta_path.read_text(encoding="utf-8")))
                 continue
             except json.JSONDecodeError:
                 pass

@@ -48,7 +48,7 @@ def _load(path: Path | None = None) -> list[dict]:
     path = path or _queue_path()
     if not path.exists():
         return []
-    raw = yaml.safe_load(path.read_text()) or {}
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     topics = raw.get("topics", []) if isinstance(raw, dict) else raw
     return list(topics or [])
 
@@ -56,7 +56,10 @@ def _load(path: Path | None = None) -> list[dict]:
 def _save(topics: list[dict], path: Path | None = None) -> None:
     path = path or _queue_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump({"topics": topics}, sort_keys=False, allow_unicode=True))
+    path.write_text(
+        yaml.safe_dump({"topics": topics}, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
 
 
 def add(

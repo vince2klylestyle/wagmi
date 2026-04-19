@@ -168,17 +168,26 @@ HELP_TEXT = """Memegine bot — brief delivery
 /shots <intent>         shot-list brief for video
 /caption <concept>      X caption brief
 /variants <n> <prompt>  N variants of a winning prompt
+/variants-last [n]      N variants from your latest winner
+/batch <n> <theme>      N briefs across varied formats for one theme
 /formats                list all formats
+/fragments              list fragment library categories
 /suggest <intent>       top 3 format suggestions
 /lint <prompt>          deep lint with 0-100 score
+/caption-lint <cap>     validate an X caption
 /grade <intent>         idea grader 0-100 (landability)
 /execute <intent>       run brief via Claude API (if key set)
 /topic <text>           append to topic queue
 /topics                 list queued topics (top 10)
 /codex                  show head of style codex
+/distill                mine recent briefs for recurring patterns
+/graduate               promote patterns seen >=5 times to Core Patterns
 /winner <prompt ||| why>  log winner + extract patterns
 /flop <what ||| why>    log flop
 /refs                   10 most recent refs
+/stats [daily|weekly]   activity report
+/perf-summary           engagement summary by format/pattern/hour
+/doctor                 run health check
 /status                 queue + counts
 /reverse [context]      reverse-brief the next photo you send
 Photo upload (no command) → added to the reference library.
@@ -194,16 +203,22 @@ def _build_handlers(cfg: BotConfig):
     from . import (
         archive,
         auto_codex,
+        batch as batch_mod,
+        caption_linter,
         copy_writer,
         deep_linter,
+        doctor as doctor_mod,
         executor as ex_mod,
         format_suggest,
+        fragments as fragments_mod,
         idea_grader,
+        performance,
         pipeline as pipeline_mod,
         prompt_engine,
         reference_lib,
         reverse_engineer,
         shot_list as shot_list_mod,
+        stats as stats_mod,
         style_codex,
         topics as topics_mod,
         variants as variants_mod,
@@ -305,6 +320,109 @@ def _build_handlers(cfg: BotConfig):
         vb = variants_mod.build_variant_brief(prompt, n_variants=n)
         archive.save(kind="variants", intent=prompt, system=vb.system, user=vb.user, extra={"n": n})
         await _reply_long(update, f"## SYSTEM\n{vb.system}\n\n## USER\n{vb.user}")
+
+    async def variants_last_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        args = context.args or []
+        n = 6
+        if args and args[0].isdigit():
+            n = max(3, min(8, int(args[0])))
+        try:
+            vb = variants_mod.build_from_last_winner(n_variants=n)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
+            return
+        archive.save(kind="variants_last", intent="last_winner", system=vb.system, user=vb.user, extra={"n": n})
+        await _reply_long(update, f"## SYSTEM\n{vb.system}\n\n## USER\n{vb.user}")
+
+    async def batch_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        args = context.args or []
+        if len(args) < 2 or not args[0].isdigit():
+            await update.message.reply_text("usage: /batch <n> <theme>")
+            return
+        n = max(1, min(8, int(args[0])))
+        theme = " ".join(args[1:]).strip()
+        if not theme:
+            await update.message.reply_text("missing theme")
+            return
+        result = batch_mod.build(theme, n=n)
+        lines = [f"batch {result.id}  n={n}  folder={result.folder}"]
+        for item in result.items:
+            lines.append(f"  {item.format_slug}")
+        await update.message.reply_text("\n".join(lines))
+
+    async def fragments_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        lines = []
+        for cat in fragments_mod.list_categories():
+            names = fragments_mod.list_names(cat)
+            lines.append(f"{cat} ({len(names)}): {', '.join(names)}")
+        await _reply_long(update, "\n".join(lines) or "(no fragments)")
+
+    async def caption_lint_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        text = " ".join(context.args or []).strip()
+        if not text:
+            await update.message.reply_text("usage: /caption-lint <caption>")
+            return
+        r = caption_linter.lint(text)
+        await _reply_long(update, r.as_text())
+
+    async def distill_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        recent = archive.read_recent(n=200)
+        prompts = [r.get("user", "") for r in recent]
+        dist = auto_codex.distill_to_codex(prompts, min_frequency=2)
+        nonempty = {k: v for k, v in dist.items() if v}
+        if not nonempty:
+            await update.message.reply_text("no recurring patterns yet")
+            return
+        lines = []
+        for cat, items in nonempty.items():
+            lines.append(f"{cat}: " + ", ".join(f"{v}×{c}" for v, c in items[:5]))
+        await _reply_long(update, "\n".join(lines))
+
+    async def graduate_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        recent = archive.read_recent(n=500)
+        prompts = [r.get("user", "") for r in recent]
+        promoted = auto_codex.graduate_patterns(prompts, promotion_threshold=5)
+        if not promoted:
+            await update.message.reply_text("no patterns crossed threshold=5 yet")
+            return
+        lines = []
+        for cat, items in promoted.items():
+            lines.append(f"{cat}: " + ", ".join(f"{v}×{c}" for v, c in items[:5]))
+        await _reply_long(update, "promoted to Core Patterns:\n" + "\n".join(lines))
+
+    async def stats_cmd_handler(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        args = context.args or []
+        window = args[0] if args else "daily"
+        if window not in ("daily", "weekly", "all"):
+            await update.message.reply_text("usage: /stats [daily|weekly|all]")
+            return
+        report = stats_mod.compute(window=window)
+        await _reply_long(update, report.as_text())
+
+    async def perf_summary_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        await _reply_long(update, performance.summary_text())
+
+    async def doctor_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
+        if not await guard(update):
+            return
+        report = doctor_mod.run()
+        await _reply_long(update, report.as_text())
 
     async def formats_cmd(update: "Update", context: "ContextTypes.DEFAULT_TYPE") -> None:
         if not await guard(update):
@@ -514,17 +632,26 @@ def _build_handlers(cfg: BotConfig):
         "shots": shots_cmd,
         "caption": caption_cmd,
         "variants": variants_cmd,
+        "variants_last": variants_last_cmd,
+        "batch": batch_cmd,
         "formats": formats_cmd,
+        "fragments": fragments_cmd,
         "suggest": suggest_cmd,
         "lint": lint_cmd,
+        "caption_lint": caption_lint_cmd,
         "grade": grade_cmd,
         "execute": execute_cmd_handler,
         "topic": topic_cmd,
         "topics": topics_cmd,
         "codex": codex_cmd,
+        "distill": distill_cmd,
+        "graduate": graduate_cmd,
         "winner": winner_cmd,
         "flop": flop_cmd,
         "refs": refs_cmd,
+        "stats": stats_cmd_handler,
+        "perf_summary": perf_summary_cmd,
+        "doctor": doctor_cmd,
         "status": status_cmd,
         "reverse": reverse_cmd,
         "_photo": photo_handler,

@@ -1,0 +1,96 @@
+# Prompt fragments — named reusable craft snippets.
+#
+# Operator writes LIGHTING.harsh_window anywhere in a prompt brief and the
+# memegine prompt-engine expands it to the snippet body. This is the
+# fastest way to compound — once a snippet proves it works, NEVER write
+# it out longhand again; reference by code.
+#
+# Format: category.name: one-line or multi-line string.
+# Category is uppercase; name is lowercase_snake_case.
+
+LENS:
+  35mm_1_4: "35mm f/1.4 prime, shallow depth of field"
+  50mm_1_8: "50mm f/1.8 prime, natural perspective"
+  85mm_1_2: "85mm f/1.2, compressed perspective, bokeh wall behind subject"
+  24mm_2_8: "24mm f/2.8 wide, slight distortion at edges, deep scene"
+  anamorphic_1_8: "anamorphic 1.8x squeeze, horizontal lens flares, oval bokeh"
+  macro_100mm: "100mm macro, tack-sharp details, shallow DOF"
+
+FILM:
+  portra_400: "Kodak Portra 400 look, creamy skin tones, pastel greens"
+  cinestill_800t: "Cinestill 800T tungsten halation, red bleed around highlights"
+  fuji_400h: "Fuji 400H, cool pastel palette, clean highlights"
+  tri_x: "Tri-X 400 B&W, pushed one stop, coarse grain"
+  ektachrome: "Ektachrome slide film, high-saturation cyans and reds"
+  vhs: "VHS tape look, tracking artifacts, chromatic aberration, low contrast"
+  super_8: "Super 8 film, soft vignette, slight gate flicker"
+  kodachrome: "Kodachrome, deep blacks, cinematic color separation"
+
+LIGHTING:
+  harsh_window: "hard directional window light from camera-right, shadow side dominant"
+  single_softbox_45: "single softbox 45 degrees camera-right, 4:1 ratio, wrap-around fall-off"
+  overcast_ambient: "soft overcast daylight, no direct sun, even illumination"
+  practical_neon: "practical neon signs in frame, mixed tungsten + daylight, colored spill"
+  firelight: "warm firelight from below, flickering shadows on upper face"
+  monitor_glow: "cold monitor glow, blue-cyan cast, high contrast on subject face"
+  phone_glow: "phone screen glow underlighting from below, subject looking down"
+  sodium_vapor: "sodium vapor street lights, amber color cast, deep shadow pools"
+  single_bare_bulb: "single bare bulb overhead, hard rim, deep shadows under eyes"
+  candlelight: "candlelight from below, orange warmth, soft fall-off"
+  golden_hour: "warm low-angle golden hour sun, long rim light from behind"
+  blue_hour: "blue hour dusk, ambient cobalt sky + practical warm windows"
+
+TIME_OF_DAY:
+  3am: "3am, deep night, sodium-lamp amber + phone glow cold cyan"
+  dawn: "pre-dawn cold gray, subject in silhouette against window"
+  golden_hour: "late afternoon golden hour, horizontal rim light"
+  dusk: "dusk, sky fading to cobalt, practicals turning on"
+  overcast_noon: "overcast noon, no shadows, flat everywhere"
+  midnight: "midnight, only practicals lit, exterior darkness beyond frame"
+
+COMPOSITION:
+  thirds_left: "rule of thirds, subject on left third, negative space right half"
+  centered_medium: "centered medium close-up, eye-level, shoulder width frame"
+  low_angle_hero: "low angle slight up-tilt, subject dominant against sky or ceiling"
+  dutch_tilt: "dutch tilt 12 degrees, subject upright in frame, world skewed"
+  over_shoulder: "over-shoulder rear 3/4, subject back-lit, target object in frame"
+  wide_lockoff: "wide lock-off, subject small in frame, environment is 70% of image"
+  tight_hands: "tight crop on hands and object, face out of frame"
+  symmetry_axial: "perfectly symmetrical frame, subject center, mirrored elements flanking"
+
+MOOD:
+  quiet_dread: "quiet dread, subject not moving, stillness is the emotion"
+  smug_resignation: "smug resignation, small smile, tired eyes, unbothered"
+  cope: "cope, half-smile that's actually a flinch, eyes elsewhere"
+  defeat: "defeat, posture collapsed, hands loose, looking at the floor"
+  absurd_calm: "absurd calm, deadpan, as if the scene is normal when it obviously isn't"
+  reverent: "reverent stillness, slight tilt of head, looking at something beyond frame"
+  exhausted: "exhausted, weight on elbows, eyes unfocused"
+
+SUBJECT:
+  crypto_trader: "a 30s crypto trader in a black hoodie at a laptop, tired posture"
+  dev_at_night: "a solo developer at night in front of three monitors, empty coffee cup"
+  founder_rooftop: "a founder on a rooftop at dusk, city lights behind, hands in pockets"
+  anon_character: "an anonymous hooded figure from behind, face obscured, laptop illuminated"
+  market_anon_avatar: "Market-anon, a recurring mask-like avatar in a leather jacket, keep eyes/jawline consistent across pieces"
+
+LOCATION:
+  kitchen_3am: "a kitchen at 3am, single bulb overhead, empty glass on counter"
+  rooftop_city_night: "city rooftop at night, distant traffic, amber sodium lights below"
+  subway_platform: "empty subway platform, fluorescent overhead, platform edge reflective"
+  parking_garage: "underground parking garage, concrete columns, flickering tubes, no cars"
+  motel_room: "roadside motel room, single bed, cathode TV glow, heavy curtain"
+  dive_bar: "dive bar at closing, neon beer sign, wiped counter, one glass left"
+
+NEGATIVE:
+  photoreal_defaults: "no extra fingers, no warped text, no logo watermarks, no lens flares unless specified, no CGI look"
+  text_rendering: "no garbled text, no misspelled signage, no AI-hand artifacts on text"
+  character_consistency: "no face drift from prior pieces, keep eyes/jawline consistent"
+
+CAMERA_MOVE:
+  slow_push: "slow push-in, 8mm total travel over the duration, ease-in-out"
+  rack_focus_fg_to_subject: "rack focus from foreground element (about 2ft from lens) to subject face"
+  orbit_15: "slow orbit 15 degrees to camera left, subject held in center frame"
+  lockoff_subject_motion: "static lockoff, subject performs all motion; camera does nothing"
+  ken_burns_zoom: "Ken Burns zoom 3% over the duration, no pan"
+  whip_left_to_next: "whip pan left at the cut, carries to next shot"

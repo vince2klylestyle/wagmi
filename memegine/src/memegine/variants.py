@@ -67,3 +67,30 @@ def build_variant_brief(winner_prompt: str, n_variants: int = 6, axes: list[str]
         "## Task\nProduce the variants per the system rules. JSON only."
     )
     return VariantBrief(system=VARIANT_SYSTEM, user=user)
+
+
+def build_from_last_winner(
+    n_variants: int = 6,
+    axes: list[str] | None = None,
+) -> VariantBrief:
+    """Find the most recent ref tagged `winner` that has a non-empty prompt
+    field, and build a variant brief seeded from its prompt.
+
+    Raises ValueError if no winner is found (operator hasn't tagged one yet).
+    """
+    from . import reference_lib
+    all_refs = reference_lib._load_index()
+    winners = [
+        r for r in all_refs
+        if "winner" in r.get("tags", []) and r.get("prompt", "").strip()
+    ]
+    if not winners:
+        raise ValueError(
+            "no winner with a saved prompt found — "
+            "tag a ref with --winner --prompt \"...\" first"
+        )
+    winners.sort(key=lambda r: r.get("added_at", ""), reverse=True)
+    latest = winners[0]
+    return build_variant_brief(
+        latest["prompt"], n_variants=n_variants, axes=axes,
+    )

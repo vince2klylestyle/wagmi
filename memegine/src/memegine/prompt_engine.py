@@ -27,7 +27,7 @@ class Format:
 
 
 def load_formats(path: Path = FORMATS_PATH) -> list[Format]:
-    data = yaml.safe_load(path.read_text())
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
     out = []
     for f in data.get("formats", []):
         out.append(
@@ -50,7 +50,7 @@ def load_formats(path: Path = FORMATS_PATH) -> list[Format]:
 def load_codex(path: Path = settings.codex_path) -> str:
     if not path.exists():
         return ""
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def load_playbook(name: str, playbooks_dir: Path = PLAYBOOKS_DIR) -> str:
@@ -58,7 +58,7 @@ def load_playbook(name: str, playbooks_dir: Path = PLAYBOOKS_DIR) -> str:
     path = playbooks_dir / f"{name}.md"
     if not path.exists():
         return ""
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DIR) -> str:

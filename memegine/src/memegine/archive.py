@@ -79,7 +79,7 @@ def read_recent(n: int = 20, logs_dir: Path | None = None) -> list[dict]:
     files = sorted(base.glob("briefs-*.jsonl"), reverse=True)
     out: list[dict] = []
     for f in files:
-        for line in reversed(f.read_text().splitlines()):
+        for line in reversed(f.read_text(encoding="utf-8").splitlines()):
             try:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
@@ -94,7 +94,7 @@ def find(brief_id: str, logs_dir: Path | None = None) -> dict | None:
     if not base.exists():
         return None
     for f in sorted(base.glob("briefs-*.jsonl"), reverse=True):
-        for line in f.read_text().splitlines():
+        for line in f.read_text(encoding="utf-8").splitlines():
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError:
@@ -111,7 +111,7 @@ def search(text: str, logs_dir: Path | None = None) -> list[dict]:
     needle = text.lower()
     out = []
     for f in sorted(base.glob("briefs-*.jsonl"), reverse=True):
-        for line in f.read_text().splitlines():
+        for line in f.read_text(encoding="utf-8").splitlines():
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError:

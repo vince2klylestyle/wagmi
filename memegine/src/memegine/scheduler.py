@@ -55,14 +55,17 @@ def _load() -> list[dict]:
     p = _jobs_path()
     if not p.exists():
         return []
-    raw = yaml.safe_load(p.read_text()) or {}
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     return list((raw.get("jobs", []) if isinstance(raw, dict) else raw) or [])
 
 
 def _save(jobs: list[dict]) -> None:
     p = _jobs_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(yaml.safe_dump({"jobs": jobs}, sort_keys=False, allow_unicode=True))
+    p.write_text(
+        yaml.safe_dump({"jobs": jobs}, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
 
 
 def add(
