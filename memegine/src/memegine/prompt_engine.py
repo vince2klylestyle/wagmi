@@ -69,6 +69,7 @@ def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DI
         "color-grading-by-mood",
         "low-light-and-night",
         "crypto-visual-language",
+        "motion-brand",
     ]
     if format_kind == "video":
         names.append("video-img2vid-patterns")

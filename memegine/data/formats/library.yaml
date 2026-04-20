@@ -567,3 +567,181 @@ formats:
       subcopy: ["one short line of body copy"]
       brand: ["made-up but plausible brand"]
       surrounding: ["interstate shoulder", "strip mall parking lot", "rural county road"]
+
+  # --- $MOTION brand-specific formats (derived from 47-video corpus) ---
+
+  - slug: motion_film_still_serif
+    kind: image
+    description: |
+      $MOTION default format: a cinematic film still (crime/finance/noir
+      film canon) with centered serif '$MOTION' overlay in Didot/Bodoni
+      white. Natural aspect of the source (16:9 or 4:3). Use this for
+      ~80% of $MOTION pieces.
+    prompt_scaffold: |
+      A cinematic film still as if lifted from {film_reference} (period
+      grade, {film_stock}), {subject_and_scene}, {lens_and_film}
+      (50mm or 85mm movie lens), {lighting_setup}, {composition_rule}.
+      Centered '$MOTION' text overlay, Didot or Bodoni serif, white
+      fill, ~1/6 frame width, dead-center vertical, positioned over
+      mid-body or empty negative space (never over the face unless
+      deliberately covering it). Heavy filmic grain. Source aspect
+      preserved. No digital crispness.
+      Negatives: no laser eyes, no gold coins, no moon rockets, no
+      cyberpunk neon, no HDR over-saturation, no symmetric AI-bokeh.
+    good_models: [ideogram_via_grok, aurora, flux_pro_via_grok]
+    slot_hints:
+      film_reference: ["Scarface (1983)", "The Dark Knight (2008)", "War Dogs (2016)", "American Psycho (2000)", "Casino (1995)", "The Sopranos (HBO)", "Goodfellas (1990)", "Enter the Dragon (1973)"]
+      film_stock: ["warm amber grade with teal shadows", "1980s warm film stock", "1990s muted B&W", "2000s digital cinema, period-accurate"]
+      lighting_setup: ["warm tungsten practicals + window fill", "gala chandeliers + wall sconces", "office daylight through blinds", "overhead tungsten + shadow"]
+      composition_rule: ["medium two-shot, letterboxed", "medium close-up, subject off-center", "centered single-subject movie framing"]
+
+  - slug: motion_wildlife_doc_grain
+    kind: image
+    description: |
+      Apex-predator wildlife footage (lion, shark, hyena, wolf) with
+      heavy VHS-grade grain overlay and centered serif '$MOTION'.
+      The predator IS the metaphor for market/volatility/power.
+    prompt_scaffold: |
+      Wildlife documentary still of {predator_and_action} in
+      {natural_environment}, shot on {wildlife_lens} (200-400mm
+      telephoto), {time_of_day}, {natural_light}, rule-of-thirds
+      composition with predator {predator_placement}. Heavy VHS-grade
+      grain overlay, slight chromatic aberration, desaturated greens
+      and warm browns. Letterboxed cinematic crop on 9:16 vertical
+      canvas. Centered '$MOTION' Didot serif overlay white.
+      Negatives: no clean digital look, no saturated HDR, no laser
+      eyes, no CGI animals.
+    good_models: [aurora, flux_pro_via_grok]
+    slot_hints:
+      predator_and_action: ["lion reclining in tall grass", "bull shark cruising over white sand", "hyena mid-motion-blur trotting", "wolf at treeline at dusk", "cheetah mid-stalk"]
+      natural_environment: ["african savanna", "tropical shallow reef", "arctic tundra", "pine forest edge"]
+      wildlife_lens: ["200-400mm telephoto", "300mm f/2.8 wildlife prime", "Canon 600mm supertele"]
+      time_of_day: ["golden-hour afternoon", "midday hard sun", "overcast soft light"]
+      natural_light: ["hard overhead sun from upper-left", "diffused overcast", "golden-hour rim from behind"]
+      predator_placement: ["lower-center of frame", "right third", "mid-motion blurred background"]
+
+  - slug: motion_vertical_letterbox
+    kind: image
+    description: |
+      A 16:9 cinematic source matted inside a 9:16 vertical canvas
+      with heavy black bars top and bottom. Signature $MOTION move
+      for phone delivery of film-scale imagery.
+    prompt_scaffold: |
+      Cinematic image of {subject_and_scene}, framed in native 16:9
+      letterboxed inside a 9:16 vertical canvas (heavy black bars top
+      and bottom, equal height, each bar roughly 25% of vertical
+      frame). Inside the letterbox: {lens_and_film}, {lighting_setup},
+      {composition_rule}. Centered serif '$MOTION' overlay inside the
+      letterboxed image (not on the bars), Didot/Bodoni white.
+      Grain preserved. Source grade {color_grade}.
+      Negatives: no clean digital, no laser eyes, no color-saturated
+      tourism look.
+    good_models: [ideogram_via_grok, aurora]
+    slot_hints:
+      color_grade: ["pure B&W crushed-blacks", "warm amber teal-orange", "1980s film-stock muted", "1990s high-grain B&W"]
+      composition_rule: ["rule of thirds", "centered medium", "wide lockoff"]
+
+  - slug: motion_collage_6panel_bw
+    kind: image
+    description: |
+      3x2 grid collage of six luxury/prestige vignettes unified in
+      B&W. Used for anthology pieces when a single shot can't
+      carry the narrative. Serif '$MOTION' runs horizontally across
+      the middle of the grid.
+    prompt_scaffold: |
+      Six-panel 3x2 grid collage, each cell a different {prestige_vignette},
+      all converted to B&W for unity, thin white dividers between
+      cells. 16:9 overall canvas. Large serif '$MOTION' text overlay
+      runs horizontally across the center, spanning the divider row.
+      Cells include variety: interior, exterior, vehicle, person,
+      product, environment. Crushed blacks, preserved highlights,
+      filmic grain on the whole grid.
+      Negatives: no color pieces, no saturated cells, no generic stock
+      photo look.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      prestige_vignette: ["gala entrance in formal wear", "Porsche interior POV", "Porsche wheel close-up", "luxury estate driveway", "woman in fur entering car", "private jet stair descent", "Rolls Royce hangar shot", "diamond watch on wrist", "stack of bills on leather seat"]
+
+  - slug: motion_cartel_wealth_striped
+    kind: image
+    description: |
+      Close-up on cartel-scale cash (vacuum-sealed bricks, shrink-wrapped
+      stacks) with retro Art-Deco striped-sans '$MOTION' typography.
+      Distinctive register — used only for cash-handling moments.
+    prompt_scaffold: |
+      Extreme close-up of {cash_subject}, {lens_macro} (100mm macro),
+      low ambient interior light, hard top-key, B&W with crushed
+      shadows and preserved paper detail. Vertical 9:16. '$MOTION'
+      text overlay centered, retro Art-Deco sans-serif with internal
+      vertical stripes inside each letter (like 1920s bank-vault
+      signage), white with subtle depth. Heavy grain, slight motion
+      blur on the cash if it's moving.
+      Negatives: no clean digital, no saturated color, no fake-money
+      look, no cartoonish bills.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      cash_subject: ["vacuum-sealed bricks of $100 bills tumbling", "shrink-wrapped stack of currency in hand", "extreme close-up of money counter LCD reading a dollar amount", "banded stacks of $100s on a leather car seat"]
+      lens_macro: ["100mm macro", "50mm f/2.8 macro"]
+
+  - slug: motion_archival_press_celebrity
+    kind: image
+    description: |
+      Archival press-flash photograph of a cultural/financial/political
+      figure. 1980s-90s era, B&W with press-flash front-light and deep
+      background shadow. Centered serif '$MOTION' + small creator-
+      credit footer.
+    prompt_scaffold: |
+      1980s-90s archival press photograph, {subject_description},
+      harsh press-flash front-light, deep shadow behind, B&W with
+      blown highlights and crushed blacks, 1:1 square or 4:5 portrait
+      crop of a horizontal source. Centered serif '$MOTION' overlay
+      white. Small footer credit text bottom-center in light-gray
+      serif reading "{creator_handle}".
+      Negatives: no color, no clean digital, no modern lighting.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      subject_description: ["young financial mogul in suit and tie at press event", "music figure laughing in aviators with chain", "1980s real-estate personality mid-interview", "boxing champion post-fight"]
+      creator_handle: ["stayblessed", "auvirox", "white boy motion", "alexandro.fx", "69MARI069"]
+
+  - slug: motion_hypercar_cosmic
+    kind: image
+    description: |
+      Hypercar composited against a galactic/nebula background for a
+      transcendence / hero-object piece. Vertical 9:16, italic sans
+      '$MOTION' overlapping the car mid-frame.
+    prompt_scaffold: |
+      Front 3/4 of a {hypercar} suspended against a {cosmic_background}
+      (nebula / starfield / galactic dust), vertical 9:16, car lit by
+      hard directional light consistent with implied star-glow,
+      saturated cosmic palette (purples, yellows, cyan) + black car
+      body. Italic sans-serif '$MOTION' text overlay centered, white,
+      slightly overlapping the car hood mid-frame, with subtle
+      motion-blur treatment on the letterforms.
+      Negatives: no photoreal sky, no product-catalog feel, no clean
+      white cyc background.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      hypercar: ["Bugatti Chiron", "Porsche 911 GT3 RS", "Rolls Royce Spectre", "Lamborghini Revuelto", "Koenigsegg Jesko"]
+      cosmic_background: ["purple nebula with gold dust", "galactic core with orange dust lanes", "starfield with cyan accent stars", "void black with distant galaxy cluster"]
+
+  - slug: motion_comedy_emoji
+    kind: image
+    description: |
+      Shitpost / comedy register. A photoshopped or absurd subject
+      with bold sans '$MOTION' + stacked laughing emojis. Rare but
+      canonical — the brand is not above absurdism when the image
+      warrants it.
+    prompt_scaffold: |
+      Absurd / meme-style image of {absurd_subject}, lo-fi phone-video
+      or photoshop-collage aesthetic, outdoor ambient or residential
+      context, 9:16 letterboxed vertical. Bold italic sans-serif
+      '$MOTION' text overlay left-center, followed by {emoji_cluster}
+      to the right (laughing-tears emojis, no other emoji types).
+      Keep the image rough — the comedy is in the mismatch between
+      absurd subject and brand typography.
+      Negatives: no serious prestige tone, no cinematic grade, no
+      polished aesthetic.
+    good_models: [ideogram_via_grok]
+    slot_hints:
+      absurd_subject: ["a rooster with a motorcycle photoshopped onto it", "a pigeon wearing sunglasses", "a cat in a Wall Street suit", "a dog counting bills"]
+      emoji_cluster: ["three laughing-tears emojis stacked", "crying-laughing emojis with money-bag"]

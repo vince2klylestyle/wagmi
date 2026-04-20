@@ -145,6 +145,40 @@ FORMAT_TRIGGERS: dict[str, list[str]] = {
         "billboard", "roadside billboard", "highway billboard", "big ad",
         "outdoor advertising",
     ],
+    # $MOTION-specific formats (tokens that signal the brand context)
+    "motion_film_still_serif": [
+        "motion", "$motion", "film still", "cinematic still", "movie still",
+        "scarface", "dark knight", "war dogs", "american psycho", "casino",
+        "sopranos", "goodfellas", "enter the dragon",
+    ],
+    "motion_wildlife_doc_grain": [
+        "lion", "shark", "hyena", "wolf", "predator", "wildlife",
+        "savanna", "apex predator", "nature doc",
+    ],
+    "motion_vertical_letterbox": [
+        "letterbox", "letterboxed", "vertical letterbox", "cinematic crop",
+        "black bars", "9:16 cinematic",
+    ],
+    "motion_collage_6panel_bw": [
+        "collage", "6 panel", "six panel", "anthology", "montage grid",
+        "multi-panel", "3x2 grid",
+    ],
+    "motion_cartel_wealth_striped": [
+        "cartel cash", "vacuum sealed", "cash brick", "money brick",
+        "shrink wrapped bills", "money stacks", "bill counter", "bill bricks",
+    ],
+    "motion_archival_press_celebrity": [
+        "press photo", "archival celebrity", "press flash", "80s photo",
+        "90s archive", "young trump", "tupac", "archival",
+    ],
+    "motion_hypercar_cosmic": [
+        "hypercar", "bugatti", "cosmic", "nebula", "galactic",
+        "galaxy car", "starfield",
+    ],
+    "motion_comedy_emoji": [
+        "meme shitpost", "rooster", "absurd meme", "comedy motion",
+        "shitpost piece", "absurd subject",
+    ],
 }
 
 # Strong intent cues for the "kind" (image vs video) when operator hasn't said.
