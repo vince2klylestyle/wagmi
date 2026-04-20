@@ -1,0 +1,33 @@
+name: "Spong"
+tagline: ""  # TODO: operator supplies slogan
+voice: ""    # TODO: set after ingesting the @ghostmemes / memedepot.com/d/spong corpus
+
+# Spong brand is not yet reverse-engineered. The Director should treat
+# this plate as SKELETON ONLY until the operator runs:
+#   memegine project use spong
+#   memegine corpus ingest <spong references>
+#   memegine corpus reverse-local
+# ...which will populate signature_moves, typography_registers, palette
+# from the real corpus the same way motion was seeded.
+
+aliases: ["spong", "$SPONG", "ghostmemes"]
+
+palette: []             # TODO — auto-derive from reference corpus
+signature_moves: []     # TODO — auto-derive from reference corpus
+typography_registers: []  # TODO
+subject_archetypes: []  # TODO
+
+banned_words:
+  - "cinematic"
+  - "epic"
+  - "masterpiece"
+  - "4k"
+  - "8k"
+  - "ultra-realistic"
+
+kill_list:
+  - "spongebob parody imagery unless the corpus explicitly uses it"
+  - "any reference that imitates another ghostmemes creator's signature"
+
+co_signers:
+  - "@ghostmemes"

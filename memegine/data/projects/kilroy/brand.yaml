@@ -1,0 +1,65 @@
+name: "Kilroy"
+tagline: "Kilroy was here."
+voice: >
+  observational everyman who shows up first, leaves a mark, and moves on.
+  terse, irreverent, slightly anonymous. the character is ALWAYS peeking
+  at something — never the subject of the frame, always the witness.
+aliases: ["kilroy", "Kilroy", "Mr Chad", "the watcher", "the everyman"]
+
+# Single most important rule: Kilroy himself is a tiny graffiti element.
+# He is NOT the main subject of a piece. He's the signature left behind.
+# Every Kilroy piece has TWO layers:
+#   1. A real scene (news photo, street scene, historical moment, crypto
+#      chart, tombstone, battlefield, Potsdam bathroom, beach landing)
+#   2. A tiny Kilroy graffiti in a corner / on a wall / on a whiteboard
+#      with the text "KILROY WAS HERE" underneath
+palette:
+  - "chalk-white graffiti line on any surface"
+  - "trench-coat olive"
+  - "press-photo sepia"
+  - "concrete grey"
+  - "xerox black-on-white"
+  - "boot-leather brown"
+
+signature_moves:
+  - "the character himself: bald head, eyes peeking over a wall, long drooping nose, four fingers gripping the top edge. drawn with ONE continuous chalk or sharpie line."
+  - "'KILROY WAS HERE' handwritten in block caps directly below the peek figure"
+  - "tiny Kilroy graffiti in a corner of a real historic photo (D-Day landing craft, moon surface, Potsdam bathroom, Berlin Wall, atomic test site)"
+  - "Kilroy peeking over a blockchain block, a chart, a trading terminal, a wall of hostile replies"
+  - "Kilroy as the omnipresent witness — he always got there first and he saw what happened"
+  - "wheat-paste poster aesthetic: black-and-white photo with a chalk Kilroy tag in the lower right"
+
+typography_registers:
+  - "hand-lettered block caps, white chalk on any dark surface (PRIMARY)"
+  - "GI crayon scrawl — uneven, slightly smeared"
+  - "stencil military font for the 'was here' legend in serious pieces"
+  - "newsprint serif for the caption above when the frame is press-photo treatment"
+
+subject_archetypes:
+  - "D-Day trooper / GI / soldier at the edge of a historic moment"
+  - "the photographer who didn't get credit"
+  - "the shipyard inspector (James J. Kilroy, Fore River, Quincy MA, 1941)"
+  - "the anonymous witness at a major crypto event (ETH launch, FTX collapse, a rug)"
+  - "the everyman who was always three steps ahead of the journalists"
+
+banned_words:
+  - "cinematic"
+  - "epic"
+  - "masterpiece"
+  - "4k"
+  - "8k"
+  - "ultra-realistic"
+  - "chad"      # different meme character; UK variant Mr Chad overlaps, don't conflate
+  - "trending on artstation"
+
+kill_list:
+  - "Kilroy rendered as a full-body character — he is ONLY a peek over a wall"
+  - "smiling Kilroy — his face is blank, just nose and eyes"
+  - "color-grading the chalk tag — it stays stark white or black, never shaded"
+  - "Kilroy centered in the frame — he is always a corner accent, never the subject"
+  - "AI-looking faces anywhere in the piece — if a person appears, make them archival or stylized"
+  - "reading the joke out loud in the caption — let the graffiti land for itself"
+
+co_signers:
+  - "anonymous GI #1"
+  - "the shipyard"

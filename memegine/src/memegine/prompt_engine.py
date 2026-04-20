@@ -84,7 +84,6 @@ def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DI
         "color-grading-by-mood",
         "low-light-and-night",
         "crypto-visual-language",
-        "motion-brand",
     ]
     if format_kind == "video":
         names.append("video-img2vid-patterns")
@@ -185,8 +184,15 @@ def build_user_message(
     codex: str,
     reference_notes: str = "",
     playbooks: str = "",
+    brand_plate: str = "",
 ) -> str:
-    lines = [
+    lines: list[str] = []
+    if brand_plate:
+        # The brand plate goes FIRST so the Director reads the identity
+        # before the intent. Missing plate = skipped entirely.
+        lines.append(brand_plate)
+        lines.append("")
+    lines += [
         "## Operator intent",
         intent.strip(),
         "",
@@ -245,5 +251,11 @@ def assemble_offline_prompt(
         raise ValueError(f"Unknown format '{format_slug}'. Available: {available}")
     codex = load_codex(codex_path)
     playbooks = load_relevant_playbooks(match.kind, playbooks_dir) if include_playbooks else ""
-    user = build_user_message(intent, match, codex, reference_notes, playbooks=playbooks)
+    # Load the active project's brand plate — auto-scoped by settings.data_dir.
+    from . import brand as brand_mod
+    plate = brand_mod.current_plate().as_prompt_plate()
+    user = build_user_message(
+        intent, match, codex, reference_notes,
+        playbooks=playbooks, brand_plate=plate,
+    )
     return SYSTEM_PROMPT_TEMPLATE, user

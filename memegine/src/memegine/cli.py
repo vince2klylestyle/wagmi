@@ -256,6 +256,36 @@ def codex_flop(
     console.print(f"[yellow]Logged flop to[/] {settings.codex_path}")
 
 
+brand_app = typer.Typer(
+    help="Per-project brand plate: tagline, signature moves, voice, kill list. "
+         "Auto-injected into every brief so the Director is always in-character."
+)
+app.add_typer(brand_app, name="brand")
+
+
+@brand_app.command("show")
+def brand_show() -> None:
+    """Print the active project's brand plate (human-readable)."""
+    from . import brand as brand_mod
+    plate = brand_mod.current_plate()
+    print(f"project: {settings.project}")
+    print(f"file:    {settings.data_dir / 'brand.yaml'}")
+    print()
+    print(plate.as_human_summary())
+
+
+@brand_app.command("render")
+def brand_render() -> None:
+    """Print the brand plate exactly as it gets injected into a brief.
+    Useful for debugging what the Director actually sees."""
+    from . import brand as brand_mod
+    plate = brand_mod.current_plate().as_prompt_plate()
+    if not plate:
+        print("(empty plate — no brand.yaml found for this project)")
+        return
+    print(plate)
+
+
 edit_app = typer.Typer(help="FFmpeg-backed video editing (no CapCut).")
 app.add_typer(edit_app, name="edit")
 

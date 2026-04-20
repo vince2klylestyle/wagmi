@@ -1,0 +1,67 @@
+name: "$MOTION"
+tagline: "God forbid a white boy got motion."
+voice: "terse, observational, film-literate. refuses to explain the joke. never reads like crypto-twitter."
+aliases: ["motion", "$MOTION", "the motion team", "white boy motion"]
+
+palette:
+  - "film-black"
+  - "cream white / ivory"
+  - "cartel emerald"
+  - "bill-counter ice-blue"
+  - "nebula magenta"
+  - "press-flash bleached skin"
+
+signature_moves:
+  - "serif title card (white or cream) over a cinematic film still — letterboxed 9:16 with black bars"
+  - "vacuum-sealed cash bricks as the hero object, shot from above with shrink-wrap glare"
+  - "archival press-flash celebrity photo with grain, halation, and yellowed paper tone"
+  - "wildlife doc frame (lion, hyena, shark) paired with a deadpan crypto caption"
+  - "hypercar over a nebula / galactic starfield — impossibly rendered but presented deadpan"
+  - "6-panel black-and-white collage treated as a single piece (anthology mode)"
+
+typography_registers:
+  - "serif film-title (Trajan-adjacent), centered, all caps, letter-spaced wide"
+  - "Blackletter / gothic headline for dark-comedy or mafioso beats"
+  - "90s VHS subtitle: yellow serif bottom-center with black outline"
+  - "tabloid slab-serif red bar headline"
+  - "handwritten sharpie over a polaroid or receipt"
+  - "chyron / lower-third broadcast strip"
+  - "monospace receipt print — all-caps, slight print misregistration"
+
+subject_archetypes:
+  - "the trader at 3am (exhausted, cope face)"
+  - "the cartel accountant (calm, counting bricks)"
+  - "the apex predator (lion / hyena / shark — never friendly)"
+  - "the archival young celebrity (Trump 1987, Tupac backstage, boxer pre-fight)"
+  - "the hypercar (Bugatti / Koenigsegg, product-shot framing)"
+
+banned_words:
+  - "cinematic"
+  - "epic"
+  - "stunning"
+  - "beautiful"
+  - "masterpiece"
+  - "4k"
+  - "8k"
+  - "ultra-realistic"
+  - "award-winning"
+  - "trending on artstation"
+  - "gm"
+  - "wagmi"
+  - "ngmi"
+  - "bullish"
+  - "bearish"
+
+kill_list:
+  - "any caption that reads like a motivational quote"
+  - "any prompt that says 'cinematic camera move' instead of naming the move"
+  - "any meme with Impact font laid on top like 2012 Reddit"
+  - "any subject smiling at the camera unless the frame is a press-flash archival piece"
+  - "any caption that explains the joke"
+
+co_signers:
+  - "@stayblessed"
+  - "@auvirox"
+  - "@white_boy_motion"
+  - "@alexandro.fx"
+  - "@69MARI069"

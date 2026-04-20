@@ -1,0 +1,56 @@
+# Kilroy-specific fragments. Overlay on top of the shared fragments
+# library. Reference with:
+#   KILROY.peek_figure
+#   KILROY.chalk_tag
+# in any prompt text.
+
+KILROY:
+  peek_figure: >
+    a chalk-drawn peek figure in the corner of the frame: bald head,
+    two small dots for eyes, a long drooping nose that hangs below
+    the wall-edge, four short fingers gripping the top edge. Drawn
+    with ONE continuous line — no shading, no fill, no color. Pure
+    white chalk on dark surfaces, or pure black sharpie on light
+    surfaces. Slightly uneven, obviously hand-drawn by a bored GI.
+
+  chalk_tag: >
+    "KILROY WAS HERE" hand-lettered in block caps directly below the
+    peek figure, matching the same chalk-or-sharpie medium — slightly
+    crooked, unmistakably not a web font
+
+  corner_placement: >
+    placed in the bottom-right corner of the frame, no larger than
+    15% of the image area — Kilroy is the signature, never the subject
+
+  found_news_photo: >
+    base image reads as a genuine archival news or documentary
+    photograph: 35mm Tri-X pushed one stop, press-flash halation
+    where applicable, period-accurate wardrobe and props, NO modern
+    AI tells (no smooth skin, no symmetrical eyes, no clean backgrounds)
+
+  crypto_terminal_tag: >
+    the Kilroy graffiti is drawn directly on the bezel of a real
+    trading monitor (Hyperliquid / TradingView / Bloomberg terminal),
+    the screen content itself pixel-accurate — the tag is obvious
+    marker graffiti on the physical hardware
+
+  gi_crayon_lettering: >
+    block-caps hand lettering in GI crayon or chalk style: uneven
+    letter spacing, a few letters slightly taller than others, the
+    "H" and "E" have a slight downward slope — looks like it was
+    drawn by someone standing up in a hurry
+
+  potsdam_bathroom: >
+    reference to the Potsdam Conference 1945 VIP bathroom — tiled
+    walls, period plumbing, a single chalk Kilroy peek figure on a
+    stall door
+
+  fore_river_hull: >
+    reference to Fore River shipyard, Quincy MA 1941 — a steel ship's
+    hull, rivets in frame, grease-pencil marks nearby, the Kilroy
+    tag next to a riveter inspection scrawl
+
+  wheat_paste_poster: >
+    wheat-paste street poster aesthetic: black-and-white photo print
+    applied to a brick wall, edges peeling, a chalk Kilroy tag added
+    by hand in the lower-right quadrant

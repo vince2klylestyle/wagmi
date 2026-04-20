@@ -179,6 +179,21 @@ FORMAT_TRIGGERS: dict[str, list[str]] = {
         "meme shitpost", "rooster", "absurd meme", "comedy motion",
         "shitpost piece", "absurd subject",
     ],
+    # Kilroy formats — triggered by Kilroy-specific language.
+    "kilroy_tags_news_photo": [
+        "kilroy", "kilroy was here", "mr chad", "tag a news photo",
+        "graffiti on a photo", "chalk tag", "gi graffiti",
+        "wwii graffiti", "archival with tag",
+    ],
+    "kilroy_tags_crypto_moment": [
+        "kilroy trading", "kilroy terminal", "tag a terminal",
+        "graffiti on monitor", "kilroy chart", "kilroy at 3am",
+        "sharpie on monitor",
+    ],
+    "kilroy_wheat_paste_poster": [
+        "wheat paste", "wheat-paste", "street poster", "poster on wall",
+        "peeling poster", "missing person poster", "kilroy poster",
+    ],
 }
 
 # Strong intent cues for the "kind" (image vs video) when operator hasn't said.

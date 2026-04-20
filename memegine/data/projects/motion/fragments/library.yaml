@@ -1,0 +1,67 @@
+# $MOTION-specific fragments. These overlay on top of the shared
+# fragments library (data/fragments/library.yaml). Reference with:
+#   MOTION.serif_brand_title
+#   MOTION.vacuum_cash_brick
+# in any prompt text, and they expand the same as shared fragments.
+
+MOTION:
+  serif_brand_title: >
+    a serif film-title card in the upper third, centered, all caps,
+    letter-spacing wide, white or cream on a dark cinematic still,
+    Trajan / Didot / Bodoni weight — never a web-safe font
+
+  blackletter_headline: >
+    Blackletter / gothic headline (e.g. Old English MT, Fraktur),
+    centered, high-contrast white-on-black, treated as tattoo-ink
+    typography — for dark-comedy and mafioso beats
+
+  vhs_subtitle: >
+    90s VHS subtitle overlay: yellow serif text, black outline,
+    bottom-center, slightly chromatic-aberrated, with VHS tracking
+    lines baked into the top of the frame
+
+  tabloid_red_bar: >
+    tabloid slab-serif headline in a red bar at the top of the frame,
+    white all-caps, Impact-adjacent but heavier — National Enquirer /
+    New York Post aesthetic
+
+  vacuum_cash_brick: >
+    vacuum-sealed cash brick, shrink-wrap glare, shot from above
+    top-down, $100 bills tightly packed, hand-count strips visible,
+    cartel-stash aesthetic — never clean / bank-counter look
+
+  archival_press_flash: >
+    archival press-flash photo: bleached skin tones, halation on
+    highlights, grainy film stock (Tri-X 400 pushed), slight yellow
+    paper tone as if scanned from a 1987 magazine
+
+  wildlife_doc_grain: >
+    BBC / Planet Earth wildlife-doc aesthetic: 65mm telephoto
+    compression, golden hour savanna light OR slate-grey ocean light,
+    subject isolated in negative space, no human hand in frame
+
+  letterbox_9x16: >
+    cinematic letterbox: pure black bars top and bottom on a vertical
+    9:16 canvas, cinema-aspect image (2.39:1) floating in the middle
+    — vertical phone-frame holding a horizontal cinema frame
+
+  collage_6panel_bw: >
+    6-panel (3x2) black-and-white collage treated as a single piece:
+    anthology of luxury vignettes, serif text running horizontally
+    across the middle band, crushed blacks, preserved highlights
+
+  hypercar_nebula: >
+    hypercar (Bugatti Chiron / Koenigsegg / Pagani) photographed as a
+    product-shot against a deep-space nebula / galactic starfield
+    background, impossibly rendered but presented with deadpan
+    product-photography seriousness
+
+  sealed_cartel_stash: >
+    vacuum-sealed cartel cash bricks stacked in a concrete room,
+    single bare bulb overhead, slight lens distortion at the edges,
+    zero glamour — closer to evidence-photo than to hero-shot
+
+  serif_god_forbid_card: >
+    white serif text card centered over a cinematic still, letter-
+    spacing wide, Trajan/Didot, reading "God forbid a white boy got
+    motion." — used only on pieces where the line earns itself

@@ -745,3 +745,136 @@ formats:
     slot_hints:
       absurd_subject: ["a rooster with a motorcycle photoshopped onto it", "a pigeon wearing sunglasses", "a cat in a Wall Street suit", "a dog counting bills"]
       emoji_cluster: ["three laughing-tears emojis stacked", "crying-laughing emojis with money-bag"]
+
+  # -------- Kilroy formats --------
+  # Kilroy brand: a chalk-graffiti peek figure + "KILROY WAS HERE" tag
+  # overlaid in a corner of a realistic base photo. Kilroy is never the
+  # subject — always the signature. See data/projects/kilroy/playbooks/
+  # kilroy-brand.md for the full brand rules.
+
+  - slug: kilroy_tags_news_photo
+    kind: image
+    description: |
+      PRIMARY Kilroy format. A real-looking archival news / documentary
+      photograph with a small chalk Kilroy peek figure and "KILROY WAS
+      HERE" hand-lettered in a corner. Layer 1 looks FOUND; Layer 2
+      looks DRAWN. Base photo reads as genuine press-photojournalism
+      — NO AI tells. Kilroy is pure white chalk on dark surfaces or
+      pure black sharpie on light ones, never tinted, drawn with one
+      continuous line.
+    prompt_scaffold: |
+      Archival press photograph: {historical_moment}, shot on {camera_and_film},
+      {lighting_condition}, {aspect}, period-accurate props and wardrobe.
+      In the {placement}, a chalk-drawn peek figure: bald head, two dot
+      eyes, long drooping nose extending below the edge, four fingers
+      gripping the top — drawn with one continuous line, obviously
+      hand-made. Directly below, hand-lettered block caps in the same
+      chalk: "KILROY WAS HERE". The base photo reads as a real press
+      archive — grain, halation, slight yellowing. The Kilroy tag reads
+      as a GI graffito added on top. No retouching, no AI-smooth faces,
+      no lens flares unless the era calls for them.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      historical_moment: [
+        "D-Day landing craft approaching Omaha Beach, June 1944",
+        "NASA Mission Control during Apollo 11 landing, July 1969",
+        "Trump at Trump Tower lobby, 1987",
+        "Lehman Brothers employees leaving with boxes, September 2008",
+        "Paul Volcker in his Federal Reserve office, 1979",
+        "Berlin Wall with crowd on top, November 1989",
+        "1987 stock exchange floor on Black Monday",
+      ]
+      camera_and_film: [
+        "Leica M3 with Tri-X 400 pushed one stop",
+        "Rolleiflex 2.8F with Plus-X",
+        "Speed Graphic press camera with Super-XX, flashbulb",
+        "Nikon F with Kodachrome 64 (color era)",
+      ]
+      lighting_condition: [
+        "natural overcast daylight, no fill",
+        "press-flash halation, harsh drop-off behind subject",
+        "single-source tungsten, deep shadows",
+        "fluorescent office ceiling lights, slight green cast",
+      ]
+      placement: [
+        "bottom-right corner of the frame, on a concrete wall",
+        "lower-left, on a filing cabinet",
+        "in the background on a stall door",
+        "on a ship's hull in the lower third",
+        "on a newspaper page edge visible in frame",
+      ]
+      aspect: ["4x5 press-camera ratio", "35mm 3:2", "square 6x6 Rolleiflex"]
+
+  - slug: kilroy_tags_crypto_moment
+    kind: image
+    description: |
+      Kilroy tag overlaid on a realistic trading-terminal / crypto-native
+      scene. The screen content must be pixel-accurate (real ticker, real
+      chart, real exchange UI); the Kilroy graffiti is drawn on the
+      physical monitor bezel with marker — obvious as graffiti against
+      the digital screen.
+    prompt_scaffold: |
+      Photograph of a {terminal_setup}: {screen_content}, shot at a
+      slight angle, {room_light}, {keyboard_and_props_in_frame}. On
+      the lower-right of the monitor's physical bezel, a sharpie
+      graffito: bald head with long nose peeking over the bezel edge,
+      four fingers gripping, one continuous line, pure black sharpie
+      on the plastic. Directly below, block caps: "KILROY WAS HERE".
+      The screen content reads as pixel-accurate exchange UI; the
+      graffiti reads as someone actually wrote on the hardware.
+      Aspect: 16:9 monitor photographed in a 4:5 frame.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      terminal_setup: [
+        "three-monitor desk with a Hyperliquid positions page",
+        "a single ultrawide with TradingView open",
+        "a laptop on a kitchen counter with Solana explorer open",
+        "a Bloomberg terminal with orange-on-black tickers",
+      ]
+      screen_content: [
+        "a BTC chart showing a sharp drawdown candle",
+        "a liquidation feed scrolling red",
+        "the Solana explorer showing a multi-sig rug transaction",
+        "an FTX.com maintenance page (timestamped Nov 2022)",
+      ]
+      room_light: [
+        "warm tungsten desk lamp, 3200K",
+        "ambient moonlight through a window, 3am",
+        "overhead office fluorescent, cold",
+      ]
+      keyboard_and_props_in_frame: [
+        "a mechanical keyboard, half-empty coffee mug",
+        "an empty redbull can, crumpled receipts",
+        "a phone face-down next to the keyboard",
+      ]
+
+  - slug: kilroy_wheat_paste_poster
+    kind: image
+    description: |
+      Street-poster / wheat-paste aesthetic. A black-and-white photo
+      print applied to a brick or concrete wall, edges peeling, with a
+      small Kilroy chalk tag added to the lower right after the poster
+      went up. Captures the "posted-then-tagged" urban texture.
+    prompt_scaffold: |
+      A black-and-white photographic poster pasted to a {wall_surface},
+      subject: {poster_subject}, high-contrast silver-gelatin print,
+      edges peeling with visible paste residue, street-art context
+      (passersby blurred in the deep background or absent). After the
+      poster was put up, someone added a chalk Kilroy peek figure in
+      the lower-right of the poster with "KILROY WAS HERE" block-caps
+      below. The chalk is pure white, slightly smudged. The whole frame
+      is shot on 35mm at dusk, Tri-X, available light only.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      wall_surface: [
+        "a brick wall in an alley, graffiti layered underneath",
+        "a concrete utility-box on a sidewalk",
+        "a boarded-up storefront",
+        "a construction-site plywood hoarding",
+      ]
+      poster_subject: [
+        "a stoic portrait of an anonymous trader",
+        "a missing-person-style photo of a rug developer",
+        "a headshot of a fallen exchange CEO",
+        "a candid shot of a 3am trading desk",
+      ]

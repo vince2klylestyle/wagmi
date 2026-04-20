@@ -1,4 +1,10 @@
-# Style Codex — @WillumpOnChain
+# Style Codex — $MOTION
+
+> **Tagline:** *God forbid a white boy got motion.*
+>
+> This line is the brand's entire thesis in six words: quiet chaos,
+> ironic swagger, film-literate. Every piece should earn this line by
+> what it withholds — never by restating it in the caption.
 
 Living document. Every time a piece lands, note *why* here. Every time one flops,
 note that too. Claude reads this before writing any new prompt.
@@ -65,6 +71,7 @@ note that too. Claude reads this before writing any new prompt.
 - (2026-04-19) "win" — (marked winner) [winner]
 - (2026-04-19) Default serif brand treatment: "$MOTION" in Didot/Bodoni-style serif, white fill, centered-middle placement, size ~1/8 to 1/6 of frame width. Works across 80% of pieces.
 - (2026-04-19) Typography taxonomy by register: (a) Serif centered = prestige / cinematic / curated; (b) Bold geometric sans = energy / action / sports / speed; (c) Italic sans with motion-blur treatment = velocity / cars; (d) Italic script cursive = tokenomics statements (e.g. "25% locked"); (e) Retro Art-Deco striped sans = cartel-scale wealth; (f) Semi-transparent serif (no $ prefix) = ambient / atmospheric pieces; (g) Bold sans + emoji = comedy / shitposting.
+- (2026-04-20) "win" — (marked winner) [winner]
 - (2026-04-20) "win" — (marked winner) [winner]
 - (2026-04-20) "win" — (marked winner) [winner]
 ## Proven Model Routing (Grok)
