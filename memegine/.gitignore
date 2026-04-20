@@ -14,3 +14,18 @@ data/logs/*
 !data/logs/.gitkeep
 data/references/*
 !data/references/.gitkeep
+# Per-project workspaces: ignore everything BUT the seed files that
+# should ship with the repo (codex seeds, active_project pointer, brand
+# playbooks). The operator's runtime state (references, logs, posts,
+# performance, sessions, topics, scheduler, campaigns, lookbooks) stays
+# out of version control.
+data/projects/*/references/**
+data/projects/*/logs/**
+data/projects/*/outputs/**
+data/projects/*/posts/**
+data/projects/*/performance/**
+data/projects/*/sessions/**
+data/projects/*/scheduler/**
+data/projects/*/campaigns/**
+data/projects/*/lookbooks/**
+data/projects/*/topics/**

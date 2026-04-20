@@ -32,16 +32,20 @@ FRAGMENT_RE = re.compile(r"\b([A-Z][A-Z_]+)\.([a-z0-9_]+)\b")
 
 
 def _library_path() -> Path:
+    # Fragments live in the SHARED data root, not per-project. Craft
+    # vocabulary is global; per-project custom fragments can live at
+    # data/projects/<name>/fragments/library.yaml and will be merged in.
+    return settings.data_root / "fragments" / "library.yaml"
+
+
+def _project_library_path() -> Path:
     return settings.data_dir / "fragments" / "library.yaml"
 
 
-def load(path: Path | None = None) -> dict[str, dict[str, str]]:
-    """Return {CATEGORY: {name: body, ...}, ...} from the library."""
-    p = path or _library_path()
+def _load_one(p: Path) -> dict[str, dict[str, str]]:
     if not p.exists():
         return {}
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    # Normalize: ensure every value is a plain str.
     out: dict[str, dict[str, str]] = {}
     for cat, items in raw.items():
         if not isinstance(items, dict):
@@ -50,6 +54,25 @@ def load(path: Path | None = None) -> dict[str, dict[str, str]]:
             str(name): str(body).strip() for name, body in items.items()
         }
     return out
+
+
+def load(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """Return {CATEGORY: {name: body, ...}, ...}.
+
+    When `path` is omitted, loads the SHARED library and overlays the
+    active project's library (if one exists) on top — project entries
+    shadow shared entries of the same CATEGORY.name.
+    """
+    if path is not None:
+        return _load_one(path)
+    shared = _load_one(_library_path())
+    project = _load_one(_project_library_path())
+    if not project:
+        return shared
+    merged = {cat: dict(items) for cat, items in shared.items()}
+    for cat, items in project.items():
+        merged.setdefault(cat, {}).update(items)
+    return merged
 
 
 def list_categories(path: Path | None = None) -> list[str]:

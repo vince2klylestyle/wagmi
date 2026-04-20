@@ -2101,12 +2101,12 @@ def snapshot_diff_cmd(
     print(report.as_text())
 
 
-project_app = typer.Typer(help="Archive / restore the full memegine state.")
-app.add_typer(project_app, name="project")
+snapshot_app = typer.Typer(help="Archive / restore the full memegine state.")
+app.add_typer(snapshot_app, name="snapshot")
 
 
-@project_app.command("archive")
-def project_archive_cmd(
+@snapshot_app.command("archive")
+def snapshot_archive_cmd(
     destination: Optional[Path] = typer.Option(
         None, "--out", "-o",
         help="Zip destination. Default: memegine-snapshot-YYYYMMDD-HHMMSS.zip",
@@ -2121,8 +2121,8 @@ def project_archive_cmd(
     )
 
 
-@project_app.command("restore")
-def project_restore_cmd(
+@snapshot_app.command("restore")
+def snapshot_restore_cmd(
     source: Path = typer.Argument(..., exists=True, readable=True),
     force: bool = typer.Option(False, "--force",
                                 help="Overwrite an existing non-empty data dir."),
@@ -2137,6 +2137,95 @@ def project_restore_cmd(
     console.print(
         f"[green]restored[/] {result.restored_files} files from {result.source}"
     )
+
+
+project_app = typer.Typer(
+    help="Multi-project workspace: switch between $MOTION / Kilroy / Spong / etc. "
+         "Each project gets its own codex, references, playbooks, logs, and posts."
+)
+app.add_typer(project_app, name="project")
+
+
+@project_app.command("current")
+def project_current_cmd() -> None:
+    """Print the active project name."""
+    print(settings.project)
+    print(f"  data_dir: {settings.data_dir}")
+
+
+@project_app.command("list")
+def project_list_cmd() -> None:
+    """List every project workspace that exists on disk."""
+    from . import projects
+    active = settings.project
+    entries = projects.list_projects()
+    if not entries:
+        print("(no projects yet — 'default' is implicit at data/)")
+        return
+    for name, path in entries:
+        marker = "* " if name == active else "  "
+        print(f"{marker}{name}  ({path})")
+
+
+@project_app.command("create")
+def project_create_cmd(
+    name: str = typer.Argument(..., help="Project name (lowercase, no spaces)."),
+    use: bool = typer.Option(True, "--use/--no-use",
+                              help="Also switch the active project to this one."),
+) -> None:
+    """Create an empty project workspace (codex, refs, playbooks, etc.)."""
+    from . import projects
+    try:
+        created = projects.create(name)
+    except (ValueError, FileExistsError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    print(f"created project '{name}' at {created}")
+    if use:
+        projects.set_active(name)
+        settings.refresh_project(name)
+        print(f"active project is now '{name}'")
+
+
+@project_app.command("use")
+def project_use_cmd(
+    name: str = typer.Argument(..., help="Project name to activate."),
+) -> None:
+    """Switch the active project. Every subsequent command operates on it."""
+    from . import projects
+    try:
+        projects.set_active(name)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    settings.refresh_project(name)
+    print(f"active project is now '{name}'")
+    print(f"  data_dir: {settings.data_dir}")
+
+
+@project_app.command("migrate")
+def project_migrate_cmd(
+    name: str = typer.Argument(..., help="New project name to move existing data into."),
+    use: bool = typer.Option(True, "--use/--no-use",
+                              help="Switch active project to the new name after migration."),
+) -> None:
+    """Move the legacy single-project state (data/codex, data/references, etc.)
+    into data/projects/<name>/. Shared assets (data/formats, data/playbooks,
+    data/fragments) stay in place because every project consumes them.
+    """
+    from . import projects
+    try:
+        moved = projects.migrate_default_to(name)
+    except (FileExistsError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1)
+    print(f"migrated {len(moved)} directories into data/projects/{name}/")
+    for m in moved:
+        print(f"  - {m}")
+    if use:
+        projects.set_active(name)
+        settings.refresh_project(name)
+        print(f"active project is now '{name}'")
 
 
 @app.command("quick")

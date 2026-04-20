@@ -61,7 +61,8 @@ class ValidationReport:
 
 
 def _validate_formats(report: ValidationReport) -> None:
-    path = settings.data_dir / "formats" / "library.yaml"
+    # Formats library is SHARED across projects — check data_root.
+    path = settings.data_root / "formats" / "library.yaml"
     if not path.exists():
         report.add("ERROR", str(path), "formats library.yaml missing")
         return
@@ -102,7 +103,8 @@ def _validate_formats(report: ValidationReport) -> None:
 
 
 def _validate_fragments(report: ValidationReport) -> None:
-    path = settings.data_dir / "fragments" / "library.yaml"
+    # Fragments library is SHARED across projects — check data_root.
+    path = settings.data_root / "fragments" / "library.yaml"
     if not path.exists():
         report.add("WARN", str(path), "fragments library missing (fragments feature disabled)")
         return
@@ -132,7 +134,8 @@ def _validate_fragments(report: ValidationReport) -> None:
 
 
 def _validate_playbooks(report: ValidationReport) -> None:
-    path = settings.data_dir / "playbooks"
+    # Playbooks are SHARED — check data_root.
+    path = settings.data_root / "playbooks"
     if not path.exists():
         report.add("WARN", str(path), "playbooks dir missing (prompts won't have craft context)")
         return

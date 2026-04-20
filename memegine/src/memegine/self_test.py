@@ -90,19 +90,23 @@ def run() -> SelfTestReport:
 
         # Redirect every store to tmp.
         orig = {
+            "data_root": settings.data_root,
             "data_dir": settings.data_dir,
             "logs_dir": settings.logs_dir,
             "references_dir": settings.references_dir,
             "outputs_dir": settings.outputs_dir,
             "codex_path": settings.codex_path,
         }
-        # Copy static assets (formats library, fragments, playbooks) into the
-        # tempdir so validate and fragment expand have content to work with.
+        # Copy SHARED static assets (formats library, fragments, playbooks)
+        # into the tempdir so validate and fragment expand have content. These
+        # live under data_root, not data_dir, because they are shared across
+        # every project.
         import shutil
         for name in ("formats", "fragments", "playbooks"):
-            src = orig["data_dir"] / name
+            src = orig["data_root"] / name
             if src.exists():
                 shutil.copytree(src, tmp / name)
+        settings.data_root = tmp
         settings.data_dir = tmp
         settings.logs_dir = tmp / "logs"
         settings.references_dir = tmp / "refs"

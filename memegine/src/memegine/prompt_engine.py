@@ -8,8 +8,13 @@ import yaml
 from .config import settings
 
 
-FORMATS_PATH = settings.data_dir / "formats" / "library.yaml"
-PLAYBOOKS_DIR = settings.data_dir / "playbooks"
+# Formats and playbooks live under the SHARED data root, not per-project.
+# Fragments library is the same story. All projects share the craft
+# vocabulary; per-project custom playbooks can be added at
+# data/projects/<name>/playbooks/ and get loaded in addition to the
+# shared ones.
+FORMATS_PATH = settings.data_root / "formats" / "library.yaml"
+PLAYBOOKS_DIR = settings.data_root / "playbooks"
 
 
 @dataclass
@@ -47,7 +52,10 @@ def load_formats(path: Path = FORMATS_PATH) -> list[Format]:
     return out
 
 
-def load_codex(path: Path = settings.codex_path) -> str:
+def load_codex(path: Path | None = None) -> str:
+    # Resolve at call time so a project switch via settings.refresh_project()
+    # is picked up without restarting.
+    path = path or settings.codex_path
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
@@ -62,7 +70,14 @@ def load_playbook(name: str, playbooks_dir: Path = PLAYBOOKS_DIR) -> str:
 
 
 def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DIR) -> str:
-    """Load playbooks relevant to the format kind (image/video) and concatenate."""
+    """Load playbooks relevant to the format kind (image/video) and concatenate.
+
+    First loads from the shared playbooks_dir (craft knowledge common to
+    all projects), then overlays any .md files found in the active
+    project's own playbooks directory. This lets Kilroy / Spong / $MOTION
+    each carry their own brand playbook while reusing the shared craft
+    references.
+    """
     names = [
         "grok-imagine-patterns",
         "portrait-photography-craft",
@@ -80,6 +95,18 @@ def load_relevant_playbooks(format_kind: str, playbooks_dir: Path = PLAYBOOKS_DI
         txt = load_playbook(n, playbooks_dir)
         if txt:
             out_parts.append(f"### Playbook: {n}\n\n{txt}")
+
+    # Append project-specific playbooks (data/projects/<name>/playbooks/*.md)
+    project_playbooks = settings.data_dir / "playbooks"
+    if project_playbooks.exists() and project_playbooks != playbooks_dir:
+        for md in sorted(project_playbooks.glob("*.md")):
+            stem = md.stem
+            if stem in names:
+                continue  # already loaded from shared
+            try:
+                out_parts.append(f"### Project Playbook: {stem}\n\n{md.read_text(encoding='utf-8')}")
+            except OSError:
+                continue
     return "\n\n---\n\n".join(out_parts)
 
 

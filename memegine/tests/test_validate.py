@@ -26,6 +26,7 @@ def test_report_not_ok_with_any_error():
 def test_formats_parser_catches_missing_slug(tmp_path, monkeypatch):
     from memegine.config import settings
     monkeypatch.setattr(settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(settings, "data_root", tmp_path, raising=False)
     formats_dir = tmp_path / "formats"
     formats_dir.mkdir()
     (formats_dir / "library.yaml").write_text(
@@ -39,6 +40,7 @@ def test_formats_parser_catches_missing_slug(tmp_path, monkeypatch):
 def test_formats_parser_catches_bad_kind(tmp_path, monkeypatch):
     from memegine.config import settings
     monkeypatch.setattr(settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(settings, "data_root", tmp_path, raising=False)
     formats_dir = tmp_path / "formats"
     formats_dir.mkdir()
     (formats_dir / "library.yaml").write_text(
@@ -52,6 +54,7 @@ def test_formats_parser_catches_bad_kind(tmp_path, monkeypatch):
 def test_formats_parser_catches_duplicate_slug(tmp_path, monkeypatch):
     from memegine.config import settings
     monkeypatch.setattr(settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(settings, "data_root", tmp_path, raising=False)
     formats_dir = tmp_path / "formats"
     formats_dir.mkdir()
     (formats_dir / "library.yaml").write_text(
@@ -66,6 +69,7 @@ def test_formats_parser_catches_duplicate_slug(tmp_path, monkeypatch):
 def test_trend_feeds_catches_bad_url(tmp_path, monkeypatch):
     from memegine.config import settings
     monkeypatch.setattr(settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(settings, "data_root", tmp_path, raising=False)
     formats_dir = tmp_path / "formats"
     formats_dir.mkdir()
     (formats_dir / "library.yaml").write_text("formats: []\n", encoding="utf-8")
@@ -82,6 +86,7 @@ def test_trend_feeds_catches_bad_url(tmp_path, monkeypatch):
 def test_topics_queue_catches_bad_status(tmp_path, monkeypatch):
     from memegine.config import settings
     monkeypatch.setattr(settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(settings, "data_root", tmp_path, raising=False)
     (tmp_path / "formats").mkdir()
     (tmp_path / "formats" / "library.yaml").write_text("formats: []\n", encoding="utf-8")
     topics_dir = tmp_path / "topics"
