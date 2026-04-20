@@ -2,8 +2,8 @@
 Position manager with state machine, progressive trailing stop, and dynamic TP1.
 
 State machine: IDLE -> OPEN -> TP1_HIT -> TRAILING -> CLOSED
-                        ↓                              ↑
-                        └── CLOSED (SL, EARLY_EXIT) ───┘
+                        |                              |
+                        +-- CLOSED (SL, EARLY_EXIT) ---+
 
 Exit behavior is driven by TradeProfile (entry_type + regime + volatility):
 - SCALP:  tight SL/TP, high TP1%, tight trailing, very short hold
@@ -561,29 +561,35 @@ class PositionManager:
                 _prof = getattr(pos, "trade_profile", None)
                 if _prof is not None:
                     _entry_type = getattr(_prof, "entry_type", "") or ""
+                # SHIP-2026-04-20: raised thresholds + fee buffer on BE move.
+                # Reversal study: 25% reversal at 0.5R, 6.7% at 1.5R. Old 0.6R
+                # MEDIUM trigger sat in reversal zone; BE clamp at exact entry
+                # (zero buffer) was hit by microstructure wicks. 5 independent
+                # studies converged on this change.
                 if _entry_type == "SCALP":
-                    _be_trigger, _lock_trigger, _lock_frac = 0.3, 0.6, 0.3
+                    _be_trigger, _lock_trigger, _lock_frac = 0.8, 1.2, 0.3
                 elif _entry_type == "TREND":
-                    _be_trigger, _lock_trigger, _lock_frac = 0.8, 1.2, 0.4
+                    _be_trigger, _lock_trigger, _lock_frac = 1.5, 2.0, 0.4
                 else:  # MEDIUM default (and unknown)
-                    _be_trigger, _lock_trigger, _lock_frac = 0.6, 1.0, 0.3
+                    _be_trigger, _lock_trigger, _lock_frac = 1.2, 1.8, 0.3
 
-                # Breakeven trigger
+                # Breakeven trigger — fee buffer escapes microstructure noise
                 if unrealized_r >= _be_trigger:
-                    be_sl = pos.entry
+                    fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
+                    be_sl = (pos.entry + fee_buffer) if is_long else (pos.entry - fee_buffer)
                     if is_long and pos.sl < be_sl:
                         pos.sl = be_sl
                         logger.info(
                             f"[{symbol}] PROFIT LOCK ({_entry_type or 'MEDIUM'}): "
                             f"{unrealized_r:.2f}R >= {_be_trigger:.1f}R trigger -> "
-                            f"SL moved to breakeven {be_sl}"
+                            f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
                     elif not is_long and pos.sl > be_sl:
                         pos.sl = be_sl
                         logger.info(
                             f"[{symbol}] PROFIT LOCK ({_entry_type or 'MEDIUM'}): "
                             f"{unrealized_r:.2f}R >= {_be_trigger:.1f}R trigger -> "
-                            f"SL moved to breakeven {be_sl}"
+                            f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
 
                 # Lock-in trigger (above breakeven)
@@ -1436,6 +1442,16 @@ class PositionManager:
         # Remove backup after successful close
         self._remove_backup(pos.symbol)
 
+        # SHIP-2026-04-19: persist state on every close to prevent ghost-position bug
+        # where auto_recovery resurrects already-closed positions (COOLDOWN_BYPASS_RCA_2026_04_17.md).
+        # Previously only persisted every 5 ticks, so a crash between close and next tick
+        # left disk state showing OPEN; on restart, the closed position got resurrected.
+        try:
+            from execution.auto_recovery import save_position_state
+            save_position_state(self)
+        except Exception:
+            logger.exception("[SAVE-ON-CLOSE] non-fatal state persistence failure")
+
         return event
 
     def force_close(self, symbol: str, price: float, reason: str = "EMERGENCY") -> Optional[TradeEvent]:
@@ -1502,20 +1518,21 @@ class PositionManager:
                 )
                 return self.force_close(symbol, price, reason="HOLD_LIMIT")
 
-            # Default: tighten SL to breakeven
-            if pos.side == "LONG" and pos.sl < pos.entry:
+            # Default: tighten SL to breakeven + fee buffer (SHIP-2026-04-20)
+            fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
+            if pos.side == "LONG" and pos.sl < pos.entry + fee_buffer:
                 old_sl = pos.sl
-                pos.sl = pos.entry
+                pos.sl = pos.entry + fee_buffer
                 logger.info(
                     f"[HOLD_LIMIT] {symbol} LONG open {age_hours:.1f}h "
-                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.2f} -> {pos.entry:.2f} (breakeven)"
+                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.4f} -> {pos.sl:.4f} (BE+buffer)"
                 )
-            elif pos.side == "SHORT" and pos.sl > pos.entry:
+            elif pos.side == "SHORT" and pos.sl > pos.entry - fee_buffer:
                 old_sl = pos.sl
-                pos.sl = pos.entry
+                pos.sl = pos.entry - fee_buffer
                 logger.info(
                     f"[HOLD_LIMIT] {symbol} SHORT open {age_hours:.1f}h "
-                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.2f} -> {pos.entry:.2f} (breakeven)"
+                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.4f} -> {pos.sl:.4f} (BE+buffer)"
                 )
 
         return None

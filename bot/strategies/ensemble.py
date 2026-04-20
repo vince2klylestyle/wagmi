@@ -2284,6 +2284,15 @@ class EnsembleStrategy:
                     logger.debug(f"[{symbol}] Correlation boost: {_corr_mult:.2f}x -> win_prob={win_prob:.3f}")
             except Exception:
                 pass
+
+        # SHIP-2026-04-19: IC study proved win_prob_deflated has IC=-0.003 (p=0.976, pure noise)
+        # and reliability diagram is inverted (Q5 predicts 22% WR, Q1 predicts 41%).
+        # Regime-zoo found it works only in trending (AUC 0.60), broken in illiquid (AUC 0.388).
+        # Clamp non-trending regimes to 0.50 neutral prior until win_prob_v2 ships.
+        # Trending keeps original (has real signal per regime-conditional model zoo).
+        _raw_win_prob_v1 = win_prob  # preserve original for shadow logging
+        if _regime_ev not in ("trending", "trend", "trending_bull", "trending_bear"):
+            win_prob = 0.50
         try:
             from trading_config import TradingConfig as _TConf
             _fee_bps = _TConf().taker_fee_bps
@@ -2459,6 +2468,40 @@ class EnsembleStrategy:
             (s.metadata.get("chop_score", 0) for s in signals), default=0
         )
 
+        # SHIP-2026-04-20: alpha gate shadow mode — log verdicts, do NOT enforce by default.
+        # ALPHA_GATE_ENABLED=false → this block is a no-op.
+        # ALPHA_GATE_ENABLED=true + ALPHA_GATE_SHADOW=true → logs verdicts, does NOT reject.
+        # ALPHA_GATE_ENABLED=true + ALPHA_GATE_SHADOW=false → gate enforces live.
+        try:
+            from strategies.alpha_gate import (
+                ALPHA_GATE_ENABLED,
+                ALPHA_GATE_SHADOW,
+                evaluate as _alpha_eval,
+                log_shadow_verdict as _alpha_log,
+            )
+            if ALPHA_GATE_ENABLED:
+                _alpha_ctx = {
+                    "num_agree": len(signals),
+                    "chop_score": _chop_score,
+                    # TODO: wire btc_4h_return_signed + rsi_div_1h_6h_aligned from
+                    # DataFetcher + feature cache. Until then, those two signals
+                    # contribute None (neither + nor - to conviction count).
+                }
+                _alpha_verdict = _alpha_eval(None, _alpha_ctx)
+                _alpha_shim = type("S", (), {
+                    "symbol": symbol, "side": side, "strategy": "ensemble",
+                })()
+                _alpha_log(_alpha_shim, _alpha_verdict)
+                if not ALPHA_GATE_SHADOW and not _alpha_verdict.passes:
+                    logger.info(
+                        f"[{symbol}] ALPHA-GATE reject: "
+                        f"conviction={_alpha_verdict.conviction_count} "
+                        f"reason={_alpha_verdict.reason}"
+                    )
+                    return None
+        except Exception as _alpha_exc:
+            logger.exception(f"[{symbol}] ALPHA-GATE hook failure (non-fatal): {_alpha_exc}")
+
         return Signal(
             strategy="ensemble",
             symbol=symbol,
@@ -2474,6 +2517,18 @@ class EnsembleStrategy:
                 "num_agree": len(signals),
                 "total_strategies": len(self.strategies),
                 "individual_confidences": {s.strategy: s.confidence for s in signals},
+                # SHIP-2026-04-19: propagate regime_score + align_long from input signals.
+                # Previously dropped here, causing ml_conf, alerts, analytics to see always-0.
+                # See REGIME_SCORE_BUG_2026_04_19.md. Max-by-abs for regime, max for align.
+                "regime_score": max(
+                    ((s.metadata or {}).get("regime_score", 0) for s in signals),
+                    key=lambda v: abs(v or 0),
+                    default=0,
+                ),
+                "align_long": max(
+                    ((s.metadata or {}).get("align_long", 0) for s in signals),
+                    default=0,
+                ),
                 "raw_weighted_conf": round(weighted_conf, 2),
                 "consensus_mult": round(consensus_mult, 3),
                 "combined_conf": round(combined_conf, 2),

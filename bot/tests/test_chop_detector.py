@@ -266,7 +266,9 @@ class TestHoldTimeLimits:
         # Check hold limits with 48h max
         result = pm.check_hold_limits("BTC", 102.0, max_hold_hours=48, action="tighten_sl")
         assert result is None, "Should not force close, just tighten SL"
-        assert pos.sl == 100.0, f"SL should be tightened to entry (100.0), got {pos.sl}"
+        # SHIP-2026-04-20: HOLD_LIMIT BE move now includes fee_buffer (entry*(2*fee_bps/10000+0.001))
+        # For entry=100, fee_bps=4 -> buffer = 100 * (8/10000 + 0.001) = 100 * 0.0018 = 0.18
+        assert 100.0 < pos.sl <= 100.25, f"SL should be tightened to entry+buffer (~100.18), got {pos.sl}"
 
     def test_force_close_at_hard_limit(self):
         """At 1.5x max_hold, position should be force closed."""
