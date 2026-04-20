@@ -980,6 +980,10 @@ def build_application(cfg: BotConfig):
             continue
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.PHOTO, handlers["_photo"]))
+    # Ops console handlers: /feed, /watch, /watchlist, /brand, /fetchtweet,
+    # plus the inline-button callback dispatcher for tweet cards.
+    from . import telegram_ops
+    telegram_ops.register_ops_handlers(app, cfg)
     return app
 
 
