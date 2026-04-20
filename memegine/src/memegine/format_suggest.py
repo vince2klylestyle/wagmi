@@ -194,6 +194,27 @@ FORMAT_TRIGGERS: dict[str, list[str]] = {
         "wheat paste", "wheat-paste", "street poster", "poster on wall",
         "peeling poster", "missing person poster", "kilroy poster",
     ],
+    # Kilroy motion-tier formats — bring $MOTION-grade craft to Kilroy.
+    "kilroy_cinema_still_tag": [
+        "kilroy cinema still", "kilroy film still", "kilroy heat",
+        "kilroy collateral", "kilroy godfather", "kilroy blade runner",
+        "kilroy motion-tier", "kilroy cinema", "cinematic kilroy",
+        "kilroy american psycho", "kilroy dark knight", "kilroy casino",
+    ],
+    "kilroy_vhs_rip_tag": [
+        "kilroy vhs", "kilroy broadcast", "kilroy 480p",
+        "kilroy cnbc", "kilroy news anchor", "kilroy tape rip",
+        "kilroy on a crt", "kilroy chyron", "80s broadcast kilroy",
+    ],
+    "kilroy_tabloid_cover_tag": [
+        "kilroy tabloid", "kilroy cover", "kilroy magazine",
+        "kilroy enquirer", "kilroy post cover", "kilroy time cover",
+        "kilroy wired", "kilroy vanity fair", "kilroy newsstand",
+    ],
+    "kilroy_polaroid_stack_tag": [
+        "kilroy polaroid", "kilroy sx-70", "kilroy sx70",
+        "kilroy instant photo", "polaroid kilroy", "kilroy on polaroid",
+    ],
     # Spong (spongmonkeys lineage)
     "spong_solo_scene": [
         "spong", "spongmonkey", "spongmonkeys", "we like the moon",

@@ -54,3 +54,65 @@ KILROY:
     wheat-paste street poster aesthetic: black-and-white photo print
     applied to a brick wall, edges peeling, a chalk Kilroy tag added
     by hand in the lower-right quadrant
+
+  # ---- Motion-tier craft fragments ----
+  # Use these to bring motion-grade discipline into a Kilroy piece.
+  # The character stays the same; the BASE PHOTO gets upgraded.
+
+  cinema_letterbox_916: >
+    vertical 9:16 canvas with clean hard black bars top and bottom
+    holding a cinema-aspect 2.39:1 image in the middle — a phone
+    frame holding a cinema frame, the motion signature. No blur, no
+    gradient edges — the letterbox is crisp pure black
+
+  serif_title_card: >
+    a film-title card in Trajan / Didot / Bodoni serif, white fill,
+    all-caps, letter-spacing wide, centered in the upper or lower
+    third of the cinema frame — treat it like a movie poster title,
+    not a web overlay
+
+  named_film_stock: >
+    named film-stock specifier (pick one): "35mm Kodak Tri-X 400
+    pushed one stop" / "Ilford HP5+ at ISO 1600" / "Kodak Plus-X
+    developed in Rodinal 1:50" / "Fuji Acros 100 cold development"
+    — NEVER "cinematic film look"
+
+  named_lighting_setup: >
+    named lighting setup (pick one): "single-source tungsten 3200K
+    camera-right at 3:1 ratio" / "hard press-flash with halation
+    drop-off behind subject" / "ambient overcast natural light, no
+    fill" / "practical tungsten + moonlight mix 4800K window" —
+    NEVER "dramatic lighting"
+
+  grain_and_halation: >
+    visible 35mm film grain (Tri-X-level, ~ISO 400 grain structure)
+    across the whole frame, halation bloom on specular highlights,
+    slight chromatic bleed at the brightest whites — never clean
+    digital capture
+
+  cinema_canon_scene: >
+    named cinema-canon scene (pick one): "a frame from Michael
+    Mann's Heat (1995) bank-lobby aesthetic" / "Collateral (2004)
+    cab interior at night" / "The Godfather Part II (1974) tenement
+    hallway" / "Blade Runner 2049 (2017) orange-dust Las Vegas" /
+    "Chinatown (1974) afternoon office exterior" — each is a
+    recognizable cinematographic lookbook
+
+  vhs_broadcast_rip: >
+    480p interlaced broadcast-TV still from 1987-1995, chunky scan
+    lines visible, slight chroma bleed and tape tracking artifacts,
+    slight green or magenta cast from aging tape, aspect 4:3 with
+    the broadcast safe-area frame visible
+
+  tabloid_cover_frame: >
+    magazine/tabloid cover treatment: red or black masthead, slab-
+    serif headline in white on a red bar, halftone-printed celebrity
+    photo with visible print dots, glossy paper texture, cover-price
+    strip at the bottom — National Enquirer / New York Post / Time /
+    Wired cover visual grammar
+
+  polaroid_sx70_stack: >
+    a stack of Polaroid SX-70 photos on a hardwood or linen surface,
+    overhead lighting, one photo on top shows the scene with the
+    characteristic SX-70 soft-focus + warm color cast, white polaroid
+    border visible, slight bend at corners from age

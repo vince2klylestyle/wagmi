@@ -848,6 +848,201 @@ formats:
         "a phone face-down next to the keyboard",
       ]
 
+  # -------- Kilroy motion-tier formats --------
+  # These bring $MOTION's craft discipline (named lens/stock, letterbox
+  # 9:16, serif title card, grain) into Kilroy pieces. See
+  # data/projects/kilroy/playbooks/kilroy-motion-tier.md.
+
+  - slug: kilroy_cinema_still_tag
+    kind: image
+    description: |
+      A frame that could plausibly appear in a named Hollywood film
+      (Heat, Collateral, The Godfather Part II, Blade Runner 2049,
+      Chinatown) — full motion-grade craft discipline — with a small
+      chalk Kilroy in the corner. The viewer should clock the CRAFT
+      first and discover the graffito second.
+    prompt_scaffold: |
+      A cinematic film still from {film_canon_ref}, shot on
+      {named_lens}, {named_film_stock}, {named_lighting}, 9:16
+      vertical canvas with a clean hard black letterbox holding a
+      2.39:1 cinema frame in the middle (phone frame holding a cinema
+      frame). Visible 35mm film grain, halation on specular highlights,
+      naturalistic subject staging with props period-accurate.
+      In the {placement}, a chalk-drawn peek figure: bald head, two
+      dot eyes, long drooping nose extending below the edge, four
+      fingers gripping the top — drawn with one continuous line, pure
+      white chalk on the surface. Directly below, hand-lettered block
+      caps in the same chalk: "KILROY WAS HERE". The base still reads
+      as a motion-grade cinema frame; the Kilroy reads as graffiti
+      added on top.
+      Negatives: no AI-smooth faces, no clean digital look, no stock-
+      photo even lighting, no Kilroy in color, no Kilroy centered.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      film_canon_ref: [
+        "Michael Mann's Heat (1995), bank lobby aesthetic",
+        "Michael Mann's Collateral (2004), cab interior at night",
+        "The Godfather Part II (1974), tenement hallway",
+        "Blade Runner 2049 (2017), orange-dust Las Vegas",
+        "Chinatown (1974), afternoon office exterior",
+        "American Psycho (2000), Wall Street office at dusk",
+        "The Dark Knight (2008), Gotham bank vault",
+        "Casino (1995), count-room cash-brick scene",
+        "Enter the Dragon (1973), dojo training floor",
+      ]
+      named_lens: [
+        "Arri Alexa 65 with 40mm anamorphic",
+        "Panavision Millennium DXL2 with 50mm anamorphic",
+        "Red Monstro with Leica Summicron-C 35mm",
+        "35mm Cooke S4 prime f/2",
+      ]
+      named_film_stock: [
+        "Kodak Tri-X 400 pushed one stop",
+        "Kodak Plus-X developed in Rodinal 1:50",
+        "Ilford HP5+ at ISO 1600",
+        "Fuji Acros 100 cold-developed",
+        "Kodak 5219 500T color negative",
+      ]
+      named_lighting: [
+        "single-source tungsten 3200K camera-right at 3:1 ratio",
+        "practical tungsten + moonlight mix 4800K window",
+        "hard press-flash with halation drop-off",
+        "ambient overcast natural light, no fill",
+      ]
+      placement: [
+        "lower-right corner on a concrete wall",
+        "background on a stall door",
+        "on a filing cabinet in the background",
+        "on a ship's hull in the lower third",
+        "on a newspaper edge visible in frame",
+      ]
+
+  - slug: kilroy_vhs_rip_tag
+    kind: image
+    description: |
+      A 480p interlaced broadcast-TV still from 1987-1995 with all the
+      tape-era artifacts (scan lines, chroma bleed, tape tracking
+      lines), with a chalk or sharpie Kilroy tag in a corner that
+      looks drawn on the physical TV set or hardware.
+    prompt_scaffold: |
+      A 480p interlaced broadcast-TV still from {broadcast_era},
+      showing {broadcast_subject}. Chunky scan lines visible, slight
+      chroma bleed where the signal is weakest, tape tracking
+      artifacts at the top or bottom of the frame, slight green or
+      magenta cast from aging VHS. 4:3 aspect with broadcast safe-
+      area framing. In the {placement}, a sharpie Kilroy graffito:
+      bald head, long nose, four fingers gripping, one continuous
+      line, pure black marker on the plastic bezel. Directly below,
+      block caps in the same sharpie: "KILROY WAS HERE". The frame
+      looks genuinely captured off cable; the Kilroy looks drawn on
+      the actual TV set.
+      Negatives: no 4K sharpness, no clean digital capture, no modern
+      typography, no color Kilroy.
+    good_models: [aurora, flux_pro_via_grok, ideogram_via_grok]
+    slot_hints:
+      broadcast_era: [
+        "a 1987 CNN financial-news anchor broadcast",
+        "a 1994 New York 1 local-news stand-up",
+        "a 1991 stock-ticker chyron on CNBC",
+        "a 1989 VHS-quality home-shopping infomercial",
+        "a 1993 ABC Nightly News cold open",
+      ]
+      broadcast_subject: [
+        "an anchor at a desk reading market results",
+        "a field reporter with a microphone outside an exchange",
+        "a stock-ticker crawl with red and green tick symbols",
+        "a static 'BREAKING NEWS' bumper with the network logo",
+      ]
+      placement: [
+        "the lower-right of the TV-set bezel",
+        "the upper-left corner of the CRT glass",
+        "inside the ticker safe-area at the bottom",
+        "on the field-reporter's microphone cube",
+      ]
+
+  - slug: kilroy_tabloid_cover_tag
+    kind: image
+    description: |
+      A magazine or tabloid cover treatment (National Enquirer / New
+      York Post / Time / Wired) with a halftone-printed hero photo,
+      red-bar headline, and a chalk or sharpie Kilroy tag added in a
+      corner as if drawn on the printed page. Looks like a real
+      magazine, not a digital mockup.
+    prompt_scaffold: |
+      A {cover_publication} magazine cover from {year}: red or black
+      masthead at the top, {cover_headline} in slab-serif white type
+      on a red bar, halftone-printed hero photo of {hero_subject}
+      occupying most of the frame, visible print dots (CMYK rosette
+      pattern), glossy paper texture with a subtle sheen, cover-price
+      strip and barcode at the bottom-right. In the {placement}, a
+      chalk Kilroy tag: bald head with long nose, four fingers
+      gripping the edge, one continuous line, pure white chalk on the
+      printed page. Below, block caps: "KILROY WAS HERE". The tag
+      looks drawn on a physical magazine copy, not digitally added.
+      Negatives: no vector-clean mockup, no modern InDesign precision,
+      no clean chrome, no color Kilroy.
+    good_models: [ideogram_via_grok, aurora]
+    slot_hints:
+      cover_publication: [
+        "National Enquirer", "New York Post", "Time", "Wired",
+        "Vanity Fair", "Forbes", "The New Yorker",
+      ]
+      year: ["1987", "1992", "1999", "2004", "2008"]
+      cover_headline: [
+        '"THE KING OF PONZI"',
+        '"MARKET CRASHES HIT FAMILIES"',
+        '"WHO KILLED THE ECONOMY?"',
+        '"THE MAN WHO LOST BILLIONS"',
+      ]
+      hero_subject: [
+        "a disheveled Wall Street banker leaving a courthouse",
+        "an anonymous trader in front of a Bloomberg terminal",
+        "a crypto-era mogul mid-speech at a conference",
+        "a 1980s-styled executive walking into a black sedan",
+      ]
+      placement: [
+        "the lower-right corner of the cover",
+        "the masthead margin top-left",
+        "on the barcode strip at the bottom",
+        "overlapping the cover price in the corner",
+      ]
+
+  - slug: kilroy_polaroid_stack_tag
+    kind: image
+    description: |
+      A stack of Polaroid SX-70 photos on a hardwood / linen surface,
+      overhead lighting, the top photo showing the scene. Kilroy is
+      drawn directly in black sharpie on the white polaroid border,
+      with "KILROY WAS HERE" written in the caption zone at the
+      bottom of the border. Warm analog color cast.
+    prompt_scaffold: |
+      Overhead shot of a stack of Polaroid SX-70 photos on a
+      {surface}, warm tungsten overhead light at 3200K, slight bend at
+      the top-right corners from age, visible white Polaroid borders.
+      The top photo shows {polaroid_scene}, rendered with the
+      characteristic SX-70 soft-focus and warm color cast. Drawn
+      directly on the white border of the top polaroid in black
+      sharpie: a Kilroy peek figure — bald head, long nose, four
+      fingers, one continuous line. In the caption zone at the bottom
+      of the border, hand-lettered block caps: "KILROY WAS HERE".
+      Aspect: 1:1 square overhead.
+      Negatives: no clean digital render, no vector polaroid mockup,
+      no color Kilroy.
+    good_models: [aurora, flux_pro_via_grok]
+    slot_hints:
+      surface: [
+        "dark hardwood tabletop",
+        "linen tablecloth",
+        "leather desk blotter",
+        "unfinished pine workbench",
+      ]
+      polaroid_scene: [
+        "a trader at a kitchen counter at 3am, cope face",
+        "an empty office at night with monitors still on",
+        "a crypto conference hallway with lanyards on the floor",
+        "a subway platform at 2am, a single anonymous figure",
+      ]
+
   # -------- Spong formats (Spongmonkeys lineage) --------
 
   - slug: spong_solo_scene
