@@ -98,3 +98,23 @@
 ## Compounded Patterns (auto-distilled winners will land here)
 
 *(empty — add winner refs and the codex will compound)*
+
+## Proven Prompt Patterns
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-20) "win" — (marked winner) [winner]
+- (2026-04-21) "win" — (marked winner) [winner]

@@ -99,35 +99,43 @@ def _profile_pic_url(handle: str) -> Optional[str]:
         return None
 
 
-# Prompt template applied to every spongify target. Slot-substituted
-# per handle. Keeps body/scene photo-real; only the head gets swapped.
+# Prompt template — references real spong library examples for style guidance.
 SPONGIFY_PROMPT = """\
 Using the attached reference photo of @{handle}, produce a SPONGIFIED
-portrait: keep the subject's BODY, clothing, pose, and background
-EXACTLY as they appear in the reference. Replace ONLY the head with a
-spongmonkey — a blurry photo-cutout of a real monkey head with
-{fur_color} fur, HUGE white googly eyes nearly touching each other with
-tiny black pinpoint pupils, open singing mouth showing cream buck teeth
-and red gums. Size the monkey head to match the original head's
-placement exactly.
+portrait matching the Joel Veitch / rathergood.com 2003 aesthetic:
 
-Style constraints:
-- The head layer carries deliberate 2003 Joel Veitch / rathergood.com
-  jpeg compression — visible macroblocks, slight chromatic aberration,
-  matte cutout edges (obviously pasted, NOT blended).
-- The body, clothing, and background stay PHOTO-REAL — no illustration,
-  no stylization, no cartoon shading on anything besides the head.
-- Aspect ratio: 1:1 square (Twitter reply-compatible).
-- Hand-scrawled lowercase caption at the bottom in marker or childlike
-  Comic Sans: "{lyric}".
+SUBJECT: Replace ONLY the head with a blurry photo-cutout monkey head.
+Keep BODY, clothing, pose, and background EXACTLY as-is (photo-real).
 
-The gap between a real photo and a cursed 2003 monkey head IS the
-joke. Sincerity, not irony.
+MONKEY HEAD DESIGN (very specific):
+- Real monkey head photo-cutout (not illustration)
+- {fur_color} fur (match reference style)
+- HUGE white googly eyes (nearly touching, looking straight at camera)
+- Tiny black pinpoint pupils (not round/normal pupils)
+- OPEN SINGING mouth (never closed, never smiling) — shows cream
+  buck teeth, pink gums, like it's mid-screech
+- Eyes and mouth intentionally grotesque/uncanny — this IS the joke
 
-NEGATIVES: no clean/smooth head-blend; no full-body illustration; no
-modern typography; no smirking expression (mouth is always OPEN
-singing); no corrections to "wrong" eye proportions (they SHOULD be
-comically oversized); no bearded monkey or smiling monkey.
+TECHNICAL STYLE (critical):
+- Head layer shows deliberate 2003 JPEG macroblocks, color fringes,
+  visible noise (not clean modern AI)
+- Matte cutout edges (obviously pasted/glued, NOT smoothly blended)
+- Body stays 100% photo-real — no cartoon shading, no filters
+- No attempt to "fix" the wrong proportions — oversized eyes are
+  INTENTIONAL and should stay comically wrong
+
+COMPOSITION:
+- Square 1:1 aspect ratio (Twitter reply size)
+- Scale monkey head to match original head placement
+- Hand-scrawled lowercase caption bottom: "{lyric}" (marker/Comic Sans,
+  childlike, no perfection)
+
+The humor comes from the gap between a real person and a cursed
+2003 monkey head. SINCERITY, not irony or camp.
+
+DO NOT: blend smoothly, use modern AI smoothness, create symmetrical
+perfect features, fix eye proportions, make monkey smile, add anything
+fancy. Look crude and cheap — that's the authentic style.
 """
 
 

@@ -61,16 +61,44 @@ async def login_async(
     OR account-menu element present). Saves storage_state when any
     signal fires. Times out after wait_timeout_sec.
 
-    Works whether called in foreground or background — the signal
-    source is purely the browser, not stdin.
+    Uses stealth launch args so X doesn't block the login flow as
+    "automated browser" (disables the AutomationControlled blink
+    feature + sets a realistic Chrome UA + hides navigator.webdriver).
     """
     _require_playwright()
     from playwright.async_api import async_playwright
     SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+    # Stealth launch args — strip the "I'm a bot" fingerprint so X
+    # treats the browser as a regular user session.
+    launch_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins,site-per-process",
+    ]
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    )
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
+        browser = await p.chromium.launch(
+            headless=False,
+            args=launch_args,
+            ignore_default_args=["--enable-automation"],
+        )
+        context = await browser.new_context(
+            user_agent=ua,
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+        )
+        # Overwrite navigator.webdriver before any page script runs.
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            window.chrome = window.chrome || { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['en-US','en']});
+        """)
         page = await context.new_page()
         await page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded")
         print(
