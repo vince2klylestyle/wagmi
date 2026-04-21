@@ -258,12 +258,14 @@ def _build_ops_handlers(cfg):
         )
 
     async def gallery_cmd(update, context):
-        """Show recent refs from the active brand's library as photos.
+        """Show recent refs from the active brand's library.
 
         Usage:
-          /gallery          — 5 most recent from active brand
-          /gallery 10       — 10 most recent
-          /gallery motion   — switch project inline + show
+          /gallery              — 5 most recent images (default)
+          /gallery 10           — 10 most recent
+          /gallery motion       — switch brand
+          /gallery motion video — return video files from known
+                                  video sources (motion = drive-folder/MOTION)
         """
         if not await guard(update):
             return
@@ -272,12 +274,15 @@ def _build_ops_handlers(cfg):
         args = context.args or []
         n = 5
         brand = settings.project
+        want_video = False
         for tok in args:
             if tok.isdigit():
                 n = max(1, min(20, int(tok)))
             elif tok.lower() in ("motion", "kilroy", "spong"):
                 brand = tok.lower()
-        n = min(n, 10)  # TG rate-limit safety
+            elif tok.lower() in ("video", "videos", "v"):
+                want_video = True
+        n = min(n, 10)
         if brand != settings.project:
             try:
                 _projects.set_active(brand)
@@ -285,6 +290,51 @@ def _build_ops_handlers(cfg):
             except Exception as exc:
                 await context.bot.send_message(chat_id=chat_id, text=f"error: {exc}")
                 return
+
+        # Video mode — bypass refs index, stream from known video source folder
+        if want_video:
+            from pathlib import Path as _P
+            # Known motion video source from earlier corpus ingest
+            candidates = [
+                _P(r"C:\Users\vince\WAGMI\memegine-inbox\drive-folder") / brand.upper(),
+                settings.references_dir.parent / "videos",
+                settings.references_dir,
+            ]
+            vids: list[_P] = []
+            for cand in candidates:
+                if cand.exists():
+                    for f in sorted(cand.iterdir()):
+                        if f.is_file() and f.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv"):
+                            vids.append(f)
+                    if vids:
+                        break
+            if not vids:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"🎬 no videos found for {brand}. expected at "
+                         f"memegine-inbox/drive-folder/{brand.upper()}/ or "
+                         f"data/projects/{brand}/videos/",
+                )
+                return
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🎬 {brand} videos — sending {min(n, len(vids))} of {len(vids)} total (newest first):",
+            )
+            # Send oldest→newest so the latest appears at the bottom of the chat
+            for v in vids[-n:]:
+                try:
+                    with open(v, "rb") as fh:
+                        await context.bot.send_video(
+                            chat_id=chat_id, video=fh,
+                            caption=f"{v.name} · {v.stat().st_size // 1024}KB",
+                            supports_streaming=True,
+                        )
+                except Exception as exc:
+                    await context.bot.send_message(
+                        chat_id=chat_id, text=f"⚠ {v.name}: {exc}",
+                    )
+            return
+
         entries = _rl.recent(n)
         if not entries:
             await context.bot.send_message(
