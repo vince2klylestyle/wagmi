@@ -436,6 +436,48 @@ def _build_ops_handlers(cfg):
         ops_db.action_log(tweet_id=t["id"], kind="raid",
                           slug_or_ref_id=",".join(b[1] for b in result.briefs))
 
+    async def on_url_message(update, context):
+        """Auto-process any X URL pasted or forwarded into the chat.
+
+        Triggered by the filters.Regex handler in register_ops_handlers.
+        Fetches the tweet + upserts to ops_db + sends a card with the
+        full action-button set. Works in DMs and in allowlisted groups.
+        """
+        if not await guard(update):
+            return
+        msg = update.message
+        if msg is None or not msg.text:
+            return
+        import re as _re
+        urls = _re.findall(
+            r"https?://(?:www\.)?(?:twitter|x)\.com/[^/\s]+/status/\d+",
+            msg.text,
+            _re.IGNORECASE,
+        )
+        if not urls:
+            return
+        # Process up to 3 URLs per message to avoid flooding.
+        for url in urls[:3]:
+            td = x_fetch.fetch(url, use_cache=False)
+            if td is None:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"❌ could not fetch {url}",
+                )
+                continue
+            ops_db.tweet_upsert(
+                id=td.id, handle=td.author_handle, text=td.text,
+                created_at=td.created_at,
+                favorite_count=td.favorite_count,
+                reply_count=td.reply_count,
+                payload=td.as_dict(),
+            )
+            if td.author_handle:
+                ops_db.watchlist_add(td.author_handle)
+            recent = ops_db.tweets_recent(limit=1, handle=td.author_handle)
+            if recent:
+                await _send_tweet_card(context, update.effective_chat.id, recent[0])
+
     return {
         "feed": feed_cmd,
         "watch": watch_cmd,
@@ -444,6 +486,7 @@ def _build_ops_handlers(cfg):
         "brand": brand_cmd,
         "fetchtweet": fetchtweet_cmd,
         "_callback": callback_dispatcher,
+        "_on_url": on_url_message,
     }
 
 
@@ -466,13 +509,29 @@ def _chunks(text: str, *, size: int = 3800):
 
 def register_ops_handlers(app, cfg) -> None:
     """Attach all ops command handlers + the callback dispatcher to the app."""
-    from telegram.ext import CommandHandler, CallbackQueryHandler
+    from telegram.ext import (
+        CommandHandler, CallbackQueryHandler, MessageHandler, filters,
+    )
     handlers = _build_ops_handlers(cfg)
     for name, fn in handlers.items():
         if name.startswith("_"):
             continue
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(handlers["_callback"], pattern=r"^t:"))
+    # Auto-catch X URLs pasted or forwarded into chat. Triggers on plain
+    # text messages that contain a twitter.com or x.com /status/<id> URL.
+    # Lets the operator scroll X on their phone or BlueStacks, tap
+    # Share → Copy link, paste into the bot — zero typing, full card
+    # with action buttons back instantly.
+    import re as _re
+    url_re = _re.compile(
+        r"https?://(?:www\.)?(?:twitter|x)\.com/[^/\s]+/status/\d+",
+        _re.IGNORECASE,
+    )
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(url_re),
+        handlers["_on_url"],
+    ))
 
 
 # ---- push hook for the (future) watchlist poller ---------------------------
