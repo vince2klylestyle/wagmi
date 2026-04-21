@@ -257,6 +257,74 @@ def _build_ops_handlers(cfg):
             f"✅ switched to {name}"
         )
 
+    async def gallery_cmd(update, context):
+        """Show recent refs from the active brand's library as photos.
+
+        Usage:
+          /gallery          — 5 most recent from active brand
+          /gallery 10       — 10 most recent
+          /gallery motion   — switch project inline + show
+        """
+        if not await guard(update):
+            return
+        from . import reference_lib as _rl, projects as _projects
+        chat_id = update.effective_chat.id
+        args = context.args or []
+        n = 5
+        brand = settings.project
+        for tok in args:
+            if tok.isdigit():
+                n = max(1, min(20, int(tok)))
+            elif tok.lower() in ("motion", "kilroy", "spong"):
+                brand = tok.lower()
+        n = min(n, 10)  # TG rate-limit safety
+        if brand != settings.project:
+            try:
+                _projects.set_active(brand)
+                settings.refresh_project(brand)
+            except Exception as exc:
+                await context.bot.send_message(chat_id=chat_id, text=f"error: {exc}")
+                return
+        entries = _rl.recent(n)
+        if not entries:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"📂 {brand} library is empty.\n"
+                    f"Drop content at data/projects/{brand}/references/ "
+                    f"then run `memegine corpus ingest <folder>`."
+                ),
+            )
+            return
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"📂 {brand} library — {n} most recent of {len(_rl.search())} total:",
+        )
+        for e in entries[:n]:
+            # The ref-lib index stores `filename`, not full `path`.
+            # Compute path from references_dir + filename.
+            path = e.get("path")
+            if not path:
+                fname = e.get("filename")
+                if fname:
+                    path = str(settings.references_dir / fname)
+            if not path:
+                continue
+            caption = (
+                f"id: {e.get('id','?')}\n"
+                f"tags: {', '.join(e.get('tags', [])[:5])}\n"
+                f"notes: {(e.get('notes') or '')[:100]}"
+            )
+            try:
+                with open(path, "rb") as fh:
+                    await context.bot.send_photo(
+                        chat_id=chat_id, photo=fh, caption=caption[:1000],
+                    )
+            except (OSError, FileNotFoundError):
+                await context.bot.send_message(
+                    chat_id=chat_id, text=f"⚠ can't read {path}",
+                )
+
     async def fetchtweet_cmd(update, context):
         if not await guard(update):
             return
@@ -713,6 +781,7 @@ subject."""
         "watchlist": watchlist_cmd,
         "brand": brand_cmd,
         "fetchtweet": fetchtweet_cmd,
+        "gallery": gallery_cmd,
         "_callback": callback_dispatcher,
         "_on_url": on_url_message,
     }

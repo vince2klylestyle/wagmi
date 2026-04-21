@@ -171,7 +171,12 @@ def _score_refs(tweet: x_fetch.TweetData, keywords: list[str]) -> list[ReplyMatc
             hits.append("winner")
         if score == 0:
             continue
+        # Reference index stores filename (not full path). Compose.
         media_path = e.get("path")
+        if not media_path:
+            fname = e.get("filename")
+            if fname:
+                media_path = str(settings.references_dir / fname)
         out.append(ReplyMatch(
             kind="ref",
             score=score,
