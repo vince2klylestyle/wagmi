@@ -206,7 +206,7 @@ RISK_PROMPT_SYSTEM = (
 
 
 # Project knowledge (Bonferroni-cleared findings from our 5,787-trade research)
-KNOWLEDGE_BLOCK = """
+_KB_STATIC = """
 WAGMI KNOWLEDGE BASE (apply these when reasoning):
 - Reversal probability by R-multiple: 0.5R=25%, 1.0R=15.6%, 1.5R=6.7%, 2R=20%, 5R=32%
 - Confidence calibration: 65-70% WR 37.7% (+$24.7k), 85-90% WR 74.7% (+$68.8k SWEET SPOT),
@@ -220,14 +220,57 @@ WAGMI KNOWLEDGE BASE (apply these when reasoning):
 """
 
 
+def _graduated_rules_for(symbol: str) -> str:
+    """Load WAGMI's graduated-rules.json and format any active rules matching this symbol."""
+    try:
+        rules_path = ROOT / "data" / "llm" / "graduated_rules.json"
+        if not rules_path.exists():
+            return ""
+        data = json.loads(rules_path.read_text(encoding="utf-8"))
+        rules = data.get("rules", []) if isinstance(data, dict) else []
+        applicable = []
+        for r in rules:
+            if not r.get("active"):
+                continue
+            conds = r.get("conditions", {}) or {}
+            sym_match = conds.get("symbol") in (None, "", symbol, "ALL")
+            if sym_match:
+                applicable.append(r)
+        if not applicable:
+            return ""
+        lines = ["\nWAGMI GRADUATED RULES (our codified edges, apply when conditions match):"]
+        for r in applicable[:10]:  # cap to 10 most important
+            conds = r.get("conditions", {}) or {}
+            cond_str = " & ".join(f"{k}={v}" for k, v in conds.items())
+            lines.append(
+                f"- {r.get('hypothesis_statement','')} "
+                f"[{r.get('action')}/{r.get('adjustment','?')}] "
+                f"when {cond_str} (conf {r.get('confidence',0):.0%}, n={r.get('total_evidence','?')})"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.debug(f"graduated_rules load failed: {e}")
+        return ""
+
+
+def build_knowledge_block(symbol: str) -> str:
+    """Compose the KB prompt for a specific symbol, including graduated rules."""
+    return _KB_STATIC + _graduated_rules_for(symbol)
+
+
+# Back-compat: some call sites expect KNOWLEDGE_BLOCK constant
+KNOWLEDGE_BLOCK = _KB_STATIC
+
+
 def agent_regime(summary: str, levels: Dict[str, Any], skip: bool) -> Dict[str, Any]:
     """Returns {narrative: prose, regime: heuristic_label, confidence: int, ...}.
     Prose comes from LLM; structured fields from heuristic on levels."""
     fields = _derive_regime_fields(levels)
     if skip or not cli_available():
         return {"ok": True, "agent": "regime", "narrative": _heuristic_regime_prose(levels), **fields}
+    kb = build_knowledge_block(levels.get("symbol", ""))
     prompt = (
-        f"{KNOWLEDGE_BLOCK}\n\n"
+        f"{kb}\n\n"
         f"Market snapshot:\n{summary}\n\n"
         "Analyze the regime. Name the regime label, directional bias, and volatility band. "
         "Reference the knowledge base when relevant. 2-3 sentences."
@@ -242,8 +285,9 @@ def agent_trade(summary: str, levels: Dict[str, Any], regime_out: Dict[str, Any]
     fields = _derive_trade_fields(levels, regime_out)
     if skip or not cli_available():
         return {"ok": True, "agent": "trade", "narrative": _heuristic_trade_prose(levels, regime_out), **fields}
+    kb = build_knowledge_block(levels.get("symbol", ""))
     prompt = (
-        f"{KNOWLEDGE_BLOCK}\n\n"
+        f"{kb}\n\n"
         f"Regime verdict: {regime_out.get('regime_label','?')} bias={regime_out.get('bias','?')}\n\n"
         f"Market snapshot:\n{summary}\n\n"
         "Form a thesis: go_long / go_short / wait. Name entry zone, stop, target(s). "
@@ -260,8 +304,9 @@ def agent_critic(summary: str, levels: Dict[str, Any], trade_out: Dict[str, Any]
     fields = _derive_critic_fields(levels, trade_out)
     if skip or not cli_available():
         return {"ok": True, "agent": "critic", "narrative": _heuristic_critic_prose(levels, trade_out), **fields}
+    kb = build_knowledge_block(levels.get("symbol", ""))
     prompt = (
-        f"{KNOWLEDGE_BLOCK}\n\n"
+        f"{kb}\n\n"
         f"Trade thesis action={trade_out.get('action','?')}: {trade_out.get('narrative','')[:250]}\n\n"
         f"Market snapshot:\n{summary}\n\n"
         "Stress-test this thesis. Name the #1 risk or counter-thesis. "
