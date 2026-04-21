@@ -212,21 +212,37 @@ DEFAULT_LYRICS = [
 def spongify_handles(
     handles: list[str],
     *,
+    use_external: bool = True,
     fur_rotation: Optional[list[str]] = None,
     lyric_rotation: Optional[list[str]] = None,
     batch_folder: Optional[Path] = None,
 ) -> SpongifyBatch:
-    """For each handle: fetch profile pic URL, download, write prompt.
+    """For each handle: fetch PFP, generate spongified image (or prompt).
 
-    Returns a SpongifyBatch with per-target paths + any failures. Good
-    for:
-        - one-at-a-time from a tweet card's spongify button
-        - mass (raid mode) via CLI: pass all 10 handles at once
+    Args:
+      handles: List of Twitter handles
+      use_external: Try spongmonkeys.fun first (Playwright required).
+                    Falls back to prompt-based if unavailable.
+      fur_rotation: Rotation of fur colors for variety
+      lyric_rotation: Rotation of lyrics for captions
+      batch_folder: Custom folder for output
+
+    Returns:
+      SpongifyBatch with generated images or prompts + any failures.
     """
     folder = batch_folder or _batch_folder()
     fur_pool = fur_rotation or DEFAULT_FUR
     lyric_pool = lyric_rotation or DEFAULT_LYRICS
     batch = SpongifyBatch(folder=folder)
+
+    # Try to import external generator if requested
+    external_gen = None
+    if use_external:
+        try:
+            from . import spongify_external
+            external_gen = spongify_external.spongify_sync
+        except (ImportError, Exception):
+            pass
 
     for i, raw in enumerate(handles):
         handle = raw.lstrip("@").strip().lower()
@@ -250,6 +266,20 @@ def spongify_handles(
             batch.failures.append((handle, "download failed"))
             continue
 
+        # Try external generator (spongmonkeys.fun) first
+        spongified_path = None
+        if external_gen:
+            try:
+                result = external_gen(local, headless=True, timeout_sec=90)
+                if not result.error and result.image_bytes:
+                    spongified_path = folder / f"{handle}.spongified.png"
+                    spongified_path.write_bytes(result.image_bytes)
+                elif result.error:
+                    pass  # Fall through to prompt-based
+            except Exception:
+                pass  # Fall through to prompt-based
+
+        # Fall back to prompt-based for manual Grok Imagine use
         fur = fur_pool[i % len(fur_pool)]
         lyric = lyric_pool[i % len(lyric_pool)]
         prompt_text = SPONGIFY_PROMPT.format(
