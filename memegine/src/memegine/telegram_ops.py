@@ -438,44 +438,95 @@ def _build_ops_handlers(cfg):
     async def on_url_message(update, context):
         """Auto-process any X URL pasted or forwarded into the chat.
 
-        Triggered by the filters.Regex handler in register_ops_handlers.
-        Fetches the tweet + upserts to ops_db + sends a card with the
-        full action-button set. Works in DMs and in allowlisted groups.
+        Dispatches based on terse raid syntax:
+            <url> raid kilroy                → run raid pack for kilroy brand
+            <url> spongify                   → spongify the tweet author
+            <url> motion video + caption     → motion video brief + caption
+            <url>  (bare)                    → old behavior: tap-card
+        See raid_parser.parse() for the full grammar.
         """
         if not await guard(update):
             return
         msg = update.message
         if msg is None or not msg.text:
             return
-        import re as _re
-        urls = _re.findall(
-            r"https?://(?:www\.)?(?:twitter|x)\.com/[^/\s]+/status/\d+",
-            msg.text,
-            _re.IGNORECASE,
+        from . import raid_parser
+        cmd = raid_parser.parse_and_normalize(
+            msg.text, default_brand=settings.project,
         )
-        if not urls:
+        chat_id = update.effective_chat.id
+        if not cmd.url:
             return
-        # Process up to 3 URLs per message to avoid flooding.
-        for url in urls[:3]:
-            td = x_fetch.fetch(url, use_cache=False)
-            if td is None:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"❌ could not fetch {url}",
-                )
-                continue
-            ops_db.tweet_upsert(
-                id=td.id, handle=td.author_handle, text=td.text,
-                created_at=td.created_at,
-                favorite_count=td.favorite_count,
-                reply_count=td.reply_count,
-                payload=td.as_dict(),
+
+        # Fetch + upsert the tweet (shared between all paths).
+        td = x_fetch.fetch(cmd.url, use_cache=False)
+        if td is None:
+            await context.bot.send_message(
+                chat_id=chat_id, text=f"❌ could not fetch {cmd.url}",
             )
-            if td.author_handle:
-                ops_db.watchlist_add(td.author_handle)
+            return
+        ops_db.tweet_upsert(
+            id=td.id, handle=td.author_handle, text=td.text,
+            created_at=td.created_at,
+            favorite_count=td.favorite_count,
+            reply_count=td.reply_count,
+            payload=td.as_dict(),
+        )
+        if td.author_handle:
+            ops_db.watchlist_add(td.author_handle)
+        # Switch to the target brand if the command specified one.
+        if cmd.brand and cmd.brand != settings.project:
+            try:
+                from . import projects as _projects
+                _projects.set_active(cmd.brand)
+                settings.refresh_project(cmd.brand)
+            except Exception:
+                pass
+
+        # ---- If bare URL (no raid keywords), show the tap card ----
+        if not cmd.is_raid_command:
             recent = ops_db.tweets_recent(limit=1, handle=td.author_handle)
             if recent:
-                await _send_tweet_card(context, update.effective_chat.id, recent[0])
+                await _send_tweet_card(context, chat_id, recent[0])
+            return
+
+        # ---- Route based on actions ----
+        tweet_dict = ops_db.tweets_recent(limit=1, handle=td.author_handle)[0]
+        did_anything = False
+
+        if "spongify" in cmd.actions:
+            await _send_spongify_action(update, context, tweet_dict)
+            did_anything = True
+        if "raid" in cmd.actions:
+            await _send_raid_action(update, context, tweet_dict)
+            did_anything = True
+        if "video" in cmd.actions:
+            await _send_brief_action(update, context, tweet_dict, kind="video")
+            did_anything = True
+        if "still" in cmd.actions or "brief" in cmd.actions:
+            await _send_brief_action(update, context, tweet_dict, kind="image")
+            did_anything = True
+        if cmd.include_caption:
+            await _send_caption_action(update, context, tweet_dict)
+            did_anything = True
+        if not did_anything:
+            # Brand specified but no action — default to a brief.
+            await _send_brief_action(update, context, tweet_dict, kind="image")
+
+    async def _send_caption_action(update, context, t):
+        """Simple caption suggestions based on brand tagline + tweet theme."""
+        chat_id = update.effective_chat.id
+        plate = brand_mod.current_plate()
+        tagline = plate.tagline or ""
+        # Three caption options at escalating tightness.
+        opts = []
+        if tagline:
+            opts.append(tagline.rstrip("."))
+        opts.append(f"{t['handle']} cooked")
+        opts.append(f"kilroy was here when @{t['handle']} posted this" if settings.project == "kilroy" else f"@{t['handle']}")
+        opts.append("we like the moon" if settings.project == "spong" else "god forbid")
+        text = "💬 caption options for this reply:\n\n" + "\n".join(f"• {o}" for o in opts[:4])
+        await context.bot.send_message(chat_id=chat_id, text=text)
 
     return {
         "feed": feed_cmd,
