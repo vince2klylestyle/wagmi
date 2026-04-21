@@ -2555,6 +2555,55 @@ def watch_once_cmd(
     print(result.as_text())
 
 
+@watch_app.command("harvest")
+def watch_harvest_cmd(
+    query: str = typer.Argument(..., help="X search query (e.g., 'fomo.app')."),
+    min_followers: int = typer.Option(2000, "--min", help="Minimum follower count."),
+    max_followers: int = typer.Option(50000, "--max", help="Maximum follower count."),
+    limit: int = typer.Option(60, "--limit", help="Max candidates to check."),
+    bio_any: Optional[str] = typer.Option(
+        None, "--bio-any",
+        help="Comma-separated tokens; bio must contain at least one.",
+    ),
+    bio_none: Optional[str] = typer.Option(
+        None, "--bio-none",
+        help="Comma-separated tokens; bio must contain NONE.",
+    ),
+    exclude_verified: bool = typer.Option(
+        False, "--exclude-verified", help="Skip blue-check accounts.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="Don't add to watchlist — just report matches.",
+    ),
+) -> None:
+    """Search X for handles matching a query, filter by follower count + bio,
+    add survivors to the active project's watchlist.
+
+    Example: accumulate $KILROY floor buyers from the fomo app:
+      memegine watch harvest 'fomo.app' --min 2000 --max 50000 \\
+        --bio-any 'trader,degen,$,ape,pump'
+
+    Requires: `memegine watch login` first.
+    """
+    from . import harvester
+    filt = harvester.HarvestFilter(
+        follower_min=min_followers,
+        follower_max=max_followers,
+        exclude_verified=exclude_verified,
+        bio_any_of=[s.strip() for s in (bio_any or "").split(",") if s.strip()],
+        bio_none_of=[s.strip() for s in (bio_none or "").split(",") if s.strip()],
+    )
+    try:
+        result = harvester.harvest_by_query(
+            query, filt, limit_candidates=limit, add_to_watchlist=not dry_run,
+        )
+    except RuntimeError as exc:
+        print(str(exc))
+        raise typer.Exit(code=1)
+    print(result.as_text())
+
+
 @watch_app.command("start")
 def watch_start_cmd(
     interval: int = typer.Option(180, "--interval", "-i",

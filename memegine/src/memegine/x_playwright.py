@@ -160,6 +160,160 @@ def timeline_tweet_ids(
     return asyncio.run(timeline_tweet_ids_async(handle, limit=limit, headless=headless))
 
 
+async def search_handles_async(
+    query: str,
+    *,
+    limit: int = 50,
+    headless: bool = True,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+) -> list[str]:
+    """X search query → unique list of handles that authored results.
+
+    Uses /search?q={query}&f=live (latest tab). Scrolls a few times to
+    pull past the first ~20 results. Returns lowercase handles.
+    """
+    _require_playwright()
+    from playwright.async_api import async_playwright
+    import urllib.parse as _up
+    if not SESSION_PATH.exists():
+        raise RuntimeError(
+            f"no saved X session at {SESSION_PATH} — run `memegine watch login`"
+        )
+    url = f"{BASE_URL}/search?q={_up.quote(query)}&src=typed_query&f=live"
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+        ctx = await browser.new_context(storage_state=str(SESSION_PATH))
+        page = await ctx.new_page()
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                await page.wait_for_selector(
+                    TIMELINE_SELECTOR, timeout=timeout_ms, state="attached",
+                )
+            except Exception:
+                return []
+            seen: list[str] = []
+            seen_set: set[str] = set()
+            for _ in range(max(1, limit // 10)):
+                links = await page.eval_on_selector_all(
+                    f"{TIMELINE_SELECTOR} a",
+                    "els => els.map(e => e.getAttribute('href')).filter(Boolean)",
+                )
+                for href in links:
+                    m = TWEET_LINK_RE.search(href or "")
+                    if m:
+                        h = m.group(1).lower()
+                        if h and h not in seen_set and not h.startswith("i/"):
+                            seen_set.add(h)
+                            seen.append(h)
+                if len(seen) >= limit:
+                    break
+                await page.mouse.wheel(0, 2400)
+                await page.wait_for_timeout(900)
+            return seen[:limit]
+        finally:
+            await browser.close()
+
+
+def search_handles(query: str, *, limit: int = 50) -> list[str]:
+    """Sync wrapper for search_handles_async."""
+    return asyncio.run(search_handles_async(query, limit=limit))
+
+
+async def handle_info_async(
+    handle: str,
+    *,
+    headless: bool = True,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+) -> dict:
+    """Get {followers, following, bio, joined} for a handle.
+
+    Returns empty dict on any failure. Follower count parsing handles
+    K/M suffixes.
+    """
+    _require_playwright()
+    from playwright.async_api import async_playwright
+    if not SESSION_PATH.exists():
+        raise RuntimeError(
+            f"no saved X session at {SESSION_PATH} — run `memegine watch login`"
+        )
+    handle = handle.lstrip("@").strip().lower()
+    if not handle:
+        return {}
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+        ctx = await browser.new_context(storage_state=str(SESSION_PATH))
+        page = await ctx.new_page()
+        try:
+            await page.goto(
+                f"{BASE_URL}/{handle}",
+                wait_until="domcontentloaded",
+                timeout=timeout_ms,
+            )
+            try:
+                await page.wait_for_selector(
+                    '[data-testid="UserName"]',
+                    timeout=timeout_ms, state="attached",
+                )
+            except Exception:
+                return {}
+            # Followers/following labels sit in a specific structure.
+            data = await page.evaluate("""
+                () => {
+                    const out = {followers: 0, following: 0, bio: '', verified: false};
+                    const userDesc = document.querySelector('[data-testid="UserDescription"]');
+                    if (userDesc) out.bio = userDesc.textContent || '';
+                    // Followers / following stats
+                    const anchors = Array.from(document.querySelectorAll('a[href*="/verified_followers"], a[href*="/followers"], a[href*="/following"]'));
+                    for (const a of anchors) {
+                        const href = a.getAttribute('href') || '';
+                        const spans = Array.from(a.querySelectorAll('span'))
+                            .map(s => (s.textContent || '').trim())
+                            .filter(Boolean);
+                        const first = spans[0] || '';
+                        if (href.includes('/following') && !out.following) out.following = first;
+                        if ((href.includes('/followers') || href.includes('/verified_followers')) && !out.followers) out.followers = first;
+                    }
+                    // Verified badge
+                    out.verified = !!document.querySelector('[data-testid="UserName"] svg[aria-label="Verified account"]');
+                    return out;
+                }
+            """)
+            return {
+                "handle": handle,
+                "followers": _parse_count(data.get("followers", "")),
+                "following": _parse_count(data.get("following", "")),
+                "bio": data.get("bio", ""),
+                "verified": bool(data.get("verified", False)),
+            }
+        finally:
+            await browser.close()
+
+
+def handle_info(handle: str) -> dict:
+    """Sync wrapper for handle_info_async."""
+    return asyncio.run(handle_info_async(handle))
+
+
+def _parse_count(s: str) -> int:
+    """Turn '12.3K' / '4.5M' / '890' into an int."""
+    if not s:
+        return 0
+    s = str(s).strip().upper().replace(",", "")
+    if not s:
+        return 0
+    try:
+        if s.endswith("K"):
+            return int(float(s[:-1]) * 1_000)
+        if s.endswith("M"):
+            return int(float(s[:-1]) * 1_000_000)
+        if s.endswith("B"):
+            return int(float(s[:-1]) * 1_000_000_000)
+        return int(float(s))
+    except (ValueError, TypeError):
+        return 0
+
+
 def session_exists() -> bool:
     return SESSION_PATH.exists()
 
