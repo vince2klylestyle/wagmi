@@ -84,15 +84,16 @@ def call_agent(
     if CLAUDE_BIN is None:
         return CliResponse(ok=False, error="claude CLI not found in PATH")
 
-    cmd = [CLAUDE_BIN, "--print", user_prompt,
+    # Pass prompt via STDIN (not argv) — Claude Code's CLI interprets argv prompts
+    # as agentic tasks; stdin prompts are treated as pure input to a single-shot call,
+    # which produces far cleaner narrative output.
+    cmd = [CLAUDE_BIN, "--print",
            "--output-format", "json",
            "--model", model,
            "--max-budget-usd", str(max_budget_usd),
            "--no-session-persistence"]
 
     if system_prompt:
-        # append-system-prompt keeps OAuth/subscription auth (bare breaks it)
-        # while stacking our role-specific instructions on top.
         cmd.extend(["--append-system-prompt", system_prompt])
     if json_schema:
         cmd.extend(["--json-schema", json.dumps(json_schema)])
@@ -102,8 +103,8 @@ def call_agent(
     start = time.time()
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd,
-            encoding="utf-8", errors="replace",
+            cmd, input=user_prompt, capture_output=True, text=True,
+            timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
         )
         latency = time.time() - start
     except subprocess.TimeoutExpired:
