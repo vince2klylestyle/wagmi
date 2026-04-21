@@ -4,6 +4,9 @@ infra/.env
 .env.*
 !bot/.env.example
 !.env.example
+!bot/.env.production.example
+# Explicit block: future .env.production populated with real keys stays out of git
+bot/.env.production
 *.key
 *.pem
 *.json.bak
