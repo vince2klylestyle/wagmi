@@ -50,6 +50,7 @@ ACTION_ROWS = {
         [("image",    "🖼 Make image")],
         [("video",    "🎥 Make video"), ("caption", "💬 Caption")],
         [("raid",     "🎯 5-asset raid pack"), ("refs", "📎 Library refs")],
+        [("kpfp",     "🖼 Kilroy their pfp")],
         [("spong",    "🟢 Spongify their pfp")],
         [("back",     "⬅ change brand")],
     ],
@@ -357,6 +358,8 @@ def _build_ops_handlers(cfg):
             await _send_raid_action(update, context, t)
         elif action == "spong":
             await _send_spongify_action(update, context, t)
+        elif action == "kpfp":
+            await _send_kilroy_pfp_action(update, context, t)
         elif action == "caption":
             await _send_caption_action(update, context, t)
 
@@ -438,6 +441,84 @@ def _build_ops_handlers(cfg):
             parse_mode="Markdown",
         )
         ops_db.action_log(tweet_id=t["id"], kind=kind, slug_or_ref_id=slug)
+
+    async def _send_kilroy_pfp_action(update, context, t):
+        """Composite a Kilroy peek over the tweet author's pfp — legend
+        reads '@<handle> WAS HERE' instead of 'KILROY WAS HERE'.
+        Output sent as photo to TG chat. No AI, no cost."""
+        chat_id = update.effective_chat.id
+        handle = t["handle"]
+        await context.bot.send_message(
+            chat_id=chat_id, text=f"🖼 kilroy'ing @{handle}'s pfp…",
+        )
+        # Find pfp URL (cached in ops_db or x_fetch JSONL)
+        pfp_url = (
+            (t.get("author_profile_image_url") or "").strip()
+        )
+        if not pfp_url:
+            # Fall back to spongify's resolver which checks multiple caches
+            from . import spongify as _sp
+            pfp_url = _sp._profile_pic_url(handle) or ""
+        if not pfp_url:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="❌ no profile pic cached for this handle yet. Paste a recent tweet from them first.",
+            )
+            return
+        # Download pfp
+        import urllib.request
+        try:
+            with urllib.request.urlopen(
+                urllib.request.Request(
+                    pfp_url,
+                    headers={"User-Agent": "Mozilla/5.0 (memegine)"},
+                ),
+                timeout=15,
+            ) as r:
+                base_bytes = r.read()
+        except Exception as exc:
+            await context.bot.send_message(
+                chat_id=chat_id, text=f"❌ pfp download failed: {exc}",
+            )
+            return
+        # Composite Kilroy with the author's handle as the legend
+        from . import kilroy_compositor
+        try:
+            result = kilroy_compositor.kilroy_onto(
+                base_bytes,
+                position="bottom-right",
+                size_pct=0.28,                    # bigger on a small pfp
+                text=f"@{handle.upper()} WAS HERE",
+            )
+        except Exception as exc:
+            await context.bot.send_message(
+                chat_id=chat_id, text=f"❌ composite failed: {exc}",
+            )
+            return
+
+        # Send as photo to TG via multipart
+        import urllib.request as _urlreq
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔗 open tweet", url=t["url"]),
+            InlineKeyboardButton("🔁 reroll", callback_data=f"t:a:kilroy:kpfp:{t['id']}"),
+        ]])
+        # Use bot.send_photo with bytes
+        import io
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=io.BytesIO(result.image_bytes),
+            caption=(
+                f"@{handle} was here — {result.mode} kilroy overlay, "
+                f"{result.overlay_pct}% of frame. Save this and reply to the tweet with it."
+            ),
+            reply_markup=kb,
+        )
+        ops_db.action_log(
+            tweet_id=t["id"], kind="kilroy_pfp",
+            slug_or_ref_id=handle,
+            note=f"{result.mode} @{result.overlay_pct}%",
+        )
 
     async def _send_spongify_action(update, context, t):
         chat_id = update.effective_chat.id

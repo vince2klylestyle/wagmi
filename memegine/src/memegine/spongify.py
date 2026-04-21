@@ -37,32 +37,62 @@ from .config import settings
 def _profile_pic_url(handle: str) -> Optional[str]:
     """Get a user's profile picture URL using the FREE syndication path.
 
-    Strategy:
-      1. Find any cached tweet by this handle in ops_db / x_fetch cache
-         — if present, read author_profile_image_url.
-      2. If not cached, fetch a known-recent tweet by this handle
-         (requires at least one URL they've been seen on), OR use the
-         Playwright fallback if available.
-
-    For the common case where we saw this handle via a card (operator
-    pasted a URL → card → ops_db has the tweet → pfp is already there),
-    this is instant and zero-cost.
+    Strategy (each step free, no auth):
+      1. ops_db cached tweets — read author_profile_image_url field
+      2. x_fetch JSONL cache — same field
+      3. RE-FETCH any cached tweet's ID fresh via syndication. Older
+         cached tweets pre-date the pfp field, so re-hitting the
+         syndication endpoint brings the pfp back + re-upserts it.
+      4. Playwright fallback (if session exists)
     """
-    # Try ops_db first — every tweet we've cached has the author's pfp.
+    lower = handle.lstrip("@").strip().lower()
+    if not lower:
+        return None
+
+    # (1) ops_db direct
     try:
         from . import ops_db
-        tweets = ops_db.tweets_recent(limit=10, handle=handle.lstrip("@").lower())
+        tweets = ops_db.tweets_recent(limit=20, handle=lower)
         for t in tweets:
             pfp = t.get("author_profile_image_url") or ""
             if pfp:
                 return pfp
     except Exception:
-        pass
-    # Try x_fetch cache
-    for td in x_fetch.recent(limit=100):
-        if td.author_handle == handle.lstrip("@").lower() and td.author_profile_image_url:
+        tweets = []
+
+    # (2) x_fetch JSONL
+    for td in x_fetch.recent(limit=200):
+        if td.author_handle == lower and td.author_profile_image_url:
             return td.author_profile_image_url
-    # Final fallback: Playwright (may fail if no session)
+
+    # (3) Re-fetch via syndication on any cached tweet ID for this handle
+    # (older cache entries pre-date the pfp field; this refreshes them).
+    try:
+        from . import ops_db as _db
+        candidate_ids = []
+        for t in _db.tweets_recent(limit=5, handle=lower):
+            tid = str(t.get("id", "")).strip()
+            if tid and tid not in candidate_ids:
+                candidate_ids.append(tid)
+        for tid in candidate_ids:
+            fresh = x_fetch.fetch(tid, use_cache=False)
+            if fresh and fresh.author_profile_image_url:
+                # Re-upsert to fill the field on cached entries
+                try:
+                    _db.tweet_upsert(
+                        id=fresh.id, handle=fresh.author_handle or lower,
+                        text=fresh.text, created_at=fresh.created_at,
+                        favorite_count=fresh.favorite_count,
+                        reply_count=fresh.reply_count,
+                        payload=fresh.as_dict(),
+                    )
+                except Exception:
+                    pass
+                return fresh.author_profile_image_url
+    except Exception:
+        pass
+
+    # (4) Playwright fallback (will fail quietly if no X session)
     try:
         return x_playwright.profile_picture_url(handle)
     except Exception:
