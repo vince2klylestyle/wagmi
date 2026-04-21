@@ -450,7 +450,11 @@ class TestDailyReporterGateIntegration:
         report = reporter.generate_report()
         assert "metrics" in report
         assert "alerts" in report
-        assert len(report["metrics"]) == 6
+        # Metrics: agreement_wr, regime_wr, walk_forward, session_drawdown,
+        # ic_per_factor, kelly_weights, anticipatory. (Anticipatory added
+        # Apr 17 2026 to surface a previously-unread data stream.)
+        assert len(report["metrics"]) == 7
+        assert "anticipatory" in report["metrics"]
 
 
 # ── CLI Gate Mode ─────────────────────────────────────────────

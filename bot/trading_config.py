@@ -88,7 +88,10 @@ class TradingConfig:
     # Rule: need 30 trades/param for statistical validity. 4 core params = 120 trades needed.
     max_open_positions: int = field(default_factory=lambda: _env_int("MAX_OPEN_POSITIONS", 8))
     # Was 3: with 0.5% risk/trade, 8 positions = 4% total risk (same as old 2 @ 2%)
-    taker_fee_bps: int = field(default_factory=lambda: _env_int("TAKER_FEE_BPS", 4))  # Hyperliquid: 3.5 bps taker, rounded up for safety
+    # SHIP-2026-04-19: Hyperliquid's actual Tier-0 taker is 45 bps (not 4).
+    # Prior value was a 10× underestimate causing the EV gate to approve trades
+    # with fake positive EV. See FEE_OPTIMIZATION_2026_04_17.md.
+    taker_fee_bps: int = field(default_factory=lambda: _env_int("TAKER_FEE_BPS", 45))
 
     # Circuit breakers
     circuit_breaker_daily_loss_pct: float = field(
