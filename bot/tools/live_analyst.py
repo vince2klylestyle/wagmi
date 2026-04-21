@@ -448,6 +448,28 @@ def agent_critic(summary: str, levels: Dict[str, Any], trade_out: Dict[str, Any]
             "latency_s": r.latency_s if r.ok else 0, **fields}
 
 
+def agent_risk(levels: Dict[str, Any], trade_out: Dict[str, Any], critic_out: Dict[str, Any], skip: bool) -> Dict[str, Any]:
+    """Risk agent: sizing + leverage guidance given current thesis."""
+    fields = _derive_risk_fields(levels, trade_out, critic_out)
+    if skip or not cli_available():
+        return {"ok": True, "agent": "risk", "narrative": _heuristic_risk_prose(levels, trade_out, critic_out), **fields}
+    action = trade_out.get("action", "wait")
+    rr = trade_out.get("rr_t1", 0)
+    vote = critic_out.get("vote", "pass")
+    prompt = (
+        f"Trade action={action} R:R={rr:.2f} critic_vote={vote}\n"
+        f"Symbol: {levels.get('symbol','?')} price={levels.get('price',0):.2f}\n"
+        f"ATR={levels['daily']['atr14']:.2f} ({levels['daily']['atr14']/levels['price']*100:.2f}%)\n\n"
+        "Propose: size_multiplier (0-2x, where 1x = standard position), "
+        "leverage (1-10x), max_loss_pct, and 1-2 risk flags. "
+        "Cite the conviction_count and critic vote in your reasoning."
+    )
+    r = call_agent(prompt, RISK_PROMPT_SYSTEM, model="haiku", max_budget_usd=0.05, timeout=45)
+    narrative = (r.text or "").strip() if r.ok else _heuristic_risk_prose(levels, trade_out, critic_out)
+    return {"ok": r.ok, "agent": "risk", "narrative": narrative,
+            "latency_s": r.latency_s if r.ok else 0, **fields}
+
+
 # -------- heuristic derivers (structured fields, always deterministic) --------
 
 def _derive_regime_fields(L: Dict[str, Any]) -> Dict[str, Any]:
@@ -613,6 +635,45 @@ def _heuristic_critic_prose(L: Dict[str, Any], trade_out: Dict[str, Any]) -> str
     return f"Primary risks: {risk_lines}. Size down if any conviction factor missing."
 
 
+def _derive_risk_fields(L: Dict[str, Any], trade_out: Dict[str, Any], critic_out: Dict[str, Any]) -> Dict[str, Any]:
+    """Deterministic risk sizing fields."""
+    if not L:
+        return {"size_multiplier": 0.5, "leverage": 3, "max_loss_pct": 2.0, "risk_flags": ["no_data"]}
+    action = trade_out.get("action", "wait")
+    vote = critic_out.get("vote", "pass")
+    conv = trade_out.get("conviction_count", 1) or 1
+    atr_pct = L["daily"]["atr14"] / L["price"] * 100
+    flags = []
+
+    if vote == "veto":
+        return {"size_multiplier": 0.0, "leverage": 1, "max_loss_pct": 0.0, "risk_flags": ["critic_veto"]}
+    if action == "wait":
+        return {"size_multiplier": 0.0, "leverage": 1, "max_loss_pct": 0.0, "risk_flags": ["no_trade"]}
+
+    # Base sizing from conviction count (stacking super-additivity)
+    base_mult = {1: 0.5, 2: 0.75, 3: 1.0, 4: 1.5}.get(min(conv, 4), 1.0)
+    if vote == "reduce":
+        base_mult *= 0.5
+        flags.append("critic_reduce")
+    if atr_pct > 5:
+        flags.append("high_vol")
+        base_mult *= 0.8
+    leverage = min(6 if conv >= 3 else 3, 10)
+    return {"size_multiplier": round(base_mult, 2), "leverage": leverage,
+            "max_loss_pct": 2.0 if vote == "pass" else 1.0, "risk_flags": flags}
+
+
+def _heuristic_risk_prose(L: Dict[str, Any], trade_out: Dict[str, Any], critic_out: Dict[str, Any]) -> str:
+    if not L:
+        return "No data — default risk sizing."
+    fields = _derive_risk_fields(L, trade_out, critic_out)
+    conv = trade_out.get("conviction_count", 1) or 1
+    return (f"Size {fields['size_multiplier']}x at {fields['leverage']}x leverage. "
+            f"Conviction={conv}/4 {'(4-aligned: PF 4.12 historical)' if conv >= 4 else ''}. "
+            f"Max loss {fields['max_loss_pct']}% of equity. "
+            f"Flags: {', '.join(fields['risk_flags']) if fields['risk_flags'] else 'none'}.")
+
+
 # (heuristic field-derivers and prose fallbacks are defined above, next to the agents they serve)
 
 
@@ -680,10 +741,14 @@ def run_once(symbols: List[str], skip_agents: bool = False) -> None:
             critic_out = agent_critic(summary, levels, trade_out, skip=skip_agents)
             logger.info(f"[{s}] critic: {critic_out.get('vote', '?')}")
 
+            risk_out = agent_risk(levels, trade_out, critic_out, skip=skip_agents)
+            logger.info(f"[{s}] risk: size={risk_out.get('size_multiplier','?')}x lev={risk_out.get('leverage','?')}x")
+
             committee = {
                 "regime": regime_out,
                 "trade": trade_out,
                 "critic": critic_out,
+                "risk": risk_out,
                 "mode": "cli" if (cli_available() and not skip_agents) else "heuristic",
             }
 
@@ -710,8 +775,21 @@ def main():
                 f"cli_available={cli_available()}")
 
     if args.loop:
+        pass_count = 0
         while True:
             run_once(symbols, skip_agents=args.no_agents)
+            pass_count += 1
+            # Grade stale theses every 6 passes (~1 hour at default interval)
+            if pass_count % 6 == 0:
+                try:
+                    from tools.thesis_tracker import grade_theses
+                    new_grades = grade_theses()
+                    if new_grades:
+                        logger.info(f"Graded {len(new_grades)} theses: "
+                                    + ", ".join(f"{g['symbol']} dir={g['direction_correct']} r={g['r_move']}"
+                                                for g in new_grades))
+                except Exception as e:
+                    logger.warning(f"grade_theses failed: {e}")
             logger.info(f"Sleeping {args.interval}s...")
             time.sleep(args.interval)
     else:

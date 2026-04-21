@@ -70,6 +70,7 @@ type ThesisFull = {
     regime?: CommitteeAgent;
     trade?: CommitteeAgent;
     critic?: CommitteeAgent;
+    risk?: CommitteeAgent;
     mode?: string;
   };
   charts?: string[];
@@ -186,6 +187,7 @@ function SymbolDetail({ symbol }: { symbol: string }) {
   const regime = committee?.regime;
   const trade = committee?.trade;
   const critic = committee?.critic;
+  const risk = committee?.risk;
 
   return (
     <div>
@@ -272,6 +274,14 @@ function SymbolDetail({ symbol }: { symbol: string }) {
           ['Vote', critic?.vote],
           ['Risk flags', (critic?.risk_flags || []).join(', ') || 'none'],
         ]} />
+        {risk && (
+          <AgentCard title="⚖️ Risk" color={risk?.size_multiplier === 0 ? '#6e7681' : '#58a6ff'} a={risk} fields={[
+            ['Size', risk?.size_multiplier != null ? `${risk.size_multiplier}x` : undefined],
+            ['Leverage', risk?.leverage != null ? `${risk.leverage}x` : undefined],
+            ['Max loss', risk?.max_loss_pct != null ? `${risk.max_loss_pct}%` : undefined],
+            ['Flags', (risk?.risk_flags || []).join(', ') || 'none'],
+          ]} />
+        )}
       </div>
 
       {/* Charts */}
