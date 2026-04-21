@@ -27,8 +27,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional
 
-from . import ops_db, x_fetch, x_playwright
+import os
+
+from . import ops_db, x_fetch
 from .config import settings
+
+
+def _tweet_source() -> str:
+    """Return 'twitterapi', 'getxapi', or 'playwright' based on env vars.
+
+    Priority: twitterapi (key set) → getxapi (key set) → playwright.
+    """
+    if os.environ.get("MEMEGINE_TWITTERAPI_KEY", "").strip():
+        return "twitterapi"
+    if os.environ.get("MEMEGINE_GETXAPI_KEY", "").strip():
+        return "getxapi"
+    return "playwright"
 
 
 @dataclass
@@ -103,13 +117,34 @@ def _seed_state_from_db() -> dict[str, HandleState]:
 def _check_one(
     state: HandleState, cfg: WatcherConfig,
 ) -> tuple[list[x_fetch.TweetData], bool]:
-    """Poll one handle. Returns (new_tweets, had_error)."""
+    """Poll one handle. Returns (new_tweets, had_error).
+
+    Source auto-selects: twitterapi.io → getxapi → playwright fallback.
+    Paid APIs return TweetData directly (no separate syndication
+    fetch), so they're both cheaper AND faster.
+    """
+    source = _tweet_source()
     try:
-        ids = x_playwright.timeline_tweet_ids(
-            state.handle, limit=cfg.limit_per_handle,
-        )
-    except x_playwright.PlaywrightNotInstalled:
-        raise
+        if source == "twitterapi":
+            from . import twitterapi_client
+            tweets = twitterapi_client.user_last_tweets(
+                state.handle, limit=cfg.limit_per_handle,
+            )
+            new_ids = [t.id for t in tweets]
+            fetched_by_id = {t.id: t for t in tweets}
+        elif source == "getxapi":
+            from . import getxapi_client  # built in wave 48b
+            tweets = getxapi_client.user_last_tweets(
+                state.handle, limit=cfg.limit_per_handle,
+            )
+            new_ids = [t.id for t in tweets]
+            fetched_by_id = {t.id: t for t in tweets}
+        else:
+            from . import x_playwright
+            new_ids = x_playwright.timeline_tweet_ids(
+                state.handle, limit=cfg.limit_per_handle,
+            )
+            fetched_by_id = {}
     except Exception as exc:
         state.consecutive_errors += 1
         state.last_error = f"{type(exc).__name__}: {exc}"
@@ -127,14 +162,17 @@ def _check_one(
     state.last_check_at = _now()
 
     new_tweets: list[x_fetch.TweetData] = []
-    for tid in ids:
+    for tid in new_ids:
         if tid in state.seen_ids:
             continue
         state.seen_ids.add(tid)
-        td = x_fetch.fetch(tid, use_cache=True)
+        td = fetched_by_id.get(tid)
+        if td is None:
+            # Playwright path: we only got IDs, need to fetch content
+            # via the free syndication endpoint.
+            td = x_fetch.fetch(tid, use_cache=True)
         if td is None:
             continue
-        # Persist to ops_db (also cached by x_fetch to JSONL).
         ops_db.tweet_upsert(
             id=td.id, handle=td.author_handle or state.handle,
             text=td.text, created_at=td.created_at,
