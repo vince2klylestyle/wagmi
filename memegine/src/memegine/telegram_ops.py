@@ -33,32 +33,70 @@ from .config import settings
 
 GROK_URL = "https://grok.com/imagine"
 
-# Short button labels optimize for narrow mobile rows.
-# Two rows to keep each row at 3-4 buttons — comfortable on mobile.
-ACTIONS_ROW1 = [
-    ("refs", "📎 Refs"),
-    ("brief", "✍ Brief"),
-    ("video", "🎬 Video"),
+# Two-step button flow:
+#   Step 1: pick BRAND for the reply (kilroy / motion / spong)
+#   Step 2: pick ACTION to produce
+# Clearer labels so the operator knows exactly what each button does.
+BRAND_BUTTONS = [
+    ("kilroy", "🖼 Kilroy"),
+    ("motion", "🎬 Motion"),
+    ("spong",  "🟢 Spong"),
 ]
-ACTIONS_ROW2 = [
-    ("raid", "🎯 Raid"),
-    ("spong", "🟢 Spongify"),
-]
-ACTIONS = ACTIONS_ROW1 + ACTIONS_ROW2
+
+# Actions grouped into rows — each button's label makes the output
+# concrete, not jargon.
+ACTION_ROWS = {
+    "kilroy": [
+        [("image",    "🖼 Make image")],
+        [("video",    "🎥 Make video"), ("caption", "💬 Caption")],
+        [("raid",     "🎯 5-asset raid pack"), ("refs", "📎 Library refs")],
+        [("spong",    "🟢 Spongify their pfp")],
+        [("back",     "⬅ change brand")],
+    ],
+    "motion": [
+        [("image",    "🎬 Make image")],
+        [("video",    "🎥 Make video"), ("caption", "💬 Caption")],
+        [("raid",     "🎯 5-asset raid pack"), ("refs", "📎 Library refs")],
+        [("back",     "⬅ change brand")],
+    ],
+    "spong": [
+        [("image",    "🟢 Make image")],
+        [("video",    "🎥 Make video"), ("caption", "💬 Caption")],
+        [("raid",     "🎯 4-asset raid pack"), ("refs", "📎 Library refs")],
+        [("spong",    "🟢 Spongify their pfp")],
+        [("back",     "⬅ change brand")],
+    ],
+}
 
 
-def _keyboard_for_tweet(tweet_id: str):
-    """Build the inline keyboard for a tweet card (2 rows)."""
+def _keyboard_brand_select(tweet_id: str):
+    """Step 1: operator picks which brand to raid with."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    row1 = [
-        InlineKeyboardButton(label, callback_data=f"t:{act}:{tweet_id}")
-        for act, label in ACTIONS_ROW1
+    row = [
+        InlineKeyboardButton(label, callback_data=f"t:b:{brand}:{tweet_id}")
+        for brand, label in BRAND_BUTTONS
     ]
-    row2 = [
-        InlineKeyboardButton(label, callback_data=f"t:{act}:{tweet_id}")
-        for act, label in ACTIONS_ROW2
-    ]
-    return InlineKeyboardMarkup([row1, row2])
+    return InlineKeyboardMarkup([row])
+
+
+def _keyboard_action_select(brand: str, tweet_id: str):
+    """Step 2: operator picks what to produce for the chosen brand."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    rows = []
+    for row_defs in ACTION_ROWS.get(brand, ACTION_ROWS["kilroy"]):
+        buttons = []
+        for action, label in row_defs:
+            buttons.append(InlineKeyboardButton(
+                label, callback_data=f"t:a:{brand}:{action}:{tweet_id}",
+            ))
+        rows.append(buttons)
+    return InlineKeyboardMarkup(rows)
+
+
+# Legacy shim — old pushes / one-shots still call this. Keep the 2-row
+# layout so existing callers keep working.
+def _keyboard_for_tweet(tweet_id: str):
+    return _keyboard_brand_select(tweet_id)
 
 
 def _format_tweet_caption(t: dict, *, max_chars: int = 900) -> str:
@@ -84,11 +122,12 @@ async def _send_tweet_card(update_or_context, chat_id: int, t: dict) -> None:
     """Send one tweet as a card with inline buttons.
 
     Uses the first media URL if present (send_photo), else send_message.
+    Always starts in step-1 mode (brand selector).
     """
     from telegram import Bot
     bot = update_or_context.bot if hasattr(update_or_context, "bot") else update_or_context
-    caption = _format_tweet_caption(t)
-    kb = _keyboard_for_tweet(t["id"])
+    caption = _format_tweet_caption(t) + "\n\n👇 Pick a brand for the reply:"
+    kb = _keyboard_brand_select(t["id"])
     media_urls = t.get("media_urls") or []
     # Only attach photo media (TG's send_photo doesn't handle .mp4 directly here).
     photo_url = next(
@@ -252,22 +291,65 @@ def _build_ops_handlers(cfg):
         data = q.data or ""
         if not data.startswith("t:"):
             return
-        parts = data.split(":", 2)
-        if len(parts) < 3:
+        parts = data.split(":")
+        # New format:
+        #   t:b:{brand}:{tweet_id}                 — brand chosen, show actions
+        #   t:a:{brand}:{action}:{tweet_id}        — action fired
+        # Legacy format (still handled for any in-flight messages):
+        #   t:{action}:{tweet_id}
+        if len(parts) == 4 and parts[1] == "b":
+            # Brand pick — swap keyboard to action menu
+            _, _, brand, tweet_id = parts
+            if brand in ACTION_ROWS:
+                try:
+                    await q.edit_message_reply_markup(
+                        reply_markup=_keyboard_action_select(brand, tweet_id)
+                    )
+                except Exception:
+                    pass
             return
-        _, action, tweet_id = parts
+        if len(parts) == 5 and parts[1] == "a":
+            _, _, brand, action, tweet_id = parts
+            if action == "back":
+                try:
+                    await q.edit_message_reply_markup(
+                        reply_markup=_keyboard_brand_select(tweet_id)
+                    )
+                except Exception:
+                    pass
+                return
+        elif len(parts) == 3:
+            # legacy path — treat as action=parts[1], no brand change
+            _, action, tweet_id = parts
+            brand = settings.project
+        else:
+            return
+
+        # Switch active project to the chosen brand for this tap
+        if brand and brand != settings.project:
+            try:
+                from . import projects as _projects
+                _projects.set_active(brand)
+                settings.refresh_project(brand)
+            except Exception:
+                pass
+
         tweets = ops_db.tweets_recent(limit=500)
         t = next((x for x in tweets if x["id"] == tweet_id), None)
         if t is None:
-            await q.edit_message_reply_markup(reply_markup=None)
+            try:
+                await q.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="⚠ tweet not in cache — refetch with /fetchtweet",
+                text="⚠ tweet not in cache — paste the URL again.",
             )
             return
+
         if action == "refs":
             await _send_refs_action(update, context, t)
-        elif action == "brief":
+        elif action in ("brief", "image"):
             await _send_brief_action(update, context, t, kind="image")
         elif action == "video":
             await _send_brief_action(update, context, t, kind="video")
@@ -275,6 +357,8 @@ def _build_ops_handlers(cfg):
             await _send_raid_action(update, context, t)
         elif action == "spong":
             await _send_spongify_action(update, context, t)
+        elif action == "caption":
+            await _send_caption_action(update, context, t)
 
     async def _send_refs_action(update, context, t):
         plan = reply_for_mod.plan(t["url"], generate_brief=False, open_browser=False)
