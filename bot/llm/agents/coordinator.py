@@ -2261,6 +2261,16 @@ class AgentCoordinator:
         except Exception as _se:
             logger.debug(f"[OVERSEER] Self-analyst launch error: {_se}")
 
+        # Trigger deep trade analyst: milestone-gated full historical analysis
+        # (runs at 50/100/150/200/300 trade milestones, writes to insight_journal)
+        try:
+            from llm.deep_trade_analyst import run_milestone_check as _deep_check
+            import threading as _threading2
+            _t2 = _threading2.Thread(target=_deep_check, daemon=True, name="deep_analyst")
+            _t2.start()
+        except Exception as _de:
+            logger.debug(f"[OVERSEER] Deep analyst launch error: {_de}")
+
         logger.info(
             f"[MULTI-AGENT] Overseer: health={health}, "
             f"{len(recs)} recommendations, {len(theses)} theses, "
