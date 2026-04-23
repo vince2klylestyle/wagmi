@@ -326,6 +326,9 @@ class TestEnrichPrompt:
         monkeypatch.setattr(enricher_mod, "_CIRCUIT_BREAKER_PATH", str(tmp_path / "nonexistent9.json"))
         monkeypatch.setattr(enricher_mod, "_PERFORMANCE_PATH", str(tmp_path / "nonexistent10.json"))
         monkeypatch.setattr(enricher_mod, "_COUNTERFACTUAL_PATH", str(tmp_path / "nonexistent11.json"))
+        monkeypatch.setattr(enricher_mod, "_HYPOTHESES_PATH", str(tmp_path / "nonexistent12.json"))
+        monkeypatch.setattr(enricher_mod, "_CONFIDENCE_STATE_PATH", str(tmp_path / "nonexistent13.json"))
+        monkeypatch.setattr(enricher_mod, "_TRADE_DNA_PATH", str(tmp_path / "nonexistent14.json"))
         invalidate_cache()
 
         base = "Base prompt here."

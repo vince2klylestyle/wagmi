@@ -10,6 +10,7 @@ Reads from:
   - meta_learning/insights.json — cross-trade pattern analysis
   - overseer_memo.json — latest Overseer recommendations (written by run_overseer)
   - feedback/adaptive_risk_state.json — real-time streak + regime WR
+  - llm/growth/hypotheses.json — validated/testing hypotheses from growth tracker
 
 Each agent gets a tailored "QUANT INTELLIGENCE BRIEFING" appended to its prompt,
 plus validated rules, meta-patterns, overseer memo, and recent performance.
@@ -40,6 +41,9 @@ _ADAPTIVE_RISK_PATH = os.path.join(_DATA_DIR, "feedback", "adaptive_risk_state.j
 _CIRCUIT_BREAKER_PATH = os.path.join(_DATA_DIR, "circuit_breaker_state.json")
 _PERFORMANCE_PATH = os.path.join(_DATA_DIR, "analysis", "performance.json")
 _COUNTERFACTUAL_PATH = os.path.join(_DATA_DIR, "counterfactuals", "scenarios.json")
+_HYPOTHESES_PATH = os.path.join(_DATA_DIR, "llm", "growth", "hypotheses.json")
+_CONFIDENCE_STATE_PATH = os.path.join(_DATA_DIR, "feedback", "confidence_state.json")
+_TRADE_DNA_PATH = os.path.join(_DATA_DIR, "llm", "deep_memory", "trade_dna.json")
 
 # ── Cache ───────────────────────────────────────────────────────
 _CACHE_TTL_S = 1800  # 30 min — balance freshness vs I/O
@@ -149,6 +153,7 @@ def _refresh_cache() -> None:
     circuit_breaker = _load_json_safe(_CIRCUIT_BREAKER_PATH, {})
     performance = _load_json_safe(_PERFORMANCE_PATH, {})
     counterfactuals = _load_json_safe(_COUNTERFACTUAL_PATH, {"scenarios": []})
+    hypotheses_data = _load_json_safe(_HYPOTHESES_PATH, {"hypotheses": []})
 
     _cache = {
         "insights": insights,
@@ -162,6 +167,9 @@ def _refresh_cache() -> None:
         "circuit_breaker": circuit_breaker,
         "performance": performance,
         "counterfactuals": counterfactuals.get("scenarios", []),
+        "hypotheses": hypotheses_data.get("hypotheses", []),
+        "confidence_state": _load_json_safe(_CONFIDENCE_STATE_PATH, {}),
+        "trade_dna": _load_json_safe(_TRADE_DNA_PATH, {"trades": []}).get("trades", []),
     }
     _cache_ts = now
 
@@ -620,6 +628,150 @@ def _build_adaptive_risk_context() -> str:
     return "=== REAL-TIME RISK STATE ===\n" + "\n".join(lines)
 
 
+def _build_trade_dna_summary() -> str:
+    """Compute live WR statistics from trade_dna.json by regime and symbol+side.
+
+    Returns the top winners and worst losers as actionable lines. Only includes
+    cells with >=5 trades so the signal is statistically meaningful.
+    """
+    trades = _cache.get("trade_dna", [])
+    if not trades:
+        return ""
+
+    from collections import defaultdict
+
+    reg: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+    cell: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+
+    for t in trades:
+        regime = (t.get("regime") or "").strip()
+        sym = t.get("symbol", "?")
+        side = t.get("side", "?")
+        win = t.get("outcome") == "WIN"
+        pnl = float(t.get("pnl") or 0)
+
+        if regime:
+            reg[regime]["total"] += 1
+            reg[regime]["pnl"] += pnl
+            if win:
+                reg[regime]["wins"] += 1
+
+        k = f"{sym}.{side}"
+        cell[k]["total"] += 1
+        cell[k]["pnl"] += pnl
+        if win:
+            cell[k]["wins"] += 1
+
+    lines = ["=== TRADE DNA (live WR from past trades) ==="]
+
+    # Top regimes by total
+    qualified_reg = {r: s for r, s in reg.items() if s["total"] >= 5}
+    if qualified_reg:
+        best = sorted(qualified_reg.items(), key=lambda x: x[1]["pnl"], reverse=True)
+        lines.append("  Regime edge:")
+        for r, s in best[:4]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            lines.append(f"    {r}: {wr:.0%} WR avg_pnl=${avg:.1f} (n={s['total']})")
+
+    # Top/bottom symbol+side cells
+    qualified_cell = {k: s for k, s in cell.items() if s["total"] >= 5}
+    if qualified_cell:
+        sorted_cells = sorted(qualified_cell.items(), key=lambda x: x[1]["pnl"] / x[1]["total"], reverse=True)
+        lines.append("  Symbol edge (by avg PnL):")
+        for k, s in sorted_cells[:3]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            lines.append(f"    {k}: {wr:.0%} WR avg_pnl=${avg:.1f} (n={s['total']})")
+        # Also show worst
+        for k, s in sorted_cells[-2:]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            if avg < 0:
+                lines.append(f"    {k}: {wr:.0%} WR avg_pnl=${avg:.1f} AVOID")
+
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines)
+
+
+def _build_confidence_calibration() -> str:
+    """Surface calibrated confidence floors and per-symbol/regime adjustments.
+
+    Shows the Trade/Risk Agent the live confidence thresholds so it knows
+    when a signal's confidence is below the empirically-calibrated floor.
+    """
+    cs = _cache.get("confidence_state", {})
+    if not cs:
+        return ""
+
+    lines = ["=== CONFIDENCE CALIBRATION ==="]
+    floor = cs.get("current_floor")
+    if floor:
+        lines.append(f"  Min confidence threshold: {floor:.0f}%")
+
+    strat_floors = cs.get("strategy_floors", {})
+    if strat_floors:
+        sf_parts = [f"{k}={v:.0f}%" for k, v in strat_floors.items() if v]
+        if sf_parts:
+            lines.append(f"  Strategy floors: {', '.join(sf_parts)}")
+
+    sym_adj = cs.get("symbol_adjustments", {})
+    if sym_adj:
+        top_sym = sorted(sym_adj.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
+        adj_parts = [f"{s}={'+' if v > 0 else ''}{v:.2f}" for s, v in top_sym]
+        lines.append(f"  Symbol edge adj: {', '.join(adj_parts)}")
+
+    reg_adj = cs.get("regime_adjustments", {})
+    if reg_adj:
+        top_reg = sorted(reg_adj.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
+        adj_parts = [f"{r}={'+' if v > 0 else ''}{v:.2f}" for r, v in top_reg]
+        lines.append(f"  Regime edge adj: {', '.join(adj_parts)}")
+
+    if len(lines) == 1:
+        return ""
+
+    return "\n".join(lines)
+
+
+def _build_validated_hypotheses(agent_role: str) -> str:
+    """Surface validated + high-confidence hypotheses from growth/hypotheses.json.
+
+    Only includes hypotheses in 'validated' stage or 'testing' with confidence>=0.7.
+    Skips invalidated ones. Returns empty string if none qualify.
+    """
+    hyps = _cache.get("hypotheses", [])
+    if not hyps:
+        return ""
+
+    qualified = [
+        h for h in hyps
+        if (
+            h.get("stage") in ("validated",) or
+            (h.get("stage") == "testing" and h.get("confidence", 0) >= 0.7)
+        )
+        and h.get("statement", "")
+    ]
+    if not qualified:
+        return ""
+
+    # Sort: validated first, then confidence
+    qualified.sort(
+        key=lambda h: (1 if h.get("stage") == "validated" else 0, h.get("confidence", 0)),
+        reverse=True,
+    )
+    top = qualified[:3]
+
+    lines = ["=== ACTIVE HYPOTHESES (empirically tested) ==="]
+    for h in top:
+        stage = h.get("stage", "?")
+        conf = h.get("confidence", 0)
+        stmt = str(h.get("statement", ""))[:150]
+        lines.append(f"  [{stage.upper()} conf={conf:.0%}] {stmt}")
+
+    return "\n".join(lines)
+
+
 def enrich_prompt(agent_role: str, base_prompt: str) -> str:
     """Enrich an agent's base prompt with the latest quant intelligence.
 
@@ -701,13 +853,31 @@ def enrich_prompt(agent_role: str, base_prompt: str) -> str:
     if system_health:
         sections.append(system_health)
 
+    # 11. Validated hypotheses (for decision agents — empirically tested edge claims)
+    if agent_role in ("trade", "risk", "critic", "regime", "quant", "overseer"):
+        hyp_section = _build_validated_hypotheses(agent_role)
+        if hyp_section:
+            sections.append(hyp_section)
+
+    # 12. Confidence calibration (floors + symbol/regime adjustments)
+    if agent_role in ("trade", "risk", "critic"):
+        conf_cal = _build_confidence_calibration()
+        if conf_cal:
+            sections.append(conf_cal)
+
+    # 13. Trade DNA — live WR by regime and symbol+side (50+ trades = reliable signal)
+    if agent_role in ("trade", "risk", "critic", "regime", "overseer"):
+        dna = _build_trade_dna_summary()
+        if dna:
+            sections.append(dna)
+
     if not sections:
         return base_prompt
 
-    # Join all sections and enforce token budget (raised to 4000 chars — CLI is $0/call)
+    # Join all sections and enforce token budget (raised to 5000 chars — CLI is $0/call)
     enrichment = "\n\n".join(sections)
-    if len(enrichment) > 4000:
-        enrichment = enrichment[:3997] + "..."
+    if len(enrichment) > 5000:
+        enrichment = enrichment[:4997] + "..."
 
     return f"{base_prompt}\n\n{enrichment}"
 

@@ -1708,6 +1708,23 @@ class AgentCoordinator:
                 f"{out.data.get('lesson', '')[:80]}"
             )
 
+            # Persist lesson to short-term memory so future agents see it
+            try:
+                from llm.memory_store import apply_memory_update as _mem_upd
+                _lesson_txt = (
+                    out.data.get("lesson") or
+                    out.data.get("insight") or
+                    out.data.get("summary") or ""
+                )
+                if _lesson_txt:
+                    _mem_upd(
+                        _lesson_txt[:200],
+                        symbol=trade_data.get("symbol", ""),
+                        regime=trade_data.get("regime", ""),
+                    )
+            except Exception as _me:
+                logger.debug(f"[LEARNING] Memory write error: {_me}")
+
             try:
                 from llm.agents.performance_tracker import get_performance_tracker
                 import uuid as _uuid
