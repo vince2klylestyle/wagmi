@@ -78,7 +78,7 @@ class SwarmOptimizer:
                 "temperature": 0.7,
             },
             "sizing_specialist": {
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-haiku-4-5",
                 "max_tokens": 1024,
                 "temperature": 0.6,
             },
@@ -93,7 +93,7 @@ class SwarmOptimizer:
                 "temperature": 0.8,  # More creative for discovery
             },
             "multi_signal_comparator": {
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-haiku-4-5",
                 "max_tokens": 1024,
                 "temperature": 0.6,
             },

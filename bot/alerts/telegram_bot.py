@@ -2093,7 +2093,7 @@ class TelegramCommandBot:
             result, usage = call_llm(
                 system_prompt=system_prompt,
                 snapshot_json="\n".join(ctx_parts),
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=400,
                 timeout=20.0,
             )
@@ -2228,7 +2228,7 @@ class TelegramCommandBot:
             result, usage = call_llm(
                 system_prompt=system_prompt,
                 snapshot_json="\n".join(ctx_parts),
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=500,
                 timeout=25.0,
             )

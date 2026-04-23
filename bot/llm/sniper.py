@@ -46,7 +46,7 @@ _SL_ATR_MULT = 0.5              # tight stop: 0.5x ATR (vs normal 1-2x)
 _TP1_R = 1.5                    # TP1 at 1.5R from tight stop
 _TP2_R = 3.0                    # TP2 at 3.0R from tight stop
 _SIZE_FRACTION = 0.5            # 50% of normal position size
-_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_MODEL = "claude-haiku-4-5"
 
 
 # ── Data types ─────────────────────────────────────────────────────────────

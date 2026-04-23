@@ -52,7 +52,7 @@ def get_client():
 def call_llm(
     system_prompt: str,
     snapshot_json: str,
-    model: str = "claude-sonnet-4-5-20250929",
+    model: str = "claude-sonnet-4-6",
     max_tokens: int = 4096,
     max_retries: int = 2,
     timeout: float = 30.0,

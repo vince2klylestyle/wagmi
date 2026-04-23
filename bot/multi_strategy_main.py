@@ -6735,13 +6735,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         }
 
         # Market context
+        _now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        _lp = self._last_prices if hasattr(self, '_last_prices') else {}
+        _pc1h = self._price_changes_1h if hasattr(self, '_price_changes_1h') else {}
         market_ctx = {
             "funding_rate": self._last_funding_rates.get(symbol),
             "volume_ratio": (raw_signal.metadata or {}).get("volume_ratio", 1.0),
-            "time_utc_hour": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ).hour,
-            "btc_trend": self._price_changes_1h.get("BTC", 0.0) if hasattr(self, '_price_changes_1h') else 0.0,
+            "time_utc_hour": _now_utc.hour,
+            "day_of_week": _now_utc.weekday(),  # 0=Mon … 6=Sun; weekends = low liquidity
+            "btc_price": _lp.get("BTC", _lp.get("BTC/USDC:USDC", 0.0)),
+            "btc_trend": _pc1h.get("BTC", 0.0),
+            "eth_price": _lp.get("ETH", _lp.get("ETH/USDC:USDC", 0.0)),
+            "eth_trend": _pc1h.get("ETH", 0.0),
+            "sol_price": _lp.get("SOL", _lp.get("SOL/USDC:USDC", 0.0)),
+            "sol_trend": _pc1h.get("SOL", 0.0),
             "signal_age": time.time() - (raw_signal.metadata or {}).get("generated_at", time.time()),
             "ohlcv_1h": data.get("1h"),
             "ohlcv_5m": data.get("5m"),

@@ -85,6 +85,8 @@ _MODEL_ALIAS = {
     "claude-sonnet": "sonnet",
     "claude-opus-4-7": "opus",
     "claude-opus-4-6": "opus",
+    "claude-opus-4-5": "opus",
+    "claude-opus-4-20250115": "opus",
     "claude-opus-3-5-20241022": "opus",
     "claude-opus": "opus",
 }
@@ -115,14 +117,9 @@ def _call_llm_via_cli(
     # Prepend a hard JSON-only constraint to the user prompt.
     # This appears right before the model must respond — harder to ignore than system-prompt rules.
     json_guard = "OUTPUT RAW JSON ONLY — no prose, no markdown, no explanation. Start {, end }.\n\nDATA:\n"
-    # Windows CLI limit: cap user prompt to 3500 chars to avoid "command line too long" error.
-    # The snapshot_json can be 6000+ chars with enriched context — truncate gracefully.
-    _MAX_USER_PROMPT = 3500
-    truncated_snapshot = snapshot_json if len(snapshot_json) <= _MAX_USER_PROMPT else (
-        snapshot_json[:_MAX_USER_PROMPT] + '... [truncated for CLI routing]'
-    )
+    # Snapshot goes via stdin — no Windows cmd-line length limit. Pass full context.
     resp = _cli_call(
-        user_prompt=json_guard + truncated_snapshot,
+        user_prompt=json_guard + snapshot_json,
         system_prompt=full_system,
         model=cli_model,
         max_budget_usd=0.10,
@@ -1642,7 +1639,13 @@ class AgentCoordinator:
             "funding_rate": market_ctx.get("funding_rate"),
             "volume_ratio": market_ctx.get("volume_ratio", 1.0),
             "time_utc_hour": market_ctx.get("time_utc_hour"),
+            "day_of_week": market_ctx.get("day_of_week"),
+            "btc_price": market_ctx.get("btc_price", 0),
             "btc_trend": market_ctx.get("btc_trend", 0),
+            "eth_price": market_ctx.get("eth_price", 0),
+            "eth_trend": market_ctx.get("eth_trend", 0),
+            "sol_price": market_ctx.get("sol_price", 0),
+            "sol_trend": market_ctx.get("sol_trend", 0),
             "signal_age_s": market_ctx.get("signal_age", 0),
             # Portfolio context
             "portfolio_correlation": portfolio_ctx.get("correlation_matrix"),
@@ -1862,7 +1865,7 @@ class AgentCoordinator:
             out = self._call_agent(
                 AgentRole.OVERRIDE,
                 input_json,
-                fallback_model="claude-sonnet-4-5-20250929",
+                fallback_model="claude-sonnet-4-6",
             )
 
             if not out or not out.ok:
@@ -4586,7 +4589,7 @@ def _get_default_model(role: AgentRole) -> str:
     try:
         from llm.usage_tiers import MODEL_HAIKU, MODEL_SONNET
     except ImportError:
-        return "claude-sonnet-4-5-20250929"
+        return "claude-sonnet-4-6"
 
     if role in (AgentRole.REGIME, AgentRole.RISK, AgentRole.LEARNING, AgentRole.EXIT, AgentRole.SCOUT, AgentRole.QUANT):
         return MODEL_HAIKU

@@ -34,9 +34,9 @@ logger = logging.getLogger("bot.backtest.llm")
 
 # Model pricing per 1M tokens (input, output)
 _MODEL_PRICING = {
-    "claude-haiku-4-5-20251001": (1.0, 5.0),
-    "claude-sonnet-4-5-20250929": (3.0, 15.0),
-    "claude-opus-4-20250115": (15.0, 75.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-opus-4-5": (15.0, 75.0),
 }
 
 # Default pricing for unknown models (use Sonnet as conservative estimate)
@@ -168,7 +168,7 @@ class BacktestLLMIntegration:
             text, usage = call_llm(
                 system_prompt="Reply with exactly: OK",
                 snapshot_json="{}",
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=8,
                 max_retries=1,
                 timeout=15.0,
@@ -1010,8 +1010,8 @@ class BacktestLLMIntegration:
         """Compute cost from a single call_llm usage dict."""
         in_tokens = usage.get("input_tokens", 0)
         out_tokens = usage.get("output_tokens", 0)
-        in_cost = in_tokens * _MODEL_PRICING["claude-haiku-4-5-20251001"][0] / 1_000_000
-        out_cost = out_tokens * _MODEL_PRICING["claude-haiku-4-5-20251001"][1] / 1_000_000
+        in_cost = in_tokens * _MODEL_PRICING["claude-haiku-4-5"][0] / 1_000_000
+        out_cost = out_tokens * _MODEL_PRICING["claude-haiku-4-5"][1] / 1_000_000
         return in_cost + out_cost
 
     def _build_test_snapshot(self, symbol: str, price: float) -> dict:

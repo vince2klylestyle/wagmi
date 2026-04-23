@@ -21,9 +21,9 @@ from datetime import datetime, timezone
 
 
 _PRICING = {
-    "claude-haiku-4-5-20251001": ("Haiku 4.5", 0.80, 4.00, 1.00, 0.08),
-    "claude-sonnet-4-5-20250929": ("Sonnet 4.5", 3.00, 15.00, 3.75, 0.30),
-    "claude-opus-4-20250115": ("Opus 4", 15.00, 75.00, 18.75, 1.50),
+    "claude-haiku-4-5": ("Haiku 4.5", 0.80, 4.00, 1.00, 0.08),
+    "claude-sonnet-4-6": ("Sonnet 4.5", 3.00, 15.00, 3.75, 0.30),
+    "claude-opus-4-5": ("Opus 4", 15.00, 75.00, 18.75, 1.50),
 }
 
 

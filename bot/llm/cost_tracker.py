@@ -33,16 +33,20 @@ _COST_PATH = os.path.join(_COST_DIR, "cost_tracker.json")
 # Tuple order: (uncached_input, output, cache_write_5m, cache_read)
 # Anthropic prompt caching multipliers: write=1.25x uncached, read=0.10x uncached.
 _MODEL_PRICING = {
-    # Actual Anthropic pricing as of 2026-04
+    # Actual Anthropic pricing as of 2026-04 (CLI routing = $0/call)
+    "claude-haiku-4-5": (0.80, 4.0, 1.00, 0.08),
+    "claude-sonnet-4-6": (3.0, 15.0, 3.75, 0.30),
+    "claude-opus-4-5": (15.0, 75.0, 18.75, 1.50),
+    # Legacy IDs kept for backward-compat cost tracking
     "claude-haiku-4-5-20251001": (0.80, 4.0, 1.00, 0.08),
     "claude-sonnet-4-5-20250929": (3.0, 15.0, 3.75, 0.30),
     "claude-opus-4-20250115": (15.0, 75.0, 18.75, 1.50),
 }
 
 # Model IDs for downgrade chain
-_MODEL_HAIKU = "claude-haiku-4-5-20251001"
-_MODEL_SONNET = "claude-sonnet-4-5-20250929"
-_MODEL_OPUS = "claude-opus-4-20250115"
+_MODEL_HAIKU = "claude-haiku-4-5"
+_MODEL_SONNET = "claude-sonnet-4-6"
+_MODEL_OPUS = "claude-opus-4-5"
 
 # High-value triggers that resist downgrade (match usage_tiers.py)
 _HIGH_VALUE_TRIGGERS = {
