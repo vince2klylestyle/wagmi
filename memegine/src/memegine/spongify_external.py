@@ -1,19 +1,18 @@
-"""Spongify via spongmonkeys.fun web interface.
+"""Spongify via spongmonkeys.fun web interface — optimized for batch processing.
 
-Instead of prompting Grok, automate the actual spongmonkeys.fun generator
-which is already perfect. Use Playwright to:
+Automate the actual spongmonkeys.fun generator:
   1. Navigate to spongmonkeys.fun
   2. Upload profile picture
-  3. Wait for generation
-  4. Download spongified image
+  3. Wait for generation (monitor page for actual output image)
+  4. Download result
   5. Return bytes
 
-This bypasses all the prompt engineering — we use the real thing.
+Fast enough to batch 50+ images overnight. Free — no API costs.
 """
 from __future__ import annotations
 
 import asyncio
-import tempfile
+import base64
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,7 +27,6 @@ except ImportError:
 @dataclass
 class SpongifyResult:
     image_bytes: bytes
-    image_path: Optional[Path] = None
     error: Optional[str] = None
 
 
@@ -37,161 +35,163 @@ async def spongify_via_web(
     *,
     headless: bool = True,
     timeout_sec: float = 120,
+    verbose: bool = False,
 ) -> SpongifyResult:
     """Upload image to spongmonkeys.fun, generate, download result.
 
     Args:
       image_path: Path to input image (JPG/PNG)
       headless: Run browser headless (no UI)
-      timeout_sec: Max wait for generation
+      timeout_sec: Max wait for generation (default 2 min)
+      verbose: Print debug messages
 
     Returns:
-      SpongifyResult with image_bytes or error message
+      SpongifyResult with image_bytes or error
     """
     if not async_playwright:
         return SpongifyResult(
             image_bytes=b"",
-            error="Playwright not installed. Run: pip install playwright && playwright install"
+            error="Playwright not installed. Run: pip install -e .[watch]"
         )
 
     if not image_path.exists():
-        return SpongifyResult(
-            image_bytes=b"",
-            error=f"Image not found: {image_path}"
-        )
+        return SpongifyResult(image_bytes=b"", error=f"File not found: {image_path}")
 
     try:
         async with async_playwright() as p:
-            # Launch browser
             browser = await p.chromium.launch(headless=headless)
             page = await browser.new_page()
 
-            # Navigate to generator
-            await page.goto("https://spongmonkeys.fun", wait_until="networkidle")
+            if verbose:
+                print("[spongify] Navigating to spongmonkeys.fun...")
 
-            # Wait for upload input to appear
-            await page.wait_for_selector("input[type='file']", timeout=10000)
+            # Load page
+            await page.goto("https://spongmonkeys.fun", wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(2)  # Let JS load
 
-            # Upload image
-            input_locator = page.locator("input[type='file']")
-            await input_locator.set_input_files(str(image_path))
+            if verbose:
+                print("[spongify] Finding file input...")
 
-            # Wait for generation UI to appear (submit button, etc.)
-            # This varies — may be auto-submit or need a button click
+            # Get all file inputs (there are 2 on the page)
+            file_inputs = await page.locator("input[type='file']").all()
+            if not file_inputs:
+                await browser.close()
+                return SpongifyResult(image_bytes=b"", error="File input not found")
+
+            file_input = file_inputs[0]  # First is the main upload
+
+            if verbose:
+                print(f"[spongify] Uploading {image_path.name}...")
+
+            # Upload file
+            await file_input.set_input_files(str(image_path))
+            await asyncio.sleep(2)
+
+            # Call the Spongify generation function directly via JavaScript
             try:
-                # Try to find and click a "Generate" button
-                gen_button = page.locator("button:has-text('Generate'), button:has-text('Spongify')")
-                if await gen_button.count() > 0:
-                    await gen_button.click()
-            except Exception:
-                pass
+                if verbose:
+                    print("[spongify] Triggering generation via JavaScript...")
+                # The button has onclick="doInspire()" — call it directly
+                await page.evaluate("doInspire()")
+                await asyncio.sleep(3)  # Wait for generation to complete
+                if verbose:
+                    print("[spongify] Generation triggered")
+            except Exception as e:
+                if verbose:
+                    print(f"[spongify] JS call failed: {e}, will retry with button click")
+                try:
+                    # Fallback: try button click with force
+                    btn = page.locator("#inspireBtn")
+                    if await btn.count() > 0:
+                        await btn.click(force=True)
+                        await asyncio.sleep(2)
+                except Exception as e2:
+                    if verbose:
+                        print(f"[spongify] Button click also failed: {e2}")
 
-            # Wait for result image to load
-            # Usually appears in an <img> or <canvas>
+            # Wait for result image to appear (processing takes time)
+            if verbose:
+                print("[spongify] Waiting for generation...")
+
             start_time = time.time()
-            result_image = None
+            result_src = None
+            check_count = 0
+
             while time.time() - start_time < timeout_sec:
                 try:
-                    # Look for output image — could be in different selectors
-                    candidates = [
-                        page.locator("img.result"),
-                        page.locator("img[alt*='spong']"),
-                        page.locator("[class*='result'] img"),
-                        page.locator("[class*='output'] img"),
-                    ]
+                    # Look for any img with a real src (data URI or URL)
+                    imgs = await page.locator("img").all()
 
-                    for candidate in candidates:
-                        if await candidate.count() > 0:
-                            src = await candidate.get_attribute("src")
-                            if src and ("data:" in src or "http" in src):
-                                result_image = candidate
-                                break
+                    for img in imgs:
+                        try:
+                            src = await img.get_attribute("src")
+                            # Look for data URIs (generated images) or substantial URLs
+                            if src and len(src) > 500:
+                                if src.startswith("data:image"):
+                                    result_src = src
+                                    break
+                        except Exception:
+                            pass
 
-                    if result_image:
+                    if result_src:
+                        if verbose:
+                            print("[spongify] Found output image!")
                         break
-                except Exception:
-                    pass
 
-                await asyncio.sleep(0.5)
+                    check_count += 1
+                    if verbose and check_count % 6 == 0:  # Every 6 seconds
+                        print(f"[spongify] Still waiting... {int(time.time() - start_time)}s")
 
-            if not result_image:
+                except Exception as e:
+                    if verbose:
+                        print(f"[spongify] Error checking: {e}")
+
+                await asyncio.sleep(1)
+
+            if not result_src:
                 await browser.close()
+                elapsed = int(time.time() - start_time)
                 return SpongifyResult(
                     image_bytes=b"",
-                    error="Generation timeout or UI not found"
+                    error=f"Generation failed (timeout after {elapsed}s)"
                 )
 
-            # Download the image
-            src = await result_image.get_attribute("src")
-            if not src:
+            # Extract image from data URI
+            try:
+                # Format: data:image/png;base64,<encoded-data>
+                if "," in result_src:
+                    _, b64_data = result_src.split(",", 1)
+                    image_bytes = base64.b64decode(b64_data)
+                else:
+                    await browser.close()
+                    return SpongifyResult(image_bytes=b"", error="Invalid data URI format")
+
+                if verbose:
+                    print(f"[spongify] Extracted {len(image_bytes)} bytes")
+
                 await browser.close()
-                return SpongifyResult(
-                    image_bytes=b"",
-                    error="Could not find result image source"
-                )
 
-            image_bytes = b""
-
-            if src.startswith("data:"):
-                # Data URI — extract base64
-                try:
-                    import base64
-                    data_part = src.split(",", 1)[1]
-                    image_bytes = base64.b64decode(data_part)
-                except Exception as e:
-                    await browser.close()
+                if len(image_bytes) < 100:
                     return SpongifyResult(
                         image_bytes=b"",
-                        error=f"Failed to decode data URI: {e}"
-                    )
-            else:
-                # HTTP URL — fetch it
-                try:
-                    async with page.context.request as req:
-                        resp = await req.get(src)
-                        image_bytes = await resp.body()
-                except Exception as e:
-                    await browser.close()
-                    return SpongifyResult(
-                        image_bytes=b"",
-                        error=f"Failed to fetch image: {e}"
+                        error=f"Generated image too small ({len(image_bytes)} bytes)"
                     )
 
-            await browser.close()
-            return SpongifyResult(image_bytes=image_bytes)
+                return SpongifyResult(image_bytes=image_bytes)
 
+            except Exception as e:
+                await browser.close()
+                return SpongifyResult(image_bytes=b"", error=f"Decode error: {e}")
+
+    except asyncio.TimeoutError:
+        return SpongifyResult(image_bytes=b"", error="Browser timeout")
     except Exception as e:
-        return SpongifyResult(
-            image_bytes=b"",
-            error=f"Browser automation failed: {e}"
-        )
+        return SpongifyResult(image_bytes=b"", error=f"Error: {e}")
 
 
 def spongify_sync(image_path: Path, **kwargs) -> SpongifyResult:
-    """Synchronous wrapper for spongify_via_web."""
+    """Synchronous wrapper for async function."""
     try:
         return asyncio.run(spongify_via_web(image_path, **kwargs))
     except Exception as e:
-        return SpongifyResult(
-            image_bytes=b"",
-            error=f"Async runtime error: {e}"
-        )
-
-
-if __name__ == "__main__":
-    # Quick test
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: python spongify_external.py <image_path>")
-        sys.exit(1)
-
-    path = Path(sys.argv[1])
-    result = spongify_sync(path, headless=False)  # Show browser for debugging
-    if result.error:
-        print(f"Error: {result.error}")
-    else:
-        print(f"Success! {len(result.image_bytes)} bytes")
-        # Save to temp file
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(result.image_bytes)
-            print(f"Saved to: {f.name}")
+        return SpongifyResult(image_bytes=b"", error=f"Async error: {e}")
