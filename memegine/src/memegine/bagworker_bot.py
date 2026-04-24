@@ -404,8 +404,7 @@ def register_bagworker_handlers(app, cfg):
         from memegine.bagworker_bot import register_bagworker_handlers
         bagworker_bot.register_bagworker_handlers(app, cfg)
     """
-    from telegram import filters
-    from telegram.ext import CommandHandler, MessageHandler
+    from telegram.ext import CommandHandler, MessageHandler, filters
 
     # Command handlers
     app.add_handler(CommandHandler("post", handle_post_command))
