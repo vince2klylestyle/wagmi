@@ -783,14 +783,20 @@ PAPER_PROFILE_OVERRIDES = {
 # Consolidation: tighter SL (mean-revert or stop), tighter TP (take profits before snap-back)
 # High vol: widest SL (avoid wick stops), tightest TP (grab what you can)
 REGIME_SL_TP_SCALARS = {
-    "trending_bull":    {"sl_mult": 1.2, "tp1_mult": 1.3, "tp2_mult": 1.5},   # was tp1=0.9/tp2=0.85: inverted R:R killed trending trades
-    "trending_bear":    {"sl_mult": 1.1, "tp1_mult": 1.2, "tp2_mult": 1.4},   # was tp1=0.8/tp2=0.8: same issue
-    "trend":            {"sl_mult": 1.15, "tp1_mult": 1.25, "tp2_mult": 1.4},  # was tp1=0.85/tp2=0.85
-    "consolidation":    {"sl_mult": 0.85, "tp1_mult": 0.9, "tp2_mult": 0.85},  # was tp1=1.2/tp2=1.3: mean-reversion should take profits fast
-    "range":            {"sl_mult": 0.9, "tp1_mult": 0.95, "tp2_mult": 0.9},   # was tp1=1.1/tp2=1.2: same as consolidation
-    "high_volatility":  {"sl_mult": 1.4, "tp1_mult": 1.2, "tp2_mult": 2.0},  # was tp1=0.7/tp2=0.7: same inverted R:R bug — risk 2.8 ATR to make 1.4 ATR
-    "panic":            {"sl_mult": 1.5, "tp1_mult": 0.6, "tp2_mult": 0.6},  # panic: still grab what you can
-    "low_liquidity":    {"sl_mult": 1.3, "tp1_mult": 0.8, "tp2_mult": 0.8},
+    "trending_bull":    {"sl_mult": 1.2, "tp1_mult": 1.3, "tp2_mult": 1.5},
+    "trending_bear":    {"sl_mult": 1.1, "tp1_mult": 1.2, "tp2_mult": 1.4},
+    "trend":            {"sl_mult": 1.15, "tp1_mult": 1.25, "tp2_mult": 1.4},
+    "trending":         {"sl_mult": 1.2, "tp1_mult": 1.3, "tp2_mult": 1.5},   # 52% WR, +$118 — wider SL like trending_bull
+    "consolidation":    {"sl_mult": 0.85, "tp1_mult": 0.9, "tp2_mult": 0.85},
+    # range/ranging: 94% SL hit rate, 25% WR → widen SL to clear noise, TP fast
+    "range":            {"sl_mult": 1.4, "tp1_mult": 0.8, "tp2_mult": 0.85},  # was sl=0.9: 94% SL hits, need wider stop
+    "ranging":          {"sl_mult": 1.4, "tp1_mult": 0.8, "tp2_mult": 0.85},  # same — data: 25% WR n=16
+    "high_volatility":  {"sl_mult": 1.4, "tp1_mult": 1.2, "tp2_mult": 2.0},
+    "panic":            {"sl_mult": 1.5, "tp1_mult": 0.6, "tp2_mult": 0.6},
+    # illiquid: 82% SL hit rate, 28% WR, avg SL=1.43% vs ATR=0.84% → SL/ATR=1.70x. Need 2.5x.
+    "low_liquidity":    {"sl_mult": 1.5, "tp1_mult": 0.75, "tp2_mult": 0.75},  # was sl=1.3: 82% SL hits
+    "illiquid":         {"sl_mult": 1.5, "tp1_mult": 0.75, "tp2_mult": 0.75},  # same — data: 28% WR n=57
+    # "unknown" intentionally omitted — pass through base values unchanged
 }
 
 
@@ -800,17 +806,18 @@ REGIME_SL_TP_SCALARS = {
 REGIME_RISK_MULTIPLIERS = {
     "trending_bear":    1.0,    # THE GOLDEN REGIME: +$406, 75% WR, PF=18.4 — FULL SIZE
     "trending_bull":    1.0,    # +$45, 67% WR, PF=4546 — FULL SIZE
-    "trending":         0.90,   # +$28, 57% WR, PF=1.9 — near full
-    "high_volatility":  0.85,   # +$23, 50% WR, PF=8.7 — small sample but promising
-    "illiquid":         0.70,   # $0, 33% WR — breakeven, reduced
+    # Updated 2026-04-23 from 164 live trades in trade_dna:
+    "trending":         1.0,    # 52% WR n=52 +$118 — profitable regime, full size
+    "high_volatility":  0.85,   # small sample but promising
+    "illiquid":         0.50,   # 28% WR n=57 -$83 — down from 0.70: live data proves losing regime
     "trend":            0.50,   # TRAP: -$200, 18% WR, PF=0.15 — weak ADX, treat like range
-    "range":            0.50,   # -$33, 14% WR, PF=0.3 — losing regime
-    "ranging":          0.50,   # -$35, 19% WR, PF=0.08 — losing regime
+    "range":            0.45,   # 25% WR n=16 -$46 — consistent loser
+    "ranging":          0.45,   # same as range — 25% WR n=16
     "consolidation":    0.30,   # DISASTER: -$169, 0% WR, PF=0 — minimum size
     "panic":            0.50,   # No live data — cautious
-    "low_liquidity":    0.40,   # No edge — minimal
+    "low_liquidity":    0.40,   # Canonical name for illiquid — minimal
     "news_dislocation": 0.50,   # Unpredictable — cautious
-    "unknown":          0.50,   # No data — cautious
+    "unknown":          0.45,   # 36% WR n=39 -$61 — losing regime, reduced from 0.50
 }
 
 
@@ -899,10 +906,24 @@ def get_lead_lag_config(symbol: str) -> dict:
 
 
 def get_symbol_risk_mult(symbol: str) -> float:
-    """Return position-size multiplier for the given symbol."""
-    # Strip common suffixes to match base symbol
+    """Return position-size multiplier for the given symbol.
+
+    If trade_dna has >= 15 trades for this symbol, blends static with live WR.
+    """
     base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").replace("/USD", "")
-    return SYMBOL_RISK_MULTIPLIERS.get(base, 0.70)  # Was 0.6 — raised for executability on small accounts
+    static_mult = SYMBOL_RISK_MULTIPLIERS.get(base, 0.70)
+    try:
+        from llm.dynamic_thresholds import get_dynamic_thresholds
+        dt = get_dynamic_thresholds()
+        dt._maybe_refresh()
+        sym_data = dt._symbol_data.get(base)
+        if sym_data and sym_data["n"] >= 15:
+            live_mult = _wr_to_risk_mult(sym_data["wr"])
+            blend = min(1.0, (sym_data["n"] - 15) / 35)
+            return round(static_mult * (1 - blend) + live_mult * blend, 3)
+    except Exception:
+        pass
+    return static_mult
 
 
 def get_symbol_side_risk_mult(symbol: str, side: str) -> float:
@@ -918,8 +939,36 @@ def get_symbol_side_risk_mult(symbol: str, side: str) -> float:
     return SYMBOL_SIDE_RISK_MULTIPLIERS.get((base, normalized_side), 1.0)
 
 
+def _wr_to_risk_mult(wr: float) -> float:
+    """Map live win rate to a risk multiplier."""
+    if wr < 0.25:
+        return 0.45
+    if wr < 0.35:
+        return 0.55
+    if wr < 0.45:
+        return 0.70
+    if wr < 0.55:
+        return 0.90
+    return 1.0
+
+
 def get_regime_risk_mult(regime: str) -> float:
-    """Return position-size multiplier for the given regime."""
+    """Return position-size multiplier for the given regime.
+
+    If trade_dna has >= 15 trades for this regime, use live win rate.
+    Otherwise fall back to the calibrated static table.
+    """
+    try:
+        from llm.dynamic_thresholds import get_dynamic_thresholds
+        stats = get_dynamic_thresholds().get_regime_stats(regime)
+        if stats and stats["n"] >= 15:
+            live_mult = _wr_to_risk_mult(stats["wr"])
+            static_mult = REGIME_RISK_MULTIPLIERS.get(regime, 0.8)
+            # Blend: weight live data more as n grows (full trust at n=50+)
+            blend = min(1.0, (stats["n"] - 15) / 35)
+            return round(static_mult * (1 - blend) + live_mult * blend, 3)
+    except Exception:
+        pass
     return REGIME_RISK_MULTIPLIERS.get(regime, 0.8)
 
 
@@ -927,13 +976,30 @@ def get_regime_sl_tp(regime: str, base_sl_mult: float, base_tp1_mult: float,
                      base_tp2_mult: float) -> tuple:
     """Apply regime-conditional scaling to SL/TP multipliers.
 
+    Blends static REGIME_SL_TP_SCALARS with a live data-driven SL boost from
+    DynamicThresholds. When a regime's SL hit rate in trade_dna exceeds the
+    system-optimal ~72%, the SL scalar is widened proportionally so stops
+    adapt to actual market noise levels rather than staying frozen at config values.
+
     Returns (adjusted_sl_mult, adjusted_tp1_mult, adjusted_tp2_mult).
     """
     scalars = REGIME_SL_TP_SCALARS.get(regime)
     if scalars is None:
         return (base_sl_mult, base_tp1_mult, base_tp2_mult)
+
+    sl_scalar = scalars["sl_mult"]
+
+    # Layer dynamic SL boost from live SL-hit-rate data
+    try:
+        from llm.dynamic_thresholds import get_dynamic_thresholds
+        dynamic_boost = get_dynamic_thresholds().get_dynamic_sl_boost(regime, sl_scalar)
+        if dynamic_boost > 0:
+            sl_scalar = sl_scalar + dynamic_boost
+    except Exception:
+        pass  # Never block a trade on a boost computation error
+
     return (
-        base_sl_mult * scalars["sl_mult"],
+        base_sl_mult * sl_scalar,
         base_tp1_mult * scalars["tp1_mult"],
         base_tp2_mult * scalars["tp2_mult"],
     )

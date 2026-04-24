@@ -329,16 +329,23 @@ class ContinuousBacktester:
         return result
 
     def _find_optimal_floor(self, outcomes: List[Dict]) -> float:
-        """Find the confidence floor that maximizes EV in this window."""
+        """Find the confidence floor that maximizes EV in this window.
+
+        Requires at least 30% of total window trades at any floor level to
+        avoid driving toward high floors with spuriously positive n=3 samples.
+        Cap at 70 so WR-poisoning-era drift from 50%→35% recalibration can't
+        push the tuner above a defensible threshold.
+        """
         if not outcomes:
             return 65.0
 
+        min_trades = max(3, int(len(outcomes) * 0.30))  # at least 30% of window
         best_floor = 65.0
         best_ev = -999
 
-        for floor in range(50, 85, 5):
+        for floor in range(50, 73, 5):  # cap at 70 — no data justifies >70 floor
             above = [o for o in outcomes if o["confidence"] >= floor]
-            if len(above) < 3:
+            if len(above) < min_trades:
                 continue
             ev = sum(o["pnl"] for o in above) / len(above)
             if ev > best_ev:
@@ -348,7 +355,12 @@ class ContinuousBacktester:
         return best_floor
 
     def _find_optimal_leverage_cap(self, outcomes: List[Dict]) -> float:
-        """Find the leverage cap that maximizes risk-adjusted returns."""
+        """Find the leverage cap that maximizes risk-adjusted returns.
+
+        Floor at 10x: losses in leveraged trades are typically due to tight stops
+        (now fixed via dynamic SL), not excessive leverage per se. Never suggest
+        below 10x since Kelly fractions require room to operate.
+        """
         if not outcomes:
             return 25.0
 
@@ -359,7 +371,7 @@ class ContinuousBacktester:
         best_cap = 25.0
         best_sharpe = -999
 
-        for cap in [5, 10, 15, 20, 25]:
+        for cap in [10, 15, 20, 25]:  # floor at 10 — never suggest starving Kelly fractions
             capped = [o for o in outcomes if o.get("leverage", 1) <= cap]
             if len(capped) < 3:
                 continue
