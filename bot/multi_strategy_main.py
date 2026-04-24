@@ -902,7 +902,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             self._sector_exposure_cls = None
             self.execution_analytics = None
             self._missed_trade_tracker = None
-            self.daily_reporter = None
+
+        # AutoOptimizer: autonomous review + parameter tuning
+        # Lazy-initialized on first tick when EvolutionTracker is ready
+        self._evolution_tracker = None
+        self._auto_optimizer_initialized = False
+        logger.info("[INIT] AutoOptimizer will initialize on first tick with EvolutionTracker")
 
         # Growth intelligence: self-evolving meta-brain
         self.growth = get_growth_orchestrator()
@@ -2203,6 +2208,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             try:
                 from feedback.evolution_tracker import EvolutionTracker
                 tracker = EvolutionTracker("data")
+
+                # Lazy-initialize AutoOptimizer with EvolutionTracker on first run
+                if not self._auto_optimizer_initialized:
+                    self._evolution_tracker = tracker
+                    try:
+                        self.feedback.setup_auto_optimizer(
+                            evolution_tracker=tracker,
+                            llm_client=self.llm_client if hasattr(self, 'llm_client') else None
+                        )
+                        self._auto_optimizer_initialized = True
+                        logger.info("[INIT] AutoOptimizer initialized with EvolutionTracker")
+                    except Exception as aoi_e:
+                        logger.warning(f"[INIT] AutoOptimizer setup failed: {aoi_e}")
+
                 report = tracker.generate_report()
                 if self.alerts and report:
                     # Enhanced daily report with full breakdown
