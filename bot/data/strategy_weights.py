@@ -17,13 +17,25 @@ logger = logging.getLogger("bot.weights")
 
 
 class StrategyWeightManager:
-    """Manages persistent strategy accuracy weights for ensemble weighting."""
+    """Manages persistent strategy accuracy weights for ensemble weighting.
+
+    Now tracks TWO levels:
+    1. Global weights (per-strategy, fallback when per-symbol data is sparse)
+    2. Per-symbol weights (per-symbol × strategy, the main signal)
+
+    Per-symbol example:
+      {"BTC": {"regime_trend": {"wins": 10, "trials": 15, ...}, ...},
+       "ETH": {"regime_trend": {"wins": 8, "trials": 8, ...}, ...}}
+
+    When a symbol has <5 trades, falls back to global weight to avoid spurious weighting.
+    """
 
     def __init__(self, path: str = "ml_data/strategy_weights.json", decay_alpha: float = 0.9):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.decay_alpha = decay_alpha
         self.data: Dict[str, Dict[str, Any]] = self._load()
+        self.per_symbol: Dict[str, Dict[str, Dict[str, Any]]] = self._load_per_symbol()
         self._last_recompute_date: str = ""
 
     def _load(self) -> Dict[str, Dict[str, Any]]:
@@ -48,6 +60,32 @@ class StrategyWeightManager:
             logger.info(f"[WEIGHTS] No persisted weights at {self.path}, starting fresh")
         return {}
 
+    def _load_per_symbol(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Load per-symbol strategy weights from disk.
+
+        Structure: {"BTC": {"regime_trend": {...}, ...}, "ETH": {...}}
+        Falls back to empty dict if file doesn't exist.
+        """
+        per_symbol_path = str(self.path).replace(".json", "_per_symbol.json")
+        if Path(per_symbol_path).exists():
+            try:
+                with open(per_symbol_path) as f:
+                    data = json.load(f)
+                logger.info(f"[WEIGHTS] Loaded per-symbol weights from {per_symbol_path}")
+                return data
+            except Exception as e:
+                logger.warning(f"Failed to load per-symbol weights: {e}")
+        return {}
+
+    def _save_per_symbol(self):
+        """Persist per-symbol strategy weights to disk."""
+        per_symbol_path = str(self.path).replace(".json", "_per_symbol.json")
+        try:
+            with open(per_symbol_path, "w") as f:
+                json.dump(self.per_symbol, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save per-symbol strategy weights: {e}")
+
     def _save(self):
         try:
             with open(self.path, "w") as f:
@@ -59,36 +97,81 @@ class StrategyWeightManager:
         if name not in self.data:
             self.data[name] = {"wins": 0.0, "trials": 0.0, "weight": 0.30}
 
-    def get_weight(self, name: str) -> float:
+    def get_weight(self, name: str, symbol: str = "") -> float:
         """Get smoothed weight: (wins+1)/(trials+2) — Laplace prior.
         For strategies with zero trials, return a conservative 0.30 instead of 0.50.
-        Untested strategies should NOT outweigh proven performers."""
+        Untested strategies should NOT outweigh proven performers.
+
+        Args:
+            name: Strategy name
+            symbol: Optional symbol. If provided and has >=5 trades, use per-symbol weight.
+        Returns:
+            Per-symbol weight if available, else global weight.
+        """
+        # Try per-symbol first (if symbol provided and has sufficient data)
+        if symbol and symbol in self.per_symbol:
+            sym_strats = self.per_symbol[symbol]
+            if name in sym_strats:
+                entry = sym_strats[name]
+                if entry.get("trials", 0) >= 5:  # Require >= 5 trades for per-symbol weight
+                    if entry["trials"] < 1.0:
+                        return 0.30
+                    return (entry["wins"] + 1) / (entry["trials"] + 2)
+
+        # Fall back to global weight
         self._ensure_entry(name)
         entry = self.data[name]
-        # Zero-trial strategies get conservative weight — don't trust what's unproven
         if entry["trials"] < 1.0:
             return 0.30
         return (entry["wins"] + 1) / (entry["trials"] + 2)
 
-    def get_all_weights(self) -> Dict[str, float]:
-        """Get weights for all tracked strategies."""
+    def get_all_weights(self, symbol: str = "") -> Dict[str, float]:
+        """Get weights for all tracked strategies.
+
+        Args:
+            symbol: Optional symbol. If provided, returns per-symbol weights.
+        Returns:
+            Dict of strategy -> weight
+        """
+        if symbol and symbol in self.per_symbol:
+            return {name: self.get_weight(name, symbol) for name in self.per_symbol[symbol]}
         return {name: self.get_weight(name) for name in self.data}
 
-    def record_outcome(self, strategy: str, win: bool):
-        """Record a single trade outcome for a strategy."""
+    def record_outcome(self, strategy: str, win: bool, symbol: str = ""):
+        """Record a single trade outcome for a strategy.
+
+        Args:
+            strategy: Strategy name
+            win: True if trade was profitable
+            symbol: Optional symbol to track per-symbol weights
+        """
+        # Record in global weights
         self._ensure_entry(strategy)
         self.data[strategy]["trials"] += 1
         if win:
             self.data[strategy]["wins"] += 1
-        # Track recent outcomes for rolling weight calculation
         if "recent_outcomes" not in self.data[strategy]:
             self.data[strategy]["recent_outcomes"] = []
         self.data[strategy]["recent_outcomes"].append(1 if win else 0)
-        # Keep last 20 outcomes
         if len(self.data[strategy]["recent_outcomes"]) > 20:
             self.data[strategy]["recent_outcomes"] = self.data[strategy]["recent_outcomes"][-20:]
         self.data[strategy]["weight"] = self.get_weight(strategy)
+
+        # Record in per-symbol weights (if symbol provided)
+        if symbol:
+            if symbol not in self.per_symbol:
+                self.per_symbol[symbol] = {}
+            if strategy not in self.per_symbol[symbol]:
+                self.per_symbol[symbol][strategy] = {"wins": 0.0, "trials": 0.0, "weight": 0.30}
+
+            sym_entry = self.per_symbol[symbol][strategy]
+            sym_entry["trials"] += 1
+            if win:
+                sym_entry["wins"] += 1
+            sym_entry["weight"] = self.get_weight(strategy, symbol)
+
         self._save()
+        self._save_per_symbol()
 
     def get_rolling_weights(self, window: int = 10) -> Dict[str, float]:
         """Get strategy weights scaled by rolling win rate.
@@ -165,7 +248,8 @@ class StrategyWeightManager:
 
     def recompute_from_db(self):
         """Recompute weights from trades table. Call once per day.
-        Applies decay first, then ingests recent closed trades."""
+        Applies decay first, then ingests recent closed trades.
+        Also populates per-symbol weights."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if self._last_recompute_date == today:
             return  # already recomputed today
@@ -181,6 +265,7 @@ class StrategyWeightManager:
                 # Only count full closes (TP1 is partial — don't double-count)
                 if action in ("SL", "TP2", "TRAILING_STOP"):
                     strategy = trade.get("strategy", "")
+                    symbol = trade.get("symbol", "")
                     if not strategy:
                         continue
                     # Prefer total_pnl from metadata (includes TP1 partial)
@@ -198,17 +283,34 @@ class StrategyWeightManager:
                     self.data[strategy]["trials"] += 1
                     if win:
                         self.data[strategy]["wins"] += 1
+
+                    # Also record per-symbol (if symbol available)
+                    if symbol:
+                        if symbol not in self.per_symbol:
+                            self.per_symbol[symbol] = {}
+                        if strategy not in self.per_symbol[symbol]:
+                            self.per_symbol[symbol][strategy] = {"wins": 0.0, "trials": 0.0}
+                        self.per_symbol[symbol][strategy]["trials"] += 1
+                        if win:
+                            self.per_symbol[symbol][strategy]["wins"] += 1
+
                     ingested += 1
 
-            # Recompute weights
+            # Recompute global weights
             for name in self.data:
                 self.data[name]["weight"] = self.get_weight(name)
 
+            # Recompute per-symbol weights
+            for symbol in self.per_symbol:
+                for strategy in self.per_symbol[symbol]:
+                    self.per_symbol[symbol][strategy]["weight"] = self.get_weight(strategy, symbol)
+
             self._save()
+            self._save_per_symbol()
             self._last_recompute_date = today
             logger.info(
                 f"Recomputed strategy weights from {ingested} trades: "
-                f"{self.get_all_weights()}"
+                f"global={self.get_all_weights()}"
             )
         except Exception as e:
             logger.warning(f"Failed to recompute weights from DB: {e}")

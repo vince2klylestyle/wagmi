@@ -28,6 +28,9 @@ from data.db import (
     update_daily_performance, get_signal_performance, get_recent_trades,
 )
 from data.strategy_weights import StrategyWeightManager
+from feedback.regime_feedback import RegimeFeedbackManager
+from feedback.adaptive_confidence import AdaptiveConfidenceFloor
+from feedback.hold_time_rules import HoldTimeRuleManager
 from data.risk_log import log_rejection, get_rejection_counts
 from data.ml_log import log_ml_stats, log_ml_confidence
 from data.trade_log import log_closed_trade
@@ -87,7 +90,9 @@ from data.fetchers.telemetry import Telemetry
 
 # Feedback loop system
 from feedback.loop import FeedbackLoop
-from feedback.signal_quality import QualityFeatures
+from feedback.signal_quality import QualityFeatures, SignalQualityScorer
+from feedback.parameter_tuner import ParameterTuner
+from feedback.continuous_backtest import ContinuousBacktester
 
 # Signal ingestion pipeline
 from signals.telegram_ingest import TelegramSignalMonitor, IngestedSignal
@@ -400,6 +405,24 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             decay_alpha=0.9,
         )
 
+        # Regime-specific feedback (tracks per-regime performance)
+        self.regime_feedback = RegimeFeedbackManager(data_dir="data/feedback")
+
+        # Adaptive confidence floor (dynamic thresholds from realized performance)
+        self.confidence_floor = AdaptiveConfidenceFloor(data_dir="data/feedback")
+
+        # Hold-time rules (minimum hold times per regime based on live performance)
+        self.hold_time_rules = HoldTimeRuleManager(data_dir="data/feedback")
+
+        # Signal quality scorer (meta-confidence based on signal context)
+        self.signal_quality = SignalQualityScorer(data_dir="data/feedback")
+
+        # Parameter tuner (autonomous parameter adaptation based on performance)
+        self.parameter_tuner = ParameterTuner(data_dir="data/feedback")
+
+        # Continuous backtest (real-time validation of signal quality against historical baselines)
+        self.continuous_backtest = ContinuousBacktester(data_dir="data/feedback")
+
         # Strategies — each toggleable via STRATEGY_*_ENABLED env var
         sym_configs = DEFAULT_SYMBOLS
         self.strategies = []
@@ -472,6 +495,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             confidence_floor=config.ensemble_confidence_floor,
             ranging_confidence_floor=config.ranging_confidence_floor,
         )
+        # Wire signal quality scoring to ensemble (applies learned context confidence multipliers)
+        self.ensemble._signal_quality_scorer = self.signal_quality
+
         # Wire manual sniper callback: receives solo signals that the ensemble
         # rejects for insufficient consensus. The sniper has its own proven-setup
         # gates and can profitably trade signals the bot sits out on.
@@ -639,11 +665,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 cooldown_minutes=config.circuit_breaker_cooldown_min,
             ),
         )
+
         self.pos_mgr = PositionManager(
             taker_fee_bps=config.taker_fee_bps,
             enable_trailing=config.enable_trailing_stop,
             trailing_atr_mult=config.trailing_stop_atr_mult,
             time_stop_hours=config.time_stop_hours,
+            hold_time_rules=self.hold_time_rules,
         )
         # Per-symbol execution lock: prevents duplicate entries when two signals
         # for the same symbol race through the pipeline simultaneously.
@@ -771,6 +799,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Feedback loop: self-improving confidence, backtesting, quality scoring
         self.feedback = FeedbackLoop(data_dir="data/feedback")
+        # Wire SignalQualityScorer into ensemble so session/hour/entry_type WR
+        # adjustments (US=57% WR, Asia=14% WR) actually affect confidence scoring.
+        self.ensemble.set_quality_scorer(self.feedback.quality)
+        logger.info("[INIT] SignalQualityScorer wired into ensemble — session/hour WR now adjusts confidence")
 
         # Quant system: IC tracker, Kelly engine, trade ledger, shadow ledger, daily report
         try:
@@ -1053,6 +1085,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     enable_trailing=config.enable_trailing_stop,
                     trailing_atr_mult=config.trailing_stop_atr_mult,
                     time_stop_hours=config.time_stop_hours,
+                    hold_time_rules=self.hold_time_rules,
                 )
                 self._wallet_a.risk_mgr = RiskManager(
                     starting_equity=wallet_equity_a,
@@ -1080,6 +1113,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     enable_trailing=config.enable_trailing_stop,
                     trailing_atr_mult=config.trailing_stop_atr_mult,
                     time_stop_hours=config.time_stop_hours,
+                    hold_time_rules=self.hold_time_rules,
                 )
                 self._wallet_b.risk_mgr = RiskManager(
                     starting_equity=wallet_equity_b,
@@ -1678,6 +1712,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Smart symbol evaluation priority: evaluate symbols most likely
         # to produce actionable signals first (lead-lag targets, volatile, open positions)
         eval_order = self._prioritize_symbols(DEFAULT_SYMBOLS)
+
+        # Update ensemble confidence floor from adaptive floor (dynamic gating)
+        try:
+            if self.confidence_floor and hasattr(self.ensemble, 'confidence_floor'):
+                new_floor = self.confidence_floor.current_floor
+                self.ensemble.confidence_floor = new_floor
+                # Log if floor changed significantly
+                if abs(new_floor - self.config.ensemble_confidence_floor) > 2.0:
+                    logger.info(
+                        f"[ADAPTIVE-FLOOR] Updated ensemble confidence floor from "
+                        f"{self.config.ensemble_confidence_floor:.1f} to {new_floor:.1f}"
+                    )
+        except Exception as e:
+            logger.debug(f"Failed to update adaptive confidence floor: {e}")
 
         for symbol, sym_cfg in eval_order:
             try:
@@ -3043,7 +3091,71 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             if event.action in _FULL_CLOSE and event.strategy:
                 pos = self.pos_mgr.positions.get(symbol)
                 total_pnl = pos.realized_pnl if pos else event.pnl
-                self.weight_mgr.record_outcome(event.strategy, total_pnl > 0)
+                self.weight_mgr.record_outcome(event.strategy, total_pnl > 0, symbol=symbol)
+
+                # Record regime-specific feedback and confidence floor
+                try:
+                    regime = "unknown"
+                    confidence = 50.0
+                    hold_hours = 0.0
+                    if pos:
+                        regime = pos.entry_reasons.get("regime", "unknown") if pos.entry_reasons else "unknown"
+                        confidence = pos.entry_reasons.get("confidence", 50.0) if pos.entry_reasons else 50.0
+                        if pos.opened_at and pos.close_time:
+                            hold_hours = (pos.close_time - pos.opened_at).total_seconds() / 3600.0
+                    self.regime_feedback.record_trade(
+                        regime=regime,
+                        pnl=total_pnl,
+                        confidence=confidence,
+                        strategy=event.strategy,
+                        hold_hours=hold_hours,
+                        metadata={"symbol": symbol, "action": event.action}
+                    )
+                    # Record for adaptive confidence floor (binned by confidence level)
+                    self.confidence_floor.record_outcome(
+                        confidence=confidence,
+                        win=total_pnl > 0,
+                        pnl=total_pnl,
+                        strategy=event.strategy
+                    )
+                    # Record hold-time performance (learn min hold times per regime)
+                    self.hold_time_rules.record_trade(
+                        regime=regime,
+                        hold_hours=hold_hours,
+                        win=total_pnl > 0,
+                        pnl=total_pnl
+                    )
+                    # Record signal quality outcome (learns meta-confidence)
+                    if self.signal_quality:
+                        self.signal_quality.record_outcome(
+                            features_key=(event.strategy, symbol, regime),
+                            win=total_pnl > 0,
+                            pnl=total_pnl
+                        )
+                    # Record parameter tuning outcome (learns parameter adjustments)
+                    if self.parameter_tuner:
+                        self.parameter_tuner.record_outcome(
+                            win=total_pnl > 0,
+                            pnl=total_pnl,
+                            pnl_pct=total_pnl / (self.risk_mgr.equity or 1.0),
+                            regime=regime,
+                            symbol=symbol,
+                            num_agree=len(pos.entry_reasons.get("strategies_agree", [])) if pos and pos.entry_reasons else 1
+                        )
+                    # Record continuous backtest outcome (real-time validation)
+                    if self.continuous_backtest:
+                        self.continuous_backtest.record_outcome(
+                            symbol=symbol,
+                            side=pos.side if pos else ("BUY" if "BUY" in event.side else "SELL"),
+                            entry_price=pos.entry if pos else 0,
+                            exit_price=event.price if hasattr(event, 'price') else 0,
+                            entry_confidence=confidence,
+                            predicted_direction=1 if (pos and pos.side == "LONG") else -1 if pos else 0,
+                            actual_return=total_pnl,
+                            holding_time_hours=hold_hours
+                        )
+                except Exception as e:
+                    logger.debug(f"Feedback recording error: {e}")
 
                 # Record for LLM memory-worthy event detection
                 _et = ""
@@ -3108,6 +3220,15 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     )
                 except Exception as e:
                     logger.warning(f"Feedback outcome error: {e}")
+
+                # Graduated rules: record outcome so rules track accuracy + auto-retire poor rules
+                try:
+                    from llm.graduated_rules import get_graduated_rules_engine
+                    get_graduated_rules_engine().record_outcome(
+                        symbol=symbol, regime=_rg_fb, side=event.side, won=total_pnl > 0
+                    )
+                except Exception:
+                    pass
 
                 # Quant system: record to IC tracker, Kelly engine, trade ledger, resolve shadows
                 if pos:
@@ -3230,6 +3351,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     _dm_pos = self.pos_mgr.positions.get(symbol)
                     if _dm_pos:
                         self._record_trade_dna(symbol, _dm_pos, event)
+                        # Invalidate dynamic threshold cache so next decision sees fresh data
+                        try:
+                            from llm.dynamic_thresholds import get_dynamic_thresholds
+                            get_dynamic_thresholds().invalidate()
+                        except Exception:
+                            pass
+                        # Invalidate prompt enricher cache so agents see fresh regime floors
+                        try:
+                            from llm.agents.prompt_enricher import invalidate_cache as _inv_enricher
+                            _inv_enricher()
+                        except Exception:
+                            pass
                 except Exception as e:
                     logger.debug(f"Deep memory trade DNA error: {e}")
 
@@ -3415,6 +3548,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         )
                     except Exception as e:
                         logger.debug(f"Adaptive risk record error: {e}")
+
+                # Adaptive Sizer: record per-symbol outcome for anti-martingale heat tracking
+                try:
+                    from execution.adaptive_risk import get_adaptive_sizer
+                    get_adaptive_sizer(self.config).record_outcome(symbol, won=total_pnl > 0)
+                except Exception as e:
+                    logger.debug(f"Adaptive sizer record error: {e}")
 
                 # Wave 4: Counterfactual — record exit alternative (TP1 vs TP2)
                 if self.counterfactual:
@@ -4741,6 +4881,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             _entry_type_fb = ""
             _vol_ratio_fb = signal_result.metadata.get("volume_ratio", 1.0)
 
+            # quality_pre_applied: ensemble already called quality.adjust_confidence()
+            # when quality_scorer is wired in. Avoid double-applying.
+            _quality_already_done = "quality_multiplier" in signal_result.metadata
             should_trade, fb_adjusted_conf, fb_floor, fb_reason = self.feedback.evaluate_signal(
                 confidence=signal_result.confidence,
                 strategy=signal_result.strategy,
@@ -4754,6 +4897,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 volatility=ml_volatility if self.ml else 0.0,
                 rr1=signal_result.risk_reward_tp1,
                 trend_alignment=signal_result.metadata.get("trend_adjustment", 0.0),
+                quality_pre_applied=_quality_already_done,
             )
 
             # Apply quality-adjusted confidence

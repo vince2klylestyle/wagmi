@@ -415,7 +415,8 @@ def _build_knowledge_base_rules(agent_role: str) -> str:
 def _build_meta_patterns() -> str:
     """Surface top cross-trade patterns from meta_learning/insights.json.
 
-    Filters to high-confidence, evidence-backed entries. Returns empty if none.
+    De-duplicates by description prefix, separates edges from weaknesses.
+    Returns top 2 edges + top 2 weaknesses/biases.
     """
     meta = _cache.get("meta_insights", [])
     if not meta:
@@ -423,24 +424,37 @@ def _build_meta_patterns() -> str:
 
     qualified = [
         m for m in meta
-        if m.get("confidence", 0) >= 0.60
-        and m.get("evidence_count", 0) >= 3
+        if m.get("confidence", 0) >= 0.70
+        and m.get("evidence_count", 0) >= 15
     ]
     if not qualified:
         return ""
 
-    qualified.sort(key=lambda m: (m.get("confidence", 0), m.get("evidence_count", 0)), reverse=True)
-    top = qualified[:3]
+    # De-duplicate by first 55 chars of description (catches repeated pattern variants)
+    seen: dict = {}
+    for m in sorted(qualified, key=lambda x: (x.get("confidence", 0), x.get("evidence_count", 0)), reverse=True):
+        key = str(m.get("description", "") or "")[:55]
+        if key and key not in seen:
+            seen[key] = m
+
+    unique = list(seen.values())
+    edges = [m for m in unique if m.get("category") in ("pattern", "edge")][:2]
+    risks = [m for m in unique if m.get("category") in ("weakness", "bias")][:2]
+    top = edges + risks
+    if not top:
+        return ""
 
     lines = ["=== META-LEARNING PATTERNS ==="]
     for m in top:
         conf = m.get("confidence", 0)
         n = m.get("evidence_count", 0)
-        desc = str(m.get("description", m.get("insight", "")) or "")[:160]
-        suggestion = str(m.get("actionable_suggestion", "") or "")[:80]
-        line = f"  • [conf={conf:.0%} n={n}] {desc}"
+        cat = m.get("category", "")
+        desc = str(m.get("description", m.get("insight", "")) or "")[:140]
+        suggestion = str(m.get("actionable_suggestion", "") or "")[:70]
+        prefix = "EDGE" if cat in ("pattern", "edge") else "WARN"
+        line = f"  [{prefix} conf={conf:.0%} n={n}] {desc}"
         if suggestion:
-            line += f" → {suggestion}"
+            line += f"\n    => {suggestion}"
         lines.append(line)
 
     return "\n".join(lines)
@@ -853,6 +867,109 @@ def _build_hold_time_mechanism() -> str:
     return "\n".join(lines)
 
 
+def _build_dynamic_floors_section() -> str:
+    """Show the system's live dynamic confidence floors computed from the enricher's cached trade_dna."""
+    try:
+        from llm.dynamic_thresholds import DynamicThresholds
+        trades = _cache.get("trade_dna", [])
+        if len(trades) < 15:
+            return ""
+        # Build a fresh (non-singleton) instance pointing at the cached data via a temp file approach
+        # We compute inline to avoid path conflicts in tests
+        from collections import defaultdict
+
+        def _wr_to_floor(wr: float, n: int) -> float:
+            if n < 10:
+                return 64.0
+            if wr < 0.25:
+                return 76.0
+            if wr < 0.35:
+                return 71.0
+            if wr < 0.45:
+                return 66.0
+            if wr < 0.55:
+                return 62.0
+            return 58.0
+
+        regime_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0, "sl_hits": 0, "sl_widths": []})
+        for t in trades:
+            r = (t.get("regime") or "unknown").lower()
+            pnl = float(t.get("pnl") or 0)
+            won = t.get("outcome") == "WIN"
+            entry = float(t.get("entry_price") or 0)
+            sl = float(t.get("sl") or 0)
+            exit_reason = (t.get("exit_reason") or "").upper()
+            regime_agg[r]["total"] += 1
+            regime_agg[r]["pnl"] += pnl
+            if won:
+                regime_agg[r]["wins"] += 1
+            if exit_reason == "SL":
+                regime_agg[r]["sl_hits"] += 1
+            if entry > 0 and sl > 0:
+                regime_agg[r]["sl_widths"].append(abs(entry - sl) / entry)
+
+        lines = []
+        for r, v in sorted(regime_agg.items(), key=lambda x: -x[1]["total"]):
+            n = v["total"]
+            wr = v["wins"] / n if n else 0
+            floor = _wr_to_floor(wr, n)
+            sl_hit = v["sl_hits"] / n if n else 0
+            widths = v["sl_widths"]
+            avg_sl = sum(widths) / len(widths) * 100 if widths else 0
+            lines.append(f"  {r}: WR={wr:.0%} n={n} floor={floor:.0f} SL_hit={sl_hit:.0%} avg_SL={avg_sl:.1f}%")
+
+        if not lines:
+            return ""
+
+        # Hold time performance (computed inline from same cache)
+        hold_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+        entry_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+        for t in trades:
+            won = t.get("outcome") == "WIN"
+            pnl = float(t.get("pnl") or 0)
+            hold_s = float(t.get("hold_time_s") or 0)
+            if hold_s < 3600: hb = "<1h"
+            elif hold_s < 7200: hb = "1-2h"
+            elif hold_s < 21600: hb = "2-6h"
+            elif hold_s < 43200: hb = "6-12h"
+            else: hb = ">12h"
+            hold_agg[hb]["total"] += 1
+            hold_agg[hb]["pnl"] += pnl
+            if won: hold_agg[hb]["wins"] += 1
+            et = (t.get("entry_type") or "").upper()
+            if et:
+                entry_agg[et]["total"] += 1
+                entry_agg[et]["pnl"] += pnl
+                if won: entry_agg[et]["wins"] += 1
+
+        hold_lines = []
+        for b in ["<1h", "1-2h", "2-6h", "6-12h", ">12h"]:
+            d = hold_agg.get(b)
+            if d and d["total"] >= 5:
+                wr = d["wins"] / d["total"]
+                hold_lines.append(f"  {b}: WR={wr:.0%} n={d['total']} PnL=${d['pnl']:+.0f}")
+
+        profile_lines = []
+        for et, d in sorted(entry_agg.items(), key=lambda x: -x[1]["total"]):
+            if d["total"] >= 5:
+                wr = d["wins"] / d["total"]
+                profile_lines.append(f"  {et}: WR={wr:.0%} n={d['total']} PnL=${d['pnl']:+.0f}")
+
+        result = (
+            "LIVE CONFIDENCE FLOORS (dynamic from trade_dna):\n"
+            + "\n".join(lines)
+            + "\nNote: mechanical gate uses these floors. Your conviction score should EXCEED the floor "
+            "for your current regime to pass the quality filter."
+        )
+        if hold_lines:
+            result += "\nHOLD TIME PERFORMANCE (key: 6-12h trades = profitable):\n" + "\n".join(hold_lines)
+        if profile_lines:
+            result += "\nTRADE PROFILE PERFORMANCE:\n" + "\n".join(profile_lines)
+        return result
+    except Exception:
+        return ""
+
+
 def enrich_prompt(agent_role: str, base_prompt: str) -> str:
     """Enrich an agent's base prompt with the latest quant intelligence.
 
@@ -957,6 +1074,12 @@ def enrich_prompt(agent_role: str, base_prompt: str) -> str:
         hold = _build_hold_time_mechanism()
         if hold:
             sections.append(hold)
+
+    # 15. Dynamic confidence floors — live per-regime WR floors
+    if agent_role in ("trade", "regime", "critic"):
+        dyn_floor = _build_dynamic_floors_section()
+        if dyn_floor:
+            sections.append(dyn_floor)
 
     if not sections:
         return base_prompt

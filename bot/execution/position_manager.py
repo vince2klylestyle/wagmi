@@ -196,6 +196,7 @@ class PositionManager:
         enable_trailing: bool = True,
         trailing_atr_mult: float = 1.5,
         time_stop_hours: int = 12,
+        hold_time_rules=None,  # Optional HoldTimeRuleManager for blocking early exits
     ):
         self.positions: Dict[str, Position] = {}
         self.trade_log: List[TradeEvent] = []
@@ -203,6 +204,7 @@ class PositionManager:
         self.enable_trailing = enable_trailing
         self.trailing_atr_mult = trailing_atr_mult
         self._time_stop_hours = time_stop_hours
+        self.hold_time_rules = hold_time_rules  # Optional HoldTimeRuleManager
         # Setup-specific time stops from 2,172-signal analysis
         # Each setup has an optimal hold window where WR peaks.
         self._setup_time_stops = {
@@ -943,9 +945,22 @@ class PositionManager:
         Detect momentum reversal heading toward SL and cut early.
         Regime-adaptive: high-vol/range cut faster (1-2 conditions at 35-45%),
         trending lets trades breathe (3 conditions at 70%).
+
+        Respects dynamic hold-time rules: blocks early exit if trade hasn't held long enough.
         """
         if df_5m is None or df_5m.empty or len(df_5m) < 15:
             return False
+
+        # Check hold-time rules: block early exit if held less than regime minimum
+        if self.hold_time_rules and pos.opened_at:
+            try:
+                from datetime import datetime, timezone
+                hold_hours = (datetime.now(timezone.utc) - pos.opened_at).total_seconds() / 3600.0
+                regime = (pos.entry_reasons or {}).get("regime", "unknown")
+                if self.hold_time_rules.should_block_early_exit(regime, hold_hours):
+                    return False
+            except Exception:
+                pass  # If hold-time check fails, allow early exit to proceed
 
         try:
             is_long = pos.side == "LONG"

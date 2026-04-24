@@ -367,9 +367,32 @@ class RiskFilterChain:
         # Gate 1f: Minimum win probability (post-deflation from ensemble)
         # Trades 2&3 on 2026-03-25 had 42%/40% win_prob — below coin flip.
         # Sub-48% WP = negative EV after fees. Block these regardless of setup.
+        # Floor is regime-adaptive: bad regimes (illiquid=28% WR) require higher
+        # predicted win_prob since SL hits are noisy by default.
         _win_prob = meta.get("win_prob") if meta else None
         if _win_prob is not None and isinstance(_win_prob, (int, float)):
             _min_wp = getattr(self.config, "min_signal_win_prob", 0.43)
+            # Regime-adaptive adjustment: raise floor for losing regimes
+            try:
+                from llm.dynamic_thresholds import get_dynamic_thresholds
+                _regime_key = (meta.get("regime") or "") if meta else ""
+                if _regime_key:
+                    _rstats = get_dynamic_thresholds().get_regime_stats(_regime_key)
+                    if _rstats and _rstats["n"] >= 10:
+                        _rwr = _rstats["wr"]
+                        _blend = min(1.0, (_rstats["n"] - 10) / 30)
+                        # Poor regime → raise floor; strong regime → slight reduction
+                        if _rwr < 0.30:
+                            _dyn_wp = _min_wp + 0.08 * _blend   # up to +8%
+                        elif _rwr < 0.38:
+                            _dyn_wp = _min_wp + 0.04 * _blend   # up to +4%
+                        elif _rwr >= 0.48:
+                            _dyn_wp = _min_wp - 0.03 * _blend   # slight relaxation
+                        else:
+                            _dyn_wp = _min_wp
+                        _min_wp = max(0.35, _dyn_wp)  # absolute floor
+            except Exception:
+                pass
             if _win_prob < _min_wp:
                 _reason = f"Win probability {_win_prob:.1%} < min {_min_wp:.1%} (insufficient edge)"
                 if _pt: _pt.record_gate(signal.symbol, "win_prob_floor", False, _win_prob, _min_wp, _reason)
@@ -380,6 +403,31 @@ class RiskFilterChain:
                     rejection_reason=_reason,
                     metadata=meta,
                 )
+
+        # Gate 1g: Graduated rules — validated hypotheses become executable rules.
+        # Rules can VETO (block), BOOST (add confidence), or PENALIZE (subtract).
+        # Only vetoes hard-block; confidence adjustments are advisory and logged.
+        try:
+            from llm.graduated_rules import get_graduated_rules_engine
+            _gr_engine = get_graduated_rules_engine()
+            _gr_regime = (meta.get("regime") or "") if meta else ""
+            _gr_side = signal.side if isinstance(signal.side, str) else signal.side.value
+            _gr_n = (meta.get("num_agree") or 1) if meta else 1
+            _gr_veto, _gr_adj_conf, _gr_applied = _gr_engine.evaluate_signal(
+                symbol=signal.symbol, regime=_gr_regime, side=_gr_side,
+                num_agree=_gr_n, confidence=signal.confidence,
+            )
+            if _gr_veto:
+                _reason = f"Graduated rule veto: {_gr_applied[:100]}"
+                if _pt: _pt.record_gate(signal.symbol, "graduated_rule_veto", False, 0, 0, _reason)
+                _log_rejection(signal, "graduated_rule_veto", _reason)
+                self._log_signal_filtered(signal, "graduated_rule_veto", _reason)
+                return FilterResult(approved=False, signal=signal, rejection_reason=_reason, metadata=meta)
+            if _gr_applied and abs(_gr_adj_conf - signal.confidence) > 0.5:
+                meta["graduated_rules_adj"] = round(_gr_adj_conf - signal.confidence, 1)
+                meta["graduated_rules_applied"] = _gr_applied[:120]
+        except Exception:
+            pass
 
         # Gate 1.5: Committee thesis alignment (flag-gated via COMMITTEE_GATE_ENABLED)
         # Blocks signals that conflict with the live quant analyst committee verdict.

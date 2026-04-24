@@ -1,0 +1,96 @@
+{
+  "symbol": "HYPE",
+  "updated_at": "2026-04-24T06:26:52.251747+00:00",
+  "price": 41.1315,
+  "levels": {
+    "symbol": "HYPE",
+    "ts": "2026-04-24T06:25:14.658307+00:00",
+    "price": 41.1315,
+    "daily": {
+      "ema20": 40.94933235046911,
+      "ema50": 40.12764048035688,
+      "slope_pct": 2.438455620842979,
+      "rsi14": 48.57941905548848,
+      "atr14": 2.1985,
+      "hi60d": 45.763,
+      "lo60d": 25.606,
+      "trend": "UP"
+    },
+    "h4": {
+      "ema20": 41.152689511546875,
+      "ema50": 41.63355161184338,
+      "rsi14": 63.52115422109572,
+      "atr14": 0.7760714285714282,
+      "hi20": 41.861,
+      "lo20": 38.886
+    },
+    "h1": {
+      "ema20": 41.18193385409687,
+      "ema50": 41.05089572261466,
+      "rsi14": 39.34837092731839,
+      "atr14": 0.3100000000000002,
+      "hi20": 41.861,
+      "lo20": 40.706,
+      "vol_ratio": 0.4155747641166932
+    },
+    "m5": {
+      "rsi14": 67.56756756756648,
+      "atr14": 0.06592857142857257
+    }
+  },
+  "factors": {
+    "btc_4h_direction": "neutral",
+    "btc_4h_aligned_long": false,
+    "chop_score": 0.27,
+    "chop_ok": true,
+    "rsi_aligned": false,
+    "rsi_bullish_stack": false,
+    "daily_trend_up": true,
+    "conviction_count": 2,
+    "conviction_max": 4,
+    "conviction_wr_est": 38
+  },
+  "committee": {
+    "regime": {
+      "ok": true,
+      "agent": "regime",
+      "narrative": "**Regime: `range` | Bias: mildly bullish | Volatility band: low-moderate**\n\nHYPE is consolidating in a $41\u2013$42 compression zone \u2014 daily structure is clearly bullish (slope +2.44%/10d, price above EMA20/50) but the 1h RSI at 39 with 0.42x volume flags a low-energy pullback, not a trending move. The 4h/1h RSI divergence (64 vs 39) with price pinned just below the 4h EMA50 ($42) confirms chop within a larger uptrend rather than a clean trending_bull impulse. Conviction count at 2/4 (historical 38% WR) and no RSI div alignment mean structural edge is weak here; time-of-day (UTC 06:25, historically 15% WR dead zone) further suppresses the odds \u2014 wait for conviction to stack or session open before sizing in.",
+      "latency_s": 32.2971830368042,
+      "regime_label": "trending_bull",
+      "confidence": 70,
+      "bias": "bullish",
+      "vol_band": "high",
+      "daily_slope_pct": 2.44,
+      "daily_rsi": 49.0,
+      "h1_rsi": 39.0,
+      "vol_ratio_1h": 0.42
+    },
+    "trade": {
+      "ok": true,
+      "agent": "trade",
+      "narrative": "**Wait.**\n\nDespite the trending_bull regime and daily uptrend (+2.44%/10d slope, price above EMA20/50 on daily), the alpha stack is too thin to pull the trigger. Both of the bot's strongest Bonferroni-cleared ICs are offline: `btc_4h_return_signed` is neutral (not bullish, IC +0.519 contribution = zero) and `rsi_div_aligned` is NO \u2014 1h RSI at 39 vs 4h RSI at 64 is a significant mismatch that historically degrades edge. With only 2/4 conviction signals aligned, the KB base rate is 38% WR \u2014 positive EV only if R:R is excellent, but structural conditions don't support that right now.\n\nThe micro picture adds noise, not clarity: 5m RSI 68 (overbought for an entry) and 1h volume at 0.42x (anemic \u2014 moves without volume don't sustain). The 4h price is below EMA50 ($42), so the intermediate structure is actually bearish even within the broader daily uptrend.\n\n**Watch level for a long entry**: $40.00\u2013$40.50 zone (EMA50 daily reclaim + 4h range low support). A long there with `btc_4h_return` turning bullish and `rsi_div` aligning would push conviction to 4/4 \u2014 the 61% WR / PF 4.12 structural sweet spot. Stop at $38.80 (~1.5x ATR below support, clearing the stop-hunt zone). Target 1 at $43.50 (prior 4h range high), target 2 at $45.50 (60d range resistance).\n\nNo trade now. Wait for the conviction stack.",
+      "latency_s": 35.08082675933838,
+      "action": "go_long",
+      "confidence": 65,
+      "entry_low": 41.05,
+      "entry_high": 41.21,
+      "stop": 40.61,
+      "target1": 41.86,
+      "target2": 45.76,
+      "rr_t1": 1.41,
+      "rr_t2": 8.93,
+      "invalidation": 40.13
+    },
+    "critic": {
+      "ok": true,
+      "agent": "critic",
+      "narrative": "**Pass on Wait \u2014 but flag one live trap.**\n\nThe 1h RSI at 39 is the sharpest knife in the room: HYPE is actively pulling back *right now* on the intermediate timeframe, and the 4h EMA50 at $42 sits *above* current price \u2014 meaning the 4h structure is already broken-down, not trending. Buying here means buying into weakness, not confirmed resumption.\n\n**#1 risk of acting anyway:** conviction at 2/4 puts you in the 38% WR bucket by your own Bonferroni-cleared data. You need `btc_4h_return_signed` to flip bullish AND `rsi_div_1h_6h` to align before this meets the 3+ threshold. Until then you're taking a coin-flip entry in a structurally choppy intra-day window (UTC 04-07 = 15% WR \u2014 worst session of the day).\n\n**Counter-thesis if pressing for a trade:** short bias is actually more consistent with the 1h + 4h evidence right now. But with daily trend up and chop at 0.27, the cleaner play is neither \u2014 wait for conviction to stack at the next momentum window (UTC 20-23, 55% WR).",
+      "latency_s": 30.209502458572388,
+      "vote": "pass",
+      "risk_flags": [
+        "thin_volume"
+      ]
+    },
+    "mode": "cli"
+  }
+}

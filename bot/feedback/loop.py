@@ -93,13 +93,18 @@ class FeedbackLoop:
         volatility: float = 0.0,
         rr1: float = 1.0,
         trend_alignment: float = 0.0,
+        quality_pre_applied: bool = False,
     ) -> Tuple[bool, float, float, str]:
         """Evaluate whether a signal should be traded.
 
         Applies:
-        1. Signal quality scoring (adjusts confidence)
+        1. Signal quality scoring (adjusts confidence) — skipped if quality_pre_applied=True
         2. Adaptive confidence floor (dynamic threshold)
         3. Parameter tuner adjustments
+
+        Args:
+            quality_pre_applied: Set True when the ensemble already applied quality scoring
+                                  to avoid double-adjustment.
 
         Returns:
             (should_trade, adjusted_confidence, floor, reason)
@@ -123,10 +128,14 @@ class FeedbackLoop:
             trend_alignment=trend_alignment,
         )
 
-        # Step 1: Quality-adjust confidence
-        adjusted_conf, quality_mult, _ = self.quality.adjust_confidence(
-            confidence, features
-        )
+        # Step 1: Quality-adjust confidence (skip if ensemble already applied it)
+        if quality_pre_applied:
+            adjusted_conf = confidence
+            quality_mult = 1.0
+        else:
+            adjusted_conf, quality_mult, _ = self.quality.adjust_confidence(
+                confidence, features
+            )
 
         # Step 2: Apply tuner calibration offset
         cal_offset = self.tuner.get_calibration_offset()

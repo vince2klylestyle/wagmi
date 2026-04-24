@@ -1,0 +1,96 @@
+{
+  "symbol": "BTC",
+  "updated_at": "2026-04-24T06:21:01.660775+00:00",
+  "price": 77902.5,
+  "levels": {
+    "symbol": "BTC",
+    "ts": "2026-04-24T06:19:26.553656+00:00",
+    "price": 77902.5,
+    "daily": {
+      "ema20": 74422.82972454307,
+      "ema50": 73202.85266588134,
+      "slope_pct": 4.657948282228527,
+      "rsi14": 64.31735803463552,
+      "atr14": 2432.785714285714,
+      "hi60d": 79400.0,
+      "lo60d": 62468.0,
+      "trend": "UP"
+    },
+    "h4": {
+      "ema20": 77436.33484347769,
+      "ema50": 76247.13125991513,
+      "rsi14": 60.53489889106327,
+      "atr14": 995.6428571428571,
+      "hi20": 79400.0,
+      "lo20": 74770.0
+    },
+    "h1": {
+      "ema20": 77959.6363823211,
+      "ema50": 77742.19226208612,
+      "rsi14": 46.80272108843537,
+      "atr14": 461.42857142857144,
+      "hi20": 78649.0,
+      "lo20": 76910.0,
+      "vol_ratio": 0.34317352974925824
+    },
+    "m5": {
+      "rsi14": 75.20259319286872,
+      "atr14": 86.71428571428571
+    }
+  },
+  "factors": {
+    "btc_4h_direction": "bullish",
+    "btc_4h_aligned_long": true,
+    "chop_score": 0.27,
+    "chop_ok": true,
+    "rsi_aligned": false,
+    "rsi_bullish_stack": false,
+    "daily_trend_up": true,
+    "conviction_count": 3,
+    "conviction_max": 4,
+    "conviction_wr_est": 50
+  },
+  "committee": {
+    "regime": {
+      "ok": true,
+      "agent": "regime",
+      "narrative": "**Regime: `trending_bull`** | **Bias: Long, but near resistance** | **Vol band: Moderate (daily ATR 3.12%, 4h ATR 1.28%)**\n\nDaily and 4h structure is unambiguously bullish \u2014 price holds above both EMAs on all upper timeframes, daily slope +4.66%/10d, RSI 64/61 with no sign of exhaustion \u2014 triggering the graduated rule boost (BTC in trend regime, conf 80%, n=15). However, the 1h is consolidating inside noise (RSI 47, price pinned between EMA20/EMA50, volume 0.34x) during UTC 04-07, the historically dead zone (15% WR), and price at $77,902 sits within 2% of the 60d high at $79,400 \u2014 structural resistance. Conviction is 3/4 aligned (est. 50% WR by base rates; rsi_div_1h_6h not confirmed), so the structural edge exists but is not at the 4-aligned tier (61% WR, PF 4.12) \u2014 bias is long on pullbacks, not chases.",
+      "latency_s": 30.854477643966675,
+      "regime_label": "trending_bull",
+      "confidence": 70,
+      "bias": "bullish",
+      "vol_band": "medium",
+      "daily_slope_pct": 4.66,
+      "daily_rsi": 64.0,
+      "h1_rsi": 47.0,
+      "vol_ratio_1h": 0.34
+    },
+    "trade": {
+      "ok": true,
+      "agent": "trade",
+      "narrative": "**GO_LONG \u2014 wait for entry zone**\n\nEntry zone: **$77,200\u2013$77,500** (4h EMA20 $77,436 as magnet; 5m RSI 75 argues against chasing the current print at $77,902).\nStop: **$75,700** \u2014 1.5\u00d7 4h ATR below the 4h EMA50 ($76,247), clearing the structural stop-hunt window (52% of SL hits within 30m return to direction; 1.5\u00d7 ATR buffer saves 35% of losses).\nT1: **$79,000** (~1.0R, approach 60d high resistance); T2: **$79,400\u2013$80,000** (1.5R+, where reversal probability drops to 6.7% \u2014 the BE-or-trail threshold from the reversal curve).\n\n**Confluence stack:** `btc_4h_return_signed` bullish (IC +0.519, the single strongest Bonferroni-cleared alpha, universally valid across symbol/side cells) + chop 0.27 (well below 0.60 noise floor, clean trending environment) + `trending_bull` regime with BTC graduated rule active (conf 80%, n=15, +8.0 boost) = **3/4 signals aligned \u2192 historical baseline ~50% WR**. The 4th signal (`rsi_div_aligned`) is absent \u2014 1h RSI 47 vs 4h RSI 61 diverge \u2014 which keeps us out of the 4-aligned 61%/PF 4.12 tier. Trade is valid but size to the 3-aligned expectation, not max. Low 1h volume (0.34\u00d7) supports waiting for the zone rather than entering at ask.",
+      "latency_s": 33.30823302268982,
+      "action": "wait",
+      "confidence": 55,
+      "entry_low": 77803.72,
+      "entry_high": 78115.56,
+      "stop": 76771.57,
+      "target1": 78649.0,
+      "target2": 79400.0,
+      "rr_t1": 0.58,
+      "rr_t2": 1.21,
+      "invalidation": 73202.85
+    },
+    "critic": {
+      "ok": true,
+      "agent": "critic",
+      "narrative": "**REDUCE** \u2014 conditional pass, not clean.\n\n**#1 risk:** `rsi_div_1h_6h_aligned = NO` is the system's second-strongest Bonferroni-cleared predictor (IC +0.456) and it's structurally misaligned. The 1h RSI at 47 while 4h sits at 61 means intra-setup momentum has already rolled \u2014 entering the $77,200\u2013$77,500 zone may be catching a knife mid-correction, not a clean pullback to support.\n\n**Compounding factor:** UTC 06:19 falls dead-center in the 04\u201307 window (historical WR: 15%). That's not a veto on its own, but pairing it with a missing IC +0.456 signal drops effective conviction from 3/4 to closer to 2/4 adjusted \u2014 and 2-aligned historically lands at 38% WR / no edge.\n\n**Counter-thesis:** BTC retraces to the zone on low 1h volume (0.34x), the 1h RSI continues falling through 40, and the 4h EMA50 at $76,247 becomes the real support test. Stop at $75,700 survives, but the trade sits underwater for hours in the dead zone before either resolving or stopping out.\n\n**Recommendation:** Wait for `rsi_div_aligned = YES` confirmation (1h RSI stabilizing \u226550) before entry. Skip if it doesn't resolve by UTC 08:00.",
+      "latency_s": 30.935593843460083,
+      "vote": "pass",
+      "risk_flags": [
+        "thin_volume"
+      ]
+    },
+    "mode": "cli"
+  }
+}

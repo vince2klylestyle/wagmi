@@ -22,17 +22,17 @@
     false
   ],
   "regime_wr": {
-    "illiquid": {
-      "wins": 6,
-      "total": 25
-    },
     "trending": {
-      "wins": 5,
-      "total": 10
+      "wins": 27,
+      "total": 52
+    },
+    "illiquid": {
+      "wins": 16,
+      "total": 57
     },
     "ranging": {
-      "wins": 1,
-      "total": 4
+      "wins": 4,
+      "total": 16
     }
   }
 }

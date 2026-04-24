@@ -31,6 +31,17 @@ from core.filter_annotations import FilterAnnotation, AnnotatedSignal
 logger = logging.getLogger("bot.strategy.ensemble")
 
 
+def _get_dynamic_floor(regime: str, symbol: str, side: str, fallback: float) -> float:
+    """Lazy import of DynamicThresholds to avoid circular imports."""
+    try:
+        from llm.dynamic_thresholds import get_dynamic_thresholds
+        return get_dynamic_thresholds().get_confidence_floor(
+            regime=regime, symbol=symbol, side=side, fallback=fallback
+        )
+    except Exception:
+        return fallback
+
+
 def _get_tel():
     """Lazy import to avoid circular dependency."""
     try:
@@ -537,13 +548,18 @@ class EnsembleStrategy:
         # This lets historically bad setups get rejected even with high raw confidence.
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -585,10 +601,37 @@ class EnsembleStrategy:
         except Exception:
             pass
 
-        # 1. Minimum confidence floor — regime-aware
-        # In choppy markets, require much higher confidence to trade.
-        # 100d backtest: ranging regime = 24% WR, trending = 100% WR.
-        effective_floor = self.confidence_floor
+        # 1. Minimum confidence floor — dynamic regime-aware
+        # Base floor computed from live per-regime WR in trade_dna (updates every 30min).
+        # Time-of-day adjustment applied on top, then chop score.
+        _result_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_result_regime,
+            symbol=symbol,
+            side=result.side,
+            fallback=self.confidence_floor,
+        )
+        result.metadata["dynamic_floor"] = round(effective_floor, 1)
+        # Time-of-day adjustment from live hourly WR data
+        try:
+            import datetime as _dt
+            from llm.dynamic_thresholds import get_dynamic_thresholds as _get_dt
+            _utc_hour = _dt.datetime.now(_dt.timezone.utc).hour
+            _dt_engine = _get_dt()
+            _tod_adj = _dt_engine.get_time_of_day_floor_adj(_utc_hour)
+            if _tod_adj != 0.0:
+                effective_floor = effective_floor + _tod_adj
+                result.metadata["tod_floor_adj"] = round(_tod_adj, 1)
+            # Entry type / trade profile floor adjustment (TREND=14% WR → +8 floor)
+            _entry_type = result.metadata.get("entry_type", "")
+            if _entry_type:
+                _et_adj = _dt_engine.get_entry_type_floor_adj(_entry_type)
+                if _et_adj != 0.0:
+                    effective_floor = effective_floor + _et_adj
+                    result.metadata["entry_type_floor_adj"] = round(_et_adj, 1)
+        except Exception:
+            pass
+
         raw_chop = result.metadata.get("chop_score", 0)
         # Apply EMA smoothing to prevent floor oscillation on noise
         prev = self._smoothed_chop.get(symbol, raw_chop)
@@ -597,28 +640,20 @@ class EnsembleStrategy:
         result.metadata["chop_score_smoothed"] = round(chop_score, 3)
         if chop_score > 0.35:
             if chop_score >= 0.65:
-                # Extreme chop: floor rises from ranging toward max.
-                # High-vol assets get lower max: their natural price action is choppy.
+                # Extreme chop: floor rises from regime-dynamic base toward max.
                 _vol_profile = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
-                _max_chop_floor = {"low": 75.0, "medium": 75.0, "high": 75.0}.get(_vol_profile, 75.0)
+                _max_chop_floor = {"low": 77.0, "medium": 77.0, "high": 77.0}.get(_vol_profile, 77.0)
                 chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)  # 0→1 over 0.65→0.85
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (
-                    _max_chop_floor - self.ranging_confidence_floor
+                effective_floor = effective_floor + chop_intensity * (
+                    _max_chop_floor - effective_floor
                 )
             else:
-                # Moderate chop: interpolate between normal and ranging floor
+                # Moderate chop: push floor upward toward ranging_confidence_floor
                 chop_intensity = (chop_score - 0.35) / 0.30  # 0→1 over 0.35→0.65
-                effective_floor = self.confidence_floor + chop_intensity * (
+                effective_floor = effective_floor + chop_intensity * (
                     self.ranging_confidence_floor - self.confidence_floor
                 )
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
-
-        # Regime-specific confidence override: consolidation ONLY works at 80%+
-        # Data: 70-79% consolidation = 9% WR (-$367), 80-89% = 80% WR (+$2,516)
-        _result_regime = result.metadata.get("regime", "")
-        if _result_regime in ("consolidation",) and result.confidence < 68:
-            effective_floor = max(effective_floor, 68.0)
-            result.metadata["regime_floor_override"] = 68.0
 
         if result.confidence < effective_floor:
             # Magnitude bypass: high-R:R signals on volatile assets get a second chance.
@@ -724,6 +759,31 @@ class EnsembleStrategy:
                 )
         except Exception:
             pass
+
+        # Apply signal quality context multipliers (learned meta-confidence)
+        try:
+            if hasattr(self, '_signal_quality_scorer') and self._signal_quality_scorer is not None:
+                from feedback.signal_quality import QualityFeatures
+
+                features = QualityFeatures(
+                    confidence=result.confidence,
+                    num_strategies_agree=(result.metadata or {}).get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    symbol=symbol,
+                    side=result.side,
+                    regime=(result.metadata or {}).get("regime", "unknown"),
+                    entry_type=(result.metadata or {}).get("entry_type", ""),
+                )
+                quality_mult, breakdown = self._signal_quality_scorer.score_signal(features)
+                if quality_mult != 1.0:
+                    old_conf = result.confidence
+                    result.confidence = min(100.0, result.confidence * quality_mult)
+                    logger.info(
+                        f"[ENSEMBLE] {symbol} {result.side} Quality multiplier: {quality_mult:.3f} "
+                        f"({old_conf:.0f}% → {result.confidence:.0f}%) | {breakdown}"
+                    )
+        except Exception as _sq_err:
+            logger.debug(f"Signal quality scoring error: {_sq_err}")
 
         # Telemetry: record ensemble consensus result
         try:
@@ -875,14 +935,17 @@ class EnsembleStrategy:
         result.metadata["chop_score_smoothed"] = round(chop_score, 3)
 
         # Effective confidence floor (what the mechanical system would use)
-        effective_floor = self.confidence_floor
+        _meta_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_meta_regime, symbol=symbol, side=result.side, fallback=self.confidence_floor
+        )
         if chop_score > 0.35:
             if chop_score >= 0.65:
                 chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (75.0 - self.ranging_confidence_floor)
+                effective_floor = effective_floor + chop_intensity * (77.0 - effective_floor)
             else:
                 chop_intensity = (chop_score - 0.35) / 0.30
-                effective_floor = self.confidence_floor + chop_intensity * (self.ranging_confidence_floor - self.confidence_floor)
+                effective_floor = effective_floor + chop_intensity * (self.ranging_confidence_floor - self.confidence_floor)
         result.metadata["mechanical_confidence_floor"] = round(effective_floor, 1)
         result.metadata["would_pass_confidence_floor"] = result.confidence >= effective_floor
 
@@ -896,13 +959,18 @@ class EnsembleStrategy:
         # Quality score (attach but don't filter)
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -1062,13 +1130,18 @@ class EnsembleStrategy:
         # Quality adjustment (same as evaluate())
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -1080,8 +1153,12 @@ class EnsembleStrategy:
             except Exception as e:
                 logger.debug(f"Quality scorer error: {e}")
 
-        # ── Soft-annotated confidence floor ──
-        effective_floor = self.confidence_floor
+        # ── Soft-annotated confidence floor (dynamic) ──
+        _ann_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_ann_regime, symbol=symbol, side=result.side, fallback=self.confidence_floor
+        )
+        result.metadata["dynamic_floor"] = round(effective_floor, 1)
         raw_chop = result.metadata.get("chop_score", 0)
         prev = self._smoothed_chop.get(symbol, raw_chop)
         smoothed_chop = self._chop_ema_alpha * raw_chop + (1 - self._chop_ema_alpha) * prev
@@ -1091,14 +1168,14 @@ class EnsembleStrategy:
         if smoothed_chop > 0.35:
             if smoothed_chop >= 0.65:
                 _vol_profile = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
-                _max_chop_floor = {"low": 75.0, "medium": 75.0, "high": 75.0}.get(_vol_profile, 75.0)
+                _max_chop_floor = {"low": 77.0, "medium": 77.0, "high": 77.0}.get(_vol_profile, 77.0)
                 chop_intensity = min(1.0, (smoothed_chop - 0.65) / 0.20)
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (
-                    _max_chop_floor - self.ranging_confidence_floor
+                effective_floor = effective_floor + chop_intensity * (
+                    _max_chop_floor - effective_floor
                 )
             else:
                 chop_intensity = (smoothed_chop - 0.35) / 0.30
-                effective_floor = self.confidence_floor + chop_intensity * (
+                effective_floor = effective_floor + chop_intensity * (
                     self.ranging_confidence_floor - self.confidence_floor
                 )
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
