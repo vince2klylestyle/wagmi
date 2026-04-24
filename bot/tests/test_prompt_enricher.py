@@ -24,7 +24,7 @@ from llm.agents.prompt_enricher import (
     _build_recent_performance,
     _refresh_cache,
 )
-_MAX_BRIEFING_CHARS = 4000  # updated budget — CLI is $0/call (9 sections now)
+_MAX_BRIEFING_CHARS = 5000  # updated budget — CLI is $0/call (14 sections now)
 
 
 # ── Fixtures ────────────────────────────────────────────────────

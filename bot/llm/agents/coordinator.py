@@ -1238,16 +1238,23 @@ class AgentCoordinator:
             td = trade_out.data
             regime = regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown"
 
-            # Extract symbol from snapshot
-            _sym = ""
+            # Extract symbol: prefer trade agent's own symbol output, fall back to snapshot signal
+            _sym = td.get("symbol", td.get("sym", ""))
             _markets = snapshot_data.get("m", []) if snapshot_data else []
-            if _markets:
+            if not _sym:
+                _signals = snapshot_data.get("signals", snapshot_data.get("sigs", [])) if snapshot_data else []
+                if _signals and isinstance(_signals[0], dict):
+                    _sym = _signals[0].get("sym", _signals[0].get("symbol", ""))
+            if not _sym and _markets:
                 _sym = _markets[0].get("s", _markets[0].get("sym", ""))
 
             if decision.action in ("go", "proceed"):
                 # Record thesis for accuracy tracking
                 _entry = 0.0
-                if _markets and isinstance(_markets[0], dict):
+                _signals = snapshot_data.get("signals", snapshot_data.get("sigs", [])) if snapshot_data else []
+                if _signals and isinstance(_signals[0], dict):
+                    _entry = float(_signals[0].get("entry", _signals[0].get("e", 0.0)) or 0.0)
+                if not _entry and _markets and isinstance(_markets[0], dict):
                     _entry = _markets[0].get("price", _markets[0].get("p", 0.0))
                 thesis_text = td.get("thesis", td.get("n", ""))
                 setup_type = td.get("setup_type", td.get("st", ""))

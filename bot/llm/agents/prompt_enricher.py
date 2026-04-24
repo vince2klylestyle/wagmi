@@ -777,6 +777,82 @@ def _build_validated_hypotheses(agent_role: str) -> str:
     return "\n".join(lines)
 
 
+def _build_hold_time_mechanism() -> str:
+    """Regime-conditional hold-time intelligence from 164 live trades.
+
+    Gives exit/trade/risk agents the CAUSAL mechanism — not just a rule.
+    Computed from trade_dna.json so it updates as new trades come in.
+    """
+    trades = _cache.get("trade_dna", [])
+    if len(trades) < 30:
+        return ""
+
+    from collections import defaultdict
+
+    # Hold-time buckets
+    hold_data: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+    # Early losses by regime
+    early_loss_regimes: Dict[str, int] = defaultdict(int)
+    total_early_losses = 0
+    win_holds = []
+    loss_holds = []
+
+    for t in trades:
+        h = float(t.get("hold_time_s") or 0) / 3600
+        outcome = t.get("outcome", "")
+        pnl = float(t.get("pnl") or 0)
+        regime = (t.get("regime") or "unknown").strip() or "unknown"
+
+        if h < 1: bucket = "<1h"
+        elif h < 2: bucket = "1h-2h"
+        elif h < 4: bucket = "2h-4h"
+        elif h < 8: bucket = "4h-8h"
+        elif h < 12: bucket = "8h-12h"
+        else: bucket = "12h+"
+
+        hold_data[bucket]["total"] += 1
+        hold_data[bucket]["pnl"] += pnl
+        if outcome == "WIN":
+            hold_data[bucket]["wins"] += 1
+            win_holds.append(h)
+        elif outcome == "LOSS":
+            loss_holds.append(h)
+            if h < 2:
+                total_early_losses += 1
+                early_loss_regimes[regime] += 1
+
+    if not win_holds or not loss_holds:
+        return ""
+
+    sorted_wins = sorted(win_holds)
+    sorted_losses = sorted(loss_holds)
+    win_median = sorted_wins[len(sorted_wins) // 2]
+    loss_median = sorted_losses[len(sorted_losses) // 2]
+
+    noise_regimes = {"illiquid", "ranging", "unknown", "consolidation", "low_liquidity", "range"}
+    noise_early = sum(v for k, v in early_loss_regimes.items() if k in noise_regimes)
+    noise_pct = noise_early / total_early_losses if total_early_losses > 0 else 0
+
+    lines = ["=== HOLD TIME MECHANISM (live data) ==="]
+    lines.append(f"  WIN median hold={win_median:.1f}h | LOSS median hold={loss_median:.1f}h")
+    if noise_pct >= 0.7:
+        lines.append(f"  {noise_pct:.0%} of early SL hits (<2h) are in noise regimes (illiquid/ranging/unknown)")
+        lines.append("  TRENDING regime: early hold risk is LOW — stay patient through microstructure noise")
+        lines.append("  ILLIQUID/RANGING: early losses are regime failures — consider closing sooner")
+
+    # Show hold-time table (only non-empty buckets)
+    order = ["<1h", "1h-2h", "2h-4h", "4h-8h", "8h-12h", "12h+"]
+    for b in order:
+        if b in hold_data and hold_data[b]["total"] >= 3:
+            s = hold_data[b]
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            flag = "+" if avg > 1 else ("-" if avg < -1 else " ")
+            lines.append(f"  {flag} {b}: {wr:.0%} WR avg=${avg:.1f} (n={s['total']})")
+
+    return "\n".join(lines)
+
+
 def enrich_prompt(agent_role: str, base_prompt: str) -> str:
     """Enrich an agent's base prompt with the latest quant intelligence.
 
@@ -875,6 +951,12 @@ def enrich_prompt(agent_role: str, base_prompt: str) -> str:
         dna = _build_trade_dna_summary()
         if dna:
             sections.append(dna)
+
+    # 14. Hold-time causal mechanism — regime-conditional exit intelligence
+    if agent_role in ("exit", "trade", "risk"):
+        hold = _build_hold_time_mechanism()
+        if hold:
+            sections.append(hold)
 
     if not sections:
         return base_prompt
