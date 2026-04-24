@@ -154,6 +154,11 @@ def handle_codex() -> list[str]:
     return [f"*Style codex*\n```\n{chunk}\n```"]
 
 
+def handle_get_group_id(chat_id: int) -> list[str]:
+    """Return the current chat ID (for debugging/setup)."""
+    return [f"Chat ID: `{chat_id}`"]
+
+
 # ---------------------------------------------------------------------------
 # Argument parsing — reused by both live bot and tests.
 # ---------------------------------------------------------------------------
@@ -198,6 +203,128 @@ def parse_brief_args(args: str) -> tuple[str, str]:
             intent_tokens.append(t)
         i += 1
     return " ".join(intent_tokens).strip(), format_slug
+
+
+# ---------------------------------------------------------------------------
+# Raid moderation — group chat handlers, Twitter analysis, gallery integration
+# ---------------------------------------------------------------------------
+
+import re
+import json
+from typing import Optional
+import httpx
+from .gallery import save as gallery_save, search_by_vibe
+from .claude_client import call_claude
+
+
+SCAM_PATTERNS = [
+    r'\b0x[a-fA-F0-9]{40}\b',           # ETH wallet
+    r'[1-9A-HJ-NP-Za-km-z]{32,44}',     # Solana wallet (rough)
+    r'\bdm\s+me\b',
+    r'\bfree\s+crypto\b',
+    r'\bfree\s+nft\b',
+    r'\bairdrop\b.*\bclick\b',
+    r'\bwhatsapp\.com\b',
+    r't\.me/\+',                        # Telegram invite links
+]
+
+NON_TWITTER_LINK_RE = re.compile(
+    r'https?://(?!(?:twitter\.com|x\.com|t\.co)/)[\w/.-]+',
+    re.IGNORECASE
+)
+
+TWITTER_LINK_RE = re.compile(
+    r'https?://(?:twitter\.com|x\.com)/\S+/status/(\d+)',
+    re.IGNORECASE
+)
+
+WARN_STATE: dict[int, int] = {}  # user_id -> warn_count
+
+
+async def analyze_twitter_for_raid(tweet_url: str) -> Optional[dict]:
+    """Fetch tweet content and analyze vibe with Claude."""
+    try:
+        # Fetch oEmbed
+        async with httpx.AsyncClient() as client:
+            oembed_url = f"https://publish.twitter.com/oembed?url={tweet_url}&maxwidth=550&omit_script=true"
+            resp = await client.get(oembed_url, timeout=5.0)
+            resp.raise_for_status()
+            oembed_data = resp.json()
+
+        tweet_html = oembed_data.get('html', '')
+        # Extract text from blockquote (rough: strip HTML tags)
+        tweet_text = re.sub('<[^<]+?>', '', tweet_html)
+
+        # Get tweet ID
+        match = TWITTER_LINK_RE.search(tweet_url)
+        tweet_id = match.group(1) if match else None
+
+        # Claude vibe analysis (Haiku tier, cheap)
+        prompt = f"""Tag this tweet for a crypto raid group. Return JSON: {{"vibe_line": str, "tags": list[str]}}
+vibe_line is 1 emoji + 4 words max.
+tags are 3-6 from: hype, bullish, bearish, meme, pepe, wojak, degen, moon, wagmi, ngmi, based, chaos, chill, alpha, fud, energy_high, energy_low
+
+Tweet: {tweet_text[:200]}"""
+
+        from .config import settings
+        vibe_resp = await call_claude(
+            system="You are a social media engagement analyst for crypto communities.",
+            messages=[{"role": "user", "content": prompt}],
+            model=settings.vibe_model,
+            temperature=0.7,
+        )
+
+        vibe_json = json.loads(vibe_resp)
+        vibe_line = vibe_json.get('vibe_line', '?')
+        tags = vibe_json.get('tags', [])
+
+        # Search gallery for matching images
+        gallery_items = search_by_vibe(tags, limit=4)
+
+        return {
+            'tweet_url': tweet_url,
+            'tweet_id': tweet_id,
+            'tweet_text': tweet_text[:100],
+            'vibe_line': vibe_line,
+            'tags': tags,
+            'gallery_items': gallery_items,
+        }
+    except Exception as e:
+        return None
+
+
+def is_scam(text: str) -> bool:
+    """Check if message matches scam patterns."""
+    text_lower = text.lower()
+    for pattern in SCAM_PATTERNS:
+        if re.search(pattern, text_lower):
+            return True
+    return False
+
+
+def has_slur(text: str, banned_words: list[str]) -> bool:
+    """Check if message contains banned words."""
+    text_lower = text.lower()
+    for word in banned_words:
+        if re.search(r'\b' + re.escape(word) + r'\b', text_lower):
+            return True
+    return False
+
+
+def has_non_twitter_link(text: str) -> bool:
+    """Check if text contains non-Twitter URLs."""
+    return NON_TWITTER_LINK_RE.search(text) is not None
+
+
+def extract_twitter_url(text: str) -> Optional[str]:
+    """Extract Twitter URL from text."""
+    match = TWITTER_LINK_RE.search(text)
+    if match:
+        # Reconstruct full URL
+        start = match.start()
+        end = match.end()
+        return text[start:end]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +429,10 @@ def run() -> None:  # pragma: no cover — requires network + credentials
             return
         await _reply(update, handle_codex())
 
+    async def cmd_get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        chat_id = update.effective_chat.id
+        await _reply(update, handle_get_group_id(chat_id))
+
     async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await guard(update):
             return
@@ -326,7 +457,156 @@ def run() -> None:  # pragma: no cover — requires network + credentials
     application.add_handler(CommandHandler("queue", cmd_queue))
     application.add_handler(CommandHandler("formats", cmd_formats))
     application.add_handler(CommandHandler("codex", cmd_codex))
+    application.add_handler(CommandHandler("get_group_id", cmd_get_group_id))
     application.add_handler(CommandHandler(["help", "start"], cmd_help))
+
+    # Group moderation and raid coordination
+    from .config import settings
+
+    async def group_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Main group message filter: moderation + Twitter analysis."""
+        if not update.effective_message or not update.effective_chat:
+            return
+
+        # Only handle the raid group
+        if settings.raid_group_id and update.effective_chat.id != settings.raid_group_id:
+            return
+
+        message = update.effective_message
+        text = message.text or ""
+        user_id = message.from_user.id if message.from_user else None
+
+        # 1. SCAM CHECK - instant ban + delete
+        if is_scam(text):
+            try:
+                await message.delete()
+                if user_id:
+                    await context.bot.ban_chat_member(update.effective_chat.id, user_id)
+                await context.bot.send_message(
+                    update.effective_chat.id,
+                    f"🚫 @{message.from_user.username or 'user'} has been banned for scam"
+                )
+            except Exception:
+                pass
+            return
+
+        # 2. SLUR CHECK - delete + warn (1st) or ban (repeat)
+        if text and settings.banned_words and has_slur(text, settings.banned_words):
+            try:
+                await message.delete()
+                warns = WARN_STATE.get(user_id, 0) + 1
+                WARN_STATE[user_id] = warns
+                if warns >= 2:
+                    await context.bot.ban_chat_member(update.effective_chat.id, user_id)
+                    await context.bot.send_message(
+                        update.effective_chat.id,
+                        f"🚫 @{message.from_user.username or 'user'} has been banned"
+                    )
+                else:
+                    await context.bot.send_message(
+                        update.effective_chat.id,
+                        f"⚠️ @{message.from_user.username or 'user'} warned ({warns}/2)"
+                    )
+            except Exception:
+                pass
+            return
+
+        # 3. BAD LINK CHECK - delete non-Twitter URLs silently
+        if text and has_non_twitter_link(text):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        # 4. TWITTER LINK CHECK - pin + analyze + post vibe
+        twitter_url = extract_twitter_url(text) if text else None
+        if twitter_url:
+            try:
+                # Pin the message
+                await message.pin(disable_notification=True)
+
+                # Analyze tweet
+                raid_data = await analyze_twitter_for_raid(twitter_url)
+                if raid_data:
+                    vibe = raid_data.get('vibe_line', '?')
+                    gallery = raid_data.get('gallery_items', [])
+
+                    # Send vibe message
+                    vibe_msg = f"{vibe}\n\n💾 Saved {len(gallery)} matching images"
+                    await context.bot.send_message(update.effective_chat.id, vibe_msg)
+
+                    # Send gallery images if any
+                    if gallery:
+                        media_group = []
+                        for i, item in enumerate(gallery[:4]):
+                            file_path = settings.data_dir / "gallery" / item.filename
+                            if file_path.exists():
+                                media_group.append(
+                                    {"type": "photo", "media": file_path}
+                                )
+                        if media_group:
+                            await context.bot.send_media_group(update.effective_chat.id, media_group)
+            except Exception as e:
+                pass  # Silent on error
+            return
+
+    async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle photo/video uploads to gallery."""
+        if not update.effective_message or not update.effective_chat:
+            return
+
+        # Only handle the raid group
+        if settings.raid_group_id and update.effective_chat.id != settings.raid_group_id:
+            return
+
+        try:
+            message = update.effective_message
+            user_id = message.from_user.id if message.from_user else None
+            filename = ""
+            file_obj = None
+
+            # Handle photos
+            if message.photo:
+                photo = message.photo[-1]  # Get highest resolution
+                file_obj = await context.bot.get_file(photo.file_id)
+                filename = f"photo_{file_obj.file_unique_id}.jpg"
+            # Handle videos
+            elif message.video:
+                video = message.video
+                file_obj = await context.bot.get_file(video.file_id)
+                filename = f"video_{file_obj.file_unique_id}.mp4"
+
+            if file_obj and filename:
+                # Download file
+                file_bytes = await file_obj.download_as_bytearray()
+
+                # Save to gallery
+                item = gallery_save(
+                    bytes(file_bytes),
+                    filename,
+                    tags=["user-upload"],
+                    energy=3,
+                    uploader_id=user_id,
+                )
+                # Silent - no reply
+        except Exception:
+            pass  # Silent on error
+
+    if settings.raid_group_id:
+        # Add group handlers only if raid group is configured
+        application.add_handler(
+            MessageHandler(
+                filters.Chat(settings.raid_group_id) & ~filters.COMMAND,
+                group_message_handler
+            )
+        )
+        application.add_handler(
+            MessageHandler(
+                filters.Chat(settings.raid_group_id) & (filters.PHOTO | filters.VIDEO),
+                media_handler
+            )
+        )
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
@@ -343,5 +623,10 @@ __all__ = [
     "handle_codex",
     "parse_piece_args",
     "parse_brief_args",
+    "is_scam",
+    "has_slur",
+    "has_non_twitter_link",
+    "extract_twitter_url",
+    "analyze_twitter_for_raid",
     "run",
 ]
