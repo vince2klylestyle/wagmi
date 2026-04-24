@@ -541,15 +541,14 @@ def run() -> None:  # pragma: no cover — requires network + credentials
 
                     # Send gallery images if any
                     if gallery:
-                        media_group = []
-                        for i, item in enumerate(gallery[:4]):
+                        for item in gallery[:4]:
                             file_path = settings.data_dir / "gallery" / item.filename
                             if file_path.exists():
-                                media_group.append(
-                                    {"type": "photo", "media": file_path}
-                                )
-                        if media_group:
-                            await context.bot.send_media_group(update.effective_chat.id, media_group)
+                                try:
+                                    with open(file_path, 'rb') as f:
+                                        await context.bot.send_photo(update.effective_chat.id, f)
+                                except Exception:
+                                    pass  # Skip if send fails
             except Exception as e:
                 pass  # Silent on error
             return
