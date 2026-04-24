@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_bagworker_integration.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_bagworker_integration.py -v)",
+      "Bash(python -c \"from memegine.bagworker_server import app; print\\('✓ Server imports OK'\\); from fastapi.testclient import TestClient; c=TestClient\\(app\\); r=c.get\\('/health'\\); print\\(f'✓ Health check: {r.status_code}'\\)\")",
+      "Bash(python -c \"from memegine.bagworker_server import app; print\\('Server imports OK'\\); from fastapi.testclient import TestClient; c=TestClient\\(app\\); r=c.get\\('/health'\\); print\\(f'Health check: {r.status_code} {r.json\\(\\)}'\\)\")",
+      "Bash(python -c \"from memegine.bagworker_bot import register_bagworker_handlers, handle_raid_command, handle_tracker_command, handle_broadcast_command; print\\('All bagworker bot handlers import OK'\\)\")",
+      "Bash(cat)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

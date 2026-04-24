@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     ideation_model: str = "claude-opus-4-7"
     utility_model: str = "claude-sonnet-4-6"
 
+    # Bagworker Mini App server URL (must be HTTPS for Telegram)
+    bagworker_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias="BAGWORKER_URL"
+    )
+
     # Active project — resolved at settings-construction time from env
     # var or active_project state file. Re-resolve via refresh_project().
     project: str = Field(default_factory=_read_active_project)

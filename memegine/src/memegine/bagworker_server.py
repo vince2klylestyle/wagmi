@@ -8,11 +8,14 @@ Endpoints for:
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from .bagworker_api import db
@@ -61,6 +64,9 @@ class EngagementRequest(BaseModel):
     post_id: str
     user_tg_id: int
     action_type: str  # "retweet", "like", "reply"
+    image_id: str = ""
+    image_brand: str = ""
+    raid_id: str = ""
 
 
 class EngagementResponse(BaseModel):
@@ -178,11 +184,14 @@ def record_engagement(req: EngagementRequest) -> EngagementResponse:
     if req.action_type not in ("retweet", "like", "reply"):
         raise HTTPException(status_code=400, detail="Invalid action type")
 
-    # Record action
+    # Record action with image tracking
     points = db.action_record(
         post_id=req.post_id,
         user_tg_id=req.user_tg_id,
         action_type=req.action_type,
+        image_id=req.image_id,
+        image_brand=req.image_brand,
+        raid_id=req.raid_id or req.post_id,
     )
 
     # Get updated user stats
@@ -218,6 +227,109 @@ def leaderboard(limit: int = 20) -> list[LeaderboardEntry]:
         )
         for i, u in enumerate(users)
     ]
+
+
+@app.get("/miniapp", response_class=HTMLResponse)
+def serve_miniapp():
+    """Serve Mini App HTML."""
+    html_path = Path(__file__).parent / "bagworker_miniapp.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Mini App not found")
+    return html_path.read_text(encoding="utf-8")
+
+
+@app.get("/gallery/{brand}")
+def get_gallery(brand: str, limit: int = 20):
+    """Get images for a brand gallery."""
+    if brand not in ("kilroy", "spong", "motion"):
+        raise HTTPException(status_code=400, detail="Invalid brand (kilroy/spong/motion)")
+
+    from .config import PROJECTS_ROOT
+
+    refs_dir = PROJECTS_ROOT / brand / "references"
+    index_path = refs_dir / "index.json"
+
+    if not index_path.exists():
+        return []
+
+    try:
+        entries = json.loads(index_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read index: {e}")
+
+    entries.sort(key=lambda e: e.get("added_at", ""), reverse=True)
+    entries = entries[:limit]
+
+    result = []
+    for e in entries:
+        fname = e.get("filename") or e.get("id", "")
+        img_path = refs_dir / fname
+        if img_path.exists():
+            result.append({
+                "id": e["id"],
+                "url": f"/images/{brand}/{fname}",
+                "tags": e.get("tags", [])[:5],
+                "notes": (e.get("notes") or "")[:80],
+            })
+    return result
+
+
+@app.get("/images/{brand}/{filename}")
+def serve_image(brand: str, filename: str):
+    """Serve image file (prevent directory traversal)."""
+    from .config import PROJECTS_ROOT
+
+    safe_name = Path(filename).name
+    img_path = PROJECTS_ROOT / brand / "references" / safe_name
+
+    if not img_path.exists():
+        raise HTTPException(status_code=404)
+
+    return FileResponse(str(img_path))
+
+
+@app.get("/raid/{raid_id}")
+def get_raid(raid_id: str):
+    """Get raid metadata for Mini App."""
+    posts = db.posts_recent(limit=1000)
+    post = next((p for p in posts if p["post_id"] == raid_id), None)
+    if not post:
+        raise HTTPException(status_code=404, detail="Raid not found")
+    return post
+
+
+@app.get("/tracker/{raid_id}")
+def get_raid_tracker(raid_id: str):
+    """Get tracker data: who clicked what in this raid."""
+    actions = db._read_jsonl(db.actions_file)
+    raid_actions = [a for a in actions if a.get("post_id") == raid_id or a.get("raid_id") == raid_id]
+
+    if not raid_actions:
+        return []
+
+    # Group by user
+    by_user = {}
+    for a in raid_actions:
+        uid = a["user_tg_id"]
+        if uid not in by_user:
+            user = db.user_get(uid)
+            by_user[uid] = {
+                "user_tg_id": uid,
+                "username": (user or {}).get("username", f"user_{uid}"),
+                "actions": [],
+                "images_used": set(),
+            }
+        by_user[uid]["actions"].append(a)
+        if a.get("image_id"):
+            by_user[uid]["images_used"].add(a["image_id"])
+
+    # Flatten sets to lists for JSON serialization
+    result = []
+    for uid, u in by_user.items():
+        u["images_used"] = list(u["images_used"])
+        result.append(u)
+
+    return result
 
 
 @app.get("/health")

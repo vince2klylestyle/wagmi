@@ -1012,6 +1012,9 @@ def build_application(cfg: BotConfig):
     # plus the inline-button callback dispatcher for tweet cards.
     from . import telegram_ops
     telegram_ops.register_ops_handlers(app, cfg)
+    # Bagworker handlers: /raid, /tracker, /broadcast, etc.
+    from . import bagworker_bot
+    bagworker_bot.register_bagworker_handlers(app, cfg)
     return app
 
 
