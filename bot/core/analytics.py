@@ -196,10 +196,13 @@ class AnalyticsMixin:
 
             # Extract LLM decision context from entry_reasons
             _er = pos.entry_reasons or {}
+            # Fallback: regime from entry_reasons if trade_profile was empty
+            if not _regime:
+                _regime = _er.get("regime", "")
             _llm_action = _er.get("llm_action", "")
             _llm_conf = _er.get("llm_confidence", 0.0)
             _llm_reasoning = _er.get("llm_reasoning", "")
-            _strategies_agreed = _er.get("strategies_agreed", [])
+            _strategies_agreed = _er.get("strategies_agreed") or _er.get("strategies_agree", [])
             if not _strategies_agreed and pos.strategy:
                 _strategies_agreed = [pos.strategy]
 

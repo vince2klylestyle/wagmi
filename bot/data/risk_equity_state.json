@@ -1,6 +1,5 @@
 {
-  "equity": 568.58,
-  "saved_at": "2026-04-16T16:32:00.000000+00:00",
-  "peak_equity": 568.58,
-  "note": "restored after test pollution; trades.csv sum + $500 starting"
+  "equity": 497.0523,
+  "saved_at": "2026-04-23T22:17:05.520495+00:00",
+  "peak_equity": 508.0609
 }

@@ -903,22 +903,31 @@ DO NOT tighten aggressively after TP1 — research shows wider trail captures +3
 **The TP1 partial close is 86-94% of all trailing win profit.** The trailing remainder adds only $0.33-$1.42 per trade. This means:
 - Getting to TP1 is EVERYTHING. Protect positions that have a chance of reaching TP1.
 - Once TP1 fires, the trail is well-calibrated (91% MFE capture). Don't override it.
-- **The first 2 hours are the noise zone.** 64 trades in 0-2h = -$301. 37 trades 2h+ = +$344. BE PATIENT.
 
-## HOLD TIME FROM LIVE DATA (101 trades)
-- **0-2h hold**: 27% WR, -$301 combined. This is where noise kills trades.
-- **2-4h hold**: 38% WR, +$117. Thesis starts developing.
-- **4-8h hold**: 36% WR, +$147. The productive zone.
-- **8h+ hold**: 100% WR, +$80. Every trade that survived this long won.
-- **Winning trades average 4.3h hold.** Losing trades average 1.6h.
+## WHY 4H+ HOLDS WIN — THE CAUSAL MECHANISM (164 live trades)
 
-**The practical rule: if a trade has survived 2 hours and isn't deeply underwater, HOLD. The odds shift dramatically in its favor.**
+**The pattern**: <1h: 29% WR $-4.29avg | 1h-2h: 24% WR $-3.60avg | 2h-4h: 33% WR $-1.88avg | 4h-8h: 50% WR $+10.71avg | 8h-12h: 58% WR $+4.86avg | 12h+: 73% WR $+4.95avg
+
+**The mechanism** (not just a rule — reason with this):
+1. Signal fires. Directional thesis is correct ~50% of the time at entry.
+2. In the first 0-2h, intraday microstructure creates FALSE stop triggers — bid-ask spread, ranging oscillation, and low-liquidity wicks knock out valid positions before the real move begins.
+3. At 3-4h, the market commits directionally. Trends develop momentum beyond microstructure noise.
+4. Trades surviving to 4h are the ones where real direction has emerged. That's WHY WR jumps.
+
+**The regime-conditional truth** (this is the key insight):
+- **87% of early SL hits (<2h) were in illiquid/ranging/unknown regimes** (illiquid=27, unknown=18, ranging=8 out of 61 early losses). Only 13% were trending.
+- In **trending regime**: early exits are risky — holding through the noise phase is correct because the underlying trend will emerge.
+- In **illiquid/ranging/unknown regime**: early losses are genuinely regime failures, not noise — consider whether to tighten/close sooner since the regime is the problem.
+- **WIN median hold = 3.3h** (P25=1h, P75=10.5h). **LOSS median hold = 1.5h.** Losses resolve fast via noise stops. Winners need time.
+
+**When a position is 1h old and losing in a trending regime**: HOLD. You are almost certainly in the noise phase. The directional thesis hasn't failed, the microstructure has temporarily moved against you.
+**When a position is 1h old and losing in illiquid/ranging regime**: The regime itself is the enemy. Assess whether thesis is still valid — the regime may be eating this trade.
 
 ## REVERSAL & RECOVERY (from live + shadow data)
 - **97% of SL losses had positive MFE first** — price moved in our favor then reversed through the stop. Most "losers" were directionally correct.
 - 44% of SL losses had MFE that EXCEEDED TP1 — the trade literally reached the target zone but still lost. This means exit timing, not entry quality, is the alpha variable.
 - If position is winning at 2h: probability of trailing win increases dramatically. HOLD.
-- If position is losing at 2h AND regime has shifted: consider close.
+- If position is losing at 2h AND **regime is non-trending**: consider close. If **regime is trending**: HOLD — you are in the noise phase.
 
 ## ADDITIONAL HOLD CONTEXT
 - **5+ bar survivor**: Nearly 100% WR. HOLD and extend time stop.
