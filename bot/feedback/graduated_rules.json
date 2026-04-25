@@ -1,6 +1,6 @@
 {
     "schema_version": "1.0",
-    "last_updated": "2026-04-25T16:45:00.000000+00:00",
+    "last_updated": "2026-04-25T17:00:00.000000+00:00",
     "rules": [
         {
             "rule_id": "F2_calibration_offset_cap",
@@ -570,7 +570,8 @@
             "problem": "SOL SHORT highest-PnL setup in 10d dataset (+$5807) but no dedicated confidence promotion rule",
             "fix_applied": "A/B gate at 20% \u2014 20% of SOL SHORT ensemble signals get +5pt confidence boost and 1.1x size multiplier",
             "action": "ensemble.py or signal_pipeline.py: if symbol==SOL and side==SHORT, apply +5pt confidence boost in A/B cohort",
-            "status": "A/B_ACTIVE",
+            "status": "SUSPENDED_LIVE_CONTRADICTION",
+            "suspension_reason": "Live paper trading (52 actual trades): SOL WR=34.6%, PnL=-$176.24, SL_rate=82.7%. Backtest claim 63.7% WR not validated in live conditions. Suspended 2026-04-25 hourly run.",
             "confidence": 90,
             "gate_percentage": 20,
             "baseline_wr": 0.637,
@@ -683,7 +684,8 @@
             "description": "SOL_SHORT is the highest-WR combo in the dataset. Amplify with appropriate sizing.",
             "problem": "SOL_SHORT: 63.7% WR on 179 trades, $5807 PnL \u2014 the single highest-PnL combo. At 90%+ confidence: 71.4% WR. Yet SOL_LONG is only 53.3% WR. Directional asymmetry confirmed: SOL is a strong SHORT candidate.",
             "fix_applied": "A/B gate: boost SOL SHORT position size 1.3x when confidence >= 80%. 20% of SOL SHORT trades tested.",
-            "status": "A/B_ACTIVE",
+            "status": "SUSPENDED_LIVE_CONTRADICTION",
+            "suspension_reason": "Live paper trading 52 actual trades: SOL WR=34.6%, -$176.24. Backtest 63.7% WR not validated. Suspended 2026-04-25 hourly run.",
             "confidence": 76,
             "gate_percentage": 20,
             "baseline_wr": 0.637,
@@ -722,9 +724,8 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-25T17:45:00.000000+00:00"
-},
-"new_proposals_2026_04_25_hourly": [
+    "last_improvement_run": "2026-04-25T17:00:00.000000+00:00",
+    "new_proposals_2026_04_25_hourly": [
     {
         "rule_id": "AB_RESULT_TRACKER",
         "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25",
@@ -761,12 +762,61 @@
         "proposed_fix": "Update SOL_SHORT_edge_promote gate_percentage from 20 to 50. Maintain +5pt confidence and 1.1x size boost in treatment cohort.",
         "confidence": 90,
         "gate_percentage": 50,
-        "status": "PROPOSED",
+        "status": "BLOCKED_LIVE_CONTRADICTION",
+        "block_reason": "Live paper trading data (52 actual trades) shows SOL WR=34.6%, -$176.24 — the single largest loss driver. Escalating SOL_SHORT gate would amplify a losing setup. Blocked by 2026-04-25 hourly run. Re-evaluate after 30+ live trades in clearly trending regime show SOL WR > 55%.",
         "applied_date": "2026-04-25",
         "baseline_wr": 0.637,
         "treatment_wr": null,
-        "priority": "HIGH",
-        "expected_impact": "Increasing gate from 20% to 50% amplifies the best-performing setup; if treatment_wr >= 63.7%, escalate to 100%."
+        "priority": "BLOCKED"
+    }
+    ],
+    "rules_added_2026_04_25_hourly": [
+    {
+        "rule_id": "CONF_70_HARD_FLOOR",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25 — consolidating CONF_60_70_floor_raise + CONF_60_70_all_block",
+        "description": "Graduate overlapping conf-floor rules into single hard floor: reject all signals with confidence < 70 after quality adjustment.",
+        "problem": "CONF_60_70_floor_raise (20% gate) and CONF_60_70_all_block (50% gate) both target same problem: 46.3% WR on 123 trades, -$2321. Overlapping rules create unpredictable interaction.",
+        "fix_applied": "A/B gate at 30% — 30% of signals with confidence 60-70 are rejected outright. Track treatment_wr vs baseline_wr=0.463.",
+        "action": "core/signal_pipeline.py: in 30% A/B cohort, reject signals where confidence < 70 after quality adjustment",
+        "status": "A/B_ACTIVE",
+        "confidence": 87,
+        "gate_percentage": 30,
+        "baseline_wr": 0.463,
+        "treatment_wr": null,
+        "sample_count": 123,
+        "applied_date": "2026-04-25",
+        "ab_cohort_start": "2026-04-25T17:00:00Z",
+        "min_sample_to_graduate": 50,
+        "expected_impact": "Remove -$2321 drag on 123 trades (12.7% of volume). Predecessor rules CONF_60_70_floor_raise and CONF_60_70_all_block superseded by this.",
+        "supersedes": ["CONF_60_70_floor_raise", "CONF_60_70_all_block"]
+    },
+    {
+        "rule_id": "SOL_SHORT_LIVE_CONTRADICTION",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25 — live vs backtest reconciliation",
+        "description": "CRITICAL: SOL live paper WR=34.6% on 52 trades (-$176.24) contradicts backtest claim of 63.7% WR. SOL is the PRIMARY LOSS DRIVER.",
+        "problem": "Rules SOL_SHORT_edge_promote and SOL_SHORT_priority_boost were promoting SOL SHORT based on 965-trade backtest. Live paper trading shows SOL is the worst performing asset (64% of all PnL losses, 82.7% SL rate). Backtest performance did not transfer to live execution.",
+        "fix_applied": "APPLIED: SOL_SHORT_edge_promote and SOL_SHORT_priority_boost status changed to SUSPENDED_LIVE_CONTRADICTION. SOL_SHORT_GATE_ESCALATE blocked. SOL de-prioritized.",
+        "status": "APPLIED",
+        "confidence": 95,
+        "gate_percentage": 100,
+        "applied_date": "2026-04-25",
+        "live_data": {"symbol": "SOL", "wins": 18, "total": 52, "wr": 0.346, "pnl": -176.24, "sl_hits": 43, "sl_rate": 0.827},
+        "backtest_claim": {"wr": 0.637, "pnl": 5807, "trades": 179, "source": "perpetual_improvement_loop 965-trade dataset"},
+        "reconciliation_hypothesis": "Live paper trading uses real spreads, slippage, and current market conditions. Backtest may have used favorable historical data with lower SOL volatility or better fill conditions. SOL's 82.7% SL rate indicates entries are systematically hitting noise before trend develops.",
+        "reactivation_criteria": "Re-activate SOL_SHORT_edge_promote when: (1) 30+ consecutive live SOL trades show WR > 55%; (2) bot running in trending-only regime filter; (3) stop widths verified >= 1.0% for SOL signals."
+    },
+    {
+        "rule_id": "EXIT_PROACTIVE_CLOSE_PRIORITY",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25 — execution forensics (134 actual trades)",
+        "description": "93.3% of SL hits are preventable via proactive early close. Total recoverable PnL: $1,140.13 across 134 trades.",
+        "problem": "98/105 SL-exit trades would have been better off if closed earlier at TP1. Average saving per preventable SL: $11.52. SOL avg delta: $4.75/trade, HYPE avg delta: $5.09/trade. The NOISE_REGIME_FAST_EXIT rule (A/B at 20%) needs implementation priority.",
+        "fix_applied": "TRACKING: Elevating NOISE_REGIME_FAST_EXIT and TRENDING_EARLY_HOLD_GUARD to HIGH priority for code implementation. Exit Agent proactive close is the single highest-value improvement available.",
+        "status": "TRACKED_PENDING_IMPLEMENTATION",
+        "confidence": 93,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-25",
+        "implementation_target": "agents/prompts.py EXIT_PROMPT: add 'if hold_time < 2h AND price_distance_to_sl < 30%, recommend CLOSE in non-trending regimes'",
+        "expected_impact": "$1,140 recoverable on 134-trade baseline = $8.51/trade improvement in expectancy"
     }
 ]
 }
