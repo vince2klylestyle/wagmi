@@ -1,6 +1,6 @@
 {
     "schema_version": "1.0",
-    "last_updated": "2026-04-24T22:09:07.391995+00:00",
+    "last_updated": "2026-04-25T00:00:00.000000+00:00",
     "rules": [
         {
             "rule_id": "F2_calibration_offset_cap",
@@ -524,6 +524,44 @@
             "expected_impact": "Moving WR from ~35-40% toward 57% by capping greedy TP2 targets; more trades close at TP1 instead of reversing",
             "gate_escalated_at": "2026-04-24T22:07:41.712028+00:00",
             "gate_escalated_reason": "conf=90%, n=2172>=30: sample requirement met, escalating 20%\u219250%"
+        },
+        {
+            "rule_id": "TRENDING_EARLY_HOLD_GUARD",
+            "source": "insight_journal \u2014 timing_insight, mechanistic_hold_analysis_164",
+            "description": "In TRENDING regime, only 13% of early losses (<2h) are real signal failures. Don't allow Exit Agent to close trending positions <3h unless SL hit.",
+            "problem": "Exit Agent may over-actively close trending positions early, cutting into the 3-4h directional phase where real momentum develops. Wins need 3.3h median hold; early exits in trending are almost always false signals.",
+            "fix_applied": "A/B gate at 20% \u2014 20% of trending-regime positions get min_hold=3h instruction injected into Exit Agent context; Exit Agent skips early-close recommendations <3h in trending",
+            "action": "agents/coordinator.py or exit agent prompt: when regime==trending, set min_hold_hours=3 in Exit Agent context; ignore close signals before 3h except hard SL hit",
+            "status": "A/B_ACTIVE",
+            "confidence": 88,
+            "gate_percentage": 20,
+            "baseline_wr": 0.52,
+            "treatment_wr": null,
+            "sample_count": 164,
+            "applied_date": "2026-04-25",
+            "ab_cohort_start": "2026-04-25T00:00:00Z",
+            "min_sample_to_graduate": 25,
+            "expected_impact": "Preventing early exits in trending regime should push trending WR from 52% toward the 4h+ cohort WR of 50-73% by letting winners run",
+            "evidence": "164 live trades: trending early losses=8/61 (13%); loss median hold=1.5h, win median hold=3.3h; 12h+ cohort=73% WR"
+        },
+        {
+            "rule_id": "NOISE_REGIME_FAST_EXIT",
+            "source": "insight_journal \u2014 timing_insight, mechanistic_hold_analysis_164",
+            "description": "In illiquid/ranging/unknown regime, 87% of early SL hits (<2h) are microstructure noise. Tighten exit or close proactively when position age <2h and approaching SL within 30%.",
+            "problem": "Bot holds positions in noise regimes through microstructure chop, absorbing full SL loss when the Exit Agent should close earlier at smaller loss. 87% of early losses (53/61) are in illiquid/ranging/unknown regimes.",
+            "fix_applied": "A/B gate at 20% \u2014 20% of illiquid/ranging/unknown positions get proactive-exit instruction: if position_age < 2h AND price within 30% of SL, Exit Agent recommends close",
+            "action": "exit agent prompt: in non-trending regimes, add rule: 'if hold_time < 2h and price_distance_to_sl < 30%, recommend CLOSE to avoid noise-regime microstructure SL'",
+            "status": "A/B_ACTIVE",
+            "confidence": 88,
+            "gate_percentage": 20,
+            "baseline_wr": 0.28,
+            "treatment_wr": null,
+            "sample_count": 164,
+            "applied_date": "2026-04-25",
+            "ab_cohort_start": "2026-04-25T00:00:00Z",
+            "min_sample_to_graduate": 25,
+            "expected_impact": "Closing noise-regime positions at -0.5% avg instead of full SL -1.2% avg could reduce loss severity by 50%+ in 87% of early-exit cases",
+            "evidence": "164 trades: 53/61 early losses in illiquid(27)+unknown(18)+ranging(8). Trending early losses only 8. Causal: microstructure bid-ask + low-liquidity noise in first 1-2h."
         }
     ],
     "pending_user_decision": [
