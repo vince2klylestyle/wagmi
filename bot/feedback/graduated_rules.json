@@ -724,7 +724,7 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-26T00:00:00.000000+00:00",
+    "last_improvement_run": "2026-04-26T04:00:00.000000+00:00",
     "new_proposals_2026_04_25_hourly": [
     {
         "rule_id": "AB_RESULT_TRACKER",
@@ -820,6 +820,65 @@
         "applied_date": "2026-04-25",
         "implementation_target": "agents/prompts.py EXIT_PROMPT: add 'if hold_time < 2h AND price_distance_to_sl < 30%, recommend CLOSE in non-trending regimes'",
         "expected_impact": "$1,140 recoverable on 134-trade baseline = $8.51/trade improvement in expectancy"
+    }
+],
+    "rules_added_2026_04_26_hourly": [
+    {
+        "rule_id": "BTC_LONG_LIVE_CONTRADICTION",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26 — live vs backtest reconciliation (134 resolved trades)",
+        "description": "CRITICAL: BTC_LONG live WR=19% on 16 trades (100% SL rate, -$0.08 PnL) contradicts BTC_BUY_BB_golden claim of 69% WR.",
+        "problem": "BTC_BUY_BB_golden (A/B at 50%, conf=91%) claims 69% WR from 2172-signal backtest. Live paper trading shows BTC_LONG at 19% WR, 100% SL rate on 16 trades. This mirrors the SOL_SHORT contradiction (backtest 63.7% vs live 33%). Backtest performance is not transferring to live execution. BTC_BUY_BB_golden is actively promoting a losing setup with 50% gate exposure.",
+        "fix_applied": "A/B gate at 20% — SUSPEND BTC_BUY_BB_golden +10pt boost. Apply -5pt penalty to BTC_LONG signals instead. BTC_BUY_BB_golden status set to SUSPENDED_LIVE_CONTRADICTION.",
+        "status": "A/B_ACTIVE",
+        "confidence": 85,
+        "gate_percentage": 20,
+        "baseline_wr": 0.19,
+        "treatment_wr": null,
+        "sample_count": 16,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T04:00:00Z",
+        "min_sample_to_graduate": 20,
+        "action": "ensemble.py or signal_pipeline.py: REMOVE +10pt BTC_BUY_BB boost; apply -5pt penalty to BTC_LONG signals in A/B cohort. Monitor treatment_wr vs baseline.",
+        "live_data": {"symbol": "BTC", "side": "LONG", "wins": 3, "total": 16, "wr": 0.1875, "sl_rate": 1.0, "pnl": -0.08},
+        "backtest_claim": {"wr": 0.69, "source": "BTC_BUY_BB_golden rule, insight_journal 2172-signal backtest"},
+        "reactivation_criteria": "Re-activate BTC_BUY_BB_golden when 25+ live BTC_LONG trades show WR > 50%.",
+        "supersedes": "BTC_BUY_BB_golden (suspend that rule's +10pt boost)"
+    },
+    {
+        "rule_id": "NIGHT_SESSION_ESCALATE",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26 — live data (27 actual night-session trades)",
+        "description": "Night session confirmed catastrophic: 27 live trades, 19% WR, -$136.83 = avg -$5.07/trade. Escalate NIGHT_session_pause gate from 20% to 80%.",
+        "problem": "NIGHT_session_pause was gated at 20% since 2026-04-24. Now confirmed on 27 live trades (13 older + 14 additional) at 19% WR, -$136.83. This is the single largest PnL drain by time window. Night is 27/134 = 20% of all trades but carries -$136.83 / -$277 total losses = 49% of all losses. Every night trade destroys edge.",
+        "fix_applied": "Escalate NIGHT_session_pause gate from 20% to 80%. Treat night session as near-blocked.",
+        "status": "A/B_ACTIVE",
+        "confidence": 88,
+        "gate_percentage": 80,
+        "baseline_wr": 0.19,
+        "treatment_wr": null,
+        "sample_count": 27,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T04:00:00Z",
+        "min_sample_to_graduate": 30,
+        "action": "core/signal_pipeline.py: raise night confidence floor to 80% for 80% of signals. Only pass night signals if confidence > 80 AND regime == trending. Block all other night signals.",
+        "expected_impact": "Eliminating 27/134 = 20% of trades that avg -$5.07 each = +$136.83 PnL recovery on 134-trade window",
+        "supersedes": "NIGHT_session_pause (escalates gate from 20% to 80%)"
+    },
+    {
+        "rule_id": "MORNING_EDGE_REVIEW",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26 — live vs meta_learning contradiction (18 morning trades)",
+        "description": "WATCHLIST: Morning live WR=28% on 18 trades (-$76.94) contradicts meta_learning claim of 71% morning WR. Insufficient n to suspend but flagging.",
+        "problem": "meta_learning/insights.json consistently claims morning (6-12 UTC) = 71% WR. Live data shows morning = 28% WR on 18 trades, -$76.94. This is the second meta_learning claim that is not matching live results (first was SOL_SHORT 63.7% vs 33% live). May indicate meta_learning insights are computed from backtest signals, not live trades.",
+        "fix_applied": "WATCHLIST only. No action until n>=25 live morning trades. Monitor and compare.",
+        "status": "WATCHLIST",
+        "confidence": 72,
+        "gate_percentage": 0,
+        "baseline_wr": 0.28,
+        "treatment_wr": null,
+        "sample_count": 18,
+        "applied_date": "2026-04-26",
+        "min_sample_to_graduate": 25,
+        "action": "Monitor morning WR. If live morning WR < 40% after 25 trades, suspend TOD_morning_edge rule and EVENING_session_boost rule (same data source may be wrong).",
+        "reactivation_note": "If meta_learning morning edge is wrong, the evening edge (EVENING_session_boost) may also be from same unreliable source. Evening live data (46% WR, 41 trades) is at least net-positive and consistent."
     }
 ]
 }
