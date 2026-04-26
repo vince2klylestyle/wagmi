@@ -710,6 +710,71 @@
             "notes": "Action: verify max_sniper_leverage=5.0 cap is enforced at OrderExecutor level. Add per-trade-loss ceiling ($50 or 10% equity). Then re-enable. DO NOT auto-apply."
         }
     ],
+    "rules_added_2026_04_26_1545_hourly": [
+    {
+        "rule_id": "STALE_AB_DATA_FLAG",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 — bot offline audit",
+        "description": "All 38 A/B gates stalled: bot offline 65h since 2026-04-23T22:17Z. Zero new trades = zero learning. All treatment_wr remain null.",
+        "problem": "A/B feedback loop is open indefinitely. 38 active gates, 0 graduating. Rules cannot be confirmed or rejected without trade data flowing.",
+        "fix_applied": "TRACKING: Flagged in auto_fix_state.json and master_engine_state.json. Pre-restart checklist updated.",
+        "status": "TRACKING",
+        "confidence": 100,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-26",
+        "urgency": "CRITICAL",
+        "root_cause": "Bot offline (circuit breaker or process crash). Equity $497.05 at last save 2026-04-23T22:17Z.",
+        "resolution": "Restart bot with BOT_INACTIVE_ALERT pre-flight checklist. Implement AB_RESULT_TRACKER in feedback/loop.py."
+    },
+    {
+        "rule_id": "HYPE_RULE_NOT_WIRED",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 — execution forensics cross-check",
+        "description": "CRITICAL AUDIT: HYPE_EV_CONFIRMED_NEGATIVE (100% gate, 0.5x size) appears not wired into execution code. Final 2 HYPE losses at -$38.80 and -$40.99 suggest full-size entries despite rule.",
+        "problem": "If graduated_rules.json rules are JSON-only with no code reading them at trade time, ALL 38 A/B gates and ALL rules marked APPLIED are theoretical only. This would mean: HYPE 0.5x size — not active. SOL suspension — not active. BTC_BUY_BB_golden boost — still active. Night floor — not active.",
+        "fix_applied": "AUDIT REQUIRED: Check bot/execution/leverage.py, bot/core/signal_pipeline.py, and bot/feedback/loop.py for any code that reads graduated_rules.json at runtime.",
+        "status": "AUDIT_REQUIRED",
+        "confidence": 85,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-26",
+        "urgency": "CRITICAL",
+        "evidence": "HYPE loss -$38.80 and -$40.99 in final 2 trades of streak (2026-04-23). At 0.5x size these should be ~$19-20. Full sizing implies 0.5x rule was not in effect.",
+        "audit_target": ["bot/execution/leverage.py", "bot/core/signal_pipeline.py", "bot/feedback/loop.py", "bot/feedback/graduated_rules_loader.py (check if exists)"]
+    },
+    {
+        "rule_id": "SOL_LONG_DEDUP",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 — rule deduplication audit",
+        "description": "SOL_LONG_reduce and SOL_LONG_systematic_block are identical rules (both -10pt confidence, both 20% gate, both on SOL LONG, same sample_count=34). Double-penalty risk if both evaluated.",
+        "fix_applied": "SOL_LONG_reduce marked SUPERSEDED. SOL_LONG_systematic_block is canonical.",
+        "status": "APPLIED",
+        "confidence": 90,
+        "applied_date": "2026-04-26",
+        "supersedes": "SOL_LONG_reduce"
+    },
+    {
+        "rule_id": "HYPE_LONG_DEDUP",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 — rule deduplication audit",
+        "description": "HYPE_LONG_near_block (-15pt confidence, 20% gate) and HYPE_LONG_hard_reduce (skip signal, 20% gate) target same setup. Different mechanisms but same cohort = inconsistent treatment.",
+        "fix_applied": "HYPE_LONG_hard_reduce elevated to primary (more aggressive, cleaner signal). HYPE_LONG_near_block marked SUPERSEDED.",
+        "status": "APPLIED",
+        "confidence": 88,
+        "applied_date": "2026-04-26",
+        "supersedes": "HYPE_LONG_near_block"
+    },
+    {
+        "rule_id": "AB_RESULT_TRACKER_CODE",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 — systemic gap identification",
+        "description": "CRITICAL IMPLEMENTATION GAP: No code exists to close the A/B feedback loop. Without this, 38 active gates produce zero learning signal regardless of how long bot runs.",
+        "problem": "All treatment_wr values in graduated_rules.json are null. Rules cannot graduate or be rejected by evidence because trade outcomes are never matched back to their A/B cohort assignment.",
+        "proposed_implementation": "In bot/feedback/loop.py post-trade hook: (1) On trade OPEN: check each A/B_ACTIVE rule, assign cohort (treatment vs control) via hash(trade_id, rule_id) % 100 < gate_percentage, tag trade with active cohorts. (2) On trade CLOSE: read trade tags, update treatment_wr per rule via running average. (3) If treatment_wr - baseline_wr > 0.05 and n >= min_sample_to_graduate: auto-graduate rule to full gate.",
+        "status": "PENDING_IMPLEMENTATION",
+        "confidence": 100,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-26",
+        "urgency": "CRITICAL",
+        "priority": "P0",
+        "implementation_target": "bot/feedback/loop.py — post_trade_open_hook + post_trade_close_hook",
+        "expected_impact": "Enables ALL 38 A/B rules to graduate or be rejected. Converts learning system from theoretical to empirical."
+    }
+    ],
     "pending_user_decision": [
         {
             "rule_id": "F1_sniper_reenable",
@@ -724,7 +789,7 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-26T15:00:00.000000+00:00",
+    "last_improvement_run": "2026-04-26T15:45:00.000000+00:00",
     "new_proposals_2026_04_25_hourly": [
     {
         "rule_id": "AB_RESULT_TRACKER",
