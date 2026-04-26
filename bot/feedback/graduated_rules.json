@@ -724,7 +724,7 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-26T04:00:00.000000+00:00",
+    "last_improvement_run": "2026-04-26T15:00:00.000000+00:00",
     "new_proposals_2026_04_25_hourly": [
     {
         "rule_id": "AB_RESULT_TRACKER",
@@ -822,6 +822,58 @@
         "expected_impact": "$1,140 recoverable on 134-trade baseline = $8.51/trade improvement in expectancy"
     }
 ],
+    "rules_added_2026_04_26_1500_hourly": [
+    {
+        "rule_id": "HYPE_LONG_near_block",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — pattern health analysis (352 resolved trades)",
+        "description": "HYPE_LONG: 23% WR on 35 trades, -$77.26 PnL. All-time second-worst pattern. Near-block HYPE LONG signals with confidence penalty.",
+        "problem": "HYPE_EV_CONFIRMED_NEGATIVE applies 0.5x size to all HYPE. HYPE_LONG at 23% WR on 35 trades is structurally losing. HYPE_BUY_CS_block covers confidence_scorer source only; other HYPE LONG entry triggers uncovered.",
+        "fix_applied": "A/B gate at 20% — 20% of HYPE LONG signals get -15pt confidence penalty (stacks with existing 0.5x size from HYPE_EV_CONFIRMED_NEGATIVE)",
+        "action": "ensemble.py or signal_pipeline.py: if symbol==HYPE and side==BUY, apply -15pt confidence penalty in 20% A/B cohort",
+        "status": "A/B_ACTIVE",
+        "confidence": 80,
+        "gate_percentage": 20,
+        "baseline_wr": 0.23,
+        "treatment_wr": null,
+        "sample_count": 35,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T15:00:00Z",
+        "min_sample_to_graduate": 20,
+        "expected_impact": "Avoid ~$2.21/trade on HYPE_LONG signals at 23% WR; second-worst pattern by all-time PnL"
+    },
+    {
+        "rule_id": "SOL_LONG_reduce",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — pattern health analysis (352 resolved trades)",
+        "description": "SOL_LONG: 24% WR on 34 trades, -$21.89 PnL. SOL SHORT rules suspended. SOL LONG has no treatment rule.",
+        "problem": "SOL_SHORT_LIVE_CONTRADICTION and SOL_SHORT_priority_boost are SUSPENDED. SOL_LONG with 24% WR on 34 trades (first-quartile performance, -$21.89) has no corresponding treatment. Both SOL directions are underperforming.",
+        "fix_applied": "A/B gate at 20% — 20% of SOL LONG signals get -10pt confidence penalty in treatment cohort",
+        "action": "signal_pipeline.py or ensemble.py: if symbol==SOL and side==BUY, apply -10pt confidence penalty in 20% A/B cohort",
+        "status": "A/B_ACTIVE",
+        "confidence": 78,
+        "gate_percentage": 20,
+        "baseline_wr": 0.24,
+        "treatment_wr": null,
+        "sample_count": 34,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T15:00:00Z",
+        "min_sample_to_graduate": 25,
+        "expected_impact": "SOL_LONG at 24% WR with 1.5:1 R:R assumption = negative EV. Filtering reduces -$0.64/trade avg drag on SOL LONG setups"
+    },
+    {
+        "rule_id": "ILLIQUID_gate_escalate",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — regime forensics (57 illiquid trades, 28.1% WR)",
+        "description": "ILLIQUID_regime_block has been at 20% gate since 2026-04-24 with 78% confidence and 57 samples >> 25 min_sample. Escalate to 35%.",
+        "problem": "ILLIQUID_regime_block A/B gate at 20% for 57 trades, min_sample=25 (already met). 78% confidence with 57 confirmed illiquid-regime trades at 28.1% WR. Gate should escalate per graduation criteria.",
+        "fix_applied": "Escalate ILLIQUID_regime_block gate_percentage from 20% to 35%",
+        "action": "Update ILLIQUID_regime_block gate_percentage: 20 → 35 in graduated_rules.json",
+        "status": "ESCALATION",
+        "confidence": 78,
+        "gate_percentage": 35,
+        "baseline_wr": 0.281,
+        "applied_date": "2026-04-26",
+        "supersedes": "ILLIQUID_regime_block gate_percentage update only"
+    }
+    ],
     "rules_added_2026_04_26_hourly": [
     {
         "rule_id": "BTC_LONG_LIVE_CONTRADICTION",
