@@ -1,6 +1,6 @@
 {
     "schema_version": "1.0",
-    "last_updated": "2026-04-25T17:00:00.000000+00:00",
+    "last_updated": "2026-04-26T15:30:00.000000+00:00",
     "rules": [
         {
             "rule_id": "F2_calibration_offset_cap",
@@ -1004,6 +1004,40 @@
             "Set LLM_MODE > 0 if previously 0 (was causing 50 LLM rejections per 70 min)",
             "Check for process crash vs intentional circuit breaker stop"
         ]
+    },
+    {
+        "rule_id": "SOL_LONG_systematic_block",
+        "source": "master_engine_state 2026-04-26 — pattern_health analysis",
+        "description": "SOL_LONG at 24% WR across 34 trades, -$21.89 PnL — systematic losing pattern",
+        "problem": "SOL_LONG has 24% WR on 34 trades (-$21.89). Break-even at 1:1 R:R requires ~50% WR. No edge detected across any observed period.",
+        "fix_applied": "A/B gate at 20%: treatment cohort receives -10 confidence penalty on SOL_LONG signals. Track treatment vs baseline WR.",
+        "action": "Apply -10 confidence penalty to SOL_LONG signals in treatment cohort. Graduate to full block if treatment WR > baseline after 20 samples.",
+        "status": "A/B_ACTIVE",
+        "confidence": 80,
+        "gate_percentage": 20,
+        "baseline_wr": 0.24,
+        "treatment_wr": null,
+        "sample_count": 34,
+        "min_sample_to_graduate": 20,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T15:30:00Z"
+    },
+    {
+        "rule_id": "HYPE_LONG_hard_reduce",
+        "source": "master_engine_state 2026-04-26 — pattern_health analysis",
+        "description": "HYPE_LONG at 23% WR across 35 trades, -$77.26 PnL — #2 loss driver by absolute PnL",
+        "problem": "HYPE_LONG 23% WR, 35 trades, -$77.26. Existing HYPE_EV_CONFIRMED_NEGATIVE only reduces sizing (0.5x). No signal-level block in place.",
+        "fix_applied": "A/B gate at 20%: treatment cohort skips HYPE_LONG signals entirely (confidence set to 0/skip). Complements HYPE_EV_CONFIRMED_NEGATIVE sizing reduce.",
+        "action": "Skip HYPE_LONG signals in treatment cohort. If treatment avoids losses and baseline continues to lose, graduate to 100% block.",
+        "status": "A/B_ACTIVE",
+        "confidence": 85,
+        "gate_percentage": 20,
+        "baseline_wr": 0.23,
+        "treatment_wr": null,
+        "sample_count": 35,
+        "min_sample_to_graduate": 20,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T15:30:00Z"
     }
 ]
 }
