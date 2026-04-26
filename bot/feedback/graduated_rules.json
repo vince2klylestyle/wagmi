@@ -724,7 +724,7 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-25T17:00:00.000000+00:00",
+    "last_improvement_run": "2026-04-26T00:00:00.000000+00:00",
     "new_proposals_2026_04_25_hourly": [
     {
         "rule_id": "AB_RESULT_TRACKER",
@@ -734,9 +734,12 @@
         "proposed_fix": "Tag each live trade with active A/B cohort membership. After close, read trade outcome and update treatment_wr for matching rule in graduated_rules.json. Implement in feedback/loop.py post-trade hook.",
         "confidence": 100,
         "gate_percentage": 100,
-        "status": "PROPOSED",
+        "status": "A/B_ACTIVE",
         "applied_date": "2026-04-25",
-        "priority": "CRITICAL"
+        "graduated_date": "2026-04-26",
+        "graduated_by": "perpetual_improvement_loop",
+        "priority": "CRITICAL",
+        "implementation_target": "bot/feedback/loop.py — post-trade hook: tag trade with active A/B rule cohort membership; on close, update treatment_wr in graduated_rules.json"
     },
     {
         "rule_id": "CONF_70_HARD_FLOOR",
@@ -746,7 +749,7 @@
         "proposed_fix": "Suspend CONF_60_70_floor_raise and CONF_60_70_all_block. Replace with single CONF_70_HARD_FLOOR at 30% gate: reject all signals where confidence < 70 after quality adjustment. Track treatment_wr vs baseline 0.463.",
         "confidence": 87,
         "gate_percentage": 30,
-        "status": "PROPOSED",
+        "status": "A/B_ACTIVE",
         "applied_date": "2026-04-25",
         "baseline_wr": 0.463,
         "treatment_wr": null,
