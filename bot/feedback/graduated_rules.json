@@ -932,5 +932,78 @@
         "action": "Monitor morning WR. If live morning WR < 40% after 25 trades, suspend TOD_morning_edge rule and EVENING_session_boost rule (same data source may be wrong).",
         "reactivation_note": "If meta_learning morning edge is wrong, the evening edge (EVENING_session_boost) may also be from same unreliable source. Evening live data (46% WR, 41 trades) is at least net-positive and consistent."
     }
+],
+    "rules_added_2026_04_26_1515_hourly": [
+    {
+        "rule_id": "HYPE_SHORT_PAYOFF_BLOCK",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — execution forensics backtest_10d.csv (317 trades)",
+        "description": "HYPE_SHORT mid-confidence payoff catastrophic: -$2381.81 on 61 backtest trades despite 47.5% WR. Avg loss/win ratio severely negative.",
+        "problem": "HYPE_EV_CONFIRMED_NEGATIVE applies 0.5x size to ALL HYPE. HYPE_SHORT avg payoff = -$39.05/trade in backtest. HYPE_SHORT_block_high_conf covers >90% conf; mid-conf (70-89%) HYPE SHORTs are unblocked. Live paper: HYPE_SHORT 33% WR -$24.41 on 6 trades confirms direction.",
+        "fix_applied": "A/B gate at 20% — HYPE SHORT signals in conf range 70-89% get -10pt confidence penalty, stacking with existing 0.5x size",
+        "action": "ensemble.py or signal_pipeline.py: if symbol==HYPE and side==SHORT and 70<=confidence<90, apply -10pt penalty in 20% A/B cohort",
+        "status": "A/B_ACTIVE",
+        "confidence": 82,
+        "gate_percentage": 20,
+        "baseline_wr": 0.475,
+        "treatment_wr": null,
+        "sample_count": 61,
+        "applied_date": "2026-04-26",
+        "ab_cohort_start": "2026-04-26T15:15:00Z",
+        "min_sample_to_graduate": 20,
+        "expected_impact": "Reducing HYPE_SHORT mid-conf losses; avg payoff -$39/trade is worst in dataset by magnitude"
+    },
+    {
+        "rule_id": "BTC_STOP_MIN_0.8PCT",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — execution forensics backtest_10d.csv (317 trades)",
+        "description": "BTC avg stop width = 0.494%. 56.8% of ALL stops system-wide below 0.7% noise floor. BTC noise stops destroy edge.",
+        "problem": "Existing BTC_NOISE_SL_widen gates <0.7% stops at 20% cohort. But BTC avg is 0.494% — already below threshold. Gate needs to escalate AND minimum threshold needs to increase to 0.8% to match BTC volatility. 47 of 47 BTC losses in backtest are instant SL hits.",
+        "fix_applied": "Escalate BTC_NOISE_SL_widen gate from 20% to 50%. Tighten rejection threshold from <0.7% to <0.8%.",
+        "action": "Update BTC_NOISE_SL_widen: gate_percentage 20→50; reject BTC signals where abs(entry-sl)/entry < 0.008",
+        "status": "ESCALATION",
+        "confidence": 80,
+        "gate_percentage": 50,
+        "baseline_wr": 0.489,
+        "treatment_wr": null,
+        "sample_count": 92,
+        "applied_date": "2026-04-26",
+        "supersedes": "BTC_NOISE_SL_widen (escalates gate 20%→50%, tightens threshold 0.7%→0.8%)",
+        "expected_impact": "47 instant BTC SL hits in backtest — eliminating these via tighter stop filtering should improve BTC PnL meaningfully"
+    },
+    {
+        "rule_id": "CONF_CALIBRATION_INVERSION_AUDIT",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — confidence bin cross-validation (backtest vs live)",
+        "description": "CRITICAL AUDIT: Backtest shows conf 60-70% = 53.4% WR (BEST), conf 90%+ = 42.1% WR (WORST). Live paper claims opposite: 90%+ is primary profit driver. Confidence calibration signal is unresolvable without data audit.",
+        "problem": "Backtest (317 trades): 60-70%=53.4%, 70-80%=48.9%, 80-90%=47.0%, 90%+=42.1%. Live paper rules built on: 60-70%=46.3% WR WORST, 90%+=56% WR BEST. This inversion means ALL confidence-routing rules (CONF_70_HARD_FLOOR, confidence_60_70_ROUTING_FIX, etc.) may be targeting the wrong direction. Rules could be HURTING not helping.",
+        "fix_applied": "AUDIT_FREEZE: do not escalate any confidence-routing rule gates beyond current levels until data sources reconciled. This rule blocks escalation of CONF_70_HARD_FLOOR, CONF_60_70_all_block, and confidence_60_70_ROUTING_FIX.",
+        "action": "FREEZE: Do not escalate confidence-routing rules. Investigate whether backtest_10d.csv and live paper trades use same confidence calibration model. Backtest llm_confidence field is empty — may mean confidence in backtest was assigned differently.",
+        "status": "AUDIT_FREEZE",
+        "confidence": 88,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-26",
+        "urgency": "HIGH",
+        "investigation_note": "backtest_10d.csv llm_confidence column is empty for all rows — backtest uses 'confidence' column which is signal confidence, not LLM-assigned confidence. Live paper may be using LLM confidence. These are DIFFERENT metrics being compared as if same.",
+        "resolution_path": "Separate signal confidence (from strategies) vs LLM confidence (from agent pipeline). Re-run bin analysis only on live trades with LLM confidence populated."
+    },
+    {
+        "rule_id": "BOT_INACTIVE_ALERT",
+        "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 — paper_trading_2026-04-26_1500.md",
+        "description": "OPERATIONAL: Bot has been offline 65+ hours since 2026-04-23 22:17 UTC. No trades since 4-trade loss streak. Equity $497.05 (-90.1%).",
+        "problem": "Bot entered 4-trade consecutive loss streak and appears to have stopped (likely circuit breaker or process crash). Consecutive losses: SOL -$12.93, HYPE -$38.80, BTC -$0.02, HYPE -$40.99. No automatic restart. 65+ hours of missed opportunity (or avoided further losses).",
+        "fix_applied": "TRACKING: Flag as critical operational issue. Before restarting, confirm: (1) circuit breaker state in trading_config.py, (2) equity-relative sizing is correct at $497 base, (3) HYPE and SOL block rules are active.",
+        "action": "HUMAN REVIEW REQUIRED: Check if bot crashed or circuit-breaker triggered. Verify risk limits scale to current $497 equity before restart.",
+        "status": "PENDING_HUMAN_REVIEW",
+        "confidence": 100,
+        "gate_percentage": 0,
+        "applied_date": "2026-04-26",
+        "urgency": "CRITICAL",
+        "pre_restart_checklist": [
+            "Verify circuit breaker daily loss limit scales to $497 equity (not original $5000)",
+            "Confirm HYPE_EV_CONFIRMED_NEGATIVE 0.5x size is loaded",
+            "Confirm SOL_SHORT is suspended (SOL_SHORT_LIVE_CONTRADICTION)",
+            "Confirm BTC_BUY_BB_golden is suspended (BTC_LONG_LIVE_CONTRADICTION)",
+            "Set LLM_MODE > 0 if previously 0 (was causing 50 LLM rejections per 70 min)",
+            "Check for process crash vs intentional circuit breaker stop"
+        ]
+    }
 ]
 }
