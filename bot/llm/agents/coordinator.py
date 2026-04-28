@@ -607,6 +607,55 @@ class AgentCoordinator:
         except Exception as e:
             logger.debug("[MULTI-AGENT] Network learning injection failed: %s", e)
 
+        # ── Week 3: Deep Memory Context Injection ──
+        # Inject deep memory patterns and symbol intelligence into agent prompts
+        try:
+            from llm.learning.deep_memory_query import DeepMemoryQuery
+            _dmq = DeepMemoryQuery()
+
+            # Extract current decision context from snapshot
+            _symbol = ""
+            _markets = snapshot_data.get("m", [])
+            if _markets and isinstance(_markets, list) and _markets:
+                _symbol = _markets[0].get("s", _markets[0].get("sym", ""))
+
+            _regime = snapshot_data.get("g", {}).get("regime", "unknown") if isinstance(snapshot_data.get("g"), dict) else "unknown"
+            _n_agree = snapshot_data.get("g", {}).get("n_agree", 1) if isinstance(snapshot_data.get("g"), dict) else 1
+            _confidence = float(snapshot_data.get("g", {}).get("confidence", 50) if isinstance(snapshot_data.get("g"), dict) else 50)
+
+            # Inject Trade Agent context: regime and symbol performance
+            _trade_ctx = _dmq.inject_trade_memory_context(regime=_regime, symbol=_symbol)
+            if _trade_ctx:
+                snapshot_data["deep_memory_trade"] = _trade_ctx
+
+            # Inject Risk Agent context: setup reliability and sizing guidance
+            _risk_ctx = _dmq.inject_risk_memory_context(regime=_regime, symbol=_symbol, n_agree=_n_agree)
+            if _risk_ctx:
+                snapshot_data["deep_memory_risk"] = _risk_ctx
+
+            # Inject Exit Agent context: hold times and regime-specific exit patterns
+            # Note: side not yet known at this point (determined by Trade Agent)
+            # Use both BUY and SELL context available to Exit Agent
+            _exit_ctx_long = _dmq.inject_exit_memory_context(regime=_regime, symbol=_symbol, side="BUY")
+            _exit_ctx_short = _dmq.inject_exit_memory_context(regime=_regime, symbol=_symbol, side="SELL")
+            if _exit_ctx_long or _exit_ctx_short:
+                snapshot_data["deep_memory_exit"] = {
+                    "long": _exit_ctx_long or "",
+                    "short": _exit_ctx_short or "",
+                }
+
+            # Inject Learning Agent context: setup performance and accuracy stats
+            _learning_ctx = _dmq.inject_learning_memory_context(
+                regime=_regime, symbol=_symbol, n_agree=_n_agree, confidence=_confidence
+            )
+            if _learning_ctx:
+                snapshot_data["deep_memory_learning"] = _learning_ctx
+
+            logger.debug("[DEEP-MEMORY] Context injected for %s in %s (n_agree=%d, conf=%.0f%%)",
+                        _symbol, _regime, _n_agree, _confidence)
+        except Exception as e:
+            logger.debug("[MULTI-AGENT] Deep memory context injection failed: %s", e)
+
         # Dynamic stats: live rolling WR, PF, regime performance, calibration
         # Replaces hardcoded historical stats in prompts with current data
         try:
@@ -3350,7 +3399,12 @@ class AgentCoordinator:
             trade_data["knowledge"] = snapshot["_enr_knowledge"][:1000]
         else:
             _ensure_field(trade_data, "knowledge", snapshot, max_len=1000)
-        _ensure_field(trade_data, "deep_memory", snapshot, max_len=1000)
+
+        # Deep memory: prefer freshly-injected Week 3 context over stale snapshot data
+        if "deep_memory_trade" in snapshot and snapshot["deep_memory_trade"]:
+            trade_data["deep_memory"] = snapshot["deep_memory_trade"][:1500]
+        else:
+            _ensure_field(trade_data, "deep_memory", snapshot, max_len=1000)
         _ensure_field(trade_data, "examples", snapshot, max_len=600)
         _ensure_field(trade_data, "growth", snapshot, max_len=500)
         _ensure_field(trade_data, "survival", snapshot, max_len=300)
