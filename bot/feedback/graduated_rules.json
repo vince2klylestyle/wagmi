@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-04-28T12:00:00Z",
+  "last_updated": "2026-04-28T00:00:00Z",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -84,12 +84,12 @@
     {
       "rule_id": "ILLIQUID_regime_block",
       "source": "adaptive_risk_state \u2014 2026-04-24 forensics",
-      "description": "Illiquid regime wins only 28% WR on 57 trades \u2014 systematic noise-stop problem",
+      "description": "Illiquid regime wins only 28% WR on 57 trades \u2014 systematic noise-stop problem [Gate escalated 20%\u219250% on 2026-04-28: 71.9% noise stop rate on 57 trades is definitive.]",
       "problem": "57 illiquid-regime trades at 28% WR = structurally losing setup; stops hit in noise",
       "fix_applied": "A/B gate active at 20% \u2014 20% of illiquid signals routed to tighter-stop treatment",
       "status": "A/B_ACTIVE",
       "confidence": 78,
-      "gate_percentage": 20,
+      "gate_percentage": 50,
       "baseline_wr": 0.281,
       "treatment_wr": null,
       "sample_count": 57,
@@ -713,6 +713,22 @@
       "applied_date": "2026-04-25",
       "verified": false,
       "notes": "Action: verify max_sniper_leverage=5.0 cap is enforced at OrderExecutor level. Add per-trade-loss ceiling ($50 or 10% equity). Then re-enable. DO NOT auto-apply."
+    },
+    {
+      "rule_id": "SOL_SHORT_full_block",
+      "source": "master_engine_state 2026-04-28 auto-synthesis",
+      "description": "SOL_SHORT confirmed net-negative: -$154.35 on 30 trades (33% WR). Block all SOL SHORT signals at 100% gate.",
+      "problem": "SOL_SHORT produces -$154.35 net PnL over 30 trades at 33% WR \u2014 definitive negative-EV setup",
+      "fix_applied": "Full gate at 100% \u2014 no SOL SHORT signals pass ensemble without manual override",
+      "status": "A/B_ACTIVE",
+      "confidence": 88,
+      "gate_percentage": 100,
+      "baseline_wr": 0.33,
+      "treatment_wr": null,
+      "applied_date": "2026-04-28",
+      "verified": true,
+      "evidence_n": 30,
+      "evidence_pnl": -154.35
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
