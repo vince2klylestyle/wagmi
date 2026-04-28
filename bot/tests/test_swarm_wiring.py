@@ -10,9 +10,9 @@ from unittest.mock import Mock, patch, MagicMock
 
 from llm.agents.swarm_optimizer import (
     SwarmOptimizer,
-    Recommendation,
-    SwarmRecommendations,
+    AgentTuningProposal,
 )
+from llm.growth.recommendation_engine import Recommendation
 from llm.agents.swarm_agent_prompts import SWARM_AGENT_PROMPTS
 
 

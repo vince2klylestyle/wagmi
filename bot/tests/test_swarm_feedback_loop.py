@@ -13,7 +13,7 @@ from feedback.swarm_feedback_loop import (
     SwarmFeedbackLoop,
     PromotedRule,
 )
-from llm.agents.swarm_optimizer import Recommendation
+from llm.growth.recommendation_engine import Recommendation
 
 
 @pytest.fixture
