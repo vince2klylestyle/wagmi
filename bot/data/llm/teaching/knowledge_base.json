@@ -7112,6 +7112,23 @@
       "category": "trade_outcome",
       "tags": [],
       "source": "consolidation"
+    },
+    {
+      "knowledge_type": "counterfactual_evidence",
+      "content": "[FILTER_MISS] confidence_floor_67 blocked a winning SELL trade on HYPE in range (hypothetical +4.2%). Consider relaxing this filter.",
+      "confidence": 0.542,
+      "evidence_count": 1,
+      "category": "execution",
+      "tags": [
+        "confidence_floor_67",
+        "HYPE",
+        "SELL"
+      ],
+      "source": "counterfactual_resolution",
+      "created_at": 1777397184.1823058,
+      "last_validated": 1777397184.1823068,
+      "validation_count": 1,
+      "invalidation_count": 0
     }
   ]
 }
