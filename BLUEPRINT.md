@@ -10,20 +10,62 @@
 
 ## Table of Contents
 
+> **Note**: Sections 1-14 are the original Phase 1 blueprint (before audit findings). Sections 15-35 are Phase 2 (deep audits across 10 passes; superseding findings). When sections conflict, **Phase 2 wins** — §22 supersedes §2, §23 supersedes §21.10, etc.
+
+### Phase 1 — Original Blueprint
 1. **Executive summary** — what's true, what's broken, where to start
-2. **The smoking gun** — root cause of the 100% VETO loop
+2. **The smoking gun** — root cause of the 100% VETO loop *(SUPERSEDED by §22)*
 3. **Design intent** — what the bot is *supposed* to be
 4. **Life of a tick** — how the system actually runs end-to-end
 5. **Target architecture** — `LLMBackend` ABC + resilience layer
 6. **Pending fixes inventory** — every broken thing, ranked
-7. **Tiered intervention plan** — 1-hour, 1-day, 1-week
-8. **Restart pre-flight checklist** — what to verify before bringing it back online
+7. **Tiered intervention plan** — 1-hour, 1-day, 1-week *(SUPERSEDED by §22.5)*
+8. **Restart pre-flight checklist** — what to verify before bringing it back online *(SUPERSEDED by §24)*
 9. **Migration sequence** — 8-step path to finishing the CLI network
 10. **Operational rituals** — daily/weekly/monthly cadence
 11. **"Is it working?" dashboard** — 5 metrics that tell the truth
 12. **Risk register** — silent failures still unaddressed
 13. **What you (human) decide** — non-coding decisions
 14. **Glossary** — terminology
+
+### Phase 2 — Architecture & Vision (added day 2)
+15. **Complete agent inventory** — all 23 existing agents, file:line, models, costs
+16. **Proposed new agents** — Opportunist (user-anchor), Adversary, Drawdown Recovery, Calibration Auditor
+17. **The 8-step recipe for adding a new agent** — canonical procedure
+18. **By-the-numbers reference** — every threshold, parameter, and constant
+19. **Memory + learning architecture (complete map)** — 14 stores, hypothesis bug, 5 stub modules
+20. **Strategy layer reference** — Signal contract, all 11 strategies, ensemble mechanics
+21. **Upper-bound vision — true potential** — 5 multipliers, Sharpe ceiling, 6-month roadmap
+
+### Phase 2 — The Verified Smoking Gun & Compressed Plan
+22. **CLI Network — THE ACTUAL Smoking Gun (verified)** — `structured_output` field, 4-line fix
+23. **Compressed timeline — 6 weeks** — replaces the 6-month roadmap as primary
+24. **Restart blockers — DO NOT RESTART YET** — 4 BLOCKERs, smoke tests, canary mode
+25. **Money-path silent bugs** — 11 bugs, $3,350-$5,350 of identifiable losses, 4-fix bundle
+
+### Phase 2 — Hidden Bug Audits (10 passes total)
+26. **Schema/contract mismatch bugs** — 5 silent failures across writer↔reader boundaries
+27. **CLI integration bugs** — 16 between CLI client and rest of system
+28. **Concurrency, race conditions, and dead code** — 13 bugs incl. heartbeat non-atomic, exec lock race
+29. **CLI subprocess lifecycle** — 12 more (deadlock with large prompts, dual prompt source-of-truth)
+30. **CLI Network Hardening Blueprint (long-term design)** — `LLMBackend` ABC, 8-step migration, file structure
+31. **Audit continuity & stopping point** — what was found, what's left to audit
+32. **Security audit** — 15 vulnerabilities (4 CRITICAL: auth, restart injection, Telegram, env leak)
+33. **Database & backtest fidelity bugs** — 13 incl. CRITICAL look-ahead bias in `searchsorted`
+34. **The silent fallback anti-pattern (root cause of 93% of bugs)** — cultural fix worth 41× ROI
+35. **The Manual Trader's Path to Greatness** — `bot/manual/` cockpit, 5-level human curriculum, 12-month vision
+
+### Combined audit total
+**110+ specific bugs found, 21 BLOCKER/CRITICAL, across 10 audit passes** — see §22.10, §25.10, §26.7, §27 (table), §28.17, §29.15, §32.16, §33.15, §34.10 for category-by-category running totals.
+
+### Highest-leverage actions in order
+1. **§22.4** — 4-line CLI fix (10 min) — resolves 100% VETO loop
+2. **§22.7** — smoke test reproducer (5 min) — verify the fix
+3. **§25.11** — 4-fix money-path bundle (50 min) — recovers $2-3K of capital
+4. **§24** — clear all 4 BLOCKERs (~3 hours) — required before restart
+5. **§24.7** — 10-command pre-restart smoke test (5 min)
+6. **§24.11** — canary mode for first restart (BTC-only, observation only)
+7. **§34** — apply silent-fallback fix-loud discipline (~2 weeks, prevents next 67 bugs)
 
 ---
 
