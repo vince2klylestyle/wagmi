@@ -1,47 +1,47 @@
 {
   "symbol": "SOL",
-  "updated_at": "2026-04-28T03:54:58.142758+00:00",
-  "price": 84.0915,
+  "updated_at": "2026-04-28T04:01:33.072160+00:00",
+  "price": 84.1485,
   "levels": {
     "symbol": "SOL",
-    "ts": "2026-04-28T03:54:42.786045+00:00",
-    "price": 84.0915,
+    "ts": "2026-04-28T04:01:20.107158+00:00",
+    "price": 84.1485,
     "daily": {
-      "ema20": 85.3402971434058,
-      "ema50": 85.26839070291366,
-      "slope_pct": 0.5881834164022475,
-      "rsi14": 51.05987355894385,
+      "ema20": 85.34696381007247,
+      "ema50": 85.27290683194592,
+      "slope_pct": 0.596041226978126,
+      "rsi14": 51.250466592011925,
       "atr14": 3.0283571428571423,
       "hi60d": 97.638,
       "lo60d": 76.683,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 85.59214241939858,
-      "ema50": 85.85183447626561,
-      "rsi14": 39.83516483516479,
-      "atr14": 1.0350714285714286,
+      "ema20": 85.45897430670749,
+      "ema50": 85.81165086612512,
+      "rsi14": 36.18125701459033,
+      "atr14": 0.9971428571428567,
       "hi20": 88.055,
       "lo20": 83.608
     },
     "h1": {
-      "ema20": 84.76639811188609,
-      "ema50": 85.40533984150187,
-      "rsi14": 34.82944344703775,
-      "atr14": 0.5264285714285728,
+      "ema20": 84.71183663923159,
+      "ema50": 85.36597226134734,
+      "rsi14": 34.158415841584144,
+      "atr14": 0.468357142857144,
       "hi20": 85.793,
       "lo20": 83.608,
-      "vol_ratio": 0.8083801816600454
+      "vol_ratio": 0.6899431297990496
     },
     "m5": {
-      "rsi14": 63.92405063291175,
-      "atr14": 0.0853571428571444
+      "rsi14": 50.97613882863345,
+      "atr14": 0.0701428571428581
     }
   },
   "factors": {
     "btc_4h_direction": "bearish",
     "btc_4h_aligned_long": false,
-    "chop_score": 0.24,
+    "chop_score": 0.21,
     "chop_ok": true,
     "rsi_aligned": true,
     "rsi_bullish_stack": false,
@@ -54,16 +54,16 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.59%/10d and RSI 51. Price -1.46% vs daily EMA20 ($85). ATR 3.60% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +0.60%/10d and RSI 51. Price -1.40% vs daily EMA20 ($85). ATR 3.60% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "medium",
-      "daily_slope_pct": 0.59,
+      "daily_slope_pct": 0.6,
       "daily_rsi": 51.0,
-      "h1_rsi": 35.0,
-      "vol_ratio_1h": 0.81
+      "h1_rsi": 34.0,
+      "vol_ratio_1h": 0.69
     },
     "trade": {
       "ok": false,
@@ -72,13 +72,13 @@
       "latency_s": 0,
       "action": "go_long",
       "confidence": 65,
-      "entry_low": 83.92,
-      "entry_high": 84.26,
-      "stop": 83.45,
+      "entry_low": 83.98,
+      "entry_high": 84.32,
+      "stop": 83.47,
       "target1": 85.79,
       "target2": 97.64,
-      "rr_t1": 2.65,
-      "rr_t2": 21.12,
+      "rr_t1": 2.41,
+      "rr_t2": 19.81,
       "invalidation": 85.27
     },
     "critic": {
