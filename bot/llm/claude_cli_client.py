@@ -41,6 +41,11 @@ def _claude_path() -> Optional[str]:
     """Locate the claude CLI binary."""
     path = shutil.which("claude")
     if path:
+        # Convert POSIX paths (e.g., /c/Users/...) to Windows paths for subprocess on Windows
+        if path.startswith("/") and os.name == "nt":
+            # Handle /c/Users/ → C:\Users\ conversion
+            if path.startswith("/c/"):
+                path = "C:\\" + path[3:].replace("/", "\\")
         return path
     candidates = [
         os.path.expanduser("~/AppData/Roaming/npm/claude"),
@@ -90,8 +95,7 @@ def call_agent(
     cmd = [CLAUDE_BIN, "--print",
            "--output-format", "json",
            "--model", model,
-           "--max-budget-usd", str(max_budget_usd),
-           "--no-session-persistence"]
+           "--max-budget-usd", str(max_budget_usd)]
 
     # Embed system prompt in stdin (avoids Windows 8191-char cmd-line limit)
     if system_prompt:
@@ -102,7 +106,8 @@ def call_agent(
     if json_schema:
         cmd.extend(["--json-schema", json.dumps(json_schema)])
     if not allow_tools:
-        cmd.extend(["--tools", ""])
+        # Disable all tools by passing empty allowed-tools list
+        cmd.extend(["--disallowed-tools", "Bash", "Edit", "Write", "Read", "PowerShell"])
 
     start = time.time()
     try:
