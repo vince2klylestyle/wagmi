@@ -289,7 +289,8 @@ class RiskFilterChain:
         # Gate 1c: Fee-drag filter
         # Reject trades where round-trip fees + slippage consume too much of stop width.
         # A stop width of 0.3% with 0.10% round-trip fees = 33% fee drag — barely viable.
-        fee_bps = getattr(self.config, "taker_fee_bps", 4)
+        fee_bps = getattr(self.config, "taker_fee_bps", 45)
+        assert fee_bps >= 40, f"taker_fee_bps={fee_bps} below safety floor (Hyperliquid = 45 bps); check config init"
         slippage_bps = getattr(self.config, "slippage_bps", 3)
         # Regime-specific slippage: high-vol/panic have wider spreads
         _regime_slippage = {

@@ -136,7 +136,12 @@ def call_agent(
         # Fallback: treat raw as the text directly
         return CliResponse(ok=True, text=raw, latency_s=latency, model=model)
 
-    text = envelope.get("result", "") or envelope.get("text", "") or ""
+    # Check structured_output first (CLI with --json-schema)
+    structured = envelope.get("structured_output")
+    if isinstance(structured, dict):
+        text = json.dumps(structured)
+    else:
+        text = envelope.get("result", "") or envelope.get("text", "") or ""
     cost = float(envelope.get("total_cost_usd", 0) or 0)
     parsed = _extract_json(text)
     return CliResponse(

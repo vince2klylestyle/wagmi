@@ -589,14 +589,15 @@ class OrderExecutor:
         self._orders_submitted += 1
         self._orders_filled += 1
 
-        # Simulate small slippage (0.01% for market orders)
-        slippage = price * 0.0001
+        # Simulate realistic slippage (2-3 bps for market orders, up from 1 bp)
+        # TODO: regime-aware slippage (high_vol=5, panic=8, etc.) requires regime param
+        slippage = price * 0.0003
         fill_price = price + slippage if side == "buy" else price - slippage
         fill_price = round_price(symbol, fill_price)
 
-        # Estimate fees (Hyperliquid taker: 2.5 bps)
+        # Estimate fees (Hyperliquid taker: 45 bps, not 2.5 bps)
         notional = qty * fill_price
-        fees = notional * 0.00025
+        fees = notional * 0.0045
         self._total_fees += fees
 
         result = OrderResult(
@@ -709,8 +710,8 @@ class OrderExecutor:
         fee_info = order.get("fee", {}) or {}
         fees = float(fee_info.get("cost", 0) or 0)
         if fees == 0 and cost > 0:
-            # Estimate fees if not provided (Hyperliquid taker: 2.5 bps)
-            fees = cost * 0.00025
+            # Estimate fees if not provided (Hyperliquid taker: 45 bps, not 2.5 bps)
+            fees = cost * 0.0045
 
         # Determine result status
         if status == "closed" or filled > 0:

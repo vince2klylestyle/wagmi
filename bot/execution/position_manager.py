@@ -1067,6 +1067,10 @@ class PositionManager:
         if remaining_after <= 0 and pos.qty > close_qty:
             # Rounding ate everything — reduce close_qty to preserve minimum remainder
             close_qty = round_qty(pos.symbol, pos.qty * 0.90)  # Close 90% max
+        if close_qty >= pos.qty * 0.95:
+            # Close would take 95%+ of position — skip partial, let trailing handle it
+            logger.warning(f"[{pos.symbol}] TP1 would close {close_qty} ≈ {100*close_qty/pos.qty:.0f}% (>{95}%), skipping partial")
+            return None
         if close_qty <= 0 or close_qty >= pos.qty:
             # Degenerate case: close everything as a full TP1 close
             return self._close_position(pos, price, "TP1_FULL")
