@@ -7086,6 +7086,23 @@
         "risk"
       ],
       "source": "causal_analysis"
+    },
+    {
+      "knowledge_type": "principle",
+      "content": "[trade_outcome] Pattern from 5 observations: SOL_SELL_BB: LOSS in trending_bear, pnl=-179.67%",
+      "confidence": 0.75,
+      "evidence_count": 1,
+      "supporting": [
+        "5 observations"
+      ],
+      "contradicting": [],
+      "created_at": 1777384094.2093463,
+      "last_validated": 1777384094.2093468,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "trade_outcome",
+      "tags": [],
+      "source": "consolidation"
     }
   ]
 }
