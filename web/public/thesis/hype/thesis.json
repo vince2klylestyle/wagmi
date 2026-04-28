@@ -1,85 +1,85 @@
 {
   "symbol": "HYPE",
-  "updated_at": "2026-04-28T05:39:49.914454+00:00",
-  "price": 41.1645,
+  "updated_at": "2026-04-28T12:00:18.257439+00:00",
+  "price": 40.1255,
   "levels": {
     "symbol": "HYPE",
-    "ts": "2026-04-28T05:39:34.501741+00:00",
-    "price": 41.1645,
+    "ts": "2026-04-28T12:00:07.601288+00:00",
+    "price": 40.1255,
     "daily": {
-      "ema20": 41.19850912346557,
-      "ema50": 40.56541829707161,
-      "slope_pct": 0.4160521986923096,
-      "rsi14": 40.0370401548952,
-      "atr14": 1.889571428571428,
+      "ema20": 41.09927102822748,
+      "ema50": 40.49819249062,
+      "slope_pct": 0.17417214129355144,
+      "rsi14": 36.8082965714728,
+      "atr14": 1.9691428571428564,
       "hi60d": 45.763,
       "lo60d": 26.062,
-      "trend": "UP"
+      "trend": "FLAT"
     },
     "h4": {
-      "ema20": 41.61535667237057,
-      "ema50": 41.69727809226317,
-      "rsi14": 46.69009958992384,
-      "atr14": 0.6851428571428586,
+      "ema20": 41.42313025148331,
+      "ema50": 41.59993978802604,
+      "rsi14": 39.740441950192874,
+      "atr14": 0.7957857142857152,
       "hi20": 43.568,
-      "lo20": 40.794
+      "lo20": 39.68
     },
     "h1": {
-      "ema20": 41.57698541543924,
-      "ema50": 41.71069792423555,
-      "rsi14": 34.633027522935876,
-      "atr14": 0.30228571428571577,
-      "hi20": 42.93,
-      "lo20": 40.794,
-      "vol_ratio": 0.6238029620507444
+      "ema20": 40.984929000780625,
+      "ema50": 41.405119428738935,
+      "rsi14": 30.932335516058686,
+      "atr14": 0.42600000000000143,
+      "hi20": 41.834,
+      "lo20": 39.68,
+      "vol_ratio": 1.4401145911513042
     },
     "m5": {
-      "rsi14": 54.32937181663854,
-      "atr14": 0.06400000000000107
+      "rsi14": 60.215053763440615,
+      "atr14": 0.144285714285714
     }
   },
   "factors": {
-    "btc_4h_direction": "neutral",
+    "btc_4h_direction": "bearish",
     "btc_4h_aligned_long": false,
-    "chop_score": 0.14,
+    "chop_score": 0.2,
     "chop_ok": true,
     "rsi_aligned": true,
     "rsi_bullish_stack": false,
-    "daily_trend_up": true,
-    "conviction_count": 2,
+    "daily_trend_up": false,
+    "conviction_count": 1,
     "conviction_max": 4,
-    "conviction_wr_est": 38
+    "conviction_wr_est": 20
   },
   "committee": {
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.42%/10d and RSI 40. Price -0.08% vs daily EMA20 ($41). ATR 4.59% \u2014 healthy momentum.",
+      "narrative": "Daily trend FLAT with slope +0.17%/10d and RSI 37. Price -2.37% vs daily EMA20 ($41). ATR 4.91% \u2014 healthy momentum.",
       "latency_s": 0,
-      "regime_label": "unknown",
-      "confidence": 40,
+      "regime_label": "range",
+      "confidence": 60,
       "bias": "neutral",
       "vol_band": "medium",
-      "daily_slope_pct": 0.42,
-      "daily_rsi": 40.0,
-      "h1_rsi": 35.0,
-      "vol_ratio_1h": 0.62
+      "daily_slope_pct": 0.17,
+      "daily_rsi": 37.0,
+      "h1_rsi": 31.0,
+      "vol_ratio_1h": 1.44
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Range/unclear regime. No directional edge. Wait for breakout of $41-$43.",
+      "narrative": "Range/unclear regime. No directional edge. Wait for breakout of $40-$42.",
       "latency_s": 0,
       "action": "wait",
       "confidence": 40,
-      "entry_low": 41.04,
-      "entry_high": 41.29,
-      "stop": 40.7,
-      "target1": 42.93,
+      "entry_low": 40.01,
+      "entry_high": 40.25,
+      "stop": 39.55,
+      "target1": 41.83,
       "target2": 45.76,
-      "rr_t1": 3.83,
-      "rr_t2": 9.97,
-      "invalidation": 40.57
+      "rr_t1": 2.98,
+      "rr_t2": 9.83,
+      "invalidation": 40.5
     },
     "critic": {
       "ok": false,

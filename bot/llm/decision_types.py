@@ -286,6 +286,7 @@ class GlobalContext:
     daily_pnl: float = 0.0
     equity: float = 10000.0
     circuit_breaker_active: bool = False
+    regime: str = "unknown"        # Current market regime classification
     extra: Dict[str, Any] = field(default_factory=dict)  # Telemetry, ops guard, etc.
 
 
@@ -333,6 +334,7 @@ class LLMInputSnapshot:
                 "positions": self.global_context.total_open_positions,
                 "daily_pnl": round(self.global_context.daily_pnl, 2),
                 "equity": round(self.global_context.equity, 2),
+                "regime": self.global_context.regime,
                 "cb_active": self.global_context.circuit_breaker_active,
                 **({"telemetry": self.global_context.extra} if self.global_context.extra else {}),
             },

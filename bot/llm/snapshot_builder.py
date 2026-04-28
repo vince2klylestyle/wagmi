@@ -263,6 +263,7 @@ def _to_compact_dict(snapshot: LLMInputSnapshot) -> dict:
         "pos": g.total_open_positions,
         "pnl": round(g.daily_pnl, 1),
         "eq": round(g.equity, 0),
+        "regime": g.regime,
     }
     if g.circuit_breaker_active:
         result["g"]["cb"] = True

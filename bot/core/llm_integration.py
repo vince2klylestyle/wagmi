@@ -418,6 +418,8 @@ class LLMIntegrationMixin:
         # Global context (enriched with telemetry for LLM learning)
         eth_btc = eth_price / btc_price if btc_price > 0 else 0.0
         telem_snap = Telemetry.snapshot()
+        # Determine dominant regime from global brain context or default to unknown
+        _dominant_regime = _gb_ctx.get("dominant_regime", "unknown") if _gb_ctx else "unknown"
         global_ctx = LLMGlobalContext(
             timestamp=int(time.time() * 1000),
             btc_price=btc_price,
@@ -428,6 +430,7 @@ class LLMIntegrationMixin:
             daily_pnl=self.risk_mgr.circuit_breaker.daily_pnl,
             equity=self.risk_mgr.equity,
             circuit_breaker_active=self.risk_mgr.circuit_breaker.tripped,
+            regime=_dominant_regime,
         )
         # Attach telemetry so the LLM can learn from execution quality
         cb = self.risk_mgr.circuit_breaker
@@ -443,6 +446,7 @@ class LLMIntegrationMixin:
             _daily_wr = sum(self.feedback.quality.overall_recent) / len(self.feedback.quality.overall_recent)
 
         global_ctx.extra = {
+            "dominant_regime": _dominant_regime,
             "win_rate": telem_snap.get("win_rate", 0),
             "total_trades": telem_snap.get("total_trades", 0),
             "avg_slippage": telem_snap.get("avg_slippage", 0),
