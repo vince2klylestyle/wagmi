@@ -980,7 +980,7 @@ class RiskFilterChain:
         ))
 
         # ── Soft Gate: Fee-drag (regime-aware slippage) ──
-        fee_bps = getattr(self.config, "taker_fee_bps", 4)
+        fee_bps = getattr(self.config, "taker_fee_bps", 45)  # Match hard-gate default (was: 4)
         _regime_slip_ann = {
             "trending_bull": 1, "trending_bear": 2, "trend": 1,
             "consolidation": 1, "range": 1,

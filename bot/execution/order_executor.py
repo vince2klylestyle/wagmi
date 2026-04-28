@@ -391,7 +391,15 @@ class OrderExecutor:
         )
 
         if self.mode == "paper":
-            logger.info(f"[ORDER] PAPER stop-loss registered: {symbol} @ ${trigger_price}")
+            logger.warning(
+                f"[ORDER] PAPER stop-loss registered (CLIENT-SIDE ONLY): "
+                f"{symbol} qty={qty} @ ${trigger_price}. "
+                f"WARNING: SL relies on client-side polling via position_manager.update_price(). "
+                f"If bot crashes before disk save, position has NO exchange-side stop. "
+                f"Recovery: auto_recovery loads SL from disk on restart."
+            )
+            # Ensure position manager can track this SL
+            assert trigger_price > 0, f"Invalid trigger_price: {trigger_price}"
             return OrderResult(
                 success=True, status="placed", mode="paper",
                 fill_price=trigger_price, fill_qty=qty,
