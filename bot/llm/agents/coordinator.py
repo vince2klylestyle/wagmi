@@ -1534,6 +1534,28 @@ class AgentCoordinator:
             f"({elapsed_ms}ms)"
         )
 
+        # ── Audit log the complete decision for observability ──
+        symbol = signal_context.get("symbol", "")
+        try:
+            from llm.audit_logger import audit_trade_decision
+            audit_trade_decision(
+                symbol=symbol,
+                action=action,
+                regime=decision.regime or "unknown",
+                thesis=thesis or "",
+                confidence=decision.confidence * 100,  # Convert to 0-100 scale
+                leverage=leverage,
+                risk_pct=risk_pct,
+                sizing_rationale=sizing_rationale or "",
+                risk_flags=risk_flags or [],
+                debate_summary=debate_summary or "",
+                latency_ms=elapsed_ms,
+                cost_usd=0.0,  # TODO: track from LLM call
+                error=None,
+            )
+        except Exception as e:
+            logger.debug(f"[AUDIT] Failed to log entry decision: {e}")
+
         return entry_decision
 
     def _build_entry_snapshot(
