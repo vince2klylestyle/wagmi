@@ -368,6 +368,58 @@ class EnsembleStrategy:
             return allowed
         return allowed
 
+    def _apply_monte_carlo_gate(self, signal: Optional[Signal], symbol: str) -> Optional[Signal]:
+        """
+        Apply Monte Carlo conditional gate to ensure high-confidence edge maintenance.
+
+        From AUDIT_FINDINGS_AND_ACTIONS.md Phase 1:
+        - MC Zones: 2,448 signals, 57% WR (enabled)
+        - Regime Trend: 4,884 signals, 42% WR (disabled)
+
+        Only allow MC signals when:
+        1. MC gate is enabled in config
+        2. Signal is from monte_carlo_zones strategy
+        3. Regime is in [ranging, consolidation]
+        4. Confidence >= 65%
+        """
+        if signal is None:
+            return signal
+
+        # Check if MC gate is enabled
+        try:
+            from trading_config import TradingConfig
+            config = TradingConfig()
+            if not getattr(config, "monte_carlo_enabled", False):
+                return signal  # Gate disabled, allow all signals
+        except Exception:
+            return signal  # Config error, allow signal
+
+        # Only filter monte_carlo_zones signals
+        if signal.strategy != "monte_carlo_zones":
+            return signal
+
+        # Check regime
+        regime = (signal.metadata or {}).get("regime", "unknown")
+        if regime not in ["ranging", "consolidation"]:
+            logger.info(
+                f"[{symbol}] MC gate: regime '{regime}' not in [ranging, consolidation] — rejected"
+            )
+            return None
+
+        # Check confidence
+        min_conf = getattr(config, "monte_carlo_min_confidence", 65.0)
+        if signal.confidence < min_conf:
+            logger.info(
+                f"[{symbol}] MC gate: confidence {signal.confidence:.0f}% < {min_conf:.0f}% — rejected"
+            )
+            return None
+
+        # Gate passed
+        logger.info(
+            f"[{symbol}] MC signal allowed: regime={regime}, confidence={signal.confidence:.0f}%"
+        )
+        return signal
+
     def evaluate(
         self, symbol: str, data: Dict[str, pd.DataFrame]
     ) -> Optional[Signal]:
@@ -791,6 +843,13 @@ class EnsembleStrategy:
             _get_pt().record_ensemble(symbol, {"confidence": result.confidence, "side": result.side, "num_agree": (result.metadata or {}).get("num_agree", 1), "strategies": (result.metadata or {}).get("strategies_agree", [])})
         except Exception:
             pass
+
+        # ── Monte Carlo Gate (Phase 1): Conditional enablement for MC signals ──
+        # From AUDIT_FINDINGS_AND_ACTIONS.md: only allow MC signals in specific conditions
+        # to ensure 57% WR is maintained (vs unconstrained 42% WR from Regime Trend)
+        result = self._apply_monte_carlo_gate(result, symbol)
+        if result is None:
+            return None
 
         return result
 

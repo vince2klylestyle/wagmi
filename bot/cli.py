@@ -83,8 +83,18 @@ def main():
         default="0,2,3,5",
         help="Comma-separated LLM modes for compare mode (default: 0,2,3,5)",
     )
+    parser.add_argument(
+        "--monte-carlo-enabled",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        default=None,
+        help="Enable/disable Monte Carlo gate (default: config)",
+    )
 
     args = parser.parse_args()
+
+    # Handle monte-carlo-enabled override
+    if args.monte_carlo_enabled is not None:
+        os.environ["MONTE_CARLO_ENABLED"] = str(args.monte_carlo_enabled).lower()
 
     if args.mode == "replay":
         _run_replay(args.replay_file)
