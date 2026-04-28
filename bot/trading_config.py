@@ -148,8 +148,8 @@ class TradingConfig:
         default_factory=lambda: _env_bool("STRATEGY_LEAD_LAG_ENABLED", True)
     )  # RE-ENABLED: Let agents learn when/why it works
     strategy_multi_tier_quality_enabled: bool = field(
-        default_factory=lambda: _env_bool("STRATEGY_MULTI_TIER_QUALITY_ENABLED", True)
-    )  # RE-ENABLED: Agents will coach on regime/symbol specificity
+        default_factory=lambda: _env_bool("STRATEGY_MULTI_TIER_QUALITY_ENABLED", False)
+    )  # DISABLED: Phase A discovered 0% WR, -$1,353 loss over 100d. Pure dead weight.
     strategy_vmc_cipher_enabled: bool = field(
         default_factory=lambda: _env_bool("STRATEGY_VMC_CIPHER_ENABLED", True)
     )  # RE-ENABLED: Comprehensive discovery mode
