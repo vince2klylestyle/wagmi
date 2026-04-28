@@ -1,41 +1,41 @@
 {
   "symbol": "BTC",
-  "updated_at": "2026-04-28T03:19:52.437335+00:00",
-  "price": 76726.5,
+  "updated_at": "2026-04-28T03:59:54.039985+00:00",
+  "price": 76764.5,
   "levels": {
     "symbol": "BTC",
-    "ts": "2026-04-28T03:19:40.522971+00:00",
-    "price": 76726.5,
+    "ts": "2026-04-28T03:59:41.772123+00:00",
+    "price": 76764.5,
     "daily": {
-      "ema20": 75414.88586821819,
-      "ema50": 74234.14103762001,
-      "slope_pct": 4.00787717167029,
-      "rsi14": 58.99541504140149,
+      "ema20": 75418.50491583724,
+      "ema50": 74236.59265052323,
+      "slope_pct": 4.012868354192248,
+      "rsi14": 59.1492281303602,
       "atr14": 2144.0,
       "hi60d": 79434.0,
       "lo60d": 62983.0,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 77548.38994150578,
-      "ema50": 77117.83168281752,
-      "rsi14": 45.4617961397352,
+      "ema20": 77552.00898912484,
+      "ema50": 77119.32187889595,
+      "rsi14": 45.739046701974004,
       "atr14": 777.5714285714286,
       "hi20": 79434.0,
       "lo20": 76363.0
     },
     "h1": {
-      "ema20": 77220.77573090856,
-      "ema50": 77536.84734531479,
-      "rsi14": 33.41216216216216,
+      "ema20": 77224.39477852761,
+      "ema50": 77538.33754139322,
+      "rsi14": 33.8466803559206,
       "atr14": 418.7857142857143,
       "hi20": 78222.0,
       "lo20": 76363.0,
-      "vol_ratio": 0.8974302420556448
+      "vol_ratio": 0.9718970803639675
     },
     "m5": {
-      "rsi14": 31.140350877192986,
-      "atr14": 113.07142857142857
+      "rsi14": 59.61871750433276,
+      "atr14": 80.07142857142857
     }
   },
   "factors": {
@@ -54,7 +54,7 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +4.01%/10d and RSI 59. Price +1.74% vs daily EMA20 ($75,415). ATR 2.79% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +4.01%/10d and RSI 59. Price +1.78% vs daily EMA20 ($75,419). ATR 2.79% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
@@ -62,24 +62,24 @@
       "vol_band": "medium",
       "daily_slope_pct": 4.01,
       "daily_rsi": 59.0,
-      "h1_rsi": 33.0,
-      "vol_ratio_1h": 0.9
+      "h1_rsi": 34.0,
+      "vol_ratio_1h": 0.97
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish bias intact. Long entry near $77,221 (1h EMA20) with stop below $76,363 (1h support). Target $78,222 then $79,434.",
+      "narrative": "Bullish bias intact. Long entry near $77,224 (1h EMA20) with stop below $76,363 (1h support). Target $78,222 then $79,434.",
       "latency_s": 0,
       "action": "go_long",
       "confidence": 65,
-      "entry_low": 76573.05,
-      "entry_high": 76879.95,
+      "entry_low": 76610.97,
+      "entry_high": 76918.03,
       "stop": 76237.36,
       "target1": 78222.0,
       "target2": 79434.0,
-      "rr_t1": 3.06,
-      "rr_t2": 5.54,
-      "invalidation": 74234.14
+      "rr_t1": 2.76,
+      "rr_t2": 5.06,
+      "invalidation": 74236.59
     },
     "critic": {
       "ok": false,
