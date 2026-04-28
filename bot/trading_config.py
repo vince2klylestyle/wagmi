@@ -138,16 +138,21 @@ class TradingConfig:
     # 1.5x veto killed too many positive-EV signals. Fee-drag + EV gates handle quality.
 
     # ── Strategy Enable Flags ──
-    # Disable strategies with proven negative edge. Shadow ledger tracks what-if PnL.
+    # RE-ENABLED for comprehensive discovery with LLM agents.
+    # These were disabled based on isolated testing. With 9-agent brain, they may:
+    # - Work in specific regimes/symbols
+    # - Be improved by agent coaching and feedback loops
+    # - Reveal emergent value through learning system integration
+    # Strategy-specific veto logic is now in agents, not config.
     strategy_lead_lag_enabled: bool = field(
-        default_factory=lambda: _env_bool("STRATEGY_LEAD_LAG_ENABLED", False)
-    )  # 0% WR across 8 trades, -$137/trade EV, -$1,100 net
+        default_factory=lambda: _env_bool("STRATEGY_LEAD_LAG_ENABLED", True)
+    )  # RE-ENABLED: Let agents learn when/why it works
     strategy_multi_tier_quality_enabled: bool = field(
-        default_factory=lambda: _env_bool("STRATEGY_MULTI_TIER_QUALITY_ENABLED", False)
-    )  # PF 0.82, -$1,223 net, 10-consecutive-loss streak, common factor in every toxic combo
+        default_factory=lambda: _env_bool("STRATEGY_MULTI_TIER_QUALITY_ENABLED", True)
+    )  # RE-ENABLED: Agents will coach on regime/symbol specificity
     strategy_vmc_cipher_enabled: bool = field(
-        default_factory=lambda: _env_bool("STRATEGY_VMC_CIPHER_ENABLED", False)
-    )  # 5% WR (1/20 recent), dead weight — disabled by audit 2026-04-03
+        default_factory=lambda: _env_bool("STRATEGY_VMC_CIPHER_ENABLED", True)
+    )  # RE-ENABLED: Comprehensive discovery mode
 
     # ── Multi-Agent System (W4) ──
     # Enable/disable individual agents in the 9-agent specialist pipeline

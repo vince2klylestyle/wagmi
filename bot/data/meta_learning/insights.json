@@ -863,6 +863,46 @@
       "evidence_count": 9,
       "actionable_suggestion": "Boost confidence for trades during morning (6:00-12:00 UTC). Consider raising confidence floor during evening by 5-10%.",
       "timestamp": 1774424723.0146015
+    },
+    {
+      "category": "pattern",
+      "description": "Time-of-day edge: 'evening' (18:00-24:00 UTC) wins 29% vs 'afternoon' at 0% (spread: 29%)",
+      "confidence": 0.6000000000000001,
+      "evidence_count": 12,
+      "actionable_suggestion": "Boost confidence for trades during evening (18:00-24:00 UTC). Consider raising confidence floor during afternoon by 5-10%.",
+      "timestamp": 1777382229.2891624
+    },
+    {
+      "category": "weakness",
+      "description": "Significant time-of-day weakness: 'afternoon' (12:00-18:00 UTC) has only 0% WR over 5 trades",
+      "confidence": 0.625,
+      "evidence_count": 5,
+      "actionable_suggestion": "Consider pausing trading or raising confidence floor to 75%+ during afternoon (12:00-18:00 UTC).",
+      "timestamp": 1777382229.2891624
+    },
+    {
+      "category": "bias",
+      "description": "Strategy concentration: 'omniscient_integrated' accounts for 90% of all trades (45/50). WR: 7%",
+      "confidence": 0.8,
+      "evidence_count": 45,
+      "actionable_suggestion": "Diversify: over-reliance on 'omniscient_integrated' creates fragility. Consider reducing its ensemble weight or boosting underrepresented strategies.",
+      "timestamp": 1777382229.2891624
+    },
+    {
+      "category": "weakness",
+      "description": "Strategy 'omniscient_integrated' underperforming: 7% WR over 45 trades",
+      "confidence": 0.8,
+      "evidence_count": 45,
+      "actionable_suggestion": "Reduce weight for 'omniscient_integrated' in ensemble. Consider disabling if <30% WR persists over 20+ trades.",
+      "timestamp": 1777382229.2891624
+    },
+    {
+      "category": "weakness",
+      "description": "Strategy 'ensemble' underperforming: 0% WR over 5 trades",
+      "confidence": 0.625,
+      "evidence_count": 5,
+      "actionable_suggestion": "Reduce weight for 'ensemble' in ensemble. Consider disabling if <30% WR persists over 20+ trades.",
+      "timestamp": 1777382229.2891624
     }
   ]
 }
