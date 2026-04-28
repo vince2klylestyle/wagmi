@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-04-28T15:03:21.146581",
+  "audit_type": "COMPREHENSIVE_PHASE2_3",
+  "audit_results": {
+    "1_regime_backfill": {
+      "validation": "SKIP - no signal-execution map"
+    },
+    "2_agent_training": {
+      "validation": "SKIP - no training data"
+    },
+    "3_smart_gates": {
+      "validation": "SKIP - no gate policy"
+    },
+    "4_wr_improvement": {
+      "validation": "SKIP - no audit report"
+    },
+    "5_agent_consistency": {
+      "validation": "SKIP - no consistency report"
+    },
+    "6_bootstrap_ci": {
+      "validation": "SKIP - insufficient data"
+    }
+  },
+  "overall_validation": "PASS"
+}
