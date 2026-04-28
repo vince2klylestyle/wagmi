@@ -956,6 +956,68 @@ class AgentCoordinator:
         if trade_out.data.get("thesis"):
             scratchpad.write("trade", "thesis", trade_out.data["thesis"])
 
+        # ── Week 4: Adversary Agent (Stress-Testing) ──────────────
+        # Run Adversary Agent to identify risks and counter-arguments
+        # Only run if Trade Agent wants to proceed
+        adversary_review = None
+        if trade_out.ok and trade_out.data.get("a") in ("go", "proceed"):
+            try:
+                from llm.agents.adversary_agent import AdversaryAgent
+                from trading_config import AGENT_ADVERSARY_ENABLED, LLM_MODE
+
+                if AGENT_ADVERSARY_ENABLED and LLM_MODE >= 3:  # Only in higher autonomy modes
+                    adversary = AdversaryAgent()
+
+                    # Extract trade context for adversary review
+                    _symbol = ""
+                    _markets = snapshot_data.get("m", [])
+                    if _markets and isinstance(_markets, list) and _markets:
+                        _symbol = _markets[0].get("s", _markets[0].get("sym", ""))
+
+                    _regime = regime_out.data.get("rg", "unknown") if regime_out and regime_out.ok else "unknown"
+                    _side = trade_out.data.get("side", trade_out.data.get("s", "BUY")).upper()
+                    _confidence = float(trade_out.data.get("c", trade_out.data.get("confidence", 0.5)))
+                    _thesis = str(trade_out.data.get("thesis", trade_out.data.get("n", "")))
+
+                    # Get signal prices if available
+                    _entry = 0.0
+                    _sl = 0.0
+                    _signals = snapshot_data.get("signals", snapshot_data.get("sigs", []))
+                    if _signals and isinstance(_signals[0], dict):
+                        _entry = float(_signals[0].get("entry", _signals[0].get("e", 0.0)))
+                        _sl = float(_signals[0].get("sl", 0.0))
+
+                    # Run adversary review
+                    adversary_review = adversary.review_thesis(
+                        thesis=_thesis[:200] if _thesis else "thesis unclear",
+                        symbol=_symbol or "UNKNOWN",
+                        regime=_regime,
+                        side=_side,
+                        confidence=_confidence,
+                        entry_price=_entry,
+                        stop_loss=_sl,
+                    )
+
+                    if adversary_review:
+                        # Store review for Critic to consider
+                        scratchpad.write("adversary", "counter_args", ",".join(adversary_review.counter_arguments[:3]))
+                        scratchpad.write("adversary", "severity", adversary_review.severity)
+
+                        # Recommend confidence adjustment if appropriate
+                        adjusted_confidence = adversary.recommend_confidence_adjustment(
+                            original_confidence=_confidence,
+                            adversary_review=adversary_review
+                        )
+                        if adjusted_confidence != _confidence:
+                            logger.info("[ADVERSARY] Confidence adjustment: %.2f → %.2f",
+                                       _confidence, adjusted_confidence)
+                            scratchpad.write("adversary", "confidence_adj", adjusted_confidence - _confidence)
+
+                        logger.debug("[ADVERSARY] Review complete: %d counter-args, severity=%s",
+                                    len(adversary_review.counter_arguments), adversary_review.severity)
+            except Exception as e:
+                logger.debug("[MULTI-AGENT] Adversary agent failed: %s", e)
+
         # ── Step 3: Risk Agent (optional) ───────────────────────
         risk_out = None
         if self.configs.get(AgentRole.RISK, AgentConfig(role=AgentRole.RISK)).enabled:
