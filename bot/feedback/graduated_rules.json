@@ -1268,5 +1268,61 @@
       "CONF_60_70_all_block: escalate gate from 20% \u2192 100% (85% conf, 123 trade confirmation)"
     ],
     "next_auto_fix_trigger": "No new rules to apply. Next run: escalation candidates if bot restarts."
+  },
+  "rules_added_2026_04_29_perpetual_run": [
+    {
+      "rule_id": "AFTERNOON_SESSION_BLOCK",
+      "source": "perpetual_improvement_2026-04-29 \u2014 ideas.json audit (idea_920b3e13 harmful direction)",
+      "description": "Afternoon (12:00-18:00 UTC) = 33% WR on 15 trades. ideas.json had this as a BOOST idea \u2014 flagged as direction-reversed and converted to BLOCK.",
+      "problem": "ideas.json idea_920b3e13 proposed +1.08x confidence multiplier for afternoon session despite 33% WR data. Implementing as written would boost the second-worst time window. Only evening (18-24 UTC) is net-positive among non-morning sessions.",
+      "fix_applied": "A/B gate at 20% \u2014 afternoon signals get -8pt confidence penalty. Mirrors NIGHT_session_pause treatment.",
+      "action": "core/signal_pipeline.py or ensemble.py: if UTC hour between 12-18, apply -8pt confidence adjustment in 20% A/B cohort",
+      "status": "A/B_ACTIVE",
+      "confidence": 75,
+      "gate_percentage": 20,
+      "baseline_wr": 0.33,
+      "treatment_wr": null,
+      "sample_count": 15,
+      "applied_date": "2026-04-29",
+      "ab_cohort_start": "2026-04-29T00:00:00Z",
+      "min_sample_to_graduate": 20,
+      "expected_impact": "Reducing afternoon trading frequency via lower confidence should avoid 33% WR bucket; net-neutral worst case, positive if even a few bad afternoon signals filtered",
+      "supersedes_idea": "idea_920b3e13 (converted from boost to block, direction reversed)"
+    },
+    {
+      "rule_id": "SLIPPAGE_TRACKING_GAP",
+      "source": "perpetual_improvement_2026-04-29 \u2014 execution forensics audit",
+      "description": "STRUCTURAL GAP: trades.csv has no snapshot_entry column. Slippage cannot be computed. Execution forensics permanently blind to fill quality.",
+      "problem": "Every forensics run reports avg_slippage=UNKNOWN because snapshot_entry (price at signal time) is never recorded. Without it, we cannot distinguish bad fills from bad signals \u2014 a foundational gap for improving entry quality.",
+      "fix_applied": "PENDING_IMPLEMENTATION: Add snapshot_entry column to CSV logger",
+      "action": "bot/core/csv_logger.py: add 'snapshot_entry' field to trade row at signal time. bot/core/signal_pipeline.py: pass snapshot_price into logger at gating time.",
+      "status": "PENDING_IMPLEMENTATION",
+      "confidence": 100,
+      "gate_percentage": 0,
+      "applied_date": "2026-04-29",
+      "urgency": "MEDIUM",
+      "expected_impact": "Unlocks slippage forensics: ability to quantify execution quality vs signal quality, potentially identifying $5-15/trade slippage component in losses"
+    }
+  ],
+  "run_log_2026_04_29_perpetual_run": {
+    "run_timestamp": "2026-04-29T00:00:00+00:00",
+    "subsystems_run": 5,
+    "fixes_applied": 1,
+    "gates_active": 45,
+    "gates_stalled": 44,
+    "new_rules_added": 2,
+    "critical_findings": [
+      "BOT_OFFLINE 122h (CRITICAL) \u2014 all 44 A/B gates stalled",
+      "AB_RESULT_TRACKER_CODE P0 unimplemented (CRITICAL)",
+      "SOL_SHORT rule conflict: full_block vs edge_promote note unresolved (HIGH)",
+      "idea_920b3e13 direction-reversed: converted afternoon boost \u2192 block (HIGH)"
+    ],
+    "high_priority_actions": [
+      "RESTART BOT with BOT_INACTIVE_ALERT checklist (verify HYPE 0.25x, SOL_SHORT block, conf<70 block)",
+      "Implement AB_RESULT_TRACKER_CODE in feedback/loop.py (P0 \u2014 3+ days overdue)",
+      "Human decision: keep SOL_SHORT_full_block or unsuspend SOL_SHORT_edge_promote",
+      "Add snapshot_entry to CSV logger for slippage tracking"
+    ],
+    "next_auto_fix_trigger": "Bot restart will unfreeze all 44 stalled gates. First 25+ trades will begin populating treatment_wr."
   }
 }
