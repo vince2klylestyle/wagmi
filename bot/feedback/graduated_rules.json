@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-04-29T00:00:00Z",
+  "last_updated": "2026-04-29T18:11:59.609910Z",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -759,6 +759,25 @@
       "applied_date": "2026-04-29",
       "verified": false,
       "expected_impact": "Reduce outsized losses from high-leverage, low-edge trades"
+    },
+    {
+      "rule_id": "RESTART_SOFT_START_4LOSS",
+      "source": "perpetual_improvement_2026-04-29_hourly \u2014 circuit state analysis (4 consecutive losses at shutdown)",
+      "description": "Soft-start gate: first 10 trades after restart with \u22654 recorded consecutive losses use 0.5x position size multiplier.",
+      "problem": "Bot's last 4 trades were SL hits (HYPE -$38.80, SOL -$12.93 + 2 prior). On restart, circuit breaker may pause immediately, or if it doesn't, bot enters with max sizing into a context where recent signals have been losing. Soft-start allows gradual re-engagement while confirming signal quality has improved.",
+      "fix_applied": "A/B gate at 20% \u2014 20% of restarts apply 0.5x sizing for first 10 trades. Track trade-10 PnL vs baseline.",
+      "action": "bot/execution/position_manager.py or bot/execution/leverage.py: on_start(), if consecutive_losses >= 4: set soft_start_trades_remaining=10, apply 0.5x multiplier until counter exhausted.",
+      "status": "A/B_ACTIVE",
+      "confidence": 82,
+      "gate_percentage": 20,
+      "baseline_wr": null,
+      "treatment_wr": null,
+      "sample_count": 1,
+      "applied_date": "2026-04-29",
+      "ab_cohort_start": "2026-04-29T18:11:59Z",
+      "min_sample_to_graduate": 10,
+      "expected_impact": "Reduces risk of early post-restart blowup by halving size during the 'cold re-entry' period; cost is slightly reduced gains on early wins, benefit is significantly reduced loss when first signals are still poor quality.",
+      "supersedes": null
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
@@ -1354,5 +1373,35 @@
       "Add snapshot_entry to CSV logger for slippage tracking"
     ],
     "next_auto_fix_trigger": "Bot restart will unfreeze all 44 stalled gates. First 25+ trades will begin populating treatment_wr."
+  },
+  "rules_added_2026_04_29_hourly_run2": [
+    {
+      "rule_id": "RESTART_SOFT_START_4LOSS",
+      "source": "perpetual_improvement_2026-04-29_hourly \u2014 circuit state analysis (4 consecutive losses at shutdown)",
+      "description": "Soft-start gate: first 10 trades after restart with \u22654 recorded consecutive losses use 0.5x position size multiplier.",
+      "problem": "Bot's last 4 trades were SL hits (HYPE -$38.80, SOL -$12.93 + 2 prior). On restart, circuit breaker may pause immediately, or if it doesn't, bot enters with max sizing into a context where recent signals have been losing. Soft-start allows gradual re-engagement while confirming signal quality has improved.",
+      "fix_applied": "A/B gate at 20% \u2014 20% of restarts apply 0.5x sizing for first 10 trades. Track trade-10 PnL vs baseline.",
+      "action": "bot/execution/position_manager.py or bot/execution/leverage.py: on_start(), if consecutive_losses >= 4: set soft_start_trades_remaining=10, apply 0.5x multiplier until counter exhausted.",
+      "status": "A/B_ACTIVE",
+      "confidence": 82,
+      "gate_percentage": 20,
+      "baseline_wr": null,
+      "treatment_wr": null,
+      "sample_count": 1,
+      "applied_date": "2026-04-29",
+      "ab_cohort_start": "2026-04-29T18:11:59Z",
+      "min_sample_to_graduate": 10,
+      "expected_impact": "Reduces risk of early post-restart blowup by halving size during the 'cold re-entry' period; cost is slightly reduced gains on early wins, benefit is significantly reduced loss when first signals are still poor quality.",
+      "supersedes": null
+    }
+  ],
+  "run_log_2026_04_29_hourly_run2": {
+    "run_timestamp": "2026-04-29T18:11:59.609910Z",
+    "subsystems_run": 5,
+    "fixes_applied": 1,
+    "gates_active": 35,
+    "gates_stalled": 34,
+    "new_rules_added": 1,
+    "note": "Bot offline 135h. No trades.csv for forensics/injection. A/B gates remain stalled."
   }
 }
