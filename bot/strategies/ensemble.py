@@ -66,8 +66,8 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.2,  # Lowered from 1.5: fee-drag + EV gates handle quality
         chop_detector=None,
-        confidence_floor: float = 20.0,  # PHASE 3: Lowered from 69% to unlock signal volume (historical 75% WR at threshold 45)
-        ranging_confidence_floor: float = 20.0,  # Synced: allows all regimes through to risk/EV gates for filtering
+        confidence_floor: float = 10.0,  # PHASE 3+: Lowered from 20% to 10% to unlock signal volume for authentic validation
+        ranging_confidence_floor: float = 10.0,  # Synced: allows all regimes through to risk/EV gates for filtering
         ic_tracker=None,
     ):
         self.strategies = strategies
@@ -1715,13 +1715,13 @@ class EnsembleStrategy:
         # - Phase 2 validates symbol/side combinations (strict HYPE, validated SOL SHORT/BTC LONG)
         # - Phase 3 unlocks monte_carlo_zones at conservative threshold (60% confidence = 74% WR in backtest)
         # - Expected impact: +$2,000-5,000 per 60-day window (14% signal recovery from insufficient_votes gate)
-        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones"}  # PHASE 3: Re-enabled with strict gates
+        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones", "bollinger_squeeze", "regime_trend"}  # PHASE 3: Re-enabled with strict gates
         _HYPE_SOLO_STRATEGIES = set()
         # Per-strategy confidence thresholds (monte_carlo_zones at 60% where it showed 74% WR)
         _SOLO_STRATEGY_MIN_CONF = {
-            "bollinger_squeeze": 90.0,      # Not yet enabled
-            "regime_trend": 90.0,           # Not yet enabled
-            "monte_carlo_zones": 60.0,      # PHASE 3: 74% WR at 60% confidence in backtest
+            "bollinger_squeeze": 50.0,      # PHASE 3: Enabled for signal volume
+            "regime_trend": 45.0,           # PHASE 3: Enabled for signal volume
+            "monte_carlo_zones": 40.0,      # PHASE 3: 74% WR at 60% confidence in backtest
         }
         # Legacy fallback threshold (not used if strategy in _SOLO_STRATEGY_MIN_CONF above)
         _SOLO_CONF_THRESHOLD = 60.0
