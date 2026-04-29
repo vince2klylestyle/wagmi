@@ -1715,13 +1715,14 @@ class EnsembleStrategy:
         # - Phase 2 validates symbol/side combinations (strict HYPE, validated SOL SHORT/BTC LONG)
         # - Phase 3 unlocks monte_carlo_zones at conservative threshold (60% confidence = 74% WR in backtest)
         # - Expected impact: +$2,000-5,000 per 60-day window (14% signal recovery from insufficient_votes gate)
-        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones", "bollinger_squeeze"}  # PHASE 3.1: regime_trend disabled (0% WR on 3 trades in backtest)
+        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones", "bollinger_squeeze", "vmc_cipher"}  # PHASE 3.2: Added vmc_cipher (82% solo WR)
         _HYPE_SOLO_STRATEGIES = set()
         # Per-strategy confidence thresholds (monte_carlo_zones at 60% where it showed 74% WR)
         _SOLO_STRATEGY_MIN_CONF = {
-            "bollinger_squeeze": 50.0,      # PHASE 3: Enabled for signal volume
-            "regime_trend": 45.0,           # PHASE 3: Enabled for signal volume
+            "bollinger_squeeze": 40.0,      # PHASE 3.2: Lowered to 40% (80% backtest WR, 67.6% shadow WR)
+            "regime_trend": 45.0,           # PHASE 3: Enabled for signal volume (disabled in 3.1)
             "monte_carlo_zones": 40.0,      # PHASE 3: 74% WR at 60% confidence in backtest
+            "vmc_cipher": 35.0,             # PHASE 3.2: 82% solo WR - lowest threshold (highest edge)
         }
         # Legacy fallback threshold (not used if strategy in _SOLO_STRATEGY_MIN_CONF above)
         _SOLO_CONF_THRESHOLD = 60.0
