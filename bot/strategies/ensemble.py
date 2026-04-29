@@ -1715,7 +1715,7 @@ class EnsembleStrategy:
         # - Phase 2 validates symbol/side combinations (strict HYPE, validated SOL SHORT/BTC LONG)
         # - Phase 3 unlocks monte_carlo_zones at conservative threshold (60% confidence = 74% WR in backtest)
         # - Expected impact: +$2,000-5,000 per 60-day window (14% signal recovery from insufficient_votes gate)
-        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones", "bollinger_squeeze", "regime_trend"}  # PHASE 3: Re-enabled with strict gates
+        _PROVEN_SOLO_STRATEGIES = {"monte_carlo_zones", "bollinger_squeeze"}  # PHASE 3.1: regime_trend disabled (0% WR on 3 trades in backtest)
         _HYPE_SOLO_STRATEGIES = set()
         # Per-strategy confidence thresholds (monte_carlo_zones at 60% where it showed 74% WR)
         _SOLO_STRATEGY_MIN_CONF = {

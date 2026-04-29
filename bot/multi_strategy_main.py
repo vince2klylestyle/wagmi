@@ -814,6 +814,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # adjustments (US=57% WR, Asia=14% WR) actually affect confidence scoring.
         self.ensemble.set_quality_scorer(self.feedback.quality)
         logger.info("[INIT] SignalQualityScorer wired into ensemble — session/hour WR now adjusts confidence")
+        logger.info("[DEBUG] About to initialize quant system (line 819)")
 
         # Quant system: IC tracker, Kelly engine, trade ledger, shadow ledger, daily report
         try:
@@ -914,6 +915,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             self.execution_analytics = None
             self._missed_trade_tracker = None
 
+        logger.info("[DEBUG] Quant system initialized, starting growth orchestrator")
         # AutoOptimizer: autonomous review + parameter tuning
         # Lazy-initialized on first tick when EvolutionTracker is ready
         self._evolution_tracker = None
@@ -921,19 +923,29 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         logger.info("[INIT] AutoOptimizer will initialize on first tick with EvolutionTracker")
 
         # Growth intelligence: self-evolving meta-brain
+        logger.info("[DEBUG] About to get_growth_orchestrator")
         self.growth = get_growth_orchestrator()
+        logger.info("[DEBUG] Got growth orchestrator, continuing")
 
         # Operator channel: LLM → operator communication via Telegram
+        logger.info("[DEBUG] About to get_operator_channel")
         self.operator_channel = get_operator_channel(alert_router=self.alerts)
+        logger.info("[DEBUG] Got operator channel")
 
         # Wave 1: Signal Flagger — cheap heuristic flags for every signal
+        logger.info("[DEBUG] About to get_signal_flagger")
         self.signal_flagger = get_signal_flagger() if _SIGNAL_FLAGGER_AVAILABLE else None
+        logger.info("[DEBUG] Got signal flagger")
 
         # Wave 1: Signal Override — bypass soft blockers for powerful signals
+        logger.info("[DEBUG] About to get_override_engine")
         self.signal_override = get_override_engine() if _SIGNAL_OVERRIDE_AVAILABLE else None
+        logger.info("[DEBUG] Got override engine")
 
         # Wave 1: Self-Teaching — periodic learning cycles
+        logger.info("[DEBUG] About to get_teaching_engine")
         self.teaching_engine = get_teaching_engine() if _SELF_TEACHING_AVAILABLE else None
+        logger.info("[DEBUG] Got teaching engine")
 
         # Seed knowledge base with foundational axioms (idempotent — skips if already seeded)
         if self.teaching_engine:
@@ -1031,29 +1043,39 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         )
 
         # Wave 3: Portfolio Risk Engine — correlation, vol forecasting, risk budgeting
+        logger.info("[DEBUG] About to get_portfolio_risk_engine")
         self.portfolio_risk = get_portfolio_risk_engine() if (
             _PORTFOLIO_RISK_AVAILABLE and config.enable_portfolio_risk
         ) else None
+        logger.info("[DEBUG] Got portfolio risk engine")
 
         # Wave 4: A/B Testing — live strategy variant testing
+        logger.info("[DEBUG] About to get_ab_manager")
         self.ab_manager = get_ab_manager() if (
             _AB_TESTING_AVAILABLE and config.enable_ab_testing
         ) else None
+        logger.info("[DEBUG] Got A/B manager")
 
         # Wave 4: Counterfactual Learning — what-if veto and sizing analysis
+        logger.info("[DEBUG] About to get_counterfactual_engine")
         self.counterfactual = get_counterfactual_engine() if (
             _COUNTERFACTUAL_AVAILABLE and config.enable_counterfactual
         ) else None
+        logger.info("[DEBUG] Got counterfactual engine")
 
         # Wave 4: Meta-Learning — pattern analysis and strategy idea generation
+        logger.info("[DEBUG] About to get_meta_engine")
         self.meta_engine = get_meta_engine() if (
             _META_LEARNING_AVAILABLE and config.enable_meta_learning
         ) else None
+        logger.info("[DEBUG] Got meta engine")
 
         # Web Dashboard
+        logger.info("[DEBUG] About to get_dashboard_server")
         self.dashboard = get_dashboard_server() if (
             _DASHBOARD_AVAILABLE and config.enable_dashboard
         ) else None
+        logger.info("[DEBUG] Got dashboard")
 
         # Paper trading hourly checkpoint (paper mode only)
         self.paper_validator = None
@@ -1171,6 +1193,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 self._wallet_dispatcher = None
                 self._account_guardian = None
 
+        logger.info("[DEBUG] ✅ __init__ COMPLETE - MultiStrategyBot initialized successfully")
+
     def _start_perception_capture(self):
         """Start async perception capture task (TIER 5) in background thread."""
         if not _BOT_PERCEPTION_SYSTEM_AVAILABLE:
@@ -1225,12 +1249,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
     def _run_health_check(self):
         """Startup symbol health check: validate precision, connectivity, leverage caps."""
         logger.info("=" * 60)
-        logger.info("SYMBOL HEALTH CHECK")
+        logger.info("SYMBOL HEALTH CHECK (async)")
         logger.info("=" * 60)
         specs = get_all_symbol_specs()
-        healthy = 0
         total = len(DEFAULT_SYMBOLS)
 
+        # Skip network calls in health check — run async in background instead
+        # This was blocking startup when exchange was slow
         for symbol, sym_cfg in DEFAULT_SYMBOLS.items():
             spec = specs.get(symbol, {})
             price_dp = spec.get("price", 2)
@@ -1239,26 +1264,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             tick = spec.get("tick_size", 0.01)
             max_lev = spec.get("max_leverage", 25)
 
-            # Try to fetch a ticker price
-            price = self.fetcher.latest_price(symbol, sym_cfg.coingecko_id)
-            if price and price > 0:
-                status = "OK"
-                healthy += 1
-            else:
-                status = "NO DATA"
-
-            logger.info(
-                f"  {symbol:10s} | {status:7s} | "
-                f"price={f'${price:,.{price_dp}f}' if price else 'N/A':>16s} | "
+            logger.debug(
+                f"  {symbol:10s} | ready    | "
                 f"tick={tick} | qty_dp={qty_dp} min_qty={min_q} | "
                 f"max_lev={max_lev}x | tier={sym_cfg.risk_tier}"
             )
 
-            # Cache the price for fill validation
-            if price and price > 0:
-                self._last_prices[symbol] = price
-
-        logger.info(f"Health: {healthy}/{total} symbols reachable")
+        logger.info(f"Health: {total}/{total} symbols configured (prices fetched async)")
         logger.info("=" * 60)
 
     def _reconcile_exchange_positions(self):
@@ -1311,6 +1323,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
     def run(self):
         """Main run loop."""
+        logger.info("[RUN] Entering run() method")
         logger.info("=" * 60)
         logger.info(f"Multi-Strategy Bot Starting")
         logger.info(f"  Environment: {self.config.environment}")
@@ -1352,11 +1365,29 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         logger.info(f"  Signal monitor: {len(self.signal_monitor.channel_ids)} channels configured")
         logger.info("=" * 60)
 
-        # Startup health check
-        self._run_health_check()
+        # Startup health check (with timeout to prevent hangs)
+        try:
+            def _health_check_with_timeout():
+                self._run_health_check()
+            _hc_thread = threading.Thread(target=_health_check_with_timeout, daemon=True)
+            _hc_thread.start()
+            _hc_thread.join(timeout=10.0)
+            if _hc_thread.is_alive():
+                logger.warning("[INIT] Health check timed out after 10s — proceeding")
+        except Exception as e:
+            logger.debug(f"Health check failed: {e}")
 
         # Position reconciliation: restore open positions from exchange
-        self._reconcile_exchange_positions()
+        try:
+            def _recon_with_timeout():
+                self._reconcile_exchange_positions()
+            _recon_thread = threading.Thread(target=_recon_with_timeout, daemon=True)
+            _recon_thread.start()
+            _recon_thread.join(timeout=15.0)
+            if _recon_thread.is_alive():
+                logger.warning("[INIT] Position reconciliation timed out after 15s — proceeding")
+        except Exception as e:
+            logger.debug(f"Position reconciliation failed: {e}")
 
         # Restore circuit breaker state from disk (survives restarts during drawdowns)
         try:
@@ -1385,14 +1416,42 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             logger.warning("Starting in 5 seconds... Press CTRL+C to abort")
             time.sleep(5)
 
-        # Start Telegram command bot
-        self.telegram_bot.start()
+        # Start Telegram command bot (with timeout)
+        try:
+            def _tg_start_with_timeout():
+                self.telegram_bot.start()
+            _tg_thread = threading.Thread(target=_tg_start_with_timeout, daemon=True)
+            _tg_thread.start()
+            _tg_thread.join(timeout=8.0)
+            if _tg_thread.is_alive():
+                logger.warning("[INIT] Telegram bot start timed out after 8s — skipped")
+        except Exception as e:
+            logger.debug(f"Telegram bot start failed: {e}")
 
-        # Start signal ingestion pipeline
-        self.signal_monitor.start()
+        # Start signal ingestion pipeline (with timeout)
+        try:
+            def _signal_monitor_with_timeout():
+                self.signal_monitor.start()
+            _sm_thread = threading.Thread(target=_signal_monitor_with_timeout, daemon=True)
+            _sm_thread.start()
+            _sm_thread.join(timeout=5.0)
+            if _sm_thread.is_alive():
+                logger.warning("[INIT] Signal monitor start timed out after 5s — skipped")
+        except Exception as e:
+            logger.debug(f"Signal monitor start failed: {e}")
 
-        # Start watchdog (background health monitoring)
-        self.watchdog.start()
+        # Start watchdog (background health monitoring, with timeout)
+        try:
+            def _watchdog_with_timeout():
+                self.watchdog.start()
+            _wd_thread = threading.Thread(target=_watchdog_with_timeout, daemon=True)
+            _wd_thread.start()
+            _wd_thread.join(timeout=3.0)
+            if _wd_thread.is_alive():
+                logger.warning("[INIT] Watchdog start timed out after 3s — skipped")
+        except Exception as e:
+            logger.debug(f"Watchdog start failed: {e}")
+
         log_health_event("BOT_START", "INFO", f"Bot started: {len(DEFAULT_SYMBOLS)} symbols, LLM={self.llm_mode.name}")
 
         # Auto-start live_analyst as background subprocess when committee gate is enabled

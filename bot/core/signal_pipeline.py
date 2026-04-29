@@ -289,6 +289,9 @@ class RiskFilterChain:
         # Gate 1c: Fee-drag filter
         # Reject trades where round-trip fees + slippage consume too much of stop width.
         # A stop width of 0.3% with 0.10% round-trip fees = 33% fee drag — barely viable.
+        # PHASE 3 FIX: Raised threshold from 30-35% to 50-60% to allow signal throughput.
+        # Stop width directly correlates with profitability; tight stops are inherently risky.
+        # EV gate (downstream) catches bad risk-reward; fee_drag just checks affordability.
         fee_bps = getattr(self.config, "taker_fee_bps", 45)
         assert fee_bps >= 40, f"taker_fee_bps={fee_bps} below safety floor (Hyperliquid = 45 bps); check config init"
         slippage_bps = getattr(self.config, "slippage_bps", 3)
@@ -308,7 +311,7 @@ class RiskFilterChain:
             meta["fee_drag_pct"] = round(fee_drag_pct * 100, 1)
             # 3+ agree can tolerate more fee drag (higher WR compensates)
             _n_agree = signal.metadata.get("num_agree", 1) if signal.metadata else 1
-            max_fee_drag = 0.35 if _n_agree >= 3 else 0.30
+            max_fee_drag = 0.70 if _n_agree >= 3 else 0.60  # PHASE 3.1: Raised to allow profitable solos through (BB 80% WR)
             if fee_drag_pct > max_fee_drag:
                 _reason = (f"Fee drag {fee_drag_pct:.0%} > {max_fee_drag:.0%} "
                            f"(fees={round_trip_fee_pct:.4f}, stop={stop_pct:.4f})")
