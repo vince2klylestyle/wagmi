@@ -1723,6 +1723,77 @@ class EnsembleStrategy:
         }
         # Legacy fallback threshold (not used if strategy in _SOLO_STRATEGY_MIN_CONF above)
         _SOLO_CONF_THRESHOLD = 60.0
+
+        # PHASE 2: SYMBOL-SPECIFIC MICRO-FILTERS (April 29, 2026)
+        # Per-symbol gating rules based on 60-day backtest profitability analysis
+        # Key finding: Symbol-specific edge varies dramatically (SOL +2.7K, HYPE -6K, BTC -0.5K)
+        # Solution: Conditional solo allowance for profitable setups, strict gating for losers
+        _SYMBOL_SIDE_GATING = {
+            # HYPE: Keep STRICT gating (2+ agreement minimum)
+            # - 341 trades, 55.1% WR, -$5,983 net loss
+            # - Avg loss $169.83 vs avg win $109.78 (55% larger)
+            # - Profit factor 0.79 (need >1.0)
+            # - Root cause: High volatility + high leverage = oversized losses
+            "HYPE": {
+                "allow_solos": False,
+                "min_votes": 2,
+                "rationale": "High-vol symbol with poor risk/reward (avg loss 55% > avg win)"
+            },
+            # SOL: Conditional SOLO allowance for SHORT side only
+            # - 255 trades, 58.4% WR, +$2,695 net profit
+            # - SHORT solos: 63.4% WR, +$4,263 edge
+            # - Profit factor 1.23 (healthy)
+            "SOL": {
+                "allow_solos": True,
+                "conditions": {
+                    "SHORT": {
+                        "min_confidence": 75.0,
+                        "risk_mult": 0.7,
+                        "rationale": "63.4% WR on SHORT, +$4,263 edge, PF 1.23"
+                    },
+                    "LONG": {
+                        "allow_solo": False,
+                        "min_votes": 2,
+                        "rationale": "LONG solos unproven, require ensemble"
+                    }
+                }
+            },
+            # BTC: Conditional SOLO allowance for LONG side only
+            # - 206 trades, 51.5% WR, -$547.65 net loss
+            # - LONG solos: ~60% WR (calculated), slightly profitable
+            # - SHORT solos: 48.1% WR, -$388.83 loss
+            # - Profit factor 0.96 (near breakeven, vulnerable to fees)
+            "BTC": {
+                "allow_solos": True,
+                "conditions": {
+                    "LONG": {
+                        "min_confidence": 80.0,
+                        "risk_mult": 0.6,
+                        "rationale": "Slightly profitable LONG solos, need high confidence"
+                    },
+                    "SHORT": {
+                        "allow_solo": False,
+                        "min_votes": 2,
+                        "rationale": "SHORT solos lose money (48.1% WR), require ensemble"
+                    }
+                }
+            },
+            # ETH: Keep STRICT gating (insufficient data)
+            # - Not in backtest (low-confidence signals already gate-filtered)
+            # - Need separate analysis before enabling solos
+            "ETH": {
+                "allow_solos": False,
+                "min_votes": 2,
+                "rationale": "Insufficient data, reanalyze if ETH becomes active"
+            }
+        }
+
+        # Fallback for unlisted symbols: STRICT gating (2+ votes required)
+        _DEFAULT_SYMBOL_GATING = {
+            "allow_solos": False,
+            "min_votes": 2
+        }
+
         # Symbol+regime combos where solo signals have validated edge
         # Only allow solo trades in trending regimes with high confidence
         # Ranging regime solo trades have been consistent losers (-$7 net from trade data)
@@ -1835,6 +1906,44 @@ class EnsembleStrategy:
                         f"conf={lone_signals[0].confidence:.0f}% (risk_mult={_edge['risk_mult']})"
                     )
                     _allowed = True
+
+            # Path 2b: Symbol+side gating (Phase 2 micro-filters — April 29, 2026)
+            # Conditional solo allowance based on per-symbol profitability data
+            # HYPE: strict gating (no solos), SOL SHORT: >75% conf, BTC LONG: >80% conf
+            if not _allowed and lone_signals and len(lone_signals) == 1:
+                _sig = lone_signals[0]
+                _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+
+                # Get symbol-specific gating rules (fallback to strict if symbol not listed)
+                _gating = _SYMBOL_SIDE_GATING.get(_base_sym, _DEFAULT_SYMBOL_GATING)
+
+                # Check if solos are allowed for this symbol at all
+                if _gating.get("allow_solos", False):
+                    # Symbol allows solos — check side-specific conditions
+                    _conditions = _gating.get("conditions", {})
+                    _side_config = _conditions.get(_sig.side)
+
+                    if _side_config is not None:
+                        _min_conf = _side_config.get("min_confidence", 70.0)
+
+                        # Check confidence threshold
+                        if _sig.confidence >= _min_conf:
+                            _risk_mult = _side_config.get("risk_mult", 0.5)
+                            _sig.metadata["symbol_side_solo"] = True
+                            _sig.metadata["symbol_side_micro_filter"] = True
+                            _sig.metadata["risk_mult_override"] = _risk_mult
+                            _rationale = _side_config.get("rationale", "Symbol+side validated")
+                            logger.info(
+                                f"[{symbol}] Micro-filter solo allowed: {_base_sym}/{_sig.side} "
+                                f"conf={_sig.confidence:.0f}% (>= {_min_conf}%) "
+                                f"risk_mult={_risk_mult}x | {_rationale}"
+                            )
+                            _allowed = True
+                        else:
+                            logger.debug(
+                                f"[{symbol}] Micro-filter solo rejected: {_base_sym}/{_sig.side} "
+                                f"conf={_sig.confidence:.0f}% (need >= {_min_conf}%)"
+                            )
 
             if not _allowed:
                 if buy_signals:
