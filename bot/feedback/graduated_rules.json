@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-04-28T00:00:00Z",
+  "last_updated": "2026-04-29T00:00:00Z",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -729,6 +729,36 @@
       "verified": true,
       "evidence_n": 30,
       "evidence_pnl": -154.35
+    },
+    {
+      "rule_id": "F13_mfe_mae_tracking",
+      "source": "AUTONOMOUS_SESSION_2026_04_15 Finding 13",
+      "description": "Instrument MFE/MAE capture on positions to measure trailing stop leakage",
+      "problem": "No visibility into how much profit trailing phase leaves on table. Avg winning trade shrank from 7 to  in last 30.",
+      "fix_applied": "CONFIG_ONLY: add mfe_mae_tracking=true to trading_config; log peak_favorable_excursion per trade to trades.csv",
+      "confidence": 80,
+      "gate_percentage": 20,
+      "baseline_wr": 0.376,
+      "treatment_wr": null,
+      "status": "A/B_ACTIVE",
+      "applied_date": "2026-04-29",
+      "verified": false,
+      "expected_impact": "Data capture only; unblocks diagnosis of trailing stop calibration"
+    },
+    {
+      "rule_id": "CONF_SIZING_tiered_leverage",
+      "source": "meta_learning/ideas.json idea_f36e9743",
+      "description": "Cap leverage by confidence tier: <75% = max 3x, 75-85% = max 5x, >85% = full",
+      "problem": "Larger positions (>1.5x) have 40% WR vs 60% for smaller, yet high-confidence signals route to max leverage",
+      "fix_applied": "GATE_ONLY: activate confidence-proportional sizing cap at 20% gate in leverage.py",
+      "confidence": 78,
+      "gate_percentage": 20,
+      "baseline_wr": 0.376,
+      "treatment_wr": null,
+      "status": "A/B_ACTIVE",
+      "applied_date": "2026-04-29",
+      "verified": false,
+      "expected_impact": "Reduce outsized losses from high-leverage, low-edge trades"
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
