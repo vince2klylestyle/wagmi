@@ -89,7 +89,7 @@ export default function AgenticColumn({
             setLoading(false);
           }
         } else {
-          const r = await fetch(`${apiBase}/v1/llm/feed?limit=50`, { cache: 'no-store' });
+          const r = await fetch(`${apiBase}/v1/llm/feed?limit=50&include_agents=true`, { cache: 'no-store' });
           if (!r.ok) {
             if (!cancelled) {
               setError(`api error ${r.status}`);

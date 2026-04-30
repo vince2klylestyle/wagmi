@@ -186,8 +186,34 @@ def llm_market_view():
 # ─── LLM Feed ───────────────────────────────────────────────────────────────
 
 @app.get("/v1/llm/feed")
-def llm_feed(limit: int = Query(200)):
+def llm_feed(
+    limit: int = Query(200),
+    include_agents: bool = Query(False, description="join per-agent breakdown from agent_outputs.jsonl"),
+):
     decisions = _read_jsonl(DATA / "llm" / "decisions.jsonl", limit=limit)
+    if include_agents:
+        # Build pipeline_id → [agent records] index from agent_outputs.jsonl.
+        # This is O(N) over agent_outputs but only when explicitly asked.
+        agent_log = _read_jsonl(DATA / "llm" / "agent_outputs.jsonl", limit=0)
+        by_pipeline: dict[str, list[dict]] = {}
+        for rec in agent_log:
+            pid = rec.get("pipeline_id") or rec.get("trace_id")
+            if not pid:
+                continue
+            by_pipeline.setdefault(pid, []).append(rec)
+        for d in decisions:
+            pid = d.get("pipeline_id") or d.get("trace_id") or d.get("id")
+            if pid and pid in by_pipeline:
+                d["agents"] = [
+                    {
+                        "role": str(r.get("agent") or r.get("role") or "").lower(),
+                        "action": r.get("action") or r.get("recommendation"),
+                        "confidence": r.get("confidence"),
+                        "reasoning": r.get("reasoning") or r.get("rationale") or r.get("notes"),
+                        "model": r.get("model"),
+                    }
+                    for r in by_pipeline[pid]
+                ]
     return {"decisions": decisions, "count": len(decisions)}
 
 
