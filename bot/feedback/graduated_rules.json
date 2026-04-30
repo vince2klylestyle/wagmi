@@ -1,6 +1,6 @@
 {
     "schema_version": "1.0",
-    "last_updated": "2026-04-30T17:06:23Z",
+    "last_updated": "2026-04-30T18:05:11Z",
     "rules": [
         {
             "rule_id": "F2_calibration_offset_cap",
@@ -946,6 +946,29 @@
                 }
             },
             "notes": "SOL_SHORT_full_block and SOL_SHORT_edge_promote both have suspension notes saying '2026-04-28: 10d data shows SOL_SHORT = 63.7% WR, n=179, +$5807 PnL \u2014 contradiction may be resolved. Needs human review to unsuspend.' This is that review trigger."
+        },
+        {
+            "rule_id": "CONF_60_70_rollback_probe",
+            "source": "perpetual_deep_dive_2026-04-30",
+            "description": "Cautious 20% rollback probe on 60-70% confidence block \u2014 null effect observed on CONF_60_70_all_block",
+            "problem": "CONF_60_70_all_block (100% gate) shows treatment_wr=baseline_wr=0.463 \u2014 block achieves null effect. With realized R:R 2.95:1, 46.3% WR signals are +EV (breakeven at ~25% WR at 2.95:1). Blocking +EV trades.",
+            "fix_applied": "A/B gate at 20%: allow 1-in-5 previously-blocked 60-70% conf signals through. Track treatment_wr vs 0.463 baseline.",
+            "status": "A/B_ACTIVE",
+            "confidence": 78,
+            "gate_percentage": 20,
+            "baseline_wr": 0.463,
+            "treatment_wr": null,
+            "sample_count": 0,
+            "min_sample_to_graduate": 15,
+            "action": "Allow 20% of 60-70% conf signals. Compare WR vs 0.463 baseline. If treatment_wr > 0.45 on n>=15, escalate gate to 50%.",
+            "expected_impact": "Recover ~20% of previously blocked +EV trades. At 46.3% WR + 2.95:1 R:R, EV = +0.68% per trade.",
+            "supersedes": null,
+            "references": [
+                "CONF_60_70_all_block",
+                "confidence_60_70_sweet_spot"
+            ],
+            "applied_date": "2026-04-30",
+            "ab_cohort_start": "2026-04-30T18:05:11Z"
         }
     ],
     "rules_added_2026_04_26_1545_hourly": [
