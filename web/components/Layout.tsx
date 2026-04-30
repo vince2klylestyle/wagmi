@@ -1,181 +1,105 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { C, R, Z } from '../src/theme';
-import Sidebar from './Sidebar';
-import EquityTicker from './EquityTicker';
+import React from 'react';
+import { C, R } from '../src/theme';
+import TopNav from './TopNav';
 
-const COLLAPSED_WIDTH = 64;
-const EXPANDED_WIDTH = 240;
-const STORAGE_KEY = 'wagmi-sidebar-collapsed';
-const MOBILE_BREAKPOINT = 1024;
+/**
+ * Layout — HL-style horizontal nav at top, content below.
+ * Sidebar removed at top level; if any pages need a left rail
+ * (e.g. /trade market list), it lives inside the page itself.
+ *
+ * Phase 2 of the HL reshape — see audits/2026-04-29/05_ui_reshape_hyperliquid_style.md.
+ */
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [sidebarWidth, setSidebarWidth] = useState(COLLAPSED_WIDTH);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const readWidth = () => {
-      const mobile = window.innerWidth < MOBILE_BREAKPOINT;
-      setIsMobile(mobile);
-      if (mobile) {
-        setSidebarWidth(0);
-        return;
-      }
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        setSidebarWidth(stored === 'true' ? COLLAPSED_WIDTH : EXPANDED_WIDTH);
-      } catch {
-        setSidebarWidth(COLLAPSED_WIDTH);
-      }
-    };
-
-    readWidth();
-    const handleToggle = () => readWidth();
-    window.addEventListener('sidebar-toggle', handleToggle);
-    window.addEventListener('resize', handleToggle);
-    window.addEventListener('storage', handleToggle);
-
-    return () => {
-      window.removeEventListener('sidebar-toggle', handleToggle);
-      window.removeEventListener('resize', handleToggle);
-      window.removeEventListener('storage', handleToggle);
-    };
-  }, []);
-
   return (
     <div
       style={{
         minHeight: '100vh',
         background: C.bg,
         fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      {/* Skip-to-content */}
+      {/* Skip-to-content for accessibility */}
       <a href="#main-content" className="skip-to-content">
         Skip to content
       </a>
 
-      {/* Sidebar */}
-      <Sidebar />
+      <TopNav />
 
-      {/* Page content */}
-      <div
+      <main
+        id="main-content"
+        role="main"
+        className="wagmi-main"
         style={{
-          marginLeft: sidebarWidth,
-          transition: 'margin-left 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)',
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          paddingTop: isMobile ? 52 : 0,
+          flex: 1,
+          width: '100%',
+          maxWidth: 1440,
+          margin: '0 auto',
+          padding: '20px 16px 40px',
         }}
       >
-        {/* Sticky top header — persistent live equity ticker across every page */}
-        <header
+        {children}
+      </main>
+
+      <footer
+        style={{
+          borderTop: `1px solid ${C.border}`,
+          background: '#050508',
+          padding: '16px 16px 24px',
+        }}
+      >
+        <div
           style={{
-            position: 'sticky',
-            top: isMobile ? 52 : 0,
-            zIndex: Z.sidebar - 10,
-            padding: isMobile ? '8px 12px' : '12px 20px',
-            background: 'linear-gradient(180deg, rgba(5,5,8,0.85) 0%, rgba(5,5,8,0.55) 100%)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            borderBottom: `1px solid ${C.border}`,
+            maxWidth: 1440,
+            margin: '0 auto',
             display: 'flex',
-            justifyContent: 'flex-end',
+            flexDirection: 'column',
+            gap: 6,
             alignItems: 'center',
           }}
         >
-          <div style={{ maxWidth: 1280, margin: '0', display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-            <EquityTicker compact={isMobile} />
-          </div>
-        </header>
-
-        <main
-          id="main-content"
-          role="main"
-          className="wagmi-main"
-          style={{
-            maxWidth: 1280,
-            margin: '0 auto',
-            padding: isMobile ? '16px 12px 48px' : '24px 20px 60px',
-            width: '100%',
-            flex: 1,
-            overflowX: 'hidden',
-          }}
-        >
-          {children}
-        </main>
-
-        {/* Footer */}
-        <footer
-          style={{
-            borderTop: `1px solid ${C.border}`,
-            background: C.surface,
-            padding: '20px',
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 1280,
-              margin: '0 auto',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: R.xs,
-                  border: `1px solid ${C.brand}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  color: C.brand,
-                  flexShrink: 0,
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              >
-                W
-              </span>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: C.textSub,
-                  letterSpacing: -0.3,
-                }}
-              >
-                WAGMI
-              </span>
-            </div>
-            <p
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
               style={{
-                margin: 0,
-                fontSize: 11,
-                color: C.muted,
-                textAlign: 'center',
-                lineHeight: 1.7,
-                maxWidth: 560,
+                width: 18,
+                height: 18,
+                borderRadius: R.xs,
+                border: `1px solid ${C.brand}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 10,
+                fontWeight: 800,
+                color: C.brand,
+                fontFamily: 'JetBrains Mono, monospace',
               }}
             >
-              AI-driven market analysis for informational purposes only. Not financial advice — you are
-              responsible for your own trading decisions. Crypto carries significant risk. Historical
-              results don&apos;t predict future performance.
-            </p>
-            <p style={{ margin: 0, fontSize: 10, color: C.faint }}>
-              &copy; 2026 WAGMI
-            </p>
+              W
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.textSub, letterSpacing: -0.2 }}>
+              WAGMI
+            </span>
           </div>
-        </footer>
-      </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 11,
+              color: C.muted,
+              textAlign: 'center',
+              lineHeight: 1.6,
+              maxWidth: 560,
+            }}
+          >
+            AI-driven market analysis for informational purposes only. Not financial advice. Crypto
+            carries significant risk. Historical results don&apos;t predict future performance.
+          </p>
+          <p style={{ margin: 0, fontSize: 10, color: C.faint }}>&copy; 2026 WAGMI</p>
+        </div>
+      </footer>
     </div>
   );
 }
