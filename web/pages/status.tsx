@@ -46,22 +46,38 @@ type LlmDecision = {
   action?: string;
 };
 
+type SynthesisResp = {
+  symbol: string;
+  synthesis: {
+    directional: 'long' | 'short' | 'flat';
+    disagreement: 'aligned' | 'mixed' | 'opposed';
+    sized_conviction: number;
+    summary: string;
+  };
+};
+
+const SYMBOLS = ['BTC', 'ETH', 'SOL', 'HYPE'];
+
 export default function StatusPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [lastDecision, setLastDecision] = useState<LlmDecision | null>(null);
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [synth, setSynth] = useState<Record<string, SynthesisResp | null>>({});
 
   useEffect(() => {
     let cancelled = false;
     const apiBase = resolveApiBase();
     const load = async () => {
       try {
-        const [healthRes, sumRes, posRes, feedRes] = await Promise.all([
+        const [healthRes, sumRes, posRes, feedRes, ...synthRes] = await Promise.all([
           fetch(`${apiBase}/health`, { cache: 'no-store' }),
           fetch(`${apiBase}/v1/summary`, { cache: 'no-store' }),
           fetch(`${apiBase}/v1/positions`, { cache: 'no-store' }),
           fetch(`${apiBase}/v1/llm/feed?limit=1`, { cache: 'no-store' }),
+          ...SYMBOLS.map((s) =>
+            fetch(`${apiBase}/v1/synthesis/${s}`, { cache: 'no-store' }),
+          ),
         ]);
         if (cancelled) return;
         setHealthOk(healthRes.ok);
@@ -74,16 +90,44 @@ export default function StatusPage() {
           const j = await feedRes.json();
           setLastDecision((j.decisions || [])[0] || null);
         }
+        const synthMap: Record<string, SynthesisResp | null> = {};
+        for (let i = 0; i < SYMBOLS.length; i++) {
+          const r = synthRes[i];
+          if (r && r.ok) {
+            synthMap[SYMBOLS[i]] = await r.json();
+          } else {
+            synthMap[SYMBOLS[i]] = null;
+          }
+        }
+        setSynth(synthMap);
       } catch {
         if (!cancelled) setHealthOk(false);
       }
     };
     load();
     const id = setInterval(load, 30_000);
+
+    // Auto-refresh on tab focus
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener('focus', onFocus);
     };
+  }, []);
+
+  // Keyboard shortcut: press 's' anywhere → /status (already here, no-op)
+  // and press 'l' → /live, 'p' → /portfolio overview
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'l') window.location.href = '/live';
+      else if (e.key === 'p') window.location.href = '/dashboard';
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const lastDecisionTs = lastDecision?.timestamp ? new Date(lastDecision.timestamp) : null;
@@ -171,6 +215,68 @@ export default function StatusPage() {
             </div>
           </Card>
         )}
+
+        {/* Synthesis verdicts per symbol */}
+        <Card title="Synthesis Verdicts" sub="mechanical + agentic combined">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 6,
+            }}
+          >
+            {SYMBOLS.map((s) => {
+              const v = synth[s]?.synthesis;
+              const dirColor = !v
+                ? C.muted
+                : v.directional === 'long'
+                ? C.bull
+                : v.directional === 'short'
+                ? C.bear
+                : v.disagreement === 'opposed'
+                ? C.bear
+                : C.muted;
+              const borderTone =
+                v?.disagreement === 'aligned' && v.directional !== 'flat'
+                  ? C.bull
+                  : v?.disagreement === 'opposed'
+                  ? C.bear
+                  : v?.disagreement === 'mixed'
+                  ? C.warn
+                  : C.border;
+              return (
+                <Link
+                  key={s}
+                  href={`/live?symbol=${s}`}
+                  style={{
+                    padding: '10px 12px',
+                    background: '#050508',
+                    border: `1px solid ${C.border}`,
+                    borderLeft: `3px solid ${borderTone}`,
+                    borderRadius: R.xs,
+                    textDecoration: 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>{s}</span>
+                    <span style={{ fontSize: F.xs, fontWeight: 700, color: dirColor }}>
+                      {v ? v.directional.toUpperCase() : '—'}
+                    </span>
+                  </div>
+                  {v && (
+                    <span style={{ fontSize: 10, color: C.muted, lineHeight: 1.4 }}>
+                      sized {Math.round(v.sized_conviction * 100)}% · {v.disagreement}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </Card>
 
         {/* Open positions table */}
         <Card title="Open Positions" sub={positions.length === 0 ? 'no positions' : undefined}>

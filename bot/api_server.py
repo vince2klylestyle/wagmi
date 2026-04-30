@@ -2059,6 +2059,183 @@ def ask_agents(payload: dict, request: Request):
     }
 
 
+# ─── Synthesis (server-side combine of mechanical + agentic for /live) ──────
+
+@app.get("/v1/synthesis/{symbol}")
+def synthesis(symbol: str, ts: Optional[str] = Query(None, description="ISO timestamp; replay mode")):
+    """Server-side equivalent of the /live SynthesisColumn computation.
+
+    Combines the mechanical view (from /v1/signals or /v1/decisions/at) with
+    the agentic view (from /v1/llm/feed or /v1/decisions/at) to produce a
+    single sized-conviction verdict.
+
+    Useful for:
+      - /status page (shows the synthesis verdict per symbol at a glance)
+      - mobile clients that want one round-trip instead of three
+      - replay consumers that want a stable interpretation of historical state
+    """
+    sym = symbol.upper()
+
+    # Pull mechanical state
+    mech_side = None
+    mech_conf = 0.0
+    mech_action = None
+    mech_regime = None
+    if ts:
+        # Replay: mechanical derived from decision-at
+        try:
+            target_ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if target_ts.tzinfo is None:
+                target_ts = target_ts.replace(tzinfo=timezone.utc)
+        except Exception:
+            target_ts = None
+        if target_ts:
+            decs = _read_jsonl(DATA / "llm" / "decisions.jsonl", limit=0)
+            target_epoch = target_ts.timestamp()
+            best = None
+            for d in decs:
+                if (d.get("symbol") or "").upper() != sym:
+                    continue
+                d_ts = d.get("timestamp") or d.get("ts")
+                if not d_ts:
+                    continue
+                try:
+                    d_epoch = datetime.fromisoformat(str(d_ts).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    try:
+                        d_epoch = float(d_ts)
+                    except Exception:
+                        continue
+                if d_epoch > target_epoch:
+                    continue
+                if best is None or d_epoch > best[0]:
+                    best = (d_epoch, d)
+            if best:
+                d = best[1]
+                mech_side = d.get("side")
+                mech_action = d.get("action")
+                mech_conf = float(d.get("confidence") or 0)
+                mech_regime = d.get("regime")
+    else:
+        signals_blob = _read_json(DATA / "signals.json") or {}
+        sig = (signals_blob.get("signals") or {}).get(sym) or {}
+        mech_side = sig.get("side")
+        mech_action = sig.get("action")
+        mech_conf = float(sig.get("confidence") or 0)
+        mech_regime = sig.get("regime")
+
+    # Pull agentic state (latest decision for this symbol)
+    decs = _read_jsonl(DATA / "llm" / "decisions.jsonl", limit=200)
+    target_epoch_filter = None
+    if ts:
+        try:
+            target_epoch_filter = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            target_epoch_filter = None
+    latest_dec = None
+    for d in reversed(decs):
+        if (d.get("symbol") or "").upper() != sym:
+            continue
+        if target_epoch_filter is not None:
+            d_ts = d.get("timestamp") or d.get("ts")
+            if not d_ts:
+                continue
+            try:
+                d_epoch = datetime.fromisoformat(str(d_ts).replace("Z", "+00:00")).timestamp()
+            except Exception:
+                continue
+            if d_epoch > target_epoch_filter:
+                continue
+        latest_dec = d
+        break
+
+    agent_side = latest_dec.get("side") if latest_dec else None
+    agent_action = latest_dec.get("action") if latest_dec else None
+    agent_conf = float(latest_dec.get("confidence") or 0) if latest_dec else 0.0
+    agent_vetoed = bool(latest_dec.get("is_veto")) if latest_dec else False
+    agent_allowed = (latest_dec.get("allowed") if latest_dec else True) is not False
+
+    # Normalize confidences (data sometimes 0-1, sometimes 0-100)
+    def _norm(c: float) -> float:
+        return c if c <= 1 else c / 100.0
+
+    mech_conf_n = _norm(mech_conf)
+    agent_conf_n = _norm(agent_conf)
+
+    def _direct(side, action) -> str:
+        a = (action or "").lower()
+        if a in ("flat", "skip", ""):
+            return "flat"
+        s = (side or "").upper()
+        if s in ("BUY", "LONG"):
+            return "long"
+        if s in ("SELL", "SHORT"):
+            return "short"
+        return "flat"
+
+    mech_dir = _direct(mech_side, mech_action)
+    agent_dir = _direct(agent_side, agent_action)
+    mech_active = mech_dir != "flat"
+    agent_active = agent_dir != "flat" and agent_allowed and not agent_vetoed
+
+    if mech_dir == agent_dir and mech_active:
+        disagreement = "aligned"
+    elif (mech_active and not agent_active) or (not mech_active and agent_active):
+        disagreement = "mixed"
+    elif mech_dir != agent_dir and mech_active and agent_active:
+        disagreement = "opposed"
+    else:
+        disagreement = "aligned"
+
+    penalty = {"aligned": 1.0, "mixed": 0.7, "opposed": 0.3}[disagreement]
+    mean_conf = (mech_conf_n + agent_conf_n) / 2
+    sized_conviction = max(0.0, min(1.0, mean_conf * penalty))
+
+    if disagreement == "opposed":
+        directional = "flat"
+    elif mech_active:
+        directional = mech_dir
+    elif agent_active:
+        directional = agent_dir
+    else:
+        directional = "flat"
+
+    if directional == "flat":
+        if disagreement == "opposed":
+            summary = f"Systems disagree (mechanical says {mech_dir}, agents say {agent_dir}). Stand down."
+        else:
+            summary = "Neither system has high-conviction signal. Wait."
+    else:
+        reliability = (
+            "both systems agree" if disagreement == "aligned"
+            else "one system active" if disagreement == "mixed"
+            else "systems split"
+        )
+        summary = f"{directional.upper()} — {round(sized_conviction * 100)}% sized conviction ({reliability})."
+
+    return {
+        "symbol": sym,
+        "as_of": ts or datetime.now(timezone.utc).isoformat(),
+        "mechanical": {
+            "side": mech_dir,
+            "confidence": round(mech_conf_n, 3),
+            "regime": mech_regime,
+        },
+        "agentic": {
+            "side": agent_dir,
+            "confidence": round(agent_conf_n, 3),
+            "vetoed": agent_vetoed,
+            "allowed": agent_allowed,
+        },
+        "synthesis": {
+            "directional": directional,
+            "disagreement": disagreement,
+            "sized_conviction": round(sized_conviction, 3),
+            "summary": summary,
+        },
+    }
+
+
 if __name__ == "__main__":
     print(f"WAGMI Dashboard API starting on http://localhost:8000")
     print(f"Data dir: {DATA}")
