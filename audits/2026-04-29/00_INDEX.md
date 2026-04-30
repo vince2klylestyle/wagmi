@@ -1,6 +1,6 @@
 # Audit Index — 2026-04-29 Session
 
-This session produced 13 audit documents totaling ~3,300 lines of analysis.
+This session produced 15 audit documents totaling ~4,000 lines of analysis.
 They form a coherent picture of the project's state: where the wiring is
 solid, where it's broken, what's been built and forgotten, and what to fix
 in what order.
@@ -101,6 +101,19 @@ The canonical "done right" example.
 - **Gap:** 5-7 of 9 `cli.py` modes have no skill wrapping them (replay, walkforward, gate, compare, tiers).
 - **Implication:** ~4-6h to add 5 missing skills + update 3 stale ones (`/add-agent` should include wiring checklist, `/web-dashboard` post-§05, `/babysit` validate tools).
 
+### 14 — `14_execution_layer_audit.md` ✅
+The most safety-critical surface.
+- **Key finding:** RiskManager + CircuitBreaker + position_manager + leverage + ops_guard + reconciliation all wired and actively gating trades. **Risk surface is real and operational** — strongest part of the codebase audited.
+- **Concerning:** 3 zero-byte placeholder files (`executor.py`, `manual_executor.py`, `risk_engine.py`). Likely renamed-and-stub-forgotten, but having `risk_engine.py` empty is a smell.
+- **Unwired modules:** `signal_validator.py` (403 lines, fully implemented, 0 callers — would replace ad-hoc meta_learning insights), `exit_config.py` (98 lines, CellExitRule, 0 callers).
+- **Implication:** §01 TP1 fix is a 1-line change in position_manager.py paired with §12 dispatcher addition. ~1.5h end-to-end.
+
+### 15 — `15_data_layer_audit.md`
+The data pipeline surface.
+- **Key finding:** 9 of 11 modules wired. fetcher.py is the workhorse (43 callers); db.py heavy (14 callers); migrations.py active.
+- **Orphans:** `fetchers/telemetry.py` (250 lines — designed for `/telemetry` Telegram command never built, would surface in /status), `storage/csv_logger.py` (99 lines — enhanced trade schema with dual-entry tracking, never replaced simpler `trade_log.py`).
+- **Implication:** ~2-3h to wire telemetry into /status page; ~3-4h to migrate to enhanced csv_logger schema.
+
 ---
 
 ## Combined Fix-List, Ranked by Impact-per-Hour
@@ -124,9 +137,15 @@ The canonical "done right" example.
 | **15** | Move `thesis_tracker.py` out of tools/ to bot/llm/ | 30min | §11 |
 | **16** | Resolve `regime_detector.py` name collision (tools/ vs strategies/) | 30min | §11 |
 | **17** | TopBar `<DataSourceBanner />` so backtest vs live is unambiguous | 1h | §03 |
+| **18** | Delete 3 zero-byte execution placeholders (executor, manual_executor, risk_engine) | 5min | §14 |
+| **19** | Wire `data/fetchers/telemetry.py` to `/v1/telemetry/health` + /status page | 2-3h | §15 |
+| **20** | Decide on `signal_validator.py` (read & wire vs archive) | 1-3h | §14 |
+| **21** | Decide on `csv_logger.py` enhanced trade schema migration | 3-4h | §15 |
+| **22** | Add trade-pipeline flow comment in `multi_strategy_main.py:_process_symbol` | 15min | §14 |
 
-**~32 hours of focused work** to close every gap surfaced this session and
-ship the highest-EV improvements.
+**~42 hours of focused work** to close every gap surfaced this session
+and ship the highest-EV improvements. Items #1-5 are still the **top-EV
+13 hours** that produce the largest visible impact.
 
 ---
 
@@ -139,10 +158,10 @@ If a future session goes deeper:
 - **`bot/data/learning/` (gitignored)** — Master Engine's local outputs. Cannot read from this branch.
 - **Strategy-by-strategy backtest performance** — `/strategy-discover` skill is built for this; running it produces the data §10 calls for.
 - **Test-file dependencies on dormant code** — if we wire/unwire the dormant agents, which tests break?
-- **bot/execution/** — risk gates, position manager, leverage manager — none audited yet, but called out in CLAUDE.md as critical safety surface.
 - **Component-level deduplication of `web/components/`** — 24+ files, likely redundancy after page-bloat surfaced in §03.
 - **Observability/logging/alerts pipeline** — bot/alerts/, structured_logging, metrics_middleware. Wired correctly?
-- **bot/data/ pipeline** — fetcher, db, migrations. The "is the data layer healthy" question.
+- **`bot/llm/`** outside `agents/` and `growth/` — there are ~50 files in that directory not yet covered (decision_engine, snapshot_builder, learning_integrator, autonomy, sniper, deep_trade_analyst, etc.).
+- **`bot/core/`** — signal_pipeline, structured_logging, portfolio_analytics, position_wiring, llm_integration. The orchestration glue layer.
 
 ---
 
