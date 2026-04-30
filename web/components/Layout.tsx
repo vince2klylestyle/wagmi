@@ -3,6 +3,7 @@
 import React from 'react';
 import { C, R } from '../src/theme';
 import TopNav from './TopNav';
+import SecondaryNav from './SecondaryNav';
 
 /**
  * Layout — HL-style horizontal nav at top, content below.
@@ -29,6 +30,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </a>
 
       <TopNav />
+      <SecondaryNav />
 
       <main
         id="main-content"
