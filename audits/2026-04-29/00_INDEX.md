@@ -1,6 +1,6 @@
 # Audit Index — 2026-04-29 Session
 
-This session produced 10 audit documents totaling ~2,500 lines of analysis.
+This session produced 13 audit documents totaling ~3,300 lines of analysis.
 They form a coherent picture of the project's state: where the wiring is
 solid, where it's broken, what's been built and forgotten, and what to fix
 in what order.
@@ -20,9 +20,14 @@ never invoked:
 | Writes-only / no read path | 2 systems (graduated_rules, swarm_feedback) | §02, §08 |
 | Built but unwired | 13 of 23 LLM agent roles, ~1,100 lines | §09 |
 | Alternate implementations parked | 3 strategy files, ~760 lines | §10 |
+| Run-only scripts accumulated | ~70 of 75 in bot/tools/ | §11 |
 
-Combined: **~3,500 lines of "complete but inert" code**. The good news is
-each is well-scoped to fix. None require architectural rewrites.
+Combined: **~5,000 lines of "complete but inert" code** across the project.
+
+But importantly, **growth/ is the canonical "done right" example** (§12) that
+shows the fix pattern: dispatcher + trust-gated APIs + WARN on unhandled
+types. The project has *learned the lesson* in one place; the §02/§08 fixes
+just need to propagate it.
 
 ---
 
@@ -78,24 +83,49 @@ Strategies layer audit.
 - **Orphans:** alternate implementations of funding/OI/liquidation (mean-rev / divergence / heatmap-proximity vs the active counter-extreme / delta / event-cascade).
 - **Implication:** ~6 hours of backtesting could validate up to 6 new ensemble members (3 default-off flips + 3 orphan wirings).
 
+### 11 — `11_tools_audit.md`
+`bot/tools/` directory hygiene.
+- **Key finding:** 75 Python files / 29,200 lines, only 4 imported programmatically, only 3 referenced by skills. ~70 are run-only scripts with significant duplicates (3 stop-hunt scripts, 4 backtest tools, 5 edge tools, 3 regime tools).
+- **Implication:** ~3.5h manifest + archive pass would dramatically improve discoverability without touching runtime. Two scripts (`thesis_tracker.py`, `regime_detector.py`) need to move *out* of tools/ — they're runtime code or name-collide with strategies.
+
+### 12 — `12_growth_subsystem_audit.md` ✅
+The canonical "done right" example.
+- **Key finding:** 8 modules / 3,414 lines all wired correctly. `growth.tick()` runs every iteration. `dispatch_proposal()` actually mutates real config (confidence_floor, max_leverage, weights, symbol-pause). 5/tick auto-apply cap.
+- **Smoking-gun:** docstring in `learning_integrator.py` documents "PROPOSAL DISPATCHER: Makes self-improvement proposals actually apply changes (previously apply_proposal() only updated JSON status, never mutated config)" — proves the §02/§08 bug pattern was once present here, was fixed, and the lesson should propagate.
+- **Three small gaps:** silent display-only fallback, missing dispatchers for tp1_partial_pct / leverage_cap_per_regime / enable_strategy / enable_agent / floor_per_symbol_side, conservative 5/tick cap.
+- **Implication:** §02/§08 fixes should pattern after growth, not invent new architectures.
+
+### 13 — `13_skills_audit.md`
+`.claude/skills/` directory.
+- **Key finding:** 41 skill files, 100% documented in CLAUDE.md, all referenced commands valid. **Best-curated directory in the project.**
+- **Gap:** 5-7 of 9 `cli.py` modes have no skill wrapping them (replay, walkforward, gate, compare, tiers).
+- **Implication:** ~4-6h to add 5 missing skills + update 3 stale ones (`/add-agent` should include wiring checklist, `/web-dashboard` post-§05, `/babysit` validate tools).
+
 ---
 
 ## Combined Fix-List, Ranked by Impact-per-Hour
 
 | Priority | Fix | Effort | Source |
 |---|---|---|---|
-| **1** | Rule compiler — make the 49 graduated rules actually enforce | 2-3h | §02 |
+| **1** | Rule compiler (pattern after growth's dispatcher) | 2-3h | §02, §12 |
 | **2** | Wire Forecaster agent — daily regime forecast | 2h | §09 |
-| **3** | A/B treatment_wr collection — close the rule-validation loop | 1.5h | §02, OVERNIGHT_BLUEPRINT §4.3 |
-| **4** | Counterfactual page hero stat (TP1 underweighting) | 30min | §01 |
-| **5** | Backtest 6 candidate strategies (3 default-off + 3 orphan) | 6h | §10 |
-| **6** | Wire SwarmFeedbackLoop output to ParameterTuner | 2-3h | §08 |
-| **7** | Wire Portfolio + Correlator agents (informational) | 4h | §09 |
-| **8** | Kill `api/app/` and `bot/dashboard/` legacy backends | 2h | §04 |
-| **9** | filter_accuracy: verify dormant, wire or delete | 30min | §08 |
-| **10** | TopBar `<DataSourceBanner />` so backtest vs live data is unambiguous | 1h | §03 |
+| **3** | A/B treatment_wr collection | 1.5h | §02, OVERNIGHT §4.3 |
+| **4** | Add TP1-partial-fraction dispatcher in growth | 1h | §01, §12 |
+| **5** | Counterfactual page hero stat (TP1 underweighting) | 30min | §01 |
+| **6** | Backtest 6 candidate strategies (3 default-off + 3 orphan) | 6h | §10 |
+| **7** | Wire SwarmFeedbackLoop output via growth-style dispatcher | 2-3h | §08, §12 |
+| **8** | Add WARN on growth dispatcher's unhandled-type fallback | 10min | §12 |
+| **9** | Wire Portfolio + Correlator agents (informational) | 4h | §09 |
+| **10** | Add 5 missing skills (replay, walkforward, gate, compare, tiers) | 4h | §13 |
+| **11** | Update `/add-agent` skill with wiring checklist | 30min | §09, §13 |
+| **12** | Tools directory manifest + archive pass | 3.5h | §11 |
+| **13** | Kill `api/app/` and `bot/dashboard/` legacy backends | 2h | §04 |
+| **14** | filter_accuracy: verify dormant, wire or delete | 30min | §08 |
+| **15** | Move `thesis_tracker.py` out of tools/ to bot/llm/ | 30min | §11 |
+| **16** | Resolve `regime_detector.py` name collision (tools/ vs strategies/) | 30min | §11 |
+| **17** | TopBar `<DataSourceBanner />` so backtest vs live is unambiguous | 1h | §03 |
 
-**~22 hours of focused work** to close every gap surfaced this session and
+**~32 hours of focused work** to close every gap surfaced this session and
 ship the highest-EV improvements.
 
 ---
@@ -106,15 +136,28 @@ If a future session goes deeper:
 
 - **Test coverage map** — 113 test files, 3,488 test functions. Which subsystems are untested?
 - **Prompt quality** — read each agent's prompt body (not just the header) and grade for clarity, output schema strictness, common failure modes.
-- **The growth/ subsystem** — instantiated, but I didn't trace whether its outputs reach trading decisions.
 - **`bot/data/learning/` (gitignored)** — Master Engine's local outputs. Cannot read from this branch.
-- **Strategy-by-strategy backtest performance** — `/strategy-discover` skill in CLAUDE.md is built for this; running it produces the data §10 calls for.
+- **Strategy-by-strategy backtest performance** — `/strategy-discover` skill is built for this; running it produces the data §10 calls for.
 - **Test-file dependencies on dormant code** — if we wire/unwire the dormant agents, which tests break?
+- **bot/execution/** — risk gates, position manager, leverage manager — none audited yet, but called out in CLAUDE.md as critical safety surface.
+- **Component-level deduplication of `web/components/`** — 24+ files, likely redundancy after page-bloat surfaced in §03.
+- **Observability/logging/alerts pipeline** — bot/alerts/, structured_logging, metrics_middleware. Wired correctly?
+- **bot/data/ pipeline** — fetcher, db, migrations. The "is the data layer healthy" question.
 
 ---
 
 ## Bottom Line
 
-The **biggest unlock per hour of fix work** is §02's rule compiler. Until that lands, every "rule promotion" the perpetual loop has logged is fictional. Wire that, then Forecaster (§09 #1), then the A/B closure (§02 follow-up), then 6h of strategy backtests (§10).
+The **biggest unlock per hour of fix work** is §02's rule compiler, *patterned after growth's dispatcher* (§12). Until that lands, every "rule promotion" the perpetual loop has logged is fictional.
 
-That's a coherent ~13-hour roadmap that converts ~3,500 lines of inert code into actual trading edge.
+The wider lesson the audits surface: WAGMI **already learned how to wire feedback loops correctly** (growth subsystem). The remaining dead-code surface (rule compiler, swarm overrides, dormant agents) just needs to follow the same pattern instead of re-inventing.
+
+Coherent ~13-hour roadmap to ship the top-5 fixes:
+1. Rule compiler (3h) — §02 + §12 pattern
+2. Forecaster wiring (2h) — §09
+3. A/B treatment_wr (1.5h) — §02 follow-up
+4. TP1 partial dispatcher (1h) — §12 + §01
+5. Counterfactual hero stat (30min) — §01
+6. 6h backtest of strategy candidates — §10
+
+That converts ~5,000 lines of inert code into actual trading edge.
