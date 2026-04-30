@@ -95,7 +95,7 @@ DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>NunuIRL Trading Dashboard</title>
+    <title>WAGMI Trading Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -272,7 +272,7 @@ DASHBOARD_HTML = """
 <body>
 <div class="container">
     <div class="header">
-        <h1>NunuIRL Trading Dashboard</h1>
+        <h1>WAGMI Trading Dashboard</h1>
         <div class="status">
             <span><span class="status-dot" id="health-dot"></span> <span id="health-text">Connecting...</span></span>
             <span id="last-update">--</span>
@@ -590,5 +590,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
     app = _create_app()
     port = int(os.getenv("DASHBOARD_PORT", "5000"))
-    print(f"Starting NunuIRL Dashboard on http://localhost:{port}")
+    print(f"Starting WAGMI Dashboard on http://localhost:{port}")
     app.run(debug=False, host="0.0.0.0", port=port)

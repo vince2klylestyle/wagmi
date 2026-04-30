@@ -307,7 +307,7 @@ def format_heartbeat_telegram(
     """Format periodic heartbeat for Telegram."""
     wr = daily_wins / daily_trades * 100 if daily_trades > 0 else 0
     lines = [
-        f"--- NunuIRL Heartbeat ---",
+        f"--- WAGMI Heartbeat ---",
         f"Status: {health_status}",
         f"Equity: ${equity:,.2f}",
         f"Positions: {open_positions}",

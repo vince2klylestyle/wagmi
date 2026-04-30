@@ -61,7 +61,7 @@ def register_on_close(cb):
     on_close_callback = cb
 
 def set_api_client(client):
-    """Inject the NunuIRL client so strategy can post its own logs"""
+    """Inject the WagmiClient so strategy can post its own logs"""
     global api_client
     api_client = client
 

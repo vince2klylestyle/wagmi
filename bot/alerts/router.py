@@ -219,7 +219,7 @@ class AlertRouter:
     def send_startup(self, symbols: list, strategies: int, leverage_max: float):
         """Send a startup confirmation message to verify alerts are working."""
         msg = (
-            f"[NunuIRL Bot Started]\n"
+            f"[WAGMI Bot Started]\n"
             f"Mode: Paper Trading\n"
             f"Symbols: {', '.join(symbols)}\n"
             f"Strategies: {strategies} active\n"

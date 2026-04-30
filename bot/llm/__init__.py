@@ -1,1 +1,1 @@
-"""LLM meta-brain module for NunuIRL trading bot."""
+"""LLM meta-brain module for WAGMI trading bot."""

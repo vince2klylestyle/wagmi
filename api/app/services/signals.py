@@ -1,5 +1,5 @@
 """
-Async market signal engine for NunuIRL Platform.
+Async market signal engine for WAGMI.
 
 Fetches CoinGecko market data, computes indicators (SMA20/50, RSI14, ATR proxy, vol_spike),
 calculates ATR-based zones, assigns safe action labels (no BUY/SELL wording), and maintains

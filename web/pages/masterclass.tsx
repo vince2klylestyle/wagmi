@@ -124,7 +124,7 @@ function Sidebar({ page, onNavigate, isOpen, onToggle }: { page: CoursePage; onN
   return (
     <div style={{ width: 260, minHeight: '100%', background: C.surface, borderRight: `1px solid ${C.border}`, position: 'sticky', top: 0, overflowY: 'auto', flexShrink: 0, display: isOpen ? 'block' : undefined }} className="mc-sidebar">
       <div style={{ padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: F.md, fontWeight: 800, background: 'linear-gradient(135deg, #00e6a0, #00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Nunu's Masterclass</div>
+        <div style={{ fontSize: F.md, fontWeight: 800, background: 'linear-gradient(135deg, #00e6a0, #00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>WAGMI Masterclass</div>
         <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>Master the art of trading</div>
       </div>
       {sections.map(s => (
@@ -160,7 +160,7 @@ function DashboardPage({ onNavigate }: { onNavigate: (p: CoursePage) => void }) 
   ];
   return (
     <>
-      <PageHeader title="Welcome to Nunu's Masterclass" subtitle="Master the art of trading with our comprehensive program" />
+      <PageHeader title="Welcome to WAGMI Masterclass" subtitle="Master the art of trading with our comprehensive program" />
       <h2 style={{ color: C.text, fontSize: F.xl, marginBottom: 16 }}>Your Learning Journey</h2>
       <div style={grid3}>
         {steps.map(s => (
@@ -194,7 +194,7 @@ function DashboardPage({ onNavigate }: { onNavigate: (p: CoursePage) => void }) 
 function StartHerePage({ onNavigate }: { onNavigate: (p: CoursePage) => void }) {
   return (
     <>
-      <PageHeader title="Start Your Trading Journey" subtitle="Welcome to Nunu's Masterclass!" />
+      <PageHeader title="Start Your Trading Journey" subtitle="Welcome to WAGMI Masterclass!" />
       <InfoBox color={C.info}><strong>What you'll learn:</strong><ul style={{ margin: '8px 0 0', paddingLeft: 20 }}><li>Professional BTC trading strategies</li><li>Multi-timeframe analysis (16H → 6H → 1H)</li><li>High-probability setups with 60–70% win rates</li><li>Advanced risk management</li><li>Market psychology</li></ul></InfoBox>
       <InfoBox color={C.brand}><strong>Time Investment:</strong> 2–3 weeks to complete all modules.</InfoBox>
       <h2 style={{ color: C.text, marginBottom: 16 }}>Your Learning Path</h2>
@@ -1505,7 +1505,7 @@ export default function MasterclassPage() {
   return (
     <>
       <Head>
-        <title>Nunu&apos;s Masterclass | WAGMI</title>
+        <title>WAGMI Masterclass | WAGMI</title>
         <meta name="description" content="Complete trading education course — from fundamentals to advanced strategies" />
       </Head>
       <div style={{ display: 'flex', minHeight: '100vh', background: C.bg }}>

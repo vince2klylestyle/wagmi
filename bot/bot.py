@@ -21,7 +21,7 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-class NunuIRL:
+class WagmiClient:
     def __init__(self, base_url: str, api_key: str = None, timeout: float = 5.0):
         self.base = base_url.rstrip("/")
         self.timeout = timeout
@@ -76,7 +76,7 @@ def main():
     symbol = os.getenv("SYMBOL", "BTC-PERP")
     api_key = os.getenv("NUNUIRL_API_KEY", os.getenv("HEYANON_API_KEY", "dev_api_key_change_me"))
 
-    client = NunuIRL(base_url=base_url, api_key=api_key)
+    client = WagmiClient(base_url=base_url, api_key=api_key)
 
     # Heartbeat thread: send heartbeat every 30 seconds
     def heartbeat_loop(stop_event: threading.Event):

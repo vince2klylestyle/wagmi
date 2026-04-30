@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NunuIRL Quick Launcher
+WAGMI Quick Launcher
 Unified entry point for paper trading, backtesting, and signal monitoring.
 
 Usage:
@@ -38,7 +38,7 @@ def cmd_paper(args):
     symbols_str = ", ".join(DEFAULT_SYMBOLS.keys())
 
     print("=" * 60)
-    print("NunuIRL Paper Trading")
+    print("WAGMI Paper Trading")
     print("=" * 60)
     print(f"  Discord: {'configured' if config.discord_webhook else 'NOT SET (add DISCORD_WEBHOOK to .env)'}")
     print(f"  Telegram: {'configured' if config.telegram_token else 'NOT SET (add TELEGRAM_TOKEN to .env)'}")
@@ -191,7 +191,7 @@ def cmd_signals(args):
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())
 
     print("=" * 60)
-    print(f"NunuIRL Signal Check | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WAGMI Signal Check | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print("=" * 60)
 
     for symbol in symbols:
@@ -290,7 +290,7 @@ def cmd_rl_train(args):
     stats = get_buffer_stats(transitions)
 
     print("=" * 60)
-    print("NunuIRL RL Offline Training")
+    print("WAGMI RL Offline Training")
     print("=" * 60)
     print(f"  Buffer transitions: {stats.get('total', 0)}")
 
@@ -354,7 +354,7 @@ def cmd_status(args):
     symbols = [s.strip().upper() for s in args.symbols.split(",")] if args.symbols else list(DEFAULT_SYMBOLS.keys())
 
     print("=" * 60)
-    print(f"NunuIRL Market Status | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"WAGMI Market Status | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print("=" * 60)
 
     for symbol in symbols:
@@ -404,7 +404,7 @@ def main():
         pass
 
     parser = argparse.ArgumentParser(
-        description="NunuIRL Trading Bot",
+        description="WAGMI Trading Bot",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
