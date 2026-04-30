@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, F } from '../../src/theme';
 import { resolveApiBase } from '../../src/api';
-import ColumnShell, { Section, Stat, Empty } from './ColumnShell';
+import ColumnShell, { Section, Stat, Empty, Skeleton, ErrorState } from './ColumnShell';
 
 /**
  * AgenticColumn — the LLM agent pipeline's view.
@@ -60,6 +60,9 @@ export default function AgenticColumn({
   replayTimestamp?: string;
 }) {
   const [decision, setDecision] = useState<LlmDecision | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,26 +70,46 @@ export default function AgenticColumn({
     const load = async () => {
       try {
         if (mode === 'replay' && replayTimestamp) {
-          // Use /v1/decisions/at for state-as-of-that-moment
           const url = `${apiBase}/v1/decisions/at?ts=${encodeURIComponent(replayTimestamp)}&symbol=${symbol}`;
           const r = await fetch(url, { cache: 'no-store' });
-          if (!r.ok) return;
+          if (!r.ok) {
+            if (!cancelled) {
+              setError(`api error ${r.status}`);
+              setLoading(false);
+            }
+            return;
+          }
           const j = await r.json();
           if (!cancelled) {
             const dec = (j.decisions || []).find(
               (d: LlmDecision) => (d.symbol || '').toUpperCase() === symbol,
             );
             setDecision(dec || null);
+            setError(null);
+            setLoading(false);
           }
         } else {
           const r = await fetch(`${apiBase}/v1/llm/feed?limit=50`, { cache: 'no-store' });
-          if (!r.ok) return;
+          if (!r.ok) {
+            if (!cancelled) {
+              setError(`api error ${r.status}`);
+              setLoading(false);
+            }
+            return;
+          }
           const j: LlmFeedResponse = await r.json();
           const latest = (j.decisions || []).find((d) => (d.symbol || '').toUpperCase() === symbol);
-          if (!cancelled) setDecision(latest || null);
+          if (!cancelled) {
+            setDecision(latest || null);
+            setError(null);
+            setLoading(false);
+          }
         }
-      } catch {
-        /* silent */
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || 'fetch failed');
+          setLoading(false);
+        }
       }
     };
     load();
@@ -101,7 +124,7 @@ export default function AgenticColumn({
     return () => {
       cancelled = true;
     };
-  }, [symbol, mode, replayTimestamp]);
+  }, [symbol, mode, replayTimestamp, retryNonce]);
 
   // Derive verdict
   const verdictLabel = decision?.is_veto
@@ -139,8 +162,24 @@ export default function AgenticColumn({
   return (
     <ColumnShell
       tone="agentic"
-      verdict={{ label: verdictLabel, color: verdictColor }}
+      verdict={{ label: error ? 'ERR' : verdictLabel, color: error ? C.bear : verdictColor }}
     >
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setError(null);
+            setLoading(true);
+            setRetryNonce((n) => n + 1);
+          }}
+        />
+      )}
+      {loading && !decision && !error && (
+        <Section title="Loading" hint="fetching agent decisions">
+          <Skeleton rows={4} />
+        </Section>
+      )}
+
       {/* Top-level pipeline summary */}
       <Section title="Pipeline" hint={decision?.timestamp ? new Date(decision.timestamp).toLocaleTimeString() : 'no recent decision'}>
         <Stat

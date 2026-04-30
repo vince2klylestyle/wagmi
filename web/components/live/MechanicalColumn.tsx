@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, F } from '../../src/theme';
 import { resolveApiBase } from '../../src/api';
-import ColumnShell, { Section, Stat, Empty } from './ColumnShell';
+import ColumnShell, { Section, Stat, Empty, Skeleton, ErrorState } from './ColumnShell';
 import { useEdgeStats } from '../trade/useEdgeStats';
 
 /**
@@ -32,6 +32,9 @@ export default function MechanicalColumn({
   replayTimestamp?: string;
 }) {
   const [sig, setSig] = useState<Sig | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState<number>(0);
   const edge = useEdgeStats();
 
   useEffect(() => {
@@ -40,13 +43,15 @@ export default function MechanicalColumn({
     const load = async () => {
       try {
         if (mode === 'replay' && replayTimestamp) {
-          // No live signals snapshot store yet; derive from the decision-at
-          // endpoint so mechanical column at least shows the regime + direction
-          // recorded at decision time. When /v1/signals/at lands later, this
-          // upgrades automatically.
           const url = `${apiBase}/v1/decisions/at?ts=${encodeURIComponent(replayTimestamp)}&symbol=${symbol}`;
           const r = await fetch(url, { cache: 'no-store' });
-          if (!r.ok) return;
+          if (!r.ok) {
+            if (!cancelled) {
+              setError(`api error ${r.status}`);
+              setLoading(false);
+            }
+            return;
+          }
           const j = await r.json();
           if (cancelled) return;
           const dec = (j.decisions || []).find(
@@ -54,23 +59,32 @@ export default function MechanicalColumn({
           );
           setSig(
             dec
-              ? {
-                  regime: dec.regime,
-                  side: dec.side,
-                  action: dec.action,
-                  confidence: dec.confidence,
-                  price: null,
-                }
+              ? { regime: dec.regime, side: dec.side, action: dec.action, confidence: dec.confidence, price: null }
               : null,
           );
+          setError(null);
+          setLoading(false);
           return;
         }
         const r = await fetch(`${apiBase}/v1/signals`, { cache: 'no-store' });
-        if (!r.ok) return;
+        if (!r.ok) {
+          if (!cancelled) {
+            setError(`api error ${r.status}`);
+            setLoading(false);
+          }
+          return;
+        }
         const j = await r.json();
-        if (!cancelled) setSig(j.signals?.[symbol] ?? null);
-      } catch {
-        /* silent */
+        if (!cancelled) {
+          setSig(j.signals?.[symbol] ?? null);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || 'fetch failed');
+          setLoading(false);
+        }
       }
     };
     load();
@@ -84,7 +98,7 @@ export default function MechanicalColumn({
     return () => {
       cancelled = true;
     };
-  }, [symbol, mode, replayTimestamp]);
+  }, [symbol, mode, replayTimestamp, retryNonce]);
 
   // Compute "no-LLM" verdict from confluence signals.
   const isLong = sig?.side === 'LONG' || sig?.side === 'BUY';
@@ -101,8 +115,24 @@ export default function MechanicalColumn({
   return (
     <ColumnShell
       tone="mechanical"
-      verdict={{ label: verdictLabel, color: verdictColor }}
+      verdict={{ label: error ? 'ERR' : verdictLabel, color: error ? C.bear : verdictColor }}
     >
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setError(null);
+            setLoading(true);
+            setRetryNonce((n) => n + 1);
+          }}
+        />
+      )}
+      {loading && !sig && !error && (
+        <Section title="Loading" hint="fetching signals">
+          <Skeleton rows={3} />
+        </Section>
+      )}
+
       {/* Ensemble vote summary */}
       <Section title="Ensemble Vote" hint="weighted veto mode">
         <Stat

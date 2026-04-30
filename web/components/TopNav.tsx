@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { C, F, R, Z, alpha } from '../src/theme';
 import EquityTicker from './EquityTicker';
+import BotStatusPill from './BotStatusPill';
 
 /**
  * TopNav — Hyperliquid-style horizontal nav.
@@ -212,9 +213,10 @@ export default function TopNav() {
           </button>
         )}
 
-        {/* Right-side: equity ticker */}
+        {/* Right-side: bot status pill + equity ticker */}
         {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <BotStatusPill compact />
             <EquityTicker compact />
           </div>
         )}
@@ -252,7 +254,18 @@ export default function TopNav() {
               </Link>
             );
           })}
-          <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.border}`, marginTop: 4 }}>
+          <div
+            style={{
+              padding: '12px 16px',
+              borderTop: `1px solid ${C.border}`,
+              marginTop: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <BotStatusPill compact />
             <EquityTicker compact />
           </div>
         </div>

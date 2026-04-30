@@ -145,3 +145,90 @@ export function Empty({ note }: { note?: string }) {
     </div>
   );
 }
+
+/**
+ * Skeleton — neutral pulsing rectangle for in-flight data. Use when waiting
+ * on a fetch instead of leaving sections blank.
+ */
+export function Skeleton({
+  width = '100%',
+  height = 16,
+  rows = 1,
+}: {
+  width?: number | string;
+  height?: number;
+  rows?: number;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            width,
+            height,
+            background: 'linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
+            borderRadius: 3,
+            animation: 'wagmi-skeleton-pulse 1.6s ease-in-out infinite',
+          }}
+        />
+      ))}
+      <style jsx global>{`
+        @keyframes wagmi-skeleton-pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.95; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/**
+ * ErrorState — user-visible error w/ retry button. Compact, fits inside columns.
+ */
+export function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: '#050508',
+        border: `1px solid ${C.bear}55`,
+        borderLeft: `3px solid ${C.bear}`,
+        borderRadius: 4,
+        fontSize: F.xs,
+        color: C.textSub,
+        fontFamily: 'JetBrains Mono, monospace',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <span style={{ color: C.bear, fontWeight: 700 }}>error</span>
+      <span style={{ color: C.textSub, lineHeight: 1.4 }}>{message}</span>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          style={{
+            alignSelf: 'flex-start',
+            padding: '3px 10px',
+            background: 'transparent',
+            border: `1px solid ${C.border}`,
+            borderRadius: 3,
+            color: C.text,
+            fontSize: 10,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          retry
+        </button>
+      )}
+    </div>
+  );
+}
