@@ -347,14 +347,16 @@
             "problem": "confidence_60_70_sweet_spot rule currently downgrading 90%+ conf trades from Opus to Sonnet \u2014 exactly backwards vs live outcomes",
             "fix_applied": "confidence_60_70_sweet_spot marked SUSPENDED; revert usage_tiers.py to natural routing: >80% conf \u2192 Opus",
             "action": "usage_tiers.py: REVERT the Sonnet-downgrade for high-confidence signals added in confidence_60_70_sweet_spot. Restore Opus for conf>80%",
-            "status": "SUSPENDED_PENDING_REVERT",
+            "status": "APPLIED",
             "confidence": 93,
             "gate_percentage": 100,
             "applied_date": "2026-04-24",
             "urgency": "HIGH",
             "expected_impact": "Restoring best-performing cohort (90%+ WR +$32.33 avg) to appropriate model saves foregone PnL on every high-conf trade",
-            "last_reviewed": "2026-04-30T17:06:23.211012Z",
-            "review_note": "perpetual_improvement_2026-04-30: still SUSPENDED_PENDING_REVERT. Code revert in usage_tiers.py required. HIGH priority."
+            "last_reviewed": "2026-04-30T18:00:00Z",
+            "review_note": "perpetual_improvement_2026-04-30T18: APPLIED. HIGH_CONFIDENCE now routes to Opus in AGGRESSIVE tier. Expected +32/trade on 9.4% of trades.",
+            "applied_code_date": "2026-04-30",
+            "code_change": "usage_tiers.py: HIGH_CONFIDENCE moved HIGH_VALUE_TRIGGERS (\u2192 Opus in AGGRESSIVE); removed from MEDIUM_VALUE_TRIGGERS (was Sonnet)"
         },
         {
             "rule_id": "BTC_BUY_BB_golden",

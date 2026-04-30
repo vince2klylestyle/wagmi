@@ -52,6 +52,8 @@ MODEL_PRICING = {
 # ── Trigger categories ───────────────────────────────────────────
 
 # High-value triggers: the LLM's decision here directly affects PnL
+# HIGH_CONFIDENCE restored to high-value: 90%+ conf = 56% WR +$32.33/trade (best EV cohort).
+# confidence_60_70_sweet_spot downgraded it to medium/Sonnet — that rule is now SUSPENDED_PENDING_REVERT.
 HIGH_VALUE_TRIGGERS = {
     "PRE_TRADE",
     "pre-trade validation",
@@ -61,14 +63,14 @@ HIGH_VALUE_TRIGGERS = {
     "strategy disagreement",
     "PRE_CLOSE",
     "pre-close assessment",
+    "HIGH_CONFIDENCE",
+    "high-confidence signal",
 }
 
 # Medium-value triggers: informational, shapes future decisions
 MEDIUM_VALUE_TRIGGERS = {
     "POSITION_CLOSED",
     "position closed",
-    "HIGH_CONFIDENCE",
-    "high-confidence signal",
     "STRATEGY_CONSENSUS",
     "strategy consensus",
     "CROSS_MARKET_DIVERGENCE",
@@ -127,12 +129,12 @@ class UsageTier:
         trigger_upper = trigger_reason.upper().replace(" ", "_").replace("-", "_")
 
         if trigger_reason in HIGH_VALUE_TRIGGERS or trigger_upper in {
-            "PRE_TRADE", "REGIME_SHIFT", "STRATEGY_DISAGREEMENT", "PRE_CLOSE"
+            "PRE_TRADE", "REGIME_SHIFT", "STRATEGY_DISAGREEMENT", "PRE_CLOSE", "HIGH_CONFIDENCE"
         }:
             return self.high_value_model or self.default_model
 
         if trigger_reason in MEDIUM_VALUE_TRIGGERS or trigger_upper in {
-            "POSITION_CLOSED", "HIGH_CONFIDENCE", "STRATEGY_CONSENSUS",
+            "POSITION_CLOSED", "STRATEGY_CONSENSUS",
             "CROSS_MARKET_DIVERGENCE",
         }:
             return self.medium_value_model or self.default_model
