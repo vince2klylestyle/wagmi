@@ -1,6 +1,6 @@
 {
     "schema_version": "1.0",
-    "last_updated": "2026-04-30T18:05:11Z",
+    "last_updated": "2026-05-01T16:13:56.935630+00:00",
     "rules": [
         {
             "rule_id": "F2_calibration_offset_cap",
@@ -72,14 +72,16 @@
             "fix_applied": "A/B gate active at 20% \u2014 track treatment_wr vs baseline_wr=0.35",
             "status": "A/B_ACTIVE",
             "confidence": 82,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.35,
             "treatment_wr": null,
             "sample_count": 20,
             "applied_date": "2026-04-24",
             "action": "Boost confidence floor by +5 points for morning-window signals; reduce by -10 for night/afternoon",
             "ab_cohort_start": "2026-04-24T16:18:28Z",
-            "min_sample_to_graduate": 30
+            "min_sample_to_graduate": 30,
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=82%, sample=20 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "ILLIQUID_regime_block",
@@ -125,7 +127,7 @@
             "fix_applied": "A/B gate active at 20% \u2014 confidence-proportional caps: <75% conf \u2192 max 3x, 75-85% \u2192 max 5x, >85% \u2192 full",
             "status": "A/B_ACTIVE",
             "confidence": 75,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.376,
             "treatment_wr": null,
             "sample_count": 50,
@@ -133,8 +135,8 @@
             "action": "Cap leverage at 3x for conf<75%, 5x for conf 75-85%, full leverage only for conf>85%",
             "ab_cohort_start": "2026-04-24T16:18:28Z",
             "min_sample_to_graduate": 30,
-            "last_escalated": "2026-04-30T16:04:29.358765+00:00",
-            "escalation_reason": "50 samples, conf=75 \u2014 large-position edge confirmed; escalate 20\u219250%"
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=75%, sample=50 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "BB_solo_signal_boost",
@@ -187,7 +189,7 @@
             "action": "risk.py / position_manager: check adaptive_risk_state recent_outcomes[-2:] before sizing",
             "status": "A/B_ACTIVE",
             "confidence": 90,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.376,
             "treatment_wr": null,
             "sample_count": 2172,
@@ -195,7 +197,9 @@
             "ab_cohort_start": "2026-04-24T12:00:00Z",
             "min_sample_to_graduate": 30,
             "gate_escalated_at": "2026-04-24T22:07:41.712006+00:00",
-            "gate_escalated_reason": "conf=90%, n=2172>=30: sample requirement met, escalating 20%\u219250%"
+            "gate_escalated_reason": "conf=90%, n=2172>=30: sample requirement met, escalating 20%\u219250%",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=90%, sample=2172 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "confidence_60_70_sweet_spot",
@@ -273,15 +277,15 @@
             "action": "core/signal_pipeline.py or ensemble.py: detect hour 18-23 UTC, apply +8pt confidence boost",
             "status": "A/B_ACTIVE",
             "confidence": 85,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.36,
             "treatment_wr": null,
             "sample_count": 27,
             "applied_date": "2026-04-24",
             "ab_cohort_start": "2026-04-24T18:12:08.470609+00:00",
             "min_sample_to_graduate": 25,
-            "last_escalated": "2026-04-30T16:04:29.358732+00:00",
-            "escalation_reason": "27 live trades, evening 65% WR confirmed; escalate 20\u219250%"
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=85%, sample=27 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "INSTANT_SL_stop_buffer",
@@ -292,7 +296,7 @@
             "action": "execution/leverage.py or signal_pipeline.py: enforce min stop_width = max(sl, entry * 0.012)",
             "status": "A/B_ACTIVE",
             "confidence": 82,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.11,
             "treatment_wr": null,
             "sample_count": 370,
@@ -301,7 +305,9 @@
             "min_sample_to_graduate": 50,
             "expected_impact": "Reducing instant SL rate from 38.3% to <20% could add $40K+ in backtest PnL",
             "gate_escalated_at": "2026-04-24T22:09:07.391936+00:00",
-            "gate_escalated_reason": "CRITICAL: 100% of 370 SL hits instant in backtest. Min stop width 0.828% confirmed too tight. Escalate to 50%."
+            "gate_escalated_reason": "CRITICAL: 100% of 370 SL hits instant in backtest. Min stop width 0.828% confirmed too tight. Escalate to 50%.",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=82%, sample=370 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "HYPE_sizing_reduce",
@@ -312,13 +318,15 @@
             "action": "execution/leverage.py: if symbol==HYPE, multiply size_multiplier by 0.5",
             "status": "A/B_ACTIVE",
             "confidence": 80,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.55,
             "treatment_wr": null,
             "sample_count": 397,
             "applied_date": "2026-04-24",
             "ab_cohort_start": "2026-04-24T18:12:08.470609+00:00",
-            "min_sample_to_graduate": 40
+            "min_sample_to_graduate": 40,
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=80%, sample=397 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "SIDE_BIAS_LONG_filter",
@@ -329,7 +337,7 @@
             "action": "ensemble.py: if side==BUY and (symbol,strategy) not in golden_setups, apply -8 to final confidence",
             "status": "A/B_ACTIVE",
             "confidence": 90,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.3,
             "treatment_wr": null,
             "sample_count": 300,
@@ -338,7 +346,9 @@
             "min_sample_to_graduate": 50,
             "expected_impact": "Reducing LONG noise toward SHORT-side WR level could shift overall WR from 35% toward 42%+",
             "gate_escalated_at": "2026-04-24T22:09:07.391989+00:00",
-            "gate_escalated_reason": "Live 10d data confirms LONG WR=57.1%=SHORT: n=300>=50, conf=90%. Escalate to 50%."
+            "gate_escalated_reason": "Live 10d data confirms LONG WR=57.1%=SHORT: n=300>=50, conf=90%. Escalate to 50%.",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=90%, sample=300 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "confidence_60_70_ROUTING_FIX",
@@ -367,7 +377,7 @@
             "action": "ensemble.py proven_setups: add BTC_BUY_BB as tier-1; allow full size; +10pt confidence",
             "status": "A/B_ACTIVE",
             "confidence": 91,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.69,
             "treatment_wr": null,
             "sample_count": 2172,
@@ -375,7 +385,9 @@
             "ab_cohort_start": "2026-04-24T00:00:00Z",
             "min_sample_to_graduate": 20,
             "gate_escalated_at": "2026-04-24T22:07:41.712018+00:00",
-            "gate_escalated_reason": "conf=91%, n=2172>=20: sample requirement met, escalating 20%\u219250%"
+            "gate_escalated_reason": "conf=91%, n=2172>=20: sample requirement met, escalating 20%\u219250%",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=91%, sample=2172 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "RANGING_regime_reduce",
@@ -403,7 +415,7 @@
             "action": "ensemble.py: detect HYPE BUY + confidence_scorer sole signal; apply -12 confidence penalty",
             "status": "A/B_ACTIVE",
             "confidence": 90,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.38,
             "treatment_wr": null,
             "sample_count": 2172,
@@ -411,7 +423,9 @@
             "ab_cohort_start": "2026-04-24T00:00:00Z",
             "min_sample_to_graduate": 20,
             "gate_escalated_at": "2026-04-24T22:07:41.712021+00:00",
-            "gate_escalated_reason": "conf=90%, n=2172>=20: sample requirement met, escalating 20%\u219250%"
+            "gate_escalated_reason": "conf=90%, n=2172>=20: sample requirement met, escalating 20%\u219250%",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=90%, sample=2172 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "HIGH_VOL_regime_boost",
@@ -422,14 +436,16 @@
             "action": "signal_pipeline.py or ensemble.py: if regime==high_volatility, add +5 confidence and set size_mod=1.1",
             "status": "A/B_ACTIVE",
             "confidence": 88,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.55,
             "treatment_wr": null,
             "sample_count": 2172,
             "applied_date": "2026-04-24",
             "ab_cohort_start": "2026-04-24T00:00:00Z",
             "min_sample_to_graduate": 25,
-            "expected_impact": "Promoting best-performing regime should increase frequency and size of high_vol trades"
+            "expected_impact": "Promoting best-performing regime should increase frequency and size of high_vol trades",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=88%, sample=2172 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "SIDE_BIAS_LONG_SUSPENSION",
@@ -439,7 +455,7 @@
             "fix_applied": "A/B gate at 20% \u2014 20% of LONG signals restored to no-penalty treatment to measure impact; SIDE_BIAS_LONG_filter gate reduced from full to 20%",
             "status": "A/B_ACTIVE",
             "confidence": 85,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.571,
             "treatment_wr": null,
             "sample_count": 352,
@@ -449,7 +465,9 @@
             "action": "ensemble.py: remove -8pt LONG penalty for 20% cohort; track WR vs control. If LONG_no_penalty >= LONG_with_penalty, fully revert rule.",
             "contradiction": "Rule claimed LONG WR=29-32%; live 10d shows LONG WR=57.1%. Reconcile data source before full suspension.",
             "gate_escalated_at": "2026-04-29T19:18:13.874877+00:00",
-            "gate_escalated_reason": "conf=85%, n=352>=min=50: escalating 20%\u219250%"
+            "gate_escalated_reason": "conf=85%, n=352>=min=50: escalating 20%\u219250%",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=85%, sample=352 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "BTC_STOP_EXPANSION",
@@ -498,7 +516,7 @@
             "action": "ensemble.py proven_setups: add SOL_BUY_BB as tier-1; allow full size; +10pt confidence",
             "status": "A/B_ACTIVE",
             "confidence": 90,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.67,
             "treatment_wr": null,
             "sample_count": 2172,
@@ -506,7 +524,9 @@
             "ab_cohort_start": "2026-04-24T21:12:13Z",
             "min_sample_to_graduate": 20,
             "gate_escalated_at": "2026-04-24T22:07:41.712025+00:00",
-            "gate_escalated_reason": "conf=90%, n=2172>=20: sample requirement met, escalating 20%\u219250%"
+            "gate_escalated_reason": "conf=90%, n=2172>=20: sample requirement met, escalating 20%\u219250%",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=90%, sample=2172 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "BTC_LEADS_ETH_corr",
@@ -517,13 +537,15 @@
             "action": "coordinator.py or signal_pipeline.py: read last BTC outcome from adaptive_risk_state, apply conditional boost to ETH signals",
             "status": "A/B_ACTIVE",
             "confidence": 85,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.6,
             "treatment_wr": null,
             "sample_count": 2172,
             "applied_date": "2026-04-24",
             "ab_cohort_start": "2026-04-24T21:12:13Z",
-            "min_sample_to_graduate": 25
+            "min_sample_to_graduate": 25,
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=85%, sample=2172 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "TIGHT_TP_preference",
@@ -556,7 +578,7 @@
             "action": "agents/coordinator.py or exit agent prompt: when regime==trending, set min_hold_hours=3 in Exit Agent context; ignore close signals before 3h except hard SL hit",
             "status": "A/B_ACTIVE",
             "confidence": 88,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.52,
             "treatment_wr": null,
             "sample_count": 164,
@@ -565,8 +587,8 @@
             "min_sample_to_graduate": 25,
             "expected_impact": "Preventing early exits in trending regime should push trending WR from 52% toward the 4h+ cohort WR of 50-73% by letting winners run",
             "evidence": "164 live trades: trending early losses=8/61 (13%); loss median hold=1.5h, win median hold=3.3h; 12h+ cohort=73% WR",
-            "last_escalated": "2026-04-30T17:06:23.210952Z",
-            "escalation_reason": "perpetual_improvement_2026-04-30: exit timing analysis confirms 81% of exits suboptimal. SOL exits 71% suboptimal (+$246 missed). Win median hold=3.3h vs loss 1.5h. Escalate 20%\u219250%."
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=88%, sample=164 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "NOISE_REGIME_FAST_EXIT",
@@ -577,7 +599,7 @@
             "action": "exit agent prompt: in non-trending regimes, add rule: 'if hold_time < 2h and price_distance_to_sl < 30%, recommend CLOSE to avoid noise-regime microstructure SL'",
             "status": "A/B_ACTIVE",
             "confidence": 88,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.28,
             "treatment_wr": null,
             "sample_count": 164,
@@ -585,7 +607,9 @@
             "ab_cohort_start": "2026-04-25T00:00:00Z",
             "min_sample_to_graduate": 25,
             "expected_impact": "Closing noise-regime positions at -0.5% avg instead of full SL -1.2% avg could reduce loss severity by 50%+ in 87% of early-exit cases",
-            "evidence": "164 trades: 53/61 early losses in illiquid(27)+unknown(18)+ranging(8). Trending early losses only 8. Causal: microstructure bid-ask + low-liquidity noise in first 1-2h."
+            "evidence": "164 trades: 53/61 early losses in illiquid(27)+unknown(18)+ranging(8). Trending early losses only 8. Causal: microstructure bid-ask + low-liquidity noise in first 1-2h.",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=88%, sample=164 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "SOL_SHORT_edge_promote",
@@ -616,14 +640,16 @@
             "action": "signal_pipeline.py or ensemble.py: BTC LONG +5 conf (A/B); BTC SHORT -5 conf (A/B)",
             "status": "A/B_ACTIVE",
             "confidence": 83,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.639,
             "treatment_wr": null,
             "sample_count": 267,
             "applied_date": "2026-04-25",
             "ab_cohort_start": "2026-04-25T15:30:00Z",
             "min_sample_to_graduate": 25,
-            "expected_impact": "Reduce BTC SHORT frequency ~20%; ~+$280 avoided losses per 100-trade window"
+            "expected_impact": "Reduce BTC SHORT frequency ~20%; ~+$280 avoided losses per 100-trade window",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=83%, sample=267 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "CONF_60_70_floor_raise",
@@ -634,14 +660,16 @@
             "action": "core/signal_pipeline.py: A/B cohort rejects signals where confidence < 70 after quality adjustment",
             "status": "A/B_ACTIVE",
             "confidence": 85,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.463,
             "treatment_wr": null,
             "sample_count": 123,
             "applied_date": "2026-04-25",
             "ab_cohort_start": "2026-04-25T15:30:00Z",
             "min_sample_to_graduate": 30,
-            "expected_impact": "Filtering 123/965 (13%) of trades that are net -$2321 removes -$18.87/signal avg"
+            "expected_impact": "Filtering 123/965 (13%) of trades that are net -$2321 removes -$18.87/signal avg",
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=85%, sample=123 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "HIGH_CONF_SHORT_edge",
@@ -811,13 +839,15 @@
             "action": "ensemble.py / signal_pipeline.py: detect BTC BUY signals; apply -15 confidence penalty; minimum conf threshold 75%",
             "status": "A/B_ACTIVE",
             "confidence": 85,
-            "gate_percentage": 20,
+            "gate_percentage": 50,
             "baseline_wr": 0.18,
             "treatment_wr": null,
             "sample_count": 17,
             "applied_date": "2026-04-29",
             "ab_cohort_start": "2026-04-29T19:18:13.874877+00:00",
-            "min_sample_to_graduate": 20
+            "min_sample_to_graduate": 20,
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=85%, sample=17 \u2192 escalate 20%\u219250%"
         },
         {
             "rule_id": "HYPE_LONG_hard_block",
@@ -867,7 +897,7 @@
             "fix_applied": "A/B gate at 20% \u2014 20% of illiquid-regime signals get SL distance * 1.3x and size * 0.7x to maintain risk budget",
             "status": "A/B_ACTIVE",
             "confidence": 82,
-            "gate_percentage": 50,
+            "gate_percentage": 80,
             "baseline_wr": 0.281,
             "treatment_wr": null,
             "sample_count": 57,
@@ -876,8 +906,8 @@
             "min_sample_to_graduate": 25,
             "action": "Multiply SL distance 1.3x and reduce size 30% in illiquid regime",
             "activated_by": "perpetual_improvement_run_2026-04-30 auto-fix subsystem (conf=82 >= 75 threshold)",
-            "last_escalated": "2026-04-30T16:04:29.358740+00:00",
-            "escalation_reason": "57 illiquid trades confirm noise stop hypothesis; escalate 20\u219250%"
+            "last_escalated": "2026-05-01T16:13:56.935630+00:00",
+            "escalation_reason": "conf=82%, sample=57 \u2192 escalate 50%\u219280%"
         },
         {
             "rule_id": "HIGH_CONF_CALIBRATION_DRIFT",
@@ -971,6 +1001,36 @@
             ],
             "applied_date": "2026-04-30",
             "ab_cohort_start": "2026-04-30T18:05:11Z"
+        },
+        {
+            "rule_id": "BB_solo_trust",
+            "source": "deep_memory/insight_journal \u2014 2172-signal backtest analysis",
+            "description": "BB solo signals = 67.6% WR vs ensemble's 51.9%. Trust BB alone over consensus.",
+            "problem": "Ensemble voting dilutes BB's edge when weaker strategies disagree; BB+MTQ combo = 35% WR (anti-predictive)",
+            "proposed_fix": "Boost BB solo signal confidence by +8 pts; add fast-path approval for BB-only signals at confidence >= 72%",
+            "expected_impact": "+8-12 pt WR improvement on BB-sourced trades",
+            "confidence": 95,
+            "gate_percentage": 20,
+            "baseline_wr": 0.519,
+            "treatment_wr": null,
+            "applied_date": "2026-05-01",
+            "action": "In ensemble.py: if strategy='confidence_scorer'(BB) and solo=True and confidence>=72, route to fast-path",
+            "status": "A/B_ACTIVE"
+        },
+        {
+            "rule_id": "BB_MTQ_antipattern",
+            "source": "deep_memory/insight_journal \u2014 2172-signal backtest analysis",
+            "description": "BB+MTQ combo agreement = 35% WR \u2014 anti-predictive signal, SKIP these trades",
+            "problem": "When BB and multi_tier_quality both agree, WR drops to 35% \u2014 below random. This combination is a reliable contra-indicator.",
+            "proposed_fix": "Add explicit SKIP rule in ensemble.py: if both confidence_scorer+multi_tier_quality vote same direction, downweight to 0 or require 3rd strategy confirmation",
+            "expected_impact": "Eliminate known-losing combo \u2014 saves ~5-8% losing trades",
+            "confidence": 92,
+            "gate_percentage": 20,
+            "baseline_wr": 0.35,
+            "treatment_wr": null,
+            "applied_date": "2026-05-01",
+            "action": "ensemble.py veto rule: BB+MTQ only (no 3rd strategy) \u2192 skip",
+            "status": "A/B_ACTIVE"
         }
     ],
     "rules_added_2026_04_26_1545_hourly": [
@@ -1057,7 +1117,7 @@
             "confidence": 91
         }
     ],
-    "last_improvement_run": "2026-04-27T19:05:10.303330+00:00",
+    "last_improvement_run": "2026-05-01T00:00:00Z",
     "new_proposals_2026_04_25_hourly": [
         {
             "rule_id": "AB_RESULT_TRACKER",
