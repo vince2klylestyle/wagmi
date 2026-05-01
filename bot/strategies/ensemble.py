@@ -2821,7 +2821,8 @@ class EnsembleStrategy:
                 # SHIP-2026-04-19: propagate regime_score + align_long from input signals.
                 # Previously dropped here, causing ml_conf, alerts, analytics to see always-0.
                 # See REGIME_SCORE_BUG_2026_04_19.md. Max-by-abs for regime, max for align.
-                "regime": (signals[0].metadata or {}).get("regime", "") if signals else "",
+                # FIX-2026-05-01: Use current_regime as fallback if strategy regime is empty
+                "regime": (signals[0].metadata or {}).get("regime", "") if signals else self._current_regime.get(symbol, ""),
                 "regime_score": max(
                     ((s.metadata or {}).get("regime_score", 0) for s in signals),
                     key=lambda v: abs(v or 0),
