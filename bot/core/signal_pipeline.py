@@ -310,8 +310,9 @@ class RiskFilterChain:
             fee_drag_pct = round_trip_fee_pct / stop_pct
             meta["fee_drag_pct"] = round(fee_drag_pct * 100, 1)
             # 3+ agree can tolerate more fee drag (higher WR compensates)
+            # UNBLOCK-2026-05-01: Disable fee_drag gate for solos (num_agree=1) — proven edge (BB 80% WR)
             _n_agree = signal.metadata.get("num_agree", 1) if signal.metadata else 1
-            max_fee_drag = 0.70 if _n_agree >= 3 else 0.60  # PHASE 3.1: Raised to allow profitable solos through (BB 80% WR)
+            max_fee_drag = 0.70 if _n_agree >= 3 else 0.95  # Solos get 95% threshold (effectively disabled for normal stops)
             if fee_drag_pct > max_fee_drag:
                 _reason = (f"Fee drag {fee_drag_pct:.0%} > {max_fee_drag:.0%} "
                            f"(fees={round_trip_fee_pct:.4f}, stop={stop_pct:.4f})")
