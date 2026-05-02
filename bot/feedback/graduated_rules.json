@@ -1058,6 +1058,36 @@
       "applied_date": "2026-05-01",
       "ab_cohort_start": "2026-05-01T18:42:15.000000+00:00",
       "expected_impact": "Preserve 80% WR pattern (ETH SHORT) from being filtered by blanket side-bias correction rules."
+    },
+    {
+      "rule_id": "ILLIQUID_HOLD_TIMEOUT_RULE",
+      "source": "insight_journal \u2014 mechanistic_hold_analysis_164 (2026-04-30)",
+      "description": "In illiquid/ranging/unknown regimes: 87% of early SL hits (<2h) are microstructure noise. Exit Agent: hold trades patiently up to 3h in illiquid before calling a real SL failure.",
+      "problem": "87% of early losses (<2h) occur in illiquid/ranging/unknown regimes \u2014 not signal failures but microstructure noise stops",
+      "fix_applied": "Exit Agent prompt: add regime-conditional patience rule \u2014 3h hold threshold in non-trending",
+      "status": "A/B_ACTIVE",
+      "confidence": 87,
+      "gate_percentage": 20,
+      "baseline_wr": 0.281,
+      "treatment_wr": null,
+      "sample_count": 164,
+      "applied_date": "2026-05-02",
+      "action": "In non-trending regime, do not recommend early exit before 2h mark unless SL definitively hit"
+    },
+    {
+      "rule_id": "CONF_90PLUS_SIZE_EXPAND",
+      "source": "perpetual_improvement 2026-05-02 \u2014 10d sim dataset n=91",
+      "description": "90%+ confidence trades have 4.2x better avg PnL ($32.33) than 80-90% ($7.67) in 10d simulation, despite slightly lower WR (56% vs 60%). Suggests high R:R on ultra-high-confidence setups.",
+      "problem": "High confidence setups may be undersized \u2014 their edge is in magnitude not frequency",
+      "fix_applied": "A/B monitor: track if 90%+ confidence trades outperform on live data; if confirmed, apply +20% size boost",
+      "status": "A/B_ACTIVE",
+      "confidence": 76,
+      "gate_percentage": 20,
+      "baseline_wr": 0.56,
+      "treatment_wr": null,
+      "sample_count": 91,
+      "applied_date": "2026-05-02",
+      "note": "Source is 10d simulation data \u2014 needs live validation before escalation"
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
@@ -1899,6 +1929,33 @@
       "NOISE_STOP_WIDEN_illiquid escalated to 100% (n=57, 71.9% noise-stop confirmed)",
       "ETH_SHORT_protect_from_bias added at gate=20% \u2014 guard 80% WR pattern",
       "snapshot_entry missing from CSV logger \u2014 slippage forensics permanently blocked"
+    ]
+  },
+  "run_log_2026_05_02_1520": {
+    "run_timestamp": "2026-05-02T15:20:14.782645+00:00",
+    "run_type": "perpetual_improvement_deep_dive_hourly",
+    "subsystems_run": 5,
+    "fixes_applied": 2,
+    "new_rules_added": [
+      "ILLIQUID_HOLD_TIMEOUT_RULE",
+      "CONF_90PLUS_SIZE_EXPAND"
+    ],
+    "gates_active": 51,
+    "s1_conflict_note": {
+      "note_id": "SOL_SHORT_sim_vs_live_conflict",
+      "timestamp": "2026-05-02T15:20:14.782645+00:00",
+      "finding": "10d simulation shows SOL_SHORT 63.7% WR (n=179) CONTRADICTING live data 33% WR (n=30, -$154). SOL_SHORT_full_block remains at 100%. Do not escalate sim data over live data.",
+      "action": "HOLD \u2014 wait for live trades post-restart to validate"
+    },
+    "s2_forensics": "SKIPPED \u2014 trades.csv empty (bot offline 226h); snapshot_entry missing for slippage",
+    "s3_injection": "high_edges=2, weak_setups=0; SOL_SHORT 63.7% WR + BTC_LONG 63.9% in sim (live data contradicts)",
+    "s4_synthesis": "anomalies=1 (strategy_concentration); bot offline 226h; 0 live trades today",
+    "s5_model_opt": "0 swaps; $0.0248/cycle; $7.43/month at 300 cycles",
+    "high_priority": [
+      "BOT_OFFLINE 226h \u2014 restart needed, 45 A/B gates frozen",
+      "F1_sniper still PENDING safety review \u2014 highest profit lever",
+      "ILLIQUID_HOLD_TIMEOUT_RULE added (gate=20%) \u2014 codifies validated insight n=164 conf=0.87",
+      "SOL_SHORT sim/live conflict: do NOT unblock based on sim data"
     ]
   }
 }
