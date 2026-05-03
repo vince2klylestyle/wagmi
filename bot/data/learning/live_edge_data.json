@@ -1,7 +1,7 @@
 {
-  "last_run": "2026-05-03T19:08:52.066630+00:00",
-  "data_source": "Historical accumulated (352 resolved trades) \u2014 no live trades since 2026-04-23",
-  "note": "Edge data is historical, not real-time. Restart bot to refresh.",
+  "last_run": "2026-05-03T20:12:47+00:00",
+  "data_source": "Historical accumulated (352 resolved trades) + orphan rule analysis \u2014 no live trades since 2026-04-23",
+  "note": "Edge data is historical. Restart bot to refresh.",
   "high_edges": [
     {
       "setup": "ETH_SHORT",
@@ -47,8 +47,29 @@
       "verdict": "AVOID \u2014 below break-even"
     }
   },
-  "top_edge": "ETH_SHORT+trending+morning = estimated 80%+ WR (confirmed by ETH_SHORT 80% WR + trending 51.9% + morning boost)",
-  "top_killer": "SOL_SHORT: 33% WR on 30 trades = -$154.35 total (hard-blocked at 100% gate)",
+  "new_insights_this_run": {
+    "BTC_SHORT_70_80_conf_block": {
+      "setup": "BTC_SHORT_conf70_80",
+      "wr": null,
+      "verdict": "BLOCK \u2014 BTC SHORT at 70-79% confidence = worst loss bucket (orphan rule BTC_SHORT_CONF70_80_BLOCK conf=90%)"
+    },
+    "night_session_confirmed": {
+      "setup": "night_session_00_06UTC",
+      "wr": 0.19,
+      "trades": 27,
+      "pnl_total": -136.83,
+      "verdict": "BLOCK \u2014 19% WR on 27 live trades (orphan rule NIGHT_SESSION_ESCALATE conf=88%)"
+    },
+    "exit_proactive_opportunity": {
+      "setup": "proactive_SL_avoidance",
+      "wr": null,
+      "finding": "93.3% of SL hits may be preventable via proactive early close (EXIT_PROACTIVE_CLOSE_PRIORITY conf=93%)",
+      "verdict": "PRIORITY: Wire Exit agent to make early-close recommendations before SL hits"
+    }
+  },
+  "top_edge": "ETH_SHORT+trending+morning = ~80%+ WR (5 live trades + 70% historical pattern)",
+  "top_killer": "SOL_LONG: 24% WR on 34 trades, -$21.89. HYPE_LONG: 23% WR on 35 trades, -$77.26",
+  "new_block": "BTC_SHORT at 70-79% confidence (orphan rule finding: worst loss bucket)",
   "injection_prompt_update": {
     "boost_setups": [
       "ETH_SHORT",
@@ -60,6 +81,12 @@
       "SOL_LONG"
     ],
     "regime_filter": "Only trade in TRENDING regime unless conf > 85%",
-    "time_filter": "Prefer 06:00-12:00 UTC (morning edge confirmed 71-75% WR)"
-  }
+    "time_filter": "Prefer 06:00-12:00 UTC (morning edge confirmed 71-75% WR)",
+    "new_block_conf_range": "BTC_SHORT at 70-79% confidence \u2014 avoid or reduce to 50% size",
+    "night_session_block": "00:00-06:00 UTC fully blocked (19% WR, 27 trades, -$136.83)",
+    "early_close_priority": "Exit agent should proactively close before SL in 93% of cases"
+  },
+  "high_edges_found": 1,
+  "weak_setups_found": 3,
+  "new_insights_found": 3
 }

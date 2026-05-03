@@ -1,133 +1,103 @@
 {
-  "last_run": "2026-05-03T19:10:03.681781+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_03_1910",
+  "last_run": "2026-05-03T20:12:47+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_03_2012",
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETE",
-      "fixes_applied": 5,
-      "gates_active": 50,
-      "graduation_ready_null_treatment": 32,
-      "critical_gap": "32 rules graduation-ready but treatment_wr=null (A/B outcome tracking broken)"
+      "fixes_applied": 12,
+      "gates_active": 54,
+      "orphans_merged": 8,
+      "new_rules_added": 3,
+      "gate_escalations": 1,
+      "null_treatment_rules": 53,
+      "critical_gap": "evaluate_active_fixes() is a TODO stub"
     },
     "execution_forensics": {
       "status": "PARTIAL \u2014 no live data",
       "avg_slippage": "UNKNOWN (no live trades)",
       "noise_stop_problem": "71.9% of illiquid-regime stops hit in noise (57 historical trades)",
-      "win_median_hold_h": 3.3,
-      "loss_median_hold_h": 1.5,
-      "data_gap": "Bot offline 9.8 days \u2014 restart required for live forensics"
+      "structural_gap": "No snapshot_entry in trades.csv \u2014 slippage unmeasurable even when live",
+      "data_gap": "Bot offline 10.08 days"
     },
     "live_injection": {
-      "status": "COMPLETE \u2014 historical data",
+      "status": "COMPLETE \u2014 historical + orphan rule data",
       "high_edges_found": 1,
-      "high_edges": [
-        {
-          "setup": "ETH_SHORT",
-          "wr": 0.8,
-          "trades": 5,
-          "pnl_total": 0.94
-        }
-      ],
       "weak_setups_found": 3,
-      "weak_setups": [
-        {
-          "setup": "HYPE_LONG",
-          "wr": 0.23,
-          "trades": 35,
-          "pnl_total": -77.26
-        },
-        {
-          "setup": "SOL_LONG",
-          "wr": 0.24,
-          "trades": 34,
-          "pnl_total": -21.89
-        },
-        {
-          "setup": "BTC_LONG",
-          "wr": 0.18,
-          "trades": 17,
-          "pnl_total": -0.08
-        }
-      ],
-      "regime_edges": {
-        "trending": {
-          "wr": 0.519,
-          "verdict": "VIABLE"
-        },
-        "illiquid": {
-          "wr": 0.281,
-          "verdict": "LOSING"
-        },
-        "ranging": {
-          "wr": 0.25,
-          "verdict": "LOSING"
-        }
-      }
+      "new_insights_found": 3,
+      "new_block": "BTC_SHORT 70-79% confidence",
+      "new_opportunity": "Exit proactive close \u2014 93.3% SL prevention"
     },
     "daily_synthesis": {
       "status": "COMPLETE",
-      "anomalies_found": 2,
+      "anomalies_found": 4,
       "report_generated": true,
-      "bot_offline_hours": 235.2,
-      "trailing_loss_streak": 4,
-      "equity": 497.05,
-      "dd_from_start_pct": 90.06
+      "bot_offline_hours": 241.9,
+      "new_anomalies_this_run": 2,
+      "trailing_loss_streak": 4
     },
     "model_optimization": {
       "status": "SKIPPED \u2014 no cost_tracker.json",
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
-      "note": "Re-evaluate after 50 live trades"
+      "note": "Static estimate: $0.0062/decision cycle"
     }
   },
   "high_priority_findings": [
     {
-      "subsystem": "daily_synthesis",
+      "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "Bot offline 9.8 days (since 2026-04-23 22:17 UTC). Zero live data collection. All A/B tests frozen.",
-      "action": "RESTART BOT with soft-start protocol: 50% sizing, max 3x leverage for first 5 trades"
+      "finding": "evaluate_active_fixes() in auto_fix_pipeline.py is a TODO stub \u2014 treatment_wr is NEVER computed for any A/B rule. 47 rules perpetually have treatment_wr=None. No rule can ever auto-graduate without this implementation.",
+      "action": "Implement evaluate_active_fixes(): split trades by gate hash (treatment vs control), compute WR for each group, write treatment_wr back to graduated_rules.json"
     },
     {
       "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "32 A/B rules have met sample thresholds but treatment_wr=null for ALL. A/B outcome tracking is not writing results back. Rules cannot auto-graduate.",
-      "action": "Diagnose A/B result tracking mechanism; wire trade outcomes to graduated_rules.json treatment_wr field"
-    },
-    {
-      "subsystem": "daily_synthesis",
-      "severity": "HIGH",
-      "finding": "4 consecutive losses on last active session + circuit breaker engaged. Restart will require manual override or cool-off.",
-      "action": "Apply RESTART_SOFT_START_4LOSS rule: gate first 5 trades at 50% size until 2 wins"
+      "finding": "Bot offline 10.08 days (since 2026-04-23 22:17 UTC). Zero trade data. All A/B tests frozen. Circuit breaker engaged (4 consecutive losses).",
+      "action": "Restart bot with RESTART_SOFT_START_4LOSS rule (now at gate=80%): 50% sizing, max 3x leverage for first 10 trades until 2 wins achieved"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "5 PENDING_HUMAN_REVIEW items blocking progress: [F1_sniper, LLM_REGIME_CAPTURE_GAP (99%), BTC_TOTAL_CONCENTRATION (99%), HIGH_CONF_CALIBRATION_DRIFT (88%), BTC_CONCENTRATION_MONITOR (82%)]",
-      "action": "Schedule human review session \u2014 especially LLM_REGIME_CAPTURE_GAP (conf=99%) and F1_sniper (highest profit lever)"
-    },
-    {
-      "subsystem": "live_injection",
-      "severity": "HIGH",
-      "finding": "Only ETH_SHORT qualifies as high edge (80% WR, 5 trades). All other patterns below 60%. System lacks breadth \u2014 over-reliant on single setup.",
-      "action": "Focus bot on ETH_SHORT + BTC_SHORT in trending regime + morning window. Block HYPE_LONG/SOL_LONG/SOL_SHORT (already at gate=100% but verify execution)"
+      "finding": "29 rules in rules_added_* sub-buckets were NOT in main rules list \u2014 signal pipeline was silently ignoring them. Merged 7 this run.",
+      "action": "Add orphan check to hourly loop: if rule in any rules_added_* not in rules[], alert + merge"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "HIGH",
-      "finding": "71.9% of illiquid-regime stops hit within noise band (1.5h median hold). Minimum-hold guard for trending regime would filter structural noise exits.",
-      "action": "Verify TRENDING_EARLY_HOLD_GUARD (gate=80%, n=164) is actively applied. Consider graduating to APPLIED given definitive evidence."
+      "finding": "SLIPPAGE_TRACKING_GAP: trades.csv has no snapshot_entry column. Even when bot runs, slippage is structurally unmeasurable.",
+      "action": "Add snapshot_entry field to trade logging at signal time (before order execution). Also add fill_status column for partial fill tracking."
+    },
+    {
+      "subsystem": "live_injection",
+      "severity": "HIGH",
+      "finding": "BTC_SHORT at 70-79% confidence = worst loss bucket (orphan rule BTC_SHORT_CONF70_80_BLOCK, conf=90%). Night session 00-06 UTC: 19% WR on 27 trades, -$136.83 (catastrophic).",
+      "action": "Add BTC_SHORT 70-79% confidence block to execution filter. Night session block already in NIGHT_session_pause (gate=100%) \u2014 verify it's wired."
     },
     {
       "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "RULE_CONFLICT_SOL_SHORT: SOL_SHORT_full_block (gate=100%) makes SOL_SHORT_suspension_reversal_probe (gate=20%) ungatherable \u2014 probe has 0 trades to measure.",
+      "action": "Human decision: lower SOL_SHORT_full_block to gate=80% to feed probe, OR merge probe exception into block rule. Added to PENDING_HUMAN_REVIEW."
+    },
+    {
+      "subsystem": "live_injection",
       "severity": "MEDIUM",
-      "finding": "5 gate escalations applied this run: HYPE_SHORT_hard_block, BTC_STOP_EXPANSION, SOL_HIGH_CONF_premium, BTC_HIGH_CONF_90plus, HYPE_LOW_CONF_block_v2 all promoted from 20% to 80% gate (conf \u226580%, samples at threshold).",
-      "action": "Monitor these 5 rules on bot restart for treatment_wr measurement"
+      "finding": "EXIT_PROACTIVE_CLOSE_PRIORITY (conf=93%): 93.3% of SL hits may be preventable via proactive early close by Exit agent. Total recoverable losses unknown without live data.",
+      "action": "Wire Exit agent recommendation to trigger early-close before SL hits. Measure: % of SL hits where Exit agent had flagged position."
+    },
+    {
+      "subsystem": "model_optimization",
+      "severity": "LOW",
+      "finding": "No cost_tracker.json \u2014 model optimization deferred. Static estimate: $0.0062/decision cycle.",
+      "action": "Re-evaluate after 50 live trades when cost data becomes available."
     }
   ],
   "next_run_focus": [
     "Collect fresh trade data (bot restart required)",
-    "Measure slippage on first 20 live trades",
-    "Begin filling treatment_wr fields for top-10 priority A/B rules",
-    "Verify HYPE_LONG_hard_block and SOL_LONG_hard_block active at gate=100%"
+    "Implement evaluate_active_fixes() \u2014 prerequisite for A/B system",
+    "Add snapshot_entry to trade logging for slippage measurement",
+    "Human review: RULE_CONFLICT_SOL_SHORT (enables reversal probe)",
+    "Verify NIGHT_session_pause (gate=100%) is wired in execution",
+    "Wire BTC_SHORT 70-79% confidence block to execution filter"
   ]
 }
