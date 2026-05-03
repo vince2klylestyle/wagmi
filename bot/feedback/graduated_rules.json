@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-03T20:12:47+00:00",
+  "last_updated": "2026-05-03T21:08:36.791828Z",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -1559,6 +1559,501 @@
         "CONF_70_HARD_FLOOR",
         "SOL_STOP_MIN_0.9PCT"
       ]
+    },
+    {
+      "rule_id": "STALE_AB_DATA_FLAG",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 bot offline audit",
+      "description": "All 38 A/B gates stalled: bot offline 65h since 2026-04-23T22:17Z. Zero new trades = zero learning. All treatment_wr remain null.",
+      "problem": "A/B feedback loop is open indefinitely. 38 active gates, 0 graduating. Rules cannot be confirmed or rejected without trade data flowing.",
+      "fix_applied": "TRACKING: Flagged in auto_fix_state.json and master_engine_state.json. Pre-restart checklist updated.",
+      "status": "TRACKING",
+      "confidence": 100,
+      "gate_percentage": 0,
+      "applied_date": "2026-04-26",
+      "urgency": "CRITICAL",
+      "root_cause": "Bot offline (circuit breaker or process crash). Equity $497.05 at last save 2026-04-23T22:17Z.",
+      "resolution": "Restart bot with BOT_INACTIVE_ALERT pre-flight checklist. Implement AB_RESULT_TRACKER in feedback/loop.py.",
+      "merged_at": "2026-05-03T21:08:36.791672Z"
+    },
+    {
+      "rule_id": "SOL_LONG_DEDUP",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 rule deduplication audit",
+      "description": "SOL_LONG_reduce and SOL_LONG_systematic_block are identical rules (both -10pt confidence, both 20% gate, both on SOL LONG, same sample_count=34). Double-penalty risk if both evaluated.",
+      "fix_applied": "SOL_LONG_reduce marked SUPERSEDED. SOL_LONG_systematic_block is canonical.",
+      "status": "SUPERSEDED",
+      "confidence": 90,
+      "applied_date": "2026-04-26",
+      "supersedes": "SOL_LONG_reduce",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791789Z"
+    },
+    {
+      "rule_id": "HYPE_LONG_DEDUP",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 rule deduplication audit",
+      "description": "HYPE_LONG_near_block (-15pt confidence, 20% gate) and HYPE_LONG_hard_reduce (skip signal, 20% gate) target same setup. Different mechanisms but same cohort = inconsistent treatment.",
+      "fix_applied": "HYPE_LONG_hard_reduce elevated to primary (more aggressive, cleaner signal). HYPE_LONG_near_block marked SUPERSEDED.",
+      "status": "SUPERSEDED",
+      "confidence": 88,
+      "applied_date": "2026-04-26",
+      "supersedes": "HYPE_LONG_near_block",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791795Z"
+    },
+    {
+      "rule_id": "AB_RESULT_TRACKER",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25",
+      "description": "SYSTEM GAP: 20 of 34 A/B active rules have treatment_wr=null \u2014 A/B feedback loop is open, not closing. Implement cohort-tagging in live trades and auto-compute treatment_wr per rule.",
+      "problem": "Without treatment_wr data, no A/B rule can graduate. 34 active gates are generating exposure but producing no learning signal. Rules like INSTANT_SL_stop_buffer (50% gate, 370 SL hits context) and BB_solo_signal_boost (50% gate, 95% conf) are blind to their own outcomes.",
+      "proposed_fix": "Tag each live trade with active A/B cohort membership. After close, read trade outcome and update treatment_wr for matching rule in graduated_rules.json. Implement in feedback/loop.py post-trade hook.",
+      "confidence": 100,
+      "gate_percentage": 100,
+      "status": "A/B_ACTIVE",
+      "applied_date": "2026-04-25",
+      "graduated_date": "2026-04-26",
+      "graduated_by": "perpetual_improvement_loop",
+      "priority": "CRITICAL",
+      "implementation_target": "bot/feedback/loop.py \u2014 post-trade hook: tag trade with active A/B rule cohort membership; on close, update treatment_wr in graduated_rules.json",
+      "merged_at": "2026-05-03T21:08:36.791797Z"
+    },
+    {
+      "rule_id": "SOL_SHORT_GATE_ESCALATE",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25",
+      "description": "Escalate SOL_SHORT_edge_promote from 20% gate to 50%: confirmed 63.7% WR, +$5807 PnL on 179 trades.",
+      "problem": "SOL_SHORT is the #1 profit driver in the 965-trade dataset. SOL_SHORT_edge_promote A/B rule at 20% gate since 2026-04-25 \u2014 confidence 90%, sample 179 >= min_sample 30. Meets graduation criteria. Escalate gate.",
+      "proposed_fix": "Update SOL_SHORT_edge_promote gate_percentage from 20 to 50. Maintain +5pt confidence and 1.1x size boost in treatment cohort.",
+      "confidence": 90,
+      "gate_percentage": 50,
+      "status": "SUPERSEDED",
+      "block_reason": "Live paper trading data (52 actual trades) shows SOL WR=34.6%, -$176.24 \u2014 the single largest loss driver. Escalating SOL_SHORT gate would amplify a losing setup. Blocked by 2026-04-25 hourly run. Re-evaluate after 30+ live trades in clearly trending regime show SOL WR > 55%.",
+      "applied_date": "2026-04-25",
+      "baseline_wr": 0.637,
+      "treatment_wr": null,
+      "priority": "BLOCKED",
+      "superseded_by": "SOL_SHORT_full_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791799Z"
+    },
+    {
+      "rule_id": "SOL_SHORT_LIVE_CONTRADICTION",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_25 \u2014 live vs backtest reconciliation",
+      "description": "CRITICAL: SOL live paper WR=34.6% on 52 trades (-$176.24) contradicts backtest claim of 63.7% WR. SOL is the PRIMARY LOSS DRIVER.",
+      "problem": "Rules SOL_SHORT_edge_promote and SOL_SHORT_priority_boost were promoting SOL SHORT based on 965-trade backtest. Live paper trading shows SOL is the worst performing asset (64% of all PnL losses, 82.7% SL rate). Backtest performance did not transfer to live execution.",
+      "fix_applied": "APPLIED: SOL_SHORT_edge_promote and SOL_SHORT_priority_boost status changed to SUSPENDED_LIVE_CONTRADICTION. SOL_SHORT_GATE_ESCALATE blocked. SOL de-prioritized.",
+      "status": "APPLIED",
+      "confidence": 95,
+      "gate_percentage": 100,
+      "applied_date": "2026-04-25",
+      "live_data": {
+        "symbol": "SOL",
+        "wins": 18,
+        "total": 52,
+        "wr": 0.346,
+        "pnl": -176.24,
+        "sl_hits": 43,
+        "sl_rate": 0.827
+      },
+      "backtest_claim": {
+        "wr": 0.637,
+        "pnl": 5807,
+        "trades": 179,
+        "source": "perpetual_improvement_loop 965-trade dataset"
+      },
+      "reconciliation_hypothesis": "Live paper trading uses real spreads, slippage, and current market conditions. Backtest may have used favorable historical data with lower SOL volatility or better fill conditions. SOL's 82.7% SL rate indicates entries are systematically hitting noise before trend develops.",
+      "reactivation_criteria": "Re-activate SOL_SHORT_edge_promote when: (1) 30+ consecutive live SOL trades show WR > 55%; (2) bot running in trending-only regime filter; (3) stop widths verified >= 1.0% for SOL signals.",
+      "merged_at": "2026-05-03T21:08:36.791800Z"
+    },
+    {
+      "rule_id": "HYPE_LONG_near_block",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 pattern health analysis (352 resolved trades)",
+      "description": "HYPE_LONG: 23% WR on 35 trades, -$77.26 PnL. All-time second-worst pattern. Near-block HYPE LONG signals with confidence penalty.",
+      "problem": "HYPE_EV_CONFIRMED_NEGATIVE applies 0.5x size to all HYPE. HYPE_LONG at 23% WR on 35 trades is structurally losing. HYPE_BUY_CS_block covers confidence_scorer source only; other HYPE LONG entry triggers uncovered.",
+      "fix_applied": "A/B gate at 20% \u2014 20% of HYPE LONG signals get -15pt confidence penalty (stacks with existing 0.5x size from HYPE_EV_CONFIRMED_NEGATIVE)",
+      "action": "ensemble.py or signal_pipeline.py: if symbol==HYPE and side==BUY, apply -15pt confidence penalty in 20% A/B cohort",
+      "status": "SUPERSEDED",
+      "confidence": 80,
+      "gate_percentage": 20,
+      "baseline_wr": 0.23,
+      "treatment_wr": null,
+      "sample_count": 35,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T15:00:00Z",
+      "min_sample_to_graduate": 20,
+      "expected_impact": "Avoid ~$2.21/trade on HYPE_LONG signals at 23% WR; second-worst pattern by all-time PnL",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791801Z"
+    },
+    {
+      "rule_id": "SOL_LONG_reduce",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 pattern health analysis (352 resolved trades)",
+      "description": "SOL_LONG: 24% WR on 34 trades, -$21.89 PnL. SOL SHORT rules suspended. SOL LONG has no treatment rule.",
+      "problem": "SOL_SHORT_LIVE_CONTRADICTION and SOL_SHORT_priority_boost are SUSPENDED. SOL_LONG with 24% WR on 34 trades (first-quartile performance, -$21.89) has no corresponding treatment. Both SOL directions are underperforming.",
+      "fix_applied": "A/B gate at 20% \u2014 20% of SOL LONG signals get -10pt confidence penalty in treatment cohort",
+      "action": "signal_pipeline.py or ensemble.py: if symbol==SOL and side==BUY, apply -10pt confidence penalty in 20% A/B cohort",
+      "status": "SUPERSEDED",
+      "confidence": 78,
+      "gate_percentage": 20,
+      "baseline_wr": 0.24,
+      "treatment_wr": null,
+      "sample_count": 34,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T15:00:00Z",
+      "min_sample_to_graduate": 25,
+      "expected_impact": "SOL_LONG at 24% WR with 1.5:1 R:R assumption = negative EV. Filtering reduces -$0.64/trade avg drag on SOL LONG setups",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791802Z"
+    },
+    {
+      "rule_id": "ILLIQUID_gate_escalate",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 regime forensics (57 illiquid trades, 28.1% WR)",
+      "description": "ILLIQUID_regime_block has been at 20% gate since 2026-04-24 with 78% confidence and 57 samples >> 25 min_sample. Escalate to 35%.",
+      "problem": "ILLIQUID_regime_block A/B gate at 20% for 57 trades, min_sample=25 (already met). 78% confidence with 57 confirmed illiquid-regime trades at 28.1% WR. Gate should escalate per graduation criteria.",
+      "fix_applied": "Escalate ILLIQUID_regime_block gate_percentage from 20% to 35%",
+      "action": "Update ILLIQUID_regime_block gate_percentage: 20 \u2192 35 in graduated_rules.json",
+      "status": "SUPERSEDED",
+      "confidence": 78,
+      "gate_percentage": 35,
+      "baseline_wr": 0.281,
+      "applied_date": "2026-04-26",
+      "supersedes": "ILLIQUID_regime_block gate_percentage update only",
+      "superseded_by": "ILLIQUID_regime_block (80%)",
+      "merged_at": "2026-05-03T21:08:36.791804Z"
+    },
+    {
+      "rule_id": "BTC_LONG_LIVE_CONTRADICTION",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26 \u2014 live vs backtest reconciliation (134 resolved trades)",
+      "description": "CRITICAL: BTC_LONG live WR=19% on 16 trades (100% SL rate, -$0.08 PnL) contradicts BTC_BUY_BB_golden claim of 69% WR.",
+      "problem": "BTC_BUY_BB_golden (A/B at 50%, conf=91%) claims 69% WR from 2172-signal backtest. Live paper trading shows BTC_LONG at 19% WR, 100% SL rate on 16 trades. This mirrors the SOL_SHORT contradiction (backtest 63.7% vs live 33%). Backtest performance is not transferring to live execution. BTC_BUY_BB_golden is actively promoting a losing setup with 50% gate exposure.",
+      "fix_applied": "A/B gate at 20% \u2014 SUSPEND BTC_BUY_BB_golden +10pt boost. Apply -5pt penalty to BTC_LONG signals instead. BTC_BUY_BB_golden status set to SUSPENDED_LIVE_CONTRADICTION.",
+      "status": "A/B_ACTIVE",
+      "confidence": 85,
+      "gate_percentage": 20,
+      "baseline_wr": 0.19,
+      "treatment_wr": null,
+      "sample_count": 16,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T04:00:00Z",
+      "min_sample_to_graduate": 20,
+      "action": "ensemble.py or signal_pipeline.py: REMOVE +10pt BTC_BUY_BB boost; apply -5pt penalty to BTC_LONG signals in A/B cohort. Monitor treatment_wr vs baseline.",
+      "live_data": {
+        "symbol": "BTC",
+        "side": "LONG",
+        "wins": 3,
+        "total": 16,
+        "wr": 0.1875,
+        "sl_rate": 1.0,
+        "pnl": -0.08
+      },
+      "backtest_claim": {
+        "wr": 0.69,
+        "source": "BTC_BUY_BB_golden rule, insight_journal 2172-signal backtest"
+      },
+      "reactivation_criteria": "Re-activate BTC_BUY_BB_golden when 25+ live BTC_LONG trades show WR > 50%.",
+      "supersedes": "BTC_BUY_BB_golden (suspend that rule's +10pt boost)",
+      "merged_at": "2026-05-03T21:08:36.791805Z"
+    },
+    {
+      "rule_id": "MORNING_EDGE_REVIEW",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26 \u2014 live vs meta_learning contradiction (18 morning trades)",
+      "description": "WATCHLIST: Morning live WR=28% on 18 trades (-$76.94) contradicts meta_learning claim of 71% morning WR. Insufficient n to suspend but flagging.",
+      "problem": "meta_learning/insights.json consistently claims morning (6-12 UTC) = 71% WR. Live data shows morning = 28% WR on 18 trades, -$76.94. This is the second meta_learning claim that is not matching live results (first was SOL_SHORT 63.7% vs 33% live). May indicate meta_learning insights are computed from backtest signals, not live trades.",
+      "fix_applied": "WATCHLIST only. No action until n>=25 live morning trades. Monitor and compare.",
+      "status": "WATCHLIST",
+      "confidence": 72,
+      "gate_percentage": 0,
+      "baseline_wr": 0.28,
+      "treatment_wr": null,
+      "sample_count": 18,
+      "applied_date": "2026-04-26",
+      "min_sample_to_graduate": 25,
+      "action": "Monitor morning WR. If live morning WR < 40% after 25 trades, suspend TOD_morning_edge rule and EVENING_session_boost rule (same data source may be wrong).",
+      "reactivation_note": "If meta_learning morning edge is wrong, the evening edge (EVENING_session_boost) may also be from same unreliable source. Evening live data (46% WR, 41 trades) is at least net-positive and consistent.",
+      "merged_at": "2026-05-03T21:08:36.791806Z"
+    },
+    {
+      "rule_id": "HYPE_SHORT_PAYOFF_BLOCK",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 execution forensics backtest_10d.csv (317 trades)",
+      "description": "HYPE_SHORT mid-confidence payoff catastrophic: -$2381.81 on 61 backtest trades despite 47.5% WR. Avg loss/win ratio severely negative.",
+      "problem": "HYPE_EV_CONFIRMED_NEGATIVE applies 0.5x size to ALL HYPE. HYPE_SHORT avg payoff = -$39.05/trade in backtest. HYPE_SHORT_block_high_conf covers >90% conf; mid-conf (70-89%) HYPE SHORTs are unblocked. Live paper: HYPE_SHORT 33% WR -$24.41 on 6 trades confirms direction.",
+      "fix_applied": "A/B gate at 20% \u2014 HYPE SHORT signals in conf range 70-89% get -10pt confidence penalty, stacking with existing 0.5x size",
+      "action": "ensemble.py or signal_pipeline.py: if symbol==HYPE and side==SHORT and 70<=confidence<90, apply -10pt penalty in 20% A/B cohort",
+      "status": "A/B_ACTIVE",
+      "confidence": 82,
+      "gate_percentage": 50,
+      "baseline_wr": 0.475,
+      "treatment_wr": null,
+      "sample_count": 61,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T15:15:00Z",
+      "min_sample_to_graduate": 20,
+      "expected_impact": "Reducing HYPE_SHORT mid-conf losses; avg payoff -$39/trade is worst in dataset by magnitude",
+      "last_escalated": "2026-05-02T18:15:00.000000+00:00",
+      "escalation_reason": "conf=82%, n=61 \u2192 escalate 20%\u219250%: n=61, conf=82, HYPE_SHORT 54.4% WR on 239 trades insufficient payoff",
+      "merged_at": "2026-05-03T21:08:36.791807Z"
+    },
+    {
+      "rule_id": "BTC_STOP_MIN_0.8PCT",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 execution forensics backtest_10d.csv (317 trades)",
+      "description": "BTC avg stop width = 0.494%. 56.8% of ALL stops system-wide below 0.7% noise floor. BTC noise stops destroy edge.",
+      "problem": "Existing BTC_NOISE_SL_widen gates <0.7% stops at 20% cohort. But BTC avg is 0.494% \u2014 already below threshold. Gate needs to escalate AND minimum threshold needs to increase to 0.8% to match BTC volatility. 47 of 47 BTC losses in backtest are instant SL hits.",
+      "fix_applied": "Escalate BTC_NOISE_SL_widen gate from 20% to 50%. Tighten rejection threshold from <0.7% to <0.8%.",
+      "action": "Update BTC_NOISE_SL_widen: gate_percentage 20\u219250; reject BTC signals where abs(entry-sl)/entry < 0.008",
+      "status": "ESCALATION",
+      "confidence": 80,
+      "gate_percentage": 50,
+      "baseline_wr": 0.489,
+      "treatment_wr": null,
+      "sample_count": 92,
+      "applied_date": "2026-04-26",
+      "supersedes": "BTC_NOISE_SL_widen (escalates gate 20%\u219250%, tightens threshold 0.7%\u21920.8%)",
+      "expected_impact": "47 instant BTC SL hits in backtest \u2014 eliminating these via tighter stop filtering should improve BTC PnL meaningfully",
+      "merged_at": "2026-05-03T21:08:36.791808Z"
+    },
+    {
+      "rule_id": "CONF_CALIBRATION_INVERSION_AUDIT",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 confidence bin cross-validation (backtest vs live)",
+      "description": "CRITICAL AUDIT: Backtest shows conf 60-70% = 53.4% WR (BEST), conf 90%+ = 42.1% WR (WORST). Live paper claims opposite: 90%+ is primary profit driver. Confidence calibration signal is unresolvable without data audit.",
+      "problem": "Backtest (317 trades): 60-70%=53.4%, 70-80%=48.9%, 80-90%=47.0%, 90%+=42.1%. Live paper rules built on: 60-70%=46.3% WR WORST, 90%+=56% WR BEST. This inversion means ALL confidence-routing rules (CONF_70_HARD_FLOOR, confidence_60_70_ROUTING_FIX, etc.) may be targeting the wrong direction. Rules could be HURTING not helping.",
+      "fix_applied": "AUDIT_FREEZE: do not escalate any confidence-routing rule gates beyond current levels until data sources reconciled. This rule blocks escalation of CONF_70_HARD_FLOOR, CONF_60_70_all_block, and confidence_60_70_ROUTING_FIX.",
+      "action": "FREEZE: Do not escalate confidence-routing rules. Investigate whether backtest_10d.csv and live paper trades use same confidence calibration model. Backtest llm_confidence field is empty \u2014 may mean confidence in backtest was assigned differently.",
+      "status": "RESOLVED",
+      "confidence": 88,
+      "gate_percentage": 0,
+      "applied_date": "2026-04-26",
+      "resolved_date": "2026-04-27",
+      "resolution": "Full 965-trade analysis confirms 60-70% WR=46.3% (WORST), 90%+ WR=56% (BEST by EV). No inversion. Live and backtest agree. Freeze lifted. See CONF_CALIBRATION_RESOLVED.",
+      "urgency": "HIGH",
+      "investigation_note": "backtest_10d.csv llm_confidence column is empty for all rows \u2014 backtest uses 'confidence' column which is signal confidence, not LLM-assigned confidence. Live paper may be using LLM confidence. These are DIFFERENT metrics being compared as if same.",
+      "resolution_path": "Separate signal confidence (from strategies) vs LLM confidence (from agent pipeline). Re-run bin analysis only on live trades with LLM confidence populated.",
+      "merged_at": "2026-05-03T21:08:36.791809Z"
+    },
+    {
+      "rule_id": "BOT_INACTIVE_ALERT",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_15 \u2014 paper_trading_2026-04-26_1500.md",
+      "description": "OPERATIONAL: Bot has been offline 65+ hours since 2026-04-23 22:17 UTC. No trades since 4-trade loss streak. Equity $497.05 (-90.1%).",
+      "problem": "Bot entered 4-trade consecutive loss streak and appears to have stopped (likely circuit breaker or process crash). Consecutive losses: SOL -$12.93, HYPE -$38.80, BTC -$0.02, HYPE -$40.99. No automatic restart. 65+ hours of missed opportunity (or avoided further losses).",
+      "fix_applied": "TRACKING: Flag as critical operational issue. Before restarting, confirm: (1) circuit breaker state in trading_config.py, (2) equity-relative sizing is correct at $497 base, (3) HYPE and SOL block rules are active.",
+      "action": "HUMAN REVIEW REQUIRED: Check if bot crashed or circuit-breaker triggered. Verify risk limits scale to current $497 equity before restart.",
+      "status": "PENDING_HUMAN_REVIEW",
+      "confidence": 100,
+      "gate_percentage": 0,
+      "applied_date": "2026-04-26",
+      "urgency": "CRITICAL",
+      "pre_restart_checklist": [
+        "Verify circuit breaker daily loss limit scales to $497 equity (not original $5000)",
+        "Confirm HYPE_EV_CONFIRMED_NEGATIVE 0.5x size is loaded",
+        "Confirm SOL_SHORT is suspended (SOL_SHORT_LIVE_CONTRADICTION)",
+        "Confirm BTC_BUY_BB_golden is suspended (BTC_LONG_LIVE_CONTRADICTION)",
+        "Set LLM_MODE > 0 if previously 0 (was causing 50 LLM rejections per 70 min)",
+        "Check for process crash vs intentional circuit breaker stop"
+      ],
+      "merged_at": "2026-05-03T21:08:36.791810Z"
+    },
+    {
+      "rule_id": "SOL_LONG_systematic_block",
+      "source": "master_engine_state 2026-04-26 \u2014 pattern_health analysis",
+      "description": "SOL_LONG at 24% WR across 34 trades, -$21.89 PnL \u2014 systematic losing pattern",
+      "problem": "SOL_LONG has 24% WR on 34 trades (-$21.89). Break-even at 1:1 R:R requires ~50% WR. No edge detected across any observed period.",
+      "fix_applied": "A/B gate at 20%: treatment cohort receives -10 confidence penalty on SOL_LONG signals. Track treatment vs baseline WR.",
+      "action": "Apply -10 confidence penalty to SOL_LONG signals in treatment cohort. Graduate to full block if treatment WR > baseline after 20 samples.",
+      "status": "SUPERSEDED",
+      "confidence": 80,
+      "gate_percentage": 20,
+      "baseline_wr": 0.24,
+      "treatment_wr": null,
+      "sample_count": 34,
+      "min_sample_to_graduate": 20,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T15:30:00Z",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791811Z"
+    },
+    {
+      "rule_id": "HYPE_LONG_hard_reduce",
+      "source": "master_engine_state 2026-04-26 \u2014 pattern_health analysis",
+      "description": "HYPE_LONG at 23% WR across 35 trades, -$77.26 PnL \u2014 #2 loss driver by absolute PnL",
+      "problem": "HYPE_LONG 23% WR, 35 trades, -$77.26. Existing HYPE_EV_CONFIRMED_NEGATIVE only reduces sizing (0.5x). No signal-level block in place.",
+      "fix_applied": "A/B gate at 20%: treatment cohort skips HYPE_LONG signals entirely (confidence set to 0/skip). Complements HYPE_EV_CONFIRMED_NEGATIVE sizing reduce.",
+      "action": "Skip HYPE_LONG signals in treatment cohort. If treatment avoids losses and baseline continues to lose, graduate to 100% block.",
+      "status": "SUPERSEDED",
+      "confidence": 85,
+      "gate_percentage": 20,
+      "baseline_wr": 0.23,
+      "treatment_wr": null,
+      "sample_count": 35,
+      "min_sample_to_graduate": 20,
+      "applied_date": "2026-04-26",
+      "ab_cohort_start": "2026-04-26T15:30:00Z",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791813Z"
+    },
+    {
+      "rule_id": "HYPE_EV_ESCALATE_0.25x",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_27 \u2014 payoff ratio analysis (397 HYPE trades)",
+      "description": "HYPE structurally negative even at 0.5x sizing: total PnL = -$5,013 at 1x, -$2,507 at 0.5x (current). Escalate to 0.25x.",
+      "problem": "HYPE_EV_CONFIRMED_NEGATIVE halves sizing to 0.5x but HYPE remains deeply negative across 397 trades. HYPE_SHORT payoff_ratio=0.650, HYPE_LONG payoff_ratio=0.684 \u2014 both structurally negative EV.",
+      "fix_applied": "Escalate HYPE sizing: 0.5x to 0.25x. A/B gate at 20%.",
+      "action": "execution/leverage.py: reduce HYPE position sizing multiplier from 0.5x to 0.25x in 20% A/B cohort",
+      "status": "SUPERSEDED",
+      "confidence": 82,
+      "gate_percentage": 50,
+      "baseline_pnl_per_trade": -12.63,
+      "treatment_pnl_per_trade": null,
+      "sample_count": 397,
+      "applied_date": "2026-04-27",
+      "ab_cohort_start": "2026-04-27T00:00:00Z",
+      "min_sample_to_graduate": 20,
+      "expected_impact": "At 0.25x: estimated HYPE total -$1,253 (vs -$2,507 at 0.5x). Saves ~$1,254 per 397-trade window.",
+      "supersedes": "HYPE_EV_CONFIRMED_NEGATIVE (escalates sizing 0.5x to 0.25x)",
+      "last_escalated": "2026-05-02T18:15:00.000000+00:00",
+      "escalation_reason": "conf=82%, n=397 \u2192 escalate 20%\u219250%: n=397, conf=82, HYPE 54.4% WR confirms reduced sizing needed",
+      "superseded_by": "HYPE_EV_CONFIRMED_NEGATIVE (100%)",
+      "merged_at": "2026-05-03T21:08:36.791814Z"
+    },
+    {
+      "rule_id": "CONF_CALIBRATION_RESOLVED",
+      "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_27 \u2014 full 965-trade confidence bin analysis",
+      "description": "RESOLUTION of CONF_CALIBRATION_INVERSION_AUDIT: 60-70% confidence confirmed WORST bin (46.3% WR, -$18.87/trade) across full 965-trade backtest. Lift freeze, escalate CONF_60_70_all_block to 80%, suspend confidence_60_70_sweet_spot.",
+      "problem": "Previous audit found conflicting partial data. Full 965-trade dataset confirms: 60-70%=46.3% WR -$18.87/trade; 70-80%=58.6% -$0.98/trade; 80-90%=60.2% +$7.67/trade; 90%+=56% +$32.33/trade. Higher confidence = higher EV. No inversion.",
+      "fix_applied": "1) CONF_CALIBRATION_INVERSION_AUDIT status=RESOLVED. 2) confidence_60_70_sweet_spot status=SUSPENDED_DATA_CONTRADICTION. 3) CONF_60_70_all_block gate escalated 50% to 80%.",
+      "action": "Update rule statuses as described. Unfreeze confidence routing rule graduation.",
+      "status": "RESOLVED",
+      "confidence": 90,
+      "gate_percentage": 80,
+      "applied_date": "2026-04-27",
+      "confidence_bin_summary": {
+        "60_70": {
+          "wr": 0.463,
+          "avg_pnl": -18.87,
+          "verdict": "BLOCK"
+        },
+        "70_80": {
+          "wr": 0.586,
+          "avg_pnl": -0.98,
+          "verdict": "MONITOR"
+        },
+        "80_90": {
+          "wr": 0.602,
+          "avg_pnl": 7.67,
+          "verdict": "PROMOTE"
+        },
+        "90_plus": {
+          "wr": 0.56,
+          "avg_pnl": 32.33,
+          "verdict": "MAXIMIZE"
+        }
+      },
+      "expected_impact": "Blocking 60-70% conf saves ~$2,320. Combined with BTC_SHORT_CONF70_80_BLOCK, total actionable savings ~$11,323.",
+      "resolves": "CONF_CALIBRATION_INVERSION_AUDIT",
+      "suspends": "confidence_60_70_sweet_spot",
+      "escalates": "CONF_60_70_all_block gate 50% to 80%",
+      "merged_at": "2026-05-03T21:08:36.791815Z"
+    },
+    {
+      "rule_id": "AFTERNOON_SESSION_BLOCK",
+      "source": "perpetual_improvement_2026-04-29 \u2014 ideas.json audit (idea_920b3e13 harmful direction)",
+      "description": "Afternoon (12:00-18:00 UTC) = 33% WR on 15 trades. ideas.json had this as a BOOST idea \u2014 flagged as direction-reversed and converted to BLOCK.",
+      "problem": "ideas.json idea_920b3e13 proposed +1.08x confidence multiplier for afternoon session despite 33% WR data. Implementing as written would boost the second-worst time window. Only evening (18-24 UTC) is net-positive among non-morning sessions.",
+      "fix_applied": "A/B gate at 20% \u2014 afternoon signals get -8pt confidence penalty. Mirrors NIGHT_session_pause treatment.",
+      "action": "core/signal_pipeline.py or ensemble.py: if UTC hour between 12-18, apply -8pt confidence adjustment in 20% A/B cohort",
+      "status": "A/B_ACTIVE",
+      "confidence": 75,
+      "gate_percentage": 20,
+      "baseline_wr": 0.33,
+      "treatment_wr": null,
+      "sample_count": 15,
+      "applied_date": "2026-04-29",
+      "ab_cohort_start": "2026-04-29T00:00:00Z",
+      "min_sample_to_graduate": 20,
+      "expected_impact": "Reducing afternoon trading frequency via lower confidence should avoid 33% WR bucket; net-neutral worst case, positive if even a few bad afternoon signals filtered",
+      "supersedes_idea": "idea_920b3e13 (converted from boost to block, direction reversed)",
+      "merged_at": "2026-05-03T21:08:36.791816Z"
+    },
+    {
+      "rule_id": "F8_log_string_fix",
+      "source": "AUTONOMOUS_SESSION_2026_04_15 Finding 8 \u2014 logged 2026-05-01 perpetual deep-dive",
+      "description": "Fix hardcoded '89% empirical WR' in ensemble.py:2231 \u2014 logs same rate for all proven setups regardless of actual WR",
+      "problem": "ensemble.py:2231 logs '89% empirical WR' for every proven setup. BTC SELL is actually 38% WR, ETH BUY 100%, SOL SELL 72%. Misleading analysis, user sessions referenced this as evidence for BTC SELL promotions.",
+      "fix_applied": "A/B gate at 20% \u2014 cosmetic log fix: interpolate setup-specific WR from _PROVEN_SETUP_FLOOR lookup instead of hardcoding 89%",
+      "action": "ensemble.py:2231 \u2014 replace hardcoded string with f-string that reads the actual WR from the proven-setup table for the specific (symbol, side) pair",
+      "status": "A/B_ACTIVE",
+      "confidence": 88,
+      "gate_percentage": 50,
+      "baseline_wr": null,
+      "treatment_wr": null,
+      "applied_date": "2026-05-01",
+      "ab_cohort_start": "2026-05-01T00:00:00Z",
+      "min_sample_to_graduate": 5,
+      "expected_impact": "Correct logging prevents analysis confusion. Zero trading impact \u2014 cosmetic only.",
+      "last_escalated": "2026-05-02T18:15:00.000000+00:00",
+      "escalation_reason": "conf=88%, n=None \u2192 escalate 20%\u219250%: conf=88, non-trading fix, safe to widen gate",
+      "merged_at": "2026-05-03T21:08:36.791817Z"
+    },
+    {
+      "rule_id": "OFFLINE_EXTENDED_201H",
+      "source": "perpetual_improvement_deep_dive 2026-05-01 \u2014 daily synthesis",
+      "description": "Bot offline 201.7 hours (8.4 days) as of 2026-05-01. All A/B gates frozen. Equity at $497 (90.1% DD).",
+      "problem": "Bot has been offline since 2026-04-23 22:17 UTC. Zero learning signal. 31 A/B gates stalled. SOL_SHORT contradiction and AB_RESULT_TRACKER gaps remain unresolved.",
+      "fix_applied": "TRACKING: No auto-apply. Critical human action required.",
+      "action": "1) Audit graduated_rules.json wiring into execution code (HYPE_RULE_NOT_WIRED). 2) Implement AB_RESULT_TRACKER_CODE. 3) Restart bot with RESTART_SOFT_START_4LOSS active. 4) Evaluate SOL_SHORT_UNSUSPEND_PROBE.",
+      "status": "CRITICAL_ALERT",
+      "confidence": 100,
+      "gate_percentage": 0,
+      "applied_date": "2026-05-01",
+      "urgency": "CRITICAL",
+      "offline_hours": 201.7,
+      "equity_at_detection": 497.05,
+      "gates_frozen": 31,
+      "last_trade": "2026-04-23T22:17:00Z",
+      "merged_at": "2026-05-03T21:08:36.791818Z"
+    },
+    {
+      "rule_id": "GATE_ESCALATIONS_2026_05_01",
+      "source": "perpetual_improvement_deep_dive 2026-05-01 \u2014 live_edge_data analysis",
+      "description": "Gate escalation candidates identified from pattern + TOD + regime analysis on 352 all-time trades",
+      "escalations": [
+        {
+          "rule_id": "NIGHT_session_pause",
+          "from_gate": 20,
+          "to_gate": 100,
+          "reason": "WR=7-15% catastrophic, n=13, full trading suspension 00-06 UTC warranted"
+        },
+        {
+          "rule_id": "HYPE_LONG_hard_block",
+          "from_gate": 80,
+          "to_gate": 100,
+          "reason": "n=35 >> min_sample=20, WR=23% definitive, full block justified"
+        },
+        {
+          "rule_id": "TOD_morning_edge",
+          "from_gate": 20,
+          "to_gate": 50,
+          "reason": "n=20 = min_sample met, WR=71% confirmed, escalate"
+        },
+        {
+          "rule_id": "EVENING_session_boost",
+          "from_gate": 50,
+          "to_gate": 80,
+          "reason": "n=27 > min_sample=25, WR=62-65% confirmed"
+        },
+        {
+          "rule_id": "RANGING_regime_reduce",
+          "from_gate": 20,
+          "to_gate": 50,
+          "reason": "WR=25%, n=16 approaching min_sample=25"
+        },
+        {
+          "rule_id": "BTC_LONG_reduce",
+          "from_gate": 20,
+          "to_gate": 50,
+          "reason": "WR=18% definitive though n=17 < min_sample=20"
+        }
+      ],
+      "status": "APPLIED",
+      "confidence": 82,
+      "gate_percentage": 0,
+      "applied_date": "2026-05-02",
+      "note": "Escalations are recommendations \u2014 actual gate updates require code or graduated_rules edit. No A/B loop to auto-graduate since AB_RESULT_TRACKER not implemented.",
+      "applied_note": "Escalations implemented across prior runs 2026-05-01 and 2026-05-02",
+      "merged_at": "2026-05-03T21:08:36.791821Z"
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
@@ -1574,7 +2069,8 @@
       "applied_date": "2026-04-26",
       "urgency": "CRITICAL",
       "root_cause": "Bot offline (circuit breaker or process crash). Equity $497.05 at last save 2026-04-23T22:17Z.",
-      "resolution": "Restart bot with BOT_INACTIVE_ALERT pre-flight checklist. Implement AB_RESULT_TRACKER in feedback/loop.py."
+      "resolution": "Restart bot with BOT_INACTIVE_ALERT pre-flight checklist. Implement AB_RESULT_TRACKER in feedback/loop.py.",
+      "merged_at": "2026-05-03T21:08:36.791672Z"
     },
     {
       "rule_id": "HYPE_RULE_NOT_WIRED",
@@ -1600,20 +2096,24 @@
       "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 rule deduplication audit",
       "description": "SOL_LONG_reduce and SOL_LONG_systematic_block are identical rules (both -10pt confidence, both 20% gate, both on SOL LONG, same sample_count=34). Double-penalty risk if both evaluated.",
       "fix_applied": "SOL_LONG_reduce marked SUPERSEDED. SOL_LONG_systematic_block is canonical.",
-      "status": "APPLIED",
+      "status": "SUPERSEDED",
       "confidence": 90,
       "applied_date": "2026-04-26",
-      "supersedes": "SOL_LONG_reduce"
+      "supersedes": "SOL_LONG_reduce",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791789Z"
     },
     {
       "rule_id": "HYPE_LONG_DEDUP",
       "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 rule deduplication audit",
       "description": "HYPE_LONG_near_block (-15pt confidence, 20% gate) and HYPE_LONG_hard_reduce (skip signal, 20% gate) target same setup. Different mechanisms but same cohort = inconsistent treatment.",
       "fix_applied": "HYPE_LONG_hard_reduce elevated to primary (more aggressive, cleaner signal). HYPE_LONG_near_block marked SUPERSEDED.",
-      "status": "APPLIED",
+      "status": "SUPERSEDED",
       "confidence": 88,
       "applied_date": "2026-04-26",
-      "supersedes": "HYPE_LONG_near_block"
+      "supersedes": "HYPE_LONG_near_block",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791795Z"
     },
     {
       "rule_id": "AB_RESULT_TRACKER_CODE",
@@ -1660,7 +2160,8 @@
       "graduated_date": "2026-04-26",
       "graduated_by": "perpetual_improvement_loop",
       "priority": "CRITICAL",
-      "implementation_target": "bot/feedback/loop.py \u2014 post-trade hook: tag trade with active A/B rule cohort membership; on close, update treatment_wr in graduated_rules.json"
+      "implementation_target": "bot/feedback/loop.py \u2014 post-trade hook: tag trade with active A/B rule cohort membership; on close, update treatment_wr in graduated_rules.json",
+      "merged_at": "2026-05-03T21:08:36.791797Z"
     },
     {
       "rule_id": "CONF_70_HARD_FLOOR",
@@ -1688,12 +2189,14 @@
       "proposed_fix": "Update SOL_SHORT_edge_promote gate_percentage from 20 to 50. Maintain +5pt confidence and 1.1x size boost in treatment cohort.",
       "confidence": 90,
       "gate_percentage": 50,
-      "status": "BLOCKED_LIVE_CONTRADICTION",
+      "status": "SUPERSEDED",
       "block_reason": "Live paper trading data (52 actual trades) shows SOL WR=34.6%, -$176.24 \u2014 the single largest loss driver. Escalating SOL_SHORT gate would amplify a losing setup. Blocked by 2026-04-25 hourly run. Re-evaluate after 30+ live trades in clearly trending regime show SOL WR > 55%.",
       "applied_date": "2026-04-25",
       "baseline_wr": 0.637,
       "treatment_wr": null,
-      "priority": "BLOCKED"
+      "priority": "BLOCKED",
+      "superseded_by": "SOL_SHORT_full_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791799Z"
     }
   ],
   "rules_added_2026_04_25_hourly": [
@@ -1747,7 +2250,8 @@
         "source": "perpetual_improvement_loop 965-trade dataset"
       },
       "reconciliation_hypothesis": "Live paper trading uses real spreads, slippage, and current market conditions. Backtest may have used favorable historical data with lower SOL volatility or better fill conditions. SOL's 82.7% SL rate indicates entries are systematically hitting noise before trend develops.",
-      "reactivation_criteria": "Re-activate SOL_SHORT_edge_promote when: (1) 30+ consecutive live SOL trades show WR > 55%; (2) bot running in trending-only regime filter; (3) stop widths verified >= 1.0% for SOL signals."
+      "reactivation_criteria": "Re-activate SOL_SHORT_edge_promote when: (1) 30+ consecutive live SOL trades show WR > 55%; (2) bot running in trending-only regime filter; (3) stop widths verified >= 1.0% for SOL signals.",
+      "merged_at": "2026-05-03T21:08:36.791800Z"
     },
     {
       "rule_id": "EXIT_PROACTIVE_CLOSE_PRIORITY",
@@ -1771,7 +2275,7 @@
       "problem": "HYPE_EV_CONFIRMED_NEGATIVE applies 0.5x size to all HYPE. HYPE_LONG at 23% WR on 35 trades is structurally losing. HYPE_BUY_CS_block covers confidence_scorer source only; other HYPE LONG entry triggers uncovered.",
       "fix_applied": "A/B gate at 20% \u2014 20% of HYPE LONG signals get -15pt confidence penalty (stacks with existing 0.5x size from HYPE_EV_CONFIRMED_NEGATIVE)",
       "action": "ensemble.py or signal_pipeline.py: if symbol==HYPE and side==BUY, apply -15pt confidence penalty in 20% A/B cohort",
-      "status": "A/B_ACTIVE",
+      "status": "SUPERSEDED",
       "confidence": 80,
       "gate_percentage": 20,
       "baseline_wr": 0.23,
@@ -1780,7 +2284,9 @@
       "applied_date": "2026-04-26",
       "ab_cohort_start": "2026-04-26T15:00:00Z",
       "min_sample_to_graduate": 20,
-      "expected_impact": "Avoid ~$2.21/trade on HYPE_LONG signals at 23% WR; second-worst pattern by all-time PnL"
+      "expected_impact": "Avoid ~$2.21/trade on HYPE_LONG signals at 23% WR; second-worst pattern by all-time PnL",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791801Z"
     },
     {
       "rule_id": "SOL_LONG_reduce",
@@ -1789,7 +2295,7 @@
       "problem": "SOL_SHORT_LIVE_CONTRADICTION and SOL_SHORT_priority_boost are SUSPENDED. SOL_LONG with 24% WR on 34 trades (first-quartile performance, -$21.89) has no corresponding treatment. Both SOL directions are underperforming.",
       "fix_applied": "A/B gate at 20% \u2014 20% of SOL LONG signals get -10pt confidence penalty in treatment cohort",
       "action": "signal_pipeline.py or ensemble.py: if symbol==SOL and side==BUY, apply -10pt confidence penalty in 20% A/B cohort",
-      "status": "A/B_ACTIVE",
+      "status": "SUPERSEDED",
       "confidence": 78,
       "gate_percentage": 20,
       "baseline_wr": 0.24,
@@ -1798,7 +2304,9 @@
       "applied_date": "2026-04-26",
       "ab_cohort_start": "2026-04-26T15:00:00Z",
       "min_sample_to_graduate": 25,
-      "expected_impact": "SOL_LONG at 24% WR with 1.5:1 R:R assumption = negative EV. Filtering reduces -$0.64/trade avg drag on SOL LONG setups"
+      "expected_impact": "SOL_LONG at 24% WR with 1.5:1 R:R assumption = negative EV. Filtering reduces -$0.64/trade avg drag on SOL LONG setups",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791802Z"
     },
     {
       "rule_id": "ILLIQUID_gate_escalate",
@@ -1807,12 +2315,14 @@
       "problem": "ILLIQUID_regime_block A/B gate at 20% for 57 trades, min_sample=25 (already met). 78% confidence with 57 confirmed illiquid-regime trades at 28.1% WR. Gate should escalate per graduation criteria.",
       "fix_applied": "Escalate ILLIQUID_regime_block gate_percentage from 20% to 35%",
       "action": "Update ILLIQUID_regime_block gate_percentage: 20 \u2192 35 in graduated_rules.json",
-      "status": "ESCALATION",
+      "status": "SUPERSEDED",
       "confidence": 78,
       "gate_percentage": 35,
       "baseline_wr": 0.281,
       "applied_date": "2026-04-26",
-      "supersedes": "ILLIQUID_regime_block gate_percentage update only"
+      "supersedes": "ILLIQUID_regime_block gate_percentage update only",
+      "superseded_by": "ILLIQUID_regime_block (80%)",
+      "merged_at": "2026-05-03T21:08:36.791804Z"
     }
   ],
   "rules_added_2026_04_26_hourly": [
@@ -1846,7 +2356,8 @@
         "source": "BTC_BUY_BB_golden rule, insight_journal 2172-signal backtest"
       },
       "reactivation_criteria": "Re-activate BTC_BUY_BB_golden when 25+ live BTC_LONG trades show WR > 50%.",
-      "supersedes": "BTC_BUY_BB_golden (suspend that rule's +10pt boost)"
+      "supersedes": "BTC_BUY_BB_golden (suspend that rule's +10pt boost)",
+      "merged_at": "2026-05-03T21:08:36.791805Z"
     },
     {
       "rule_id": "NIGHT_SESSION_ESCALATE",
@@ -1882,7 +2393,8 @@
       "applied_date": "2026-04-26",
       "min_sample_to_graduate": 25,
       "action": "Monitor morning WR. If live morning WR < 40% after 25 trades, suspend TOD_morning_edge rule and EVENING_session_boost rule (same data source may be wrong).",
-      "reactivation_note": "If meta_learning morning edge is wrong, the evening edge (EVENING_session_boost) may also be from same unreliable source. Evening live data (46% WR, 41 trades) is at least net-positive and consistent."
+      "reactivation_note": "If meta_learning morning edge is wrong, the evening edge (EVENING_session_boost) may also be from same unreliable source. Evening live data (46% WR, 41 trades) is at least net-positive and consistent.",
+      "merged_at": "2026-05-03T21:08:36.791806Z"
     }
   ],
   "rules_added_2026_04_26_1515_hourly": [
@@ -1904,7 +2416,8 @@
       "min_sample_to_graduate": 20,
       "expected_impact": "Reducing HYPE_SHORT mid-conf losses; avg payoff -$39/trade is worst in dataset by magnitude",
       "last_escalated": "2026-05-02T18:15:00.000000+00:00",
-      "escalation_reason": "conf=82%, n=61 \u2192 escalate 20%\u219250%: n=61, conf=82, HYPE_SHORT 54.4% WR on 239 trades insufficient payoff"
+      "escalation_reason": "conf=82%, n=61 \u2192 escalate 20%\u219250%: n=61, conf=82, HYPE_SHORT 54.4% WR on 239 trades insufficient payoff",
+      "merged_at": "2026-05-03T21:08:36.791807Z"
     },
     {
       "rule_id": "BTC_STOP_MIN_0.8PCT",
@@ -1921,7 +2434,8 @@
       "sample_count": 92,
       "applied_date": "2026-04-26",
       "supersedes": "BTC_NOISE_SL_widen (escalates gate 20%\u219250%, tightens threshold 0.7%\u21920.8%)",
-      "expected_impact": "47 instant BTC SL hits in backtest \u2014 eliminating these via tighter stop filtering should improve BTC PnL meaningfully"
+      "expected_impact": "47 instant BTC SL hits in backtest \u2014 eliminating these via tighter stop filtering should improve BTC PnL meaningfully",
+      "merged_at": "2026-05-03T21:08:36.791808Z"
     },
     {
       "rule_id": "CONF_CALIBRATION_INVERSION_AUDIT",
@@ -1938,7 +2452,8 @@
       "resolution": "Full 965-trade analysis confirms 60-70% WR=46.3% (WORST), 90%+ WR=56% (BEST by EV). No inversion. Live and backtest agree. Freeze lifted. See CONF_CALIBRATION_RESOLVED.",
       "urgency": "HIGH",
       "investigation_note": "backtest_10d.csv llm_confidence column is empty for all rows \u2014 backtest uses 'confidence' column which is signal confidence, not LLM-assigned confidence. Live paper may be using LLM confidence. These are DIFFERENT metrics being compared as if same.",
-      "resolution_path": "Separate signal confidence (from strategies) vs LLM confidence (from agent pipeline). Re-run bin analysis only on live trades with LLM confidence populated."
+      "resolution_path": "Separate signal confidence (from strategies) vs LLM confidence (from agent pipeline). Re-run bin analysis only on live trades with LLM confidence populated.",
+      "merged_at": "2026-05-03T21:08:36.791809Z"
     },
     {
       "rule_id": "BOT_INACTIVE_ALERT",
@@ -1959,7 +2474,8 @@
         "Confirm BTC_BUY_BB_golden is suspended (BTC_LONG_LIVE_CONTRADICTION)",
         "Set LLM_MODE > 0 if previously 0 (was causing 50 LLM rejections per 70 min)",
         "Check for process crash vs intentional circuit breaker stop"
-      ]
+      ],
+      "merged_at": "2026-05-03T21:08:36.791810Z"
     },
     {
       "rule_id": "SOL_LONG_systematic_block",
@@ -1968,7 +2484,7 @@
       "problem": "SOL_LONG has 24% WR on 34 trades (-$21.89). Break-even at 1:1 R:R requires ~50% WR. No edge detected across any observed period.",
       "fix_applied": "A/B gate at 20%: treatment cohort receives -10 confidence penalty on SOL_LONG signals. Track treatment vs baseline WR.",
       "action": "Apply -10 confidence penalty to SOL_LONG signals in treatment cohort. Graduate to full block if treatment WR > baseline after 20 samples.",
-      "status": "A/B_ACTIVE",
+      "status": "SUPERSEDED",
       "confidence": 80,
       "gate_percentage": 20,
       "baseline_wr": 0.24,
@@ -1976,7 +2492,9 @@
       "sample_count": 34,
       "min_sample_to_graduate": 20,
       "applied_date": "2026-04-26",
-      "ab_cohort_start": "2026-04-26T15:30:00Z"
+      "ab_cohort_start": "2026-04-26T15:30:00Z",
+      "superseded_by": "SOL_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791811Z"
     },
     {
       "rule_id": "HYPE_LONG_hard_reduce",
@@ -1985,7 +2503,7 @@
       "problem": "HYPE_LONG 23% WR, 35 trades, -$77.26. Existing HYPE_EV_CONFIRMED_NEGATIVE only reduces sizing (0.5x). No signal-level block in place.",
       "fix_applied": "A/B gate at 20%: treatment cohort skips HYPE_LONG signals entirely (confidence set to 0/skip). Complements HYPE_EV_CONFIRMED_NEGATIVE sizing reduce.",
       "action": "Skip HYPE_LONG signals in treatment cohort. If treatment avoids losses and baseline continues to lose, graduate to 100% block.",
-      "status": "A/B_ACTIVE",
+      "status": "SUPERSEDED",
       "confidence": 85,
       "gate_percentage": 20,
       "baseline_wr": 0.23,
@@ -1993,7 +2511,9 @@
       "sample_count": 35,
       "min_sample_to_graduate": 20,
       "applied_date": "2026-04-26",
-      "ab_cohort_start": "2026-04-26T15:30:00Z"
+      "ab_cohort_start": "2026-04-26T15:30:00Z",
+      "superseded_by": "HYPE_LONG_hard_block (100%)",
+      "merged_at": "2026-05-03T21:08:36.791813Z"
     }
   ],
   "rules_added_2026_04_27_hourly": [
@@ -2044,7 +2564,7 @@
       "problem": "HYPE_EV_CONFIRMED_NEGATIVE halves sizing to 0.5x but HYPE remains deeply negative across 397 trades. HYPE_SHORT payoff_ratio=0.650, HYPE_LONG payoff_ratio=0.684 \u2014 both structurally negative EV.",
       "fix_applied": "Escalate HYPE sizing: 0.5x to 0.25x. A/B gate at 20%.",
       "action": "execution/leverage.py: reduce HYPE position sizing multiplier from 0.5x to 0.25x in 20% A/B cohort",
-      "status": "A/B_ACTIVE",
+      "status": "SUPERSEDED",
       "confidence": 82,
       "gate_percentage": 50,
       "baseline_pnl_per_trade": -12.63,
@@ -2056,7 +2576,9 @@
       "expected_impact": "At 0.25x: estimated HYPE total -$1,253 (vs -$2,507 at 0.5x). Saves ~$1,254 per 397-trade window.",
       "supersedes": "HYPE_EV_CONFIRMED_NEGATIVE (escalates sizing 0.5x to 0.25x)",
       "last_escalated": "2026-05-02T18:15:00.000000+00:00",
-      "escalation_reason": "conf=82%, n=397 \u2192 escalate 20%\u219250%: n=397, conf=82, HYPE 54.4% WR confirms reduced sizing needed"
+      "escalation_reason": "conf=82%, n=397 \u2192 escalate 20%\u219250%: n=397, conf=82, HYPE 54.4% WR confirms reduced sizing needed",
+      "superseded_by": "HYPE_EV_CONFIRMED_NEGATIVE (100%)",
+      "merged_at": "2026-05-03T21:08:36.791814Z"
     },
     {
       "rule_id": "CONF_CALIBRATION_RESOLVED",
@@ -2094,7 +2616,8 @@
       "expected_impact": "Blocking 60-70% conf saves ~$2,320. Combined with BTC_SHORT_CONF70_80_BLOCK, total actionable savings ~$11,323.",
       "resolves": "CONF_CALIBRATION_INVERSION_AUDIT",
       "suspends": "confidence_60_70_sweet_spot",
-      "escalates": "CONF_60_70_all_block gate 50% to 80%"
+      "escalates": "CONF_60_70_all_block gate 50% to 80%",
+      "merged_at": "2026-05-03T21:08:36.791815Z"
     }
   ],
   "run_log_2026_04_27_1900_hourly": {
@@ -2129,7 +2652,8 @@
       "ab_cohort_start": "2026-04-29T00:00:00Z",
       "min_sample_to_graduate": 20,
       "expected_impact": "Reducing afternoon trading frequency via lower confidence should avoid 33% WR bucket; net-neutral worst case, positive if even a few bad afternoon signals filtered",
-      "supersedes_idea": "idea_920b3e13 (converted from boost to block, direction reversed)"
+      "supersedes_idea": "idea_920b3e13 (converted from boost to block, direction reversed)",
+      "merged_at": "2026-05-03T21:08:36.791816Z"
     },
     {
       "rule_id": "SLIPPAGE_TRACKING_GAP",
@@ -2299,7 +2823,8 @@
       "min_sample_to_graduate": 5,
       "expected_impact": "Correct logging prevents analysis confusion. Zero trading impact \u2014 cosmetic only.",
       "last_escalated": "2026-05-02T18:15:00.000000+00:00",
-      "escalation_reason": "conf=88%, n=None \u2192 escalate 20%\u219250%: conf=88, non-trading fix, safe to widen gate"
+      "escalation_reason": "conf=88%, n=None \u2192 escalate 20%\u219250%: conf=88, non-trading fix, safe to widen gate",
+      "merged_at": "2026-05-03T21:08:36.791817Z"
     },
     {
       "rule_id": "OFFLINE_EXTENDED_201H",
@@ -2316,7 +2841,8 @@
       "offline_hours": 201.7,
       "equity_at_detection": 497.05,
       "gates_frozen": 31,
-      "last_trade": "2026-04-23T22:17:00Z"
+      "last_trade": "2026-04-23T22:17:00Z",
+      "merged_at": "2026-05-03T21:08:36.791818Z"
     },
     {
       "rule_id": "GATE_ESCALATIONS_2026_05_01",
@@ -2365,7 +2891,8 @@
       "gate_percentage": 0,
       "applied_date": "2026-05-02",
       "note": "Escalations are recommendations \u2014 actual gate updates require code or graduated_rules edit. No A/B loop to auto-graduate since AB_RESULT_TRACKER not implemented.",
-      "applied_note": "Escalations implemented across prior runs 2026-05-01 and 2026-05-02"
+      "applied_note": "Escalations implemented across prior runs 2026-05-01 and 2026-05-02",
+      "merged_at": "2026-05-03T21:08:36.791821Z"
     }
   ],
   "run_log_2026_05_01_1716": {
@@ -2816,5 +3343,35 @@
         "SOL_STOP_MIN_0.9PCT"
       ]
     }
-  ]
+  ],
+  "orphan_merge_2026_05_03_2106": {
+    "merged": 23,
+    "superseded": 9,
+    "merged_at": "2026-05-03T21:08:36.791829Z",
+    "merged_ids": [
+      "STALE_AB_DATA_FLAG",
+      "SOL_LONG_DEDUP",
+      "HYPE_LONG_DEDUP",
+      "AB_RESULT_TRACKER",
+      "SOL_SHORT_GATE_ESCALATE",
+      "SOL_SHORT_LIVE_CONTRADICTION",
+      "HYPE_LONG_near_block",
+      "SOL_LONG_reduce",
+      "ILLIQUID_gate_escalate",
+      "BTC_LONG_LIVE_CONTRADICTION",
+      "MORNING_EDGE_REVIEW",
+      "HYPE_SHORT_PAYOFF_BLOCK",
+      "BTC_STOP_MIN_0.8PCT",
+      "CONF_CALIBRATION_INVERSION_AUDIT",
+      "BOT_INACTIVE_ALERT",
+      "SOL_LONG_systematic_block",
+      "HYPE_LONG_hard_reduce",
+      "HYPE_EV_ESCALATE_0.25x",
+      "CONF_CALIBRATION_RESOLVED",
+      "AFTERNOON_SESSION_BLOCK",
+      "F8_log_string_fix",
+      "OFFLINE_EXTENDED_201H",
+      "GATE_ESCALATIONS_2026_05_01"
+    ]
+  }
 }
