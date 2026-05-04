@@ -1,27 +1,29 @@
 {
-  "last_run": "2026-05-04T00:00:00+00:00",
-  "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md + perpetual_deep_dive_2026_05_04",
-  "fixes_applied_this_run": 2,
-  "gates_active": 59,
+  "last_run": "2026-05-04T17:02:18+00:00",
+  "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md + perpetual_deep_dive_2026_05_04_1702",
+  "fixes_applied_this_run": 1,
+  "gates_active": 62,
   "applied_this_run": [
     {
-      "rule_id": "SLIPPAGE_TRACKING_GAP",
-      "description": "Added snapshot_entry to LEDGER_COLUMNS in trade_ledger.py and to record_trade() call in multi_strategy_main.py:3317. Slippage now measurable from next bot restart.",
-      "confidence": 100,
+      "rule_id": "GRADUATED_RULES_FILE_CREATED",
+      "description": "Created bot/data/llm/graduated_rules.json with 3 critical runtime rules: hype_long_veto_v1 (HYPE BUY veto, 35 trades 23% WR), sol_long_veto_v1 (SOL BUY veto, 34 trades 24% WR), illiquid_regime_penalize_v1 (illiquid -15 conf, 57 trades 28% WR). Gate 1g in signal_pipeline.py now enforces these at runtime \u2014 previously data/llm/graduated_rules.json was MISSING so GraduatedRulesEngine loaded 0 rules silently.",
+      "confidence": 95,
       "gate_percentage": 100,
       "files_changed": [
-        "bot/feedback/trade_ledger.py",
-        "bot/multi_strategy_main.py"
-      ]
-    },
-    {
-      "rule_id": "AB_RESULT_TRACKER_CODE",
-      "description": "evaluate_active_fixes() was implemented in prior run (2026-05-03). Status updated to APPLIED. Will auto-evaluate once 20+ trades per A/B group arrive.",
-      "confidence": 100,
-      "gate_percentage": 100,
-      "files_changed": []
+        "bot/data/llm/graduated_rules.json"
+      ],
+      "verified": true,
+      "verification": "Engine.evaluate_signal() tested: HYPE BUY \u2192 VETO, SOL BUY \u2192 VETO, ETH SELL illiquid 72% \u2192 57%, ETH SELL trending 78% \u2192 untouched"
     }
   ],
+  "audit_resolution": {
+    "HYPE_RULE_NOT_WIRED": {
+      "status": "RESOLVED",
+      "finding": "data/llm/graduated_rules.json was missing. GraduatedRulesEngine loaded 0 rules. Gate 1g was a silent no-op.",
+      "action_taken": "Created graduated_rules.json with 3 critical rules. Verified via evaluate_signal() test.",
+      "resolved_at": "2026-05-04T17:02:18+00:00"
+    }
+  },
   "pending_human_review": [
     "F1_sniper_pending_safety_review",
     "HIGH_CONF_CALIBRATION_DRIFT",
@@ -34,6 +36,7 @@
   ],
   "ab_rules_awaiting_live_data": 59,
   "ab_rules_with_measurement": 1,
-  "total_applied_all_time": 11,
-  "next_run_priority": "Bot restart prerequisite \u2014 all remaining A/B tests frozen. evaluate_active_fixes() will run on first 20+ trades."
+  "total_applied_all_time": 12,
+  "runtime_rules_now_active": 3,
+  "next_run_priority": "Bot restart required. On restart: verify HYPE BUY/SOL BUY veto fires in rejection_tracker.json within first 10 signals."
 }

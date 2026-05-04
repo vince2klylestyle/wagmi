@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-04T00:00:00+00:00",
+  "last_updated": "2026-05-04T17:02:18+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -1405,8 +1405,8 @@
       "source": "PERPETUAL_IMPROVEMENT_HOURLY_2026_04_26_1545 \u2014 execution forensics cross-check",
       "description": "CRITICAL AUDIT: HYPE_EV_CONFIRMED_NEGATIVE (100% gate, 0.5x size) appears not wired into execution code. Final 2 HYPE losses at -$38.80 and -$40.99 suggest full-size entries despite rule.",
       "problem": "If graduated_rules.json rules are JSON-only with no code reading them at trade time, ALL 38 A/B gates and ALL rules marked APPLIED are theoretical only. This would mean: HYPE 0.5x size \u2014 not active. SOL suspension \u2014 not active. BTC_BUY_BB_golden boost \u2014 still active. Night floor \u2014 not active.",
-      "fix_applied": "AUDIT REQUIRED: Check bot/execution/leverage.py, bot/core/signal_pipeline.py, and bot/feedback/loop.py for any code that reads graduated_rules.json at runtime.",
-      "status": "AUDIT_REQUIRED",
+      "fix_applied": "Created bot/data/llm/graduated_rules.json with hype_long_veto_v1, sol_long_veto_v1, illiquid_regime_penalize_v1. GraduatedRulesEngine now loads 3 active rules. Verified via evaluate_signal() test.",
+      "status": "RESOLVED",
       "confidence": 85,
       "gate_percentage": 0,
       "applied_date": "2026-04-26",
@@ -1419,7 +1419,8 @@
         "bot/feedback/graduated_rules_loader.py (check if exists)"
       ],
       "_merged_from_orphan": true,
-      "_merged_at": "2026-05-03T20:12:47+00:00"
+      "_merged_at": "2026-05-03T20:12:47+00:00",
+      "resolved_at": "2026-05-04T17:02:18+00:00"
     },
     {
       "rule_id": "AB_RESULT_TRACKER_CODE",
@@ -3377,5 +3378,10 @@
       "OFFLINE_EXTENDED_201H",
       "GATE_ESCALATIONS_2026_05_01"
     ]
+  },
+  "rules_resolved_2026_05_04_1702": {
+    "HYPE_RULE_NOT_WIRED": "RESOLVED \u2014 graduated_rules.json created with 3 critical runtime rules",
+    "action": "Created bot/data/llm/graduated_rules.json (was MISSING). Gate 1g in signal_pipeline.py now enforces HYPE BUY veto, SOL BUY veto, illiquid regime -15 confidence.",
+    "resolved_at": "2026-05-04T17:02:18+00:00"
   }
 }

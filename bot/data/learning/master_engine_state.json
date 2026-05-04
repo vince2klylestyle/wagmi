@@ -1,106 +1,117 @@
 {
-  "last_run": "2026-05-04T00:00:00+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_04_0000",
+  "last_run": "2026-05-04T17:02:18+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_04_1702",
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETE",
-      "fixes_applied": 2,
-      "gates_active": 59,
-      "total_applied_all_time": 11,
+      "fixes_applied": 1,
+      "gates_active": 62,
+      "total_applied_all_time": 12,
       "fixes_this_run": [
-        "SLIPPAGE_TRACKING_GAP: snapshot_entry column added to trade_ledger.py + multi_strategy_main.py",
-        "AB_RESULT_TRACKER_CODE: status updated to APPLIED (evaluate_active_fixes() was implemented last run)"
-      ]
+        "GRADUATED_RULES_FILE_CREATED: bot/data/llm/graduated_rules.json created with 3 critical runtime rules (HYPE BUY veto, SOL BUY veto, ILLIQUID penalize -15). HYPE_RULE_NOT_WIRED RESOLVED."
+      ],
+      "audit_findings": {
+        "HYPE_RULE_NOT_WIRED": {
+          "status": "RESOLVED",
+          "root_cause": "data/llm/graduated_rules.json was missing. GraduatedRulesEngine._ensure_loaded() skipped file (does not exist), loaded 0 rules. Gate 1g in signal_pipeline.py wrapped in try/except \u2192 silent no-op. ALL 59 A/B_ACTIVE tracking rules had zero execution enforcement.",
+          "fix": "Created data/llm/graduated_rules.json with 3 evidence-backed rules. Engine now loads and applies them on every signal.",
+          "impact": "HYPE BUY (-7 historical) and SOL BUY (-1 historical) now hard-blocked at Gate 1g. Illiquid regime confidence reduced by 15 points (below 60% floor for most signals)."
+        }
+      }
     },
     "execution_forensics": {
-      "status": "SKIP \u2014 no trades.csv (bot offline 241.7h)",
-      "avg_slippage": "UNKNOWN",
-      "noise_stop_problem": "71.9% illiquid-regime stops hit in noise (57 historical trades \u2014 unchanged)",
-      "structural_gap": "RESOLVED: snapshot_entry now in trade_ledger schema \u2014 slippage computable from next bot restart",
-      "hold_time_finding": "Losses resolve 2x faster (1.5h) than wins (3.3h) \u2014 noise stops firing before directional move"
+      "status": "SKIP \u2014 no trades.csv (bot offline 258h)",
+      "avg_slippage": "UNKNOWN (bot offline)",
+      "noise_stop_problem": "71.9% illiquid-regime stops hit in noise (57 historical \u2014 unchanged)",
+      "slippage_gap": "RESOLVED in prior run \u2014 snapshot_entry added to trade_ledger.py schema",
+      "partial_fills": "UNKNOWN \u2014 fill_status column still missing from trade_ledger",
+      "next_action": "Restart bot to generate live slippage data"
     },
     "live_injection": {
-      "status": "SKIP \u2014 no new trade data (bot offline 241.7h)",
-      "data_currency": "Historical only (last updated 2026-05-03T20:12:47)",
+      "status": "SKIP \u2014 no new trade data (bot offline 258h)",
+      "data_currency": "Historical (last updated 2026-05-03T20:12:47)",
       "high_edges_found": 1,
       "weak_setups_found": 3,
       "top_edge": "ETH_SHORT+trending = ~80% WR (5 live trades)",
-      "top_killer": "HYPE_LONG 23% WR -$77.26 | SOL_LONG 24% WR -$21.89",
-      "unchanged_from_last_run": true
+      "top_killer": "HYPE_LONG 23% WR -7.26 | SOL_LONG 24% WR -1.89",
+      "unchanged_from_last_run": true,
+      "note": "Top killers now runtime-blocked via graduated_rules.json (this run fix)"
     },
     "daily_synthesis": {
-      "status": "COMPLETE \u2014 daily synthesis written",
-      "report_generated": true,
-      "report_path": "bot/data/sessions/daily_synthesis_2026-05-04.json",
+      "status": "PARTIAL \u2014 no new trades today",
+      "report_generated": false,
       "anomalies_found": 2,
       "anomalies": [
-        "CONSECUTIVE_LOSSES (4 trailing)",
-        "BOT_OFFLINE (241.7h)"
+        "CONSECUTIVE_LOSSES (4 trailing \u2014 circuit breaker at threshold)",
+        "BOT_OFFLINE (258h \u2014 10.75 days offline)"
       ],
-      "resolved_this_run": [
-        "SLIPPAGE_TRACKING_GAP (code fix applied)",
-        "AB_RESULT_TRACKER_CODE (status updated)"
-      ]
+      "new_today": [
+        "GRADUATED_RULES_WIRING_GAP resolved \u2014 3 rules now active at runtime"
+      ],
+      "bot_status": "OFFLINE \u2014 restart required before trades flow"
     },
     "model_optimization": {
       "status": "SKIP \u2014 no cost_tracker.json",
       "swaps_recommended": 0,
-      "potential_savings": "$0.00",
-      "note": "cost_tracker.json generated after first API calls on restart. Static estimate: $0.0084/cycle (Sonnet-heavy)"
+      "potential_savings": "/bin/bash.00",
+      "note": "cost_tracker.json generated after first API calls post-restart"
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
       "severity": "RESOLVED_THIS_RUN",
-      "finding": "SLIPPAGE_TRACKING_GAP: snapshot_entry was computed in multi_strategy_main.py but never written to trade_ledger CSV. Fixed by adding column to LEDGER_COLUMNS and record_trade() call.",
-      "action": "DONE. Slippage will be measurable from next bot restart (entry_price - snapshot_entry / snapshot_entry)."
+      "finding": "HYPE_RULE_NOT_WIRED: data/llm/graduated_rules.json was MISSING. GraduatedRulesEngine loaded 0 rules silently. All 59 A/B tracking rules had no execution enforcement. Gate 1g was a no-op.",
+      "action": "DONE. Created graduated_rules.json with 3 critical rules (HYPE BUY veto, SOL BUY veto, illiquid -15). Verified with evaluate_signal() test. Historical PnL protected: HYPE_LONG (-7) + SOL_LONG (-1) now blocked.",
+      "estimated_impact": "+.46/trade avg saved by blocking two -EV setups (69 total trades at -9.15 net PnL)"
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot offline 241.7h (10+ days). 4 trailing consecutive losses. Circuit breaker 1 loss from threshold. 59 A/B rules frozen.",
-      "action": "Bot restart required. Use RESTART_SOFT_START_4LOSS: 50% sizing, max 3x leverage for first 10 trades until 2 wins achieved."
-    },
-    {
-      "subsystem": "execution_forensics",
-      "severity": "MEDIUM",
-      "finding": "71.9% of illiquid-regime stops hit in noise (loss hold time 1.5h vs win hold time 3.3h). ILLIQUID_regime_block at gate=80% is the active mitigation.",
-      "action": "Verify ILLIQUID_regime_block is wired in signal_pipeline.py rejection_tracker on restart."
+      "finding": "Bot offline 258h (10.75 days). 4 trailing consecutive losses. Circuit breaker 1 loss from threshold. 59 A/B rules frozen waiting for live data.",
+      "action": "PENDING_USER_ACTION: Bot restart required. Use RESTART_SOFT_START_4LOSS protocol: 50% sizing, max 3x leverage for first 5 trades until 2 wins achieved.",
+      "pre_restart_checklist": [
+        "1. Verify RESTART_SOFT_START_4LOSS is active in signal_pipeline.py",
+        "2. Verify graduated_rules.json rules fire in rejection_tracker on first HYPE BUY or SOL BUY signal",
+        "3. Monitor regime classifier output \u2014 confirm trending vs illiquid correctly identified",
+        "4. Check that AB_RESULT_TRACKER (evaluate_active_fixes) runs after each 20-trade batch"
+      ]
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "8 PENDING_HUMAN_REVIEW items including F1_sniper (highest $ lever: +$328 vs -$76 from rest), RULE_CONFLICT_SOL_SHORT, and RULE_CONFLICT_LONG_BIAS.",
-      "action": "PENDING_HUMAN_DECISION: F1_sniper requires end-to-end leverage cap verification before re-enable. RULE_CONFLICT_LONG_BIAS: recommend SUSPEND LONG filter (WR parity 57% long vs 57% short)."
+      "finding": "8 PENDING_HUMAN_REVIEW items outstanding, including F1_sniper (highest $ lever: restored alpha +28 if re-enabled safely), RULE_CONFLICT_SOL_SHORT, and RULE_CONFLICT_LONG_BIAS.",
+      "action": "PENDING_HUMAN_DECISION: Sniper re-enable requires end-to-end leverage cap verification."
     },
     {
       "subsystem": "live_injection",
       "severity": "MEDIUM",
-      "finding": "14 recently merged rules (NIGHT_SESSION_PAUSE, ILLIQUID_regime_block, BTC_LONG_LIVE_CONTRADICTION etc.) are now in rules[] but execution wiring is UNVERIFIED (no trades since merge).",
-      "action": "After restart: monitor rejection_tracker.json for expected blocks within first 20 signals."
+      "finding": "EXIT_PROACTIVE_CLOSE_PRIORITY (conf=93%) still TRACKED_PENDING_IMPLEMENTATION. 93.3% SL hits potentially preventable (,140 recoverable on 134-trade sample). No code wiring yet.",
+      "action": "Implement exit agent prompt addition: close if hold_time < 2h AND distance_to_sl < 30% in non-trending regimes."
     }
   ],
   "run_delta_from_prior": {
     "new_this_run": [
-      "SLIPPAGE_TRACKING_GAP implemented (snapshot_entry added to trade_ledger schema)",
-      "AB_RESULT_TRACKER_CODE marked APPLIED (evaluate_active_fixes() was done last run)",
-      "daily_synthesis_2026-05-04.json generated",
-      "Total applied rules: 9\u219211"
+      "HYPE_RULE_NOT_WIRED confirmed CRITICAL and RESOLVED \u2014 graduated_rules.json created",
+      "GraduatedRulesEngine now loads 3 active rules (was 0 since file was missing)",
+      "HYPE BUY + SOL BUY are now hard-blocked at signal pipeline Gate 1g",
+      "Illiquid regime confidence now -15 at Gate 1g (drops most signals below 60% floor)",
+      "Total applied rules: 11 \u2192 12"
     ],
     "still_outstanding": [
-      "Bot offline \u2014 bot restart required (user action)",
+      "Bot offline \u2014 restart required (user action)",
       "59 A/B rules awaiting live trade data",
       "RULE_CONFLICT_SOL_SHORT \u2014 awaiting human decision",
       "F1_sniper \u2014 awaiting human safety review",
+      "EXIT_PROACTIVE_CLOSE_PRIORITY \u2014 code implementation needed",
       "fill_status column still missing from trade_ledger (partial fill tracking)"
     ]
   },
   "next_run_focus": [
-    "If bot restarted: verify 14 newly wired rules in rejection_tracker",
-    "If bot restarted: first 20 trades per group will trigger evaluate_active_fixes()",
-    "Slippage can now be measured (snapshot_entry - entry_price) / snapshot_entry",
-    "RULE_CONFLICT_LONG_BIAS: recommend user decision to SUSPEND LONG filter (data supports it)",
-    "EOD run: full daily synthesis at \u226522:00 UTC if bot has trades"
+    "If bot restarted: verify HYPE/SOL BUY vetoes fire in rejection_tracker.json",
+    "If bot restarted: first 20 trades per group trigger evaluate_active_fixes()",
+    "EXIT_PROACTIVE_CLOSE_PRIORITY: implement in agents/prompts.py EXIT_PROMPT",
+    "RULE_CONFLICT_LONG_BIAS: recommend user decision to suspend LONG filter",
+    "EOD run: full daily synthesis at >= 22:00 UTC if bot has trades"
   ]
 }
