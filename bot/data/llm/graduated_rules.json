@@ -1,75 +1,20 @@
 {
   "rules": [
     {
-      "rule_id": "hype_long_veto_v1",
-      "hypothesis_statement": "HYPE LONG (BUY) is a losing setup: 23% WR on 35 live trades (-$77.26 PnL). Block all HYPE BUY signals.",
-      "action": "veto",
-      "conditions": {
-        "symbol": "HYPE",
-        "side": "BUY"
-      },
-      "adjustment": 0.0,
-      "confidence": 0.88,
-      "evidence_ratio": 0.77,
-      "total_evidence": 35,
-      "created_at": 1777914279.580894,
-      "last_applied": 1777919250.8790777,
-      "times_applied": 2,
-      "times_correct": 0,
-      "active": true
-    },
-    {
-      "rule_id": "sol_long_veto_v1",
-      "hypothesis_statement": "SOL LONG (BUY) is a losing setup: 24% WR on 34 live trades (-$21.89 PnL). Block all SOL BUY signals.",
-      "action": "veto",
-      "conditions": {
-        "symbol": "SOL",
-        "side": "BUY"
-      },
-      "adjustment": 0.0,
-      "confidence": 0.85,
-      "evidence_ratio": 0.76,
-      "total_evidence": 34,
-      "created_at": 1777914279.580894,
-      "last_applied": 1777914287.6006117,
-      "times_applied": 1,
-      "times_correct": 0,
-      "active": true
-    },
-    {
-      "rule_id": "illiquid_regime_penalize_v1",
-      "hypothesis_statement": "Illiquid regime trades have 28% WR on 57 live trades. Noise stops dominate. Penalize confidence by 15 points.",
-      "action": "penalize",
-      "conditions": {
-        "regime": "illiquid"
-      },
-      "adjustment": -15.0,
-      "confidence": 0.78,
-      "evidence_ratio": 0.72,
-      "total_evidence": 57,
-      "created_at": 1777914279.580894,
-      "last_applied": 1777919250.8793986,
-      "times_applied": 2,
-      "times_correct": 0,
-      "active": true
-    },
-    {
-      "rule_id": "btc_short_conf70_80_block_v1",
-      "hypothesis_statement": "BTC SHORT at 70-79% confidence is the worst loss bucket (orphan rule analysis, conf=90%). Veto this specific bin.",
-      "action": "veto",
+      "rule_id": "rule_1777922205_0",
+      "hypothesis_statement": "BTC performs strongly in trend regime",
+      "action": "boost",
       "conditions": {
         "symbol": "BTC",
-        "side": "SELL",
-        "confidence_min": 70.0,
-        "confidence_max": 79.9
+        "regime": "trend"
       },
-      "adjustment": 0.0,
-      "confidence": 0.9,
-      "evidence_ratio": 0.9,
-      "total_evidence": 20,
-      "created_at": 1777919234.0,
-      "last_applied": 1777919302.745375,
-      "times_applied": 3,
+      "adjustment": 8.0,
+      "confidence": 0.8,
+      "evidence_ratio": 0.75,
+      "total_evidence": 15,
+      "created_at": 1777922205.1402397,
+      "last_applied": 0.0,
+      "times_applied": 0,
       "times_correct": 0,
       "active": true
     }
