@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-04T17:02:18+00:00",
+  "last_updated": "2026-05-05T17:09:59Z",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2059,6 +2059,23 @@
       "note": "Escalations are recommendations \u2014 actual gate updates require code or graduated_rules edit. No A/B loop to auto-graduate since AB_RESULT_TRACKER not implemented.",
       "applied_note": "Escalations implemented across prior runs 2026-05-01 and 2026-05-02",
       "merged_at": "2026-05-03T21:08:36.791821Z"
+    },
+    {
+      "rule_id": "TRENDING_MIN_HOLD_2H",
+      "source": "execution_forensics \u2014 perpetual_deep_dive_2026_05_05",
+      "description": "In trending regime, losses exit 2x faster than wins (1.5h vs 3.3h median). Positions closed by SL within 2h in trending regime are likely noise stops before directional move.",
+      "problem": "71.9% of illiquid-regime stops hit in noise. Even in trending, losses resolve at 1.5h median \u2014 SL hit before the move develops.",
+      "fix_applied": "A/B gate: 20% of trending-regime signals get min_hold_2h treatment flag. Exit agent should respect this flag before recommending SL-triggered close.",
+      "status": "A/B_ACTIVE",
+      "confidence": 80,
+      "gate_percentage": 20,
+      "baseline_wr": 0.519,
+      "treatment_wr": null,
+      "sample_count": 52,
+      "applied_date": "2026-05-05",
+      "action": "Flag trending-regime positions closed via SL in <2h as noise_stop_candidate. Exit agent should consider hold if still within 2h and thesis intact.",
+      "ab_cohort_start": "2026-05-05T00:00:00Z",
+      "min_sample_to_graduate": 30
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [

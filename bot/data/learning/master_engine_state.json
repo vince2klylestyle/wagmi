@@ -1,124 +1,153 @@
 {
-  "last_run": "2026-05-04T21:15:00+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_04_2115",
+  "last_run": "2026-05-05T00:00:00+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_05_0000",
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETE",
       "fixes_applied": 2,
-      "gates_active": 7,
-      "total_applied_all_time": 21,
+      "gates_active": 8,
+      "total_applied_all_time": 23,
       "fixes_this_run": [
-        "AB_GATE_HASH_COLUMN: Added ab_gate_hash to TradeLedger LEDGER_COLUMNS (feedback/trade_ledger.py). Stable 0-99 integer derived from trade_id hex hash. Auto-computed in record_trade(). Syntax verified. Tested: trade 'abc123def456' -> hash 26, range 0-99 confirmed.",
-        "AUTO_FIX_WIRED_INTO_LOOP: AutoFixPipeline imported + instantiated in FeedbackLoop.__init__(). evaluate_active_fixes() called every 20 trades in record_outcome() (step 7). All 3 files AST-parsed clean."
+        "AB_HASH_IMPROVEMENT: record_outcome() in feedback/loop.py now uses hash((symbol,side,round(confidence),round(abs(pnl)*1000))%100 instead of i%100 (sequential index). Added _recent_ab_records List[Dict] to FeedbackLoop. AB splits now stable across evaluations \u2014 same trade always maps to same gate bucket.",
+        "TRENDING_MIN_HOLD_2H: New A/B_ACTIVE rule added to feedback/graduated_rules.json (gate=20%). Tracks noise stops in trending regime: if SL hit in <2h, flag as noise_stop_candidate. Based on forensics finding: wins hold 3.3h median vs losses 1.5h median. Exit agent should consider hold if within 2h and thesis intact."
       ],
-      "verification": "PYTHONPATH=. python -c 'from feedback.trade_ledger import TradeLedger, LEDGER_COLUMNS; assert ab_gate_hash in LEDGER_COLUMNS; ...' -> PASSED. AutoFixPipeline.evaluate_active_fixes([50 trades]) -> evaluated=0 reverted=0 promoted=0 (correct: no active fixes in pipeline state).",
+      "verification": "ast.parse(feedback/loop.py) OK. _recent_ab_records attr present. graduated_rules.json has 99 rules. TRENDING_MIN_HOLD_2H confirmed added.",
       "runtime_rules_still_active": 7,
-      "gap_resolved_this_run": "AB_TRACKING_BROKEN: evaluate_active_fixes() existed but had no data path. ab_gate_hash was never written to any trade record. FeedbackLoop never called AutoFixPipeline. All three gaps now closed."
+      "ab_rules_total": 59
     },
     "execution_forensics": {
-      "status": "SKIP - no trades.csv (bot offline 262.7h)",
+      "status": "SKIP - no trades.csv (bot offline 265.7h)",
       "avg_slippage": "UNKNOWN (bot offline)",
-      "noise_stop_problem": "71.9% illiquid-regime stops hit in noise (57 historical — unchanged)",
+      "noise_stop_problem": "71.9% illiquid-regime stops hit in noise (57 historical \u2014 unchanged)",
+      "new_forensic_finding": "TRENDING_MIN_HOLD_2H: Losses in trending resolve at 1.5h median vs wins at 3.3h median. 2x speed difference. Min 2h hold guard could filter structural noise exits.",
       "structural_gaps": [
-        "snapshot_entry: NOW in trade_ledger.py schema (col 16). Still absent from legacy trades.csv — use trade_ledger.csv on restart.",
-        "fill_status: NOT tracked in any schema. Partial fill rate remains unknown."
+        "snapshot_entry: present in trade_ledger.py schema (col 16), absent from legacy trades.csv",
+        "fill_status: NOT tracked in any schema. Partial fill rate unknown."
       ],
       "unchanged_from_last_run": true
     },
     "live_injection": {
-      "status": "CACHED - no new trades (bot offline 262.7h)",
+      "status": "CACHED - no new trades (bot offline 265.7h)",
       "data_as_of": "2026-05-03T20:12:47+00:00",
-      "hours_stale": 25,
+      "hours_stale": 49,
       "high_edges_found": 1,
       "weak_setups_found": 3,
       "top_edge": "ETH_SHORT+trending+morning = ~80%+ WR (5 live trades)",
       "blocked_setups": [
-        "HYPE_LONG (23% WR) — VETOED at Gate 1g",
-        "SOL_LONG (24% WR) — VETOED at Gate 1g",
-        "HYPE_SHORT (-$16.65/trade) — VETOED at Gate 1g",
-        "night_session_00_06UTC (19% WR, 27 trades, -$136.83) — VETOED at Gate 1g"
+        "HYPE_LONG (23% WR) \u2014 VETOED at Gate 1g",
+        "SOL_LONG (24% WR) \u2014 VETOED at Gate 1g",
+        "HYPE_SHORT (-$16.65/trade) \u2014 VETOED at Gate 1g",
+        "night_session_00_06UTC (19% WR, 27 trades, -$136.83) \u2014 VETOED at Gate 1g"
       ],
       "new_this_run": "No new edges (bot offline). Injection data frozen until restart."
     },
     "daily_synthesis": {
       "status": "COMPLETE",
       "report_generated": true,
-      "report_file": "data/sessions/daily_synthesis_2026-05-04.json",
+      "report_file": "data/sessions/daily_synthesis_2026-05-05.json",
       "anomalies_found": 6,
-      "anomalies_resolved_this_run": 1,
+      "anomalies_resolved_this_run": 2,
       "anomalies": [
-        {"type": "BOT_OFFLINE", "severity": "CRITICAL", "value": "10.9 days"},
-        {"type": "CONSECUTIVE_LOSSES", "severity": "CRITICAL", "value": 4},
-        {"type": "AB_TRACKING_WIRED", "severity": "RESOLVED_THIS_RUN"},
-        {"type": "GRADUATED_RULES_RUNTIME", "severity": "VERIFIED", "value": "7 active"},
-        {"type": "RULE_CONFLICTS_PENDING", "severity": "HIGH", "value": 2},
-        {"type": "SLIPPAGE_TRACKING_GAP", "severity": "MEDIUM"}
+        {
+          "type": "BOT_OFFLINE",
+          "severity": "CRITICAL",
+          "value": "11.1 days"
+        },
+        {
+          "type": "CONSECUTIVE_LOSSES",
+          "severity": "HIGH",
+          "value": 4
+        },
+        {
+          "type": "AB_TRACKING_STATUS",
+          "severity": "RESOLVED"
+        },
+        {
+          "type": "AB_HASH_IMPROVED",
+          "severity": "RESOLVED_THIS_RUN"
+        },
+        {
+          "type": "RULE_CONFLICTS_PENDING",
+          "severity": "HIGH",
+          "value": 2
+        },
+        {
+          "type": "59_AB_RULES_AWAITING_DATA",
+          "severity": "MEDIUM"
+        }
       ]
     },
     "model_optimization": {
       "status": "SKIP - no cost_tracker.json",
       "swaps_recommended": 0,
-      "potential_savings": "$0.00"
+      "potential_savings": "$0.00",
+      "note": "Will evaluate once bot generates cost_tracker.json on restart"
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
-      "severity": "CRITICAL_RESOLVED",
-      "finding": "AB_TRACKING_BROKEN fixed: ab_gate_hash column added to TradeLedger schema + AutoFixPipeline wired into FeedbackLoop.record_outcome(). 59 A/B_ACTIVE rules in graduated_rules.json were frozen with null treatment_wr. On restart, every 20 trades will trigger evaluate_active_fixes() which will auto-revert bad rules (WR delta < -3pp) and promote good ones (delta > +2pp).",
-      "action": "DONE. feedback/trade_ledger.py + feedback/loop.py modified. Syntax verified. Unit tests passed.",
-      "estimated_impact": "Unblocks graduation pipeline for 59 queued rules including streak_momentum_gate (74-77% WR after wins), BB_solo_signal_boost (67.6% WR), ETH_SHORT_BB_golden (70% WR). Estimated +5-15pp improvement once best rules graduate."
+      "severity": "RESOLVED_THIS_RUN",
+      "finding": "AB gate hash improved: record_outcome() was using sequential index (i%100) as ab_gate_hash \u2014 unstable, same trade gets different bucket depending on where in the deque it lands. Fixed to deterministic hash((symbol,side,conf,pnl))%100. Takes effect on bot restart.",
+      "action": "DONE. feedback/loop.py modified. Syntax verified.",
+      "estimated_impact": "Cleaner A/B split measurements. 59 queued A/B rules will get more reliable treatment_wr estimates."
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "NEW",
+      "finding": "TRENDING_MIN_HOLD_2H added as A/B_ACTIVE rule. Execution forensics show losses resolve 2x faster than wins (1.5h vs 3.3h). A minimum 2h hold guard in trending regime could prevent noise stops that resolve before the directional move materializes.",
+      "action": "TRACKED. A/B gate at 20%. Exit agent should reference this rule when positions are <2h old in trending regime.",
+      "estimated_impact": "Potential reduction in noise stops. If 20% of trending-regime SL hits are in the first 2h, preventing even half = material improvement."
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot offline 10.9 days. 7 graduated rules armed. AB tracking now wired. Restart is the only path to new data.",
-      "action": "PENDING_USER_ACTION: python run.py paper",
+      "finding": "Bot offline 11.1 days. 7 graduated rules armed. 59 A/B rules awaiting live data. AB hash tracking now stable. Restart is the only path to progress.",
+      "action": "PENDING_USER_ACTION: cd bot && python run.py paper",
       "pre_restart_checklist": [
-        "1. cd bot && python -c 'from feedback.trade_ledger import LEDGER_COLUMNS; print(\"ab_gate_hash\" in LEDGER_COLUMNS)' → True",
-        "2. python -c 'from llm.graduated_rules import get_graduated_rules_engine; e=get_graduated_rules_engine(); print(e.get_stats())' → 7 active rules",
+        "1. python -c 'from feedback.loop import FeedbackLoop; fl=FeedbackLoop.__new__(FeedbackLoop); fl._recent_ab_records=[]; print(\"ab_records attr: OK\")'",
+        "2. python -c 'from llm.graduated_rules import get_graduated_rules_engine; e=get_graduated_rules_engine(); print(e.get_stats())'  \u2192 7 active rules",
         "3. python run.py paper (soft-start: 50% size, 3x max leverage for first 5 trades)",
-        "4. Within first 20 signals: check rejection_tracker.json for HYPE/SOL/night vetoes",
-        "5. At trade #20: check logs for '[FEEDBACK] AB eval' line confirming first evaluation"
+        "4. At trade #20: confirm '[FEEDBACK] AB eval' in logs with evaluated>=1"
       ]
     },
     {
       "subsystem": "auto_fix",
       "severity": "PENDING_HUMAN_REVIEW",
-      "finding": "F1_sniper pending user decision: re-enable SNIPER_AUTO_EXECUTE with 5x leverage cap + $50/trade loss ceiling would restore the bot's only confirmed alpha (+$328 on 34 trades). Needs end-to-end cap verification first.",
-      "action": "PENDING_HUMAN_DECISION — highest $ lever, cannot auto-apply"
+      "finding": "F1_sniper pending user decision: re-enable SNIPER_AUTO_EXECUTE with 5x leverage cap + $50/trade loss ceiling would restore the bot's only confirmed alpha (+$328 on 34 trades).",
+      "action": "PENDING_HUMAN_DECISION \u2014 highest $ lever, cannot auto-apply"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "RULE_CONFLICT_SOL_SHORT: sol_short_full_block and sol_short_partial_block_v2 contradict each other in graduated_rules.json. One blocks all SOL SHORT, the other only at 70-80% conf. The full_block makes measurement of the partial impossible.",
-      "action": "PENDING_HUMAN_DECISION — resolve by choosing one rule"
+      "finding": "RULE_CONFLICT_SOL_SHORT: sol_short_full_block and sol_short_partial_block_v2 contradict each other. RULE_CONFLICT_LONG_BIAS: SIDE_BIAS_LONG_filter and SIDE_BIAS_LONG_SUSPENSION cancel each other.",
+      "action": "PENDING_HUMAN_DECISION"
     }
   ],
   "run_delta_from_prior": {
     "new_this_run": [
-      "ab_gate_hash column added to TradeLedger LEDGER_COLUMNS (feedback/trade_ledger.py:52)",
-      "ab_gate_hash auto-computed in record_trade() from trade_id hex (stable 0-99)",
-      "AutoFixPipeline imported and wired into FeedbackLoop.__init__()",
-      "evaluate_active_fixes() called every 20 trades in record_outcome() step 7",
-      "daily_synthesis_2026-05-04.json generated (6 anomalies, 1 resolved this run)",
-      "Total applied all time: 19 -> 21"
+      "record_outcome() AB hash improved: i%100 \u2192 hash((symbol,side,conf,pnl))%100",
+      "_recent_ab_records List[Dict] added to FeedbackLoop for stable AB tracking",
+      "TRENDING_MIN_HOLD_2H added to feedback/graduated_rules.json (A/B_ACTIVE, gate=20%)",
+      "daily_synthesis_2026-05-05.json generated (6 anomalies, 2 resolved this run)",
+      "Total applied all time: 21 -> 23"
     ],
     "still_outstanding": [
-      "Bot offline — restart required (user action)",
-      "59 A/B rules awaiting live trade data (now have path to collect it)",
-      "F1_sniper — awaiting human safety review",
-      "RULE_CONFLICT_SOL_SHORT — awaiting human decision",
-      "RULE_CONFLICT_LONG_BIAS — awaiting human decision",
+      "Bot offline \u2014 restart required (user action)",
+      "59 A/B rules awaiting live trade data",
+      "F1_sniper \u2014 awaiting human safety review",
+      "RULE_CONFLICT_SOL_SHORT \u2014 awaiting human decision",
+      "RULE_CONFLICT_LONG_BIAS \u2014 awaiting human decision",
       "fill_status column missing from trade_ledger",
-      "evaluate_active_fixes() uses index-based ab_gate_hash approximation — full accuracy needs trade_ledger integration in record_outcome()"
+      "cost_tracker.json missing \u2014 Model Optimization subsystem blocked"
     ]
   },
   "next_run_focus": [
-    "If bot still offline: no new trade data. Consider improving evaluate_active_fixes() ab_gate_hash accuracy by reading from trade_ledger.csv directly.",
+    "If bot still offline: evaluate whether record_outcome() is_valid() check exists for the new _recent_ab_records list",
     "If bot restarted: verify '[FEEDBACK] AB eval' appears in logs at trade #20",
     "If bot restarted: check rejection_tracker.json shows HYPE/SOL/night vetoes within first 10 signals",
-    "Resolve RULE_CONFLICT_SOL_SHORT — user decision needed",
-    "Improve record_outcome() AB tracking: read trade_ledger for real ab_gate_hash instead of index approximation"
+    "If bot restarted: first AB eval should use stable hash \u2014 verify treatment split is ~20% for 20% gate rules",
+    "Resolve RULE_CONFLICT_SOL_SHORT \u2014 user decision needed",
+    "Generate cost_tracker.json wiring so Model Optimization subsystem can run"
   ]
 }
