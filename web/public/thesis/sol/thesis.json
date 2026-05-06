@@ -1,41 +1,41 @@
 {
   "symbol": "SOL",
-  "updated_at": "2026-05-06T17:18:45.465180+00:00",
-  "price": 88.8725,
+  "updated_at": "2026-05-06T17:22:48.480845+00:00",
+  "price": 89.0615,
   "levels": {
     "symbol": "SOL",
-    "ts": "2026-05-06T17:18:32.712634+00:00",
-    "price": 88.8725,
+    "ts": "2026-05-06T17:22:36.669673+00:00",
+    "price": 89.0615,
     "daily": {
-      "ema20": 85.14572480671137,
-      "ema50": 85.0420506361368,
-      "slope_pct": -0.3566928361787334,
-      "rsi14": 58.492294877134526,
+      "ema20": 85.16353433052089,
+      "ema50": 85.05411515226585,
+      "slope_pct": -0.33585092244293846,
+      "rsi14": 59.12893700787401,
       "atr14": 2.4254999999999987,
       "hi60d": 97.638,
       "lo60d": 76.683,
       "trend": "FLAT"
     },
     "h4": {
-      "ema20": 86.29662484665837,
-      "ema50": 85.28762764986033,
-      "rsi14": 80.1727283785429,
+      "ema20": 86.3144343704679,
+      "ema50": 85.29496098319366,
+      "rsi14": 81.01204819277123,
       "atr14": 1.2469999999999988,
       "hi20": 89.999,
       "lo20": 83.213
     },
     "h1": {
-      "ema20": 88.09600963754502,
-      "ema50": 86.7547691817819,
-      "rsi14": 62.44705882352941,
+      "ema20": 88.11477154230693,
+      "ema50": 86.76249467197798,
+      "rsi14": 64.4383295564908,
       "atr14": 0.8272142857142859,
       "hi20": 89.999,
       "lo20": 86.073,
-      "vol_ratio": 0.8139003929323806
+      "vol_ratio": 0.8363487965938199
     },
     "m5": {
-      "rsi14": 44.98977505112469,
-      "atr14": 0.2279285714285706
+      "rsi14": 50.752464971458146,
+      "atr14": 0.22735714285714131
     }
   },
   "factors": {
@@ -54,16 +54,16 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend FLAT with slope -0.36%/10d and RSI 58. Price +4.38% vs daily EMA20 ($85). ATR 2.73% \u2014 healthy momentum.",
+      "narrative": "Daily trend FLAT with slope -0.34%/10d and RSI 59. Price +4.58% vs daily EMA20 ($85). ATR 2.72% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "unknown",
       "confidence": 40,
       "bias": "neutral",
       "vol_band": "medium",
-      "daily_slope_pct": -0.36,
-      "daily_rsi": 58.0,
-      "h1_rsi": 62.0,
-      "vol_ratio_1h": 0.81
+      "daily_slope_pct": -0.34,
+      "daily_rsi": 59.0,
+      "h1_rsi": 64.0,
+      "vol_ratio_1h": 0.84
     },
     "trade": {
       "ok": false,
@@ -72,14 +72,14 @@
       "latency_s": 0,
       "action": "wait",
       "confidence": 40,
-      "entry_low": 88.61,
-      "entry_high": 89.14,
+      "entry_low": 88.79,
+      "entry_high": 89.33,
       "stop": 85.82,
       "target1": 90.0,
       "target2": 97.64,
-      "rr_t1": 0.37,
-      "rr_t2": 2.88,
-      "invalidation": 85.04
+      "rr_t1": 0.29,
+      "rr_t2": 2.65,
+      "invalidation": 85.05
     },
     "critic": {
       "ok": false,

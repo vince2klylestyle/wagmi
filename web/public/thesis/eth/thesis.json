@@ -1,41 +1,41 @@
 {
   "symbol": "ETH",
-  "updated_at": "2026-05-06T17:17:55.336888+00:00",
-  "price": 2353.75,
+  "updated_at": "2026-05-06T17:21:59.235299+00:00",
+  "price": 2355.85,
   "levels": {
     "symbol": "ETH",
-    "ts": "2026-05-06T17:17:42.900770+00:00",
-    "price": 2353.75,
+    "ts": "2026-05-06T17:21:46.175685+00:00",
+    "price": 2355.85,
     "daily": {
-      "ema20": 2307.465939188121,
-      "ema50": 2282.799980113584,
-      "slope_pct": 0.7000489196712775,
-      "rsi14": 47.154471544715456,
+      "ema20": 2307.723082045264,
+      "ema50": 2282.974173661971,
+      "slope_pct": 0.7112708830614612,
+      "rsi14": 47.527070529704474,
       "atr14": 71.94999999999995,
       "hi60d": 2462.5,
       "lo60d": 1910.0,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 2357.9525549883315,
-      "ema50": 2335.3754509944188,
-      "rsi14": 54.16058394160584,
+      "ema20": 2358.171602607379,
+      "ema50": 2335.46564707285,
+      "rsi14": 54.77362204724416,
       "atr14": 35.27857142857147,
       "hi20": 2423.8,
       "lo20": 2308.4
     },
     "h1": {
-      "ema20": 2373.9712323219096,
-      "ema50": 2368.652197541167,
-      "rsi14": 40.70647603027759,
+      "ema20": 2374.190279940957,
+      "ema50": 2368.7423936195983,
+      "rsi14": 41.50943396226426,
       "atr14": 19.071428571428637,
       "hi20": 2423.8,
       "lo20": 2337.9,
-      "vol_ratio": 0.3563398885234939
+      "vol_ratio": 0.40207209254294196
     },
     "m5": {
-      "rsi14": 35.25179856115044,
-      "atr14": 4.314285714285753
+      "rsi14": 37.681159420290314,
+      "atr14": 4.1142857142857405
     }
   },
   "factors": {
@@ -54,16 +54,16 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.70%/10d and RSI 47. Price +2.01% vs daily EMA20 ($2,307). ATR 3.06% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +0.71%/10d and RSI 48. Price +2.09% vs daily EMA20 ($2,308). ATR 3.05% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "medium",
-      "daily_slope_pct": 0.7,
-      "daily_rsi": 47.0,
-      "h1_rsi": 41.0,
-      "vol_ratio_1h": 0.36
+      "daily_slope_pct": 0.71,
+      "daily_rsi": 48.0,
+      "h1_rsi": 42.0,
+      "vol_ratio_1h": 0.4
     },
     "trade": {
       "ok": false,
@@ -72,14 +72,14 @@
       "latency_s": 0,
       "action": "go_long",
       "confidence": 65,
-      "entry_low": 2349.04,
-      "entry_high": 2358.46,
+      "entry_low": 2351.14,
+      "entry_high": 2360.56,
       "stop": 2332.18,
       "target1": 2423.8,
       "target2": 2462.5,
-      "rr_t1": 3.25,
-      "rr_t2": 5.04,
-      "invalidation": 2282.8
+      "rr_t1": 2.87,
+      "rr_t2": 4.51,
+      "invalidation": 2282.97
     },
     "critic": {
       "ok": false,
