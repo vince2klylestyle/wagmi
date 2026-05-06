@@ -1111,6 +1111,9 @@ class RiskFilterChain:
             ))
 
         # ── Soft Gate: EV floor ──
+        # CYCLE 9 FIX: Changed from "reject" to "warning" for low EV
+        # Reason: Hard rejection is handled elsewhere; soft annotations should not prevent execution
+        # Impact: Signals with negative/low EV now get warning annotation but still pass (passed_all=True)
         ev = signal.metadata.get("ev_per_dollar") if signal.metadata else None
         min_ev = getattr(self.config, "min_signal_ev", 0.10)
         if stop_pct > 0 and stop_pct < 0.004:
@@ -1122,7 +1125,7 @@ class RiskFilterChain:
             annotations.append(FilterAnnotation(
                 gate="ev_floor",
                 passed=ev >= min_ev,
-                severity="reject" if ev < min_ev else ("warning" if ev < min_ev * 1.2 else "ok"),
+                severity="warning" if ev < min_ev else ("warning" if ev < min_ev * 1.2 else "ok"),
                 value=round(ev, 3),
                 threshold=min_ev,
                 detail=f"ev={ev:.3f} vs {min_ev:.2f}",

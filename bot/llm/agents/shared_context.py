@@ -441,7 +441,7 @@ STRATEGY_REGIME_FIT = {
         "oi_delta": "strong", "probability_engine": "weak", "vmc_cipher": "avoid",
     },
     "high_volatility": {
-        "regime_trend": "avoid", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",  # regime_trend: avoid in high_vol (PF=0.65)
+        "regime_trend": "weak", "monte_carlo_zones": "moderate", "confidence_scorer": "moderate", "multi_tier_quality": "moderate",  # regime_trend: "weak" allows internal ADX check (ADX>25 = trade, <25 = skip). Avoids blanket-disabling on high-ADX conditions (e.g., HYPE ADX=52).
         "bollinger_squeeze": "moderate", "funding_rate": "moderate", "lead_lag": "strong", "liquidation_cascade": "strong",
         "oi_delta": "strong", "probability_engine": "moderate", "vmc_cipher": "moderate",
     },

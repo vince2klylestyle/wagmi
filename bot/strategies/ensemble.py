@@ -373,21 +373,11 @@ class EnsembleStrategy:
     def _get_regime_allowed_strategies(self, symbol: str) -> Optional[set]:
         """Get the set of strategies allowed in the current regime for this symbol.
 
-        Returns None if no regime filter should be applied:
-        - No regime has been set for this symbol
-        - Regime is not in the allowlist lookup
-        This ensures the filter only activates when we have explicit regime data.
+        PHASE 2 CHANGE: Disabled regime-based filtering (returns None always).
+        This allows all strategies to vote regardless of current market regime,
+        letting the ensemble find its own natural gating through voting & weights.
         """
-        if symbol not in self._current_regime:
-            return None  # No regime set — don't filter
-        regime = self._current_regime[symbol]
-        allowed = self.STRATEGY_REGIME_ALLOWLIST.get(regime)
-        # For 'unknown' regime, only filter if we actually have an empty set
-        # (which means "block all"). If the regime isn't in the lookup, don't filter.
-        if allowed is not None and len(allowed) == 0:
-            # Only block all if regime was explicitly set (not just defaulting to unknown)
-            return allowed
-        return allowed
+        return None  # Phase 2: Disable all regime-based strategy filtering
 
     def _apply_monte_carlo_gate(self, signal: Optional[Signal], symbol: str) -> Optional[Signal]:
         """
@@ -546,7 +536,7 @@ class EnsembleStrategy:
             )
         # If strategies errored, lower min_votes so the system doesn't deadlock.
         if error_count > 0 and active_count > 0:
-            degraded = max(2, min(effective_min_votes, active_count - error_count))
+            degraded = max(self.min_votes, min(effective_min_votes, active_count - error_count))
             if degraded != effective_min_votes:
                 logger.info(
                     f"[{symbol}] Strategy degradation: {error_count} errors, "
@@ -729,6 +719,9 @@ class EnsembleStrategy:
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
 
         if result.confidence < effective_floor:
+            # DEBUG: Log floor details for SOL
+            if symbol == "SOL":
+                logger.info(f"[{symbol}] FLOOR CHECK: conf={result.confidence:.0f}% vs floor={effective_floor:.0f}% (chop={chop_score:.2f}), regime={_result_regime}")
             # Magnitude bypass: high-R:R signals on volatile assets get a second chance.
             # Data: HYPE BUY signals at 55-65% conf routinely produce 15-22% moves.
             # Allow if: (1) R:R > 2.5, (2) high-vol asset, (3) confidence within 10% of floor.
@@ -765,12 +758,15 @@ class EnsembleStrategy:
                     f"{effective_floor:.0f}% but HYPE BUY has 88.6% WR in counterfactual data"
                 )
             else:
+                # CYCLE 10 FIX: Don't hard-reject below-floor signals; let LLM see them
+                # Mark as below-floor but pass through for LLM to make final decision
+                result.metadata["below_confidence_floor"] = True
+                result.metadata["floor_gap"] = round(effective_floor - result.confidence, 1)
                 logger.info(
-                    f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
-                    f"< {effective_floor:.0f}% floor (chop={chop_score:.2f})"
+                    f"[{symbol}] Signal below floor: confidence {result.confidence:.0f}% "
+                    f"< {effective_floor:.0f}% (gap={effective_floor - result.confidence:.0f}pp, chop={chop_score:.2f}) — passing to curator for LLM review"
                 )
-                self._record_counterfactual(result, f"confidence_floor_{effective_floor:.0f}")
-                return None
+                # Don't return None — let the signal through for curator/LLM decision
 
         # 2. Trend alignment: FLIP counter-trend signals to ride the trend
         # Use duration-aware weights: short-term strategies don't get killed
@@ -784,13 +780,15 @@ class EnsembleStrategy:
             return None
 
         # Re-check floor after adjustment (should rarely fail now since we flip instead of crush)
+        # CYCLE 10 FIX: Don't hard-reject after trend adjustment; let signals through
         if result.confidence < effective_floor:
             logger.info(
-                f"[{symbol}] Signal rejected: confidence {result.confidence:.0f}% "
-                f"< {effective_floor:.0f}% after trend adjustment"
+                f"[{symbol}] Signal below floor after trend adjustment: confidence {result.confidence:.0f}% "
+                f"< {effective_floor:.0f}% — passing to curator for LLM review"
             )
-            self._record_counterfactual(result, f"trend_adj_floor_{effective_floor:.0f}")
-            return None
+            result.metadata["below_confidence_floor_post_trend"] = True
+            result.metadata["floor_gap_post_trend"] = round(effective_floor - result.confidence, 1)
+            # Don't return None — let the signal through
 
         # 3. BTC lead-lag boost: amplify confidence when BTC has made a decisive
         #    move and this asset is in the expected lag window. BOOST ONLY —
@@ -976,7 +974,7 @@ class EnsembleStrategy:
         # requirement is a mechanical filter the LLM should override.
         effective_min_votes = self._get_effective_min_votes(symbol)
         if error_count > 0 and active_count > 0:
-            degraded = max(2, min(effective_min_votes, active_count - error_count))
+            degraded = max(self.min_votes, min(effective_min_votes, active_count - error_count))
             if degraded != effective_min_votes:
                 effective_min_votes = degraded
 
@@ -1162,7 +1160,7 @@ class EnsembleStrategy:
         # Regime-aware min_votes + degradation
         effective_min_votes = self._get_effective_min_votes(symbol)
         if error_count > 0 and active_count > 0:
-            effective_min_votes = max(2, min(effective_min_votes, active_count - error_count))
+            effective_min_votes = max(self.min_votes, min(effective_min_votes, active_count - error_count))
 
         # Chop detection — attach scores but don't reject
         annotations: List[FilterAnnotation] = []
@@ -1261,10 +1259,13 @@ class EnsembleStrategy:
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
 
         conf_passed = result.confidence >= effective_floor
+        # CYCLE 9 FIX: Changed from "reject" to "warning" for low confidence
+        # Reason: Confidence threshold is adaptive and informational; should not hard-block execution
+        # Impact: Signals with low confidence now get warning annotation but still pass (passed_all=True)
         annotations.append(FilterAnnotation(
             gate="confidence_floor",
             passed=conf_passed,
-            severity="reject" if not conf_passed else "ok",
+            severity="warning" if not conf_passed else "ok",
             value=round(result.confidence, 1),
             threshold=round(effective_floor, 1),
             detail=f"conf={result.confidence:.0f} vs floor={effective_floor:.0f} (chop={smoothed_chop:.2f})",
@@ -2535,7 +2536,7 @@ class EnsembleStrategy:
         # the signal unless multiple OTHER strategies also agree.
         _SHADOW_BLOCKS = {
             ("SOL", "SELL", "regime_trend"),        # 0% WR on 149 samples (catastrophic)
-            ("SOL", "BUY", "regime_trend"),         # 75% WR trap: wins small, loses big (-0.48 sum)
+            # ("SOL", "BUY", "regime_trend"),       # PHASE 2: Temporarily unblocked for validation (was: 75% WR trap)
             ("HYPE", "BUY", "multi_tier_quality"),  # 36.8% WR on 95 samples
             ("ETH", "SELL", "regime_trend"),        # 23.1% WR on 65 samples
         }

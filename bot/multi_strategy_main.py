@@ -4252,6 +4252,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # But when LLM is active, ALSO check for proven solo setups that the
         # LLM can evaluate. This lets the LLM take trades mechanical blocks.
         signal_result = self.ensemble.evaluate(symbol, data)  # Always run mechanical first
+        if symbol == "SOL":
+            logger.info(f"[{trace_id}][{symbol}] ENSEMBLE RESULT: {signal_result}")
+            if signal_result:
+                logger.info(f"[{trace_id}][{symbol}] Signal: {signal_result.side} conf={signal_result.confidence:.0f}%")
 
         # If mechanical returned None (solo signal or sub-consensus), route to
         # the LLM-first pathway when LLM_FIRST_MODE is active.
@@ -4726,8 +4730,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         if last_sig and last_sig[0] == signal_result.side:
             elapsed = now - last_sig[1]
             if elapsed < self._signal_dedup_seconds:
+                logger.info(f"[{trace_id}][{symbol}] DEDUP: {signal_result.side} signal within {elapsed:.0f}s (threshold {self._signal_dedup_seconds}s)")
                 return  # same signal, skip silently
         self._last_signal[symbol] = (signal_result.side, now)
+        logger.debug(f"[{trace_id}][{symbol}] Signal passed dedup check, proceeding to risk gating")
 
         # (Sniper evaluation moved earlier — before regime gating — to see all signals)
 
@@ -5064,6 +5070,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             confidence=signal_result.confidence,
             cb_conf_override_pct=self.config.cb_conf_override_pct,
         ):
+            logger.info(f"[{trace_id}][{symbol}] Circuit breaker blocked signal (conf={signal_result.confidence:.0f}%, open_count={self.pos_mgr.get_open_count()})")
             # ── Signal Override: can powerful signal bypass circuit breaker? ──
             _cb_override_ok = False
             if (self.signal_override and self.config.enable_signal_override
@@ -5094,7 +5101,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     logger.debug(f"Signal override CB error: {e}")
 
             if not _cb_override_ok:
+                logger.info(f"[{trace_id}][{symbol}] RETURNING: Circuit breaker not overridden")
                 return
+            logger.info(f"[{trace_id}][{symbol}] PROCEEDING: Circuit breaker override accepted, continuing to risk gates")
 
         # Portfolio leverage guard: block new entries when total leverage too high
         _portfolio_lev = self._compute_portfolio_leverage()
@@ -5165,6 +5174,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         try:
             from core.signal_pipeline import RiskFilterChain
             _chain = RiskFilterChain(self.risk_mgr, self.leverage_mgr, self.config)
+            logger.debug(f"[{trace_id}][{symbol}] Evaluating through RiskFilterChain...")
             _chain_result = _chain.evaluate(
                 signal=signal_result,
                 equity=self.risk_mgr.equity,
@@ -5177,6 +5187,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 portfolio_risk_engine=self.portfolio_risk if hasattr(self, 'portfolio_risk') else None,
             )
             if not _chain_result.approved:
+                logger.info(f"[{trace_id}][{symbol}] RiskFilterChain REJECTED: {_chain_result.rejection_reason}")
                 log_rejection(symbol, f"risk_filter_chain: {_chain_result.rejection_reason}",
                               confidence=signal_result.confidence)
                 logger.info(

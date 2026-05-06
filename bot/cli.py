@@ -41,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--mode", "-m",
-        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare", "walkforward", "gate"],
+        choices=["paper", "replay", "live", "evolve", "tiers", "optimize", "compare", "walkforward", "gate", "signals", "trade"],
         default="paper",
         help="Trading mode (default: paper)",
     )
@@ -89,6 +89,46 @@ def main():
         default=None,
         help="Enable/disable Monte Carlo gate (default: config)",
     )
+    parser.add_argument(
+        "--symbol",
+        default=None,
+        help="Filter signals by symbol (signals mode only)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Max number of signals to display (signals mode only, default: 50)",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["live", "cached", "extracted", "complete"],
+        default="live",
+        help="Signal source: live (API), cached (disk), extracted (clean subset), complete (all) (default: live)",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show cached signal statistics instead of listing signals (signals mode only)",
+    )
+    parser.add_argument(
+        "--signal-id",
+        type=int,
+        default=0,
+        help="Signal ID to execute (trade mode only)",
+    )
+    parser.add_argument(
+        "--size",
+        type=float,
+        default=1.0,
+        help="Position size multiplier (trade mode only, default: 1.0)",
+    )
+    parser.add_argument(
+        "--exec-mode",
+        choices=["log", "simulate", "paper"],
+        default="log",
+        help="Execution mode: log (record only), simulate (estimate P&L), paper (add to trades.csv) (default: log)",
+    )
 
     args = parser.parse_args()
 
@@ -112,6 +152,10 @@ def main():
         _run_optimize(args.symbols, args.days, args.trials, args.metric)
     elif args.mode == "gate":
         _run_gate()
+    elif args.mode == "signals":
+        _run_signals(args.symbol, args.limit, args.source, args.stats)
+    elif args.mode == "trade":
+        _run_trade(args.signal_id, args.size, args.exec_mode, args.source)
     else:
         _run_paper()
 
@@ -358,6 +402,35 @@ def _run_gate():
     print(gate.format_report(result))
 
     sys.exit(0 if result["passed"] else 1)
+
+
+def _run_signals(symbol: str = None, limit: int = 50, source: str = "live", stats: bool = False):
+    """Display pending signals for manual review (CLI-based system).
+
+    Sources:
+      live - Real-time signals from LLM agents (requires API/data connection)
+      cached - Pre-computed historical signals from disk (API-free)
+      extracted - Clean signal subset (recommended)
+      complete - All 60-day signals
+    """
+    if source in ("cached", "extracted", "complete"):
+        from cli.cached_signals import run_cached_signals_cli
+        run_cached_signals_cli(symbol, limit, source, stats)
+    else:
+        from cli.signals import run_signals_cli
+        run_signals_cli(symbol, limit)
+
+
+def _run_trade(signal_id: int, size: float, exec_mode: str, source: str = "extracted"):
+    """Execute a signal from the CLI (API-free trading).
+
+    Execution modes:
+      log     - Record trade decision to CSV (no simulation)
+      simulate - Estimate P&L using signal SL/TP targets
+      paper   - Log to trades.csv as if filled
+    """
+    from cli.executor import run_executor_cli
+    run_executor_cli(signal_id, size, exec_mode, source)
 
 
 if __name__ == "__main__":

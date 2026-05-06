@@ -1,47 +1,47 @@
 {
   "symbol": "HYPE",
-  "updated_at": "2026-05-06T17:23:38.435534+00:00",
-  "price": 43.1165,
+  "updated_at": "2026-05-06T23:22:29.237872+00:00",
+  "price": 43.0415,
   "levels": {
     "symbol": "HYPE",
-    "ts": "2026-05-06T17:23:25.876796+00:00",
-    "price": 43.1165,
+    "ts": "2026-05-06T23:22:11.554909+00:00",
+    "price": 43.0415,
     "daily": {
-      "ema20": 41.48738454460062,
-      "ema50": 40.99111494029073,
-      "slope_pct": 0.7006755672513438,
-      "rsi14": 60.985442329227354,
-      "atr14": 1.668571428571429,
+      "ema20": 41.47976549698158,
+      "ema50": 40.98595364996815,
+      "slope_pct": 0.6821821565232694,
+      "rsi14": 60.4439511653718,
+      "atr14": 1.674357142857143,
       "hi60d": 45.763,
       "lo60d": 29.669,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 42.96460083849217,
-      "ema50": 42.010284150033506,
-      "rsi14": 66.0714285714286,
-      "atr14": 0.8960000000000008,
+      "ema20": 42.98411631281105,
+      "ema50": 42.061178735304196,
+      "rsi14": 64.8890479599141,
+      "atr14": 0.8689285714285714,
       "hi20": 44.758,
       "lo20": 40.678
     },
     "h1": {
-      "ema20": 43.839778090379234,
-      "ema50": 43.41062797708231,
-      "rsi14": 33.54410369901994,
-      "atr14": 0.43571428571428683,
+      "ema20": 43.51220383480333,
+      "ema50": 43.33585926707813,
+      "rsi14": 33.28938694792356,
+      "atr14": 0.3946428571428565,
       "hi20": 44.758,
-      "lo20": 42.98,
-      "vol_ratio": 1.5461112471891654
+      "lo20": 42.899,
+      "vol_ratio": 0.4223539439528721
     },
     "m5": {
-      "rsi14": 20.426487093153412,
-      "atr14": 0.11942857142857122
+      "rsi14": 43.95061728395059,
+      "atr14": 0.0693571428571426
     }
   },
   "factors": {
     "btc_4h_direction": "bullish",
     "btc_4h_aligned_long": true,
-    "chop_score": 0.25,
+    "chop_score": 0.21,
     "chop_ok": true,
     "rsi_aligned": false,
     "rsi_bullish_stack": false,
@@ -54,16 +54,16 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.70%/10d and RSI 61. Price +3.93% vs daily EMA20 ($41). ATR 3.87% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +0.68%/10d and RSI 60. Price +3.77% vs daily EMA20 ($41). ATR 3.89% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "medium",
-      "daily_slope_pct": 0.7,
-      "daily_rsi": 61.0,
-      "h1_rsi": 34.0,
-      "vol_ratio_1h": 1.55
+      "daily_slope_pct": 0.68,
+      "daily_rsi": 60.0,
+      "h1_rsi": 33.0,
+      "vol_ratio_1h": 0.42
     },
     "trade": {
       "ok": false,
@@ -72,36 +72,34 @@
       "latency_s": 0,
       "action": "go_long",
       "confidence": 65,
-      "entry_low": 43.03,
-      "entry_high": 43.2,
-      "stop": 42.85,
+      "entry_low": 42.96,
+      "entry_high": 43.13,
+      "stop": 42.78,
       "target1": 44.76,
       "target2": 45.76,
-      "rr_t1": 6.14,
-      "rr_t2": 9.9,
+      "rr_t1": 6.58,
+      "rr_t2": 10.43,
       "invalidation": 40.99
     },
     "critic": {
       "ok": false,
       "agent": "critic",
-      "narrative": "Primary risks: rsi5m_oversold. Size down if any conviction factor missing.",
+      "narrative": "Primary risks: thin_volume. Size down if any conviction factor missing.",
       "latency_s": 0,
-      "vote": "reduce",
+      "vote": "pass",
       "risk_flags": [
-        "rsi5m_oversold"
+        "thin_volume"
       ]
     },
     "risk": {
       "ok": false,
       "agent": "risk",
-      "narrative": "Size 0.25x at 3x leverage. Conviction=1/4 . Max loss 1.0% of equity. Flags: critic_reduce.",
+      "narrative": "Size 0.5x at 3x leverage. Conviction=1/4 . Max loss 2.0% of equity. Flags: none.",
       "latency_s": 0,
-      "size_multiplier": 0.25,
+      "size_multiplier": 0.5,
       "leverage": 3,
-      "max_loss_pct": 1.0,
-      "risk_flags": [
-        "critic_reduce"
-      ]
+      "max_loss_pct": 2.0,
+      "risk_flags": []
     },
     "mode": "cli"
   }

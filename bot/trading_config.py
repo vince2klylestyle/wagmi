@@ -45,11 +45,13 @@ class SymbolConfig:
 
 # Focused symbol set — backtested assets only
 # Fewer symbols = faster rescan loop = better scalp coverage
+# DISABLED 2026-05-06:
+#   SOL: Catastrophic P&L -$50K on 924 trades (0.47:1 win/loss ratio, losses 2.13x wins)
+#   HYPE: Catastrophic P&L -$65K on 1,509 trades (0.68:1 win/loss ratio, losses 1.46x wins)
+# These symbols destroyed $115K profit from BTC/ETH. Keeping only profitable assets.
 DEFAULT_SYMBOLS = {
     "BTC": SymbolConfig("BTC", "BTC-USD", "bitcoin", "low"),
     "ETH": SymbolConfig("ETH", "ETH-USD", "ethereum", "low"),
-    "SOL": SymbolConfig("SOL", "SOL-USD", "solana", "medium"),
-    "HYPE": SymbolConfig("HYPE", "HYPE-USD", "hyperliquid", "high"),
 }
 
 # Risk multipliers for zone computation (from user's original bots)
@@ -159,10 +161,10 @@ class TradingConfig:
     # From AUDIT_FINDINGS_AND_ACTIONS.md: 2,448 signals, 57% WR, ~$600 PnL/cycle if enabled
     # with conditions: regime=[ranging,consolidation], confidence >= 65%, drawdown < 3%
     monte_carlo_enabled: bool = field(
-        default_factory=lambda: _env_bool("MONTE_CARLO_ENABLED", False)
+        default_factory=lambda: _env_bool("MONTE_CARLO_ENABLED", True)
     )
     monte_carlo_min_confidence: float = field(
-        default_factory=lambda: _env_float("MONTE_CARLO_MIN_CONFIDENCE", 65.0)
+        default_factory=lambda: _env_float("MONTE_CARLO_MIN_CONFIDENCE", 50.0)
     )
     monte_carlo_max_drawdown_pct: float = field(
         default_factory=lambda: _env_float("MONTE_CARLO_MAX_DRAWDOWN_PCT", 3.0)
@@ -173,7 +175,7 @@ class TradingConfig:
     # Phase 2: Allow 2+ agreement (vs stricter veto_ratio thresholds).
     # Expected: +4,000 signals/cycle, 45-50% WR, +$1,500-2,000 PnL/cycle improvement
     ensemble_relaxed_voting_enabled: bool = field(
-        default_factory=lambda: _env_bool("ENSEMBLE_RELAXED_VOTING_ENABLED", False)
+        default_factory=lambda: _env_bool("ENSEMBLE_RELAXED_VOTING_ENABLED", True)
     )
     ensemble_relaxed_min_votes: int = field(
         default_factory=lambda: _env_int("ENSEMBLE_RELAXED_MIN_VOTES", 2)

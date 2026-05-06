@@ -1,84 +1,84 @@
 {
   "symbol": "SOL",
-  "updated_at": "2026-05-06T17:22:48.480845+00:00",
-  "price": 89.0615,
+  "updated_at": "2026-05-06T23:17:58.028545+00:00",
+  "price": 88.9345,
   "levels": {
     "symbol": "SOL",
-    "ts": "2026-05-06T17:22:36.669673+00:00",
-    "price": 89.0615,
+    "ts": "2026-05-06T23:17:45.835257+00:00",
+    "price": 88.9345,
     "daily": {
-      "ema20": 85.16353433052089,
-      "ema50": 85.05411515226585,
-      "slope_pct": -0.33585092244293846,
-      "rsi14": 59.12893700787401,
+      "ema20": 85.15096290194947,
+      "ema50": 85.04559902323359,
+      "slope_pct": -0.3505628615505525,
+      "rsi14": 58.68159203980097,
       "atr14": 2.4254999999999987,
       "hi60d": 97.638,
       "lo60d": 76.683,
       "trend": "FLAT"
     },
     "h4": {
-      "ema20": 86.3144343704679,
-      "ema50": 85.29496098319366,
-      "rsi14": 81.01204819277123,
-      "atr14": 1.2469999999999988,
+      "ema20": 86.57662599661253,
+      "ema50": 85.44943564428758,
+      "rsi14": 77.38429600683861,
+      "atr14": 1.2126428571428565,
       "hi20": 89.999,
       "lo20": 83.213
     },
     "h1": {
-      "ema20": 88.11477154230693,
-      "ema50": 86.76249467197798,
-      "rsi14": 64.4383295564908,
-      "atr14": 0.8272142857142859,
+      "ema20": 88.54560397112085,
+      "ema50": 87.25071900496523,
+      "rsi14": 44.49491672074414,
+      "atr14": 0.76157142857143,
       "hi20": 89.999,
-      "lo20": 86.073,
-      "vol_ratio": 0.8363487965938199
+      "lo20": 86.65,
+      "vol_ratio": 0.3414274201681466
     },
     "m5": {
-      "rsi14": 50.752464971458146,
-      "atr14": 0.22735714285714131
+      "rsi14": 39.22872340425542,
+      "atr14": 0.15985714285714384
     }
   },
   "factors": {
     "btc_4h_direction": "bullish",
     "btc_4h_aligned_long": true,
-    "chop_score": 0.21,
+    "chop_score": 0.23,
     "chop_ok": true,
-    "rsi_aligned": true,
-    "rsi_bullish_stack": true,
+    "rsi_aligned": false,
+    "rsi_bullish_stack": false,
     "daily_trend_up": false,
-    "conviction_count": 3,
+    "conviction_count": 2,
     "conviction_max": 4,
-    "conviction_wr_est": 50
+    "conviction_wr_est": 38
   },
   "committee": {
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend FLAT with slope -0.34%/10d and RSI 59. Price +4.58% vs daily EMA20 ($85). ATR 2.72% \u2014 healthy momentum.",
+      "narrative": "Daily trend FLAT with slope -0.35%/10d and RSI 59. Price +4.44% vs daily EMA20 ($85). ATR 2.73% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "unknown",
       "confidence": 40,
       "bias": "neutral",
       "vol_band": "medium",
-      "daily_slope_pct": -0.34,
+      "daily_slope_pct": -0.35,
       "daily_rsi": 59.0,
-      "h1_rsi": 64.0,
-      "vol_ratio_1h": 0.84
+      "h1_rsi": 44.0,
+      "vol_ratio_1h": 0.34
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Range/unclear regime. No directional edge. Wait for breakout of $86-$90.",
+      "narrative": "Range/unclear regime. No directional edge. Wait for breakout of $87-$90.",
       "latency_s": 0,
       "action": "wait",
       "confidence": 40,
-      "entry_low": 88.79,
-      "entry_high": 89.33,
-      "stop": 85.82,
+      "entry_low": 88.67,
+      "entry_high": 89.2,
+      "stop": 86.42,
       "target1": 90.0,
       "target2": 97.64,
-      "rr_t1": 0.29,
-      "rr_t2": 2.65,
+      "rr_t1": 0.42,
+      "rr_t2": 3.46,
       "invalidation": 85.05
     },
     "critic": {
@@ -87,7 +87,9 @@
       "narrative": "Pass \u2014 no trade proposed. Waiting is the right call when confluence is absent.",
       "latency_s": 0,
       "vote": "pass",
-      "risk_flags": []
+      "risk_flags": [
+        "thin_volume"
+      ]
     },
     "risk": {
       "ok": false,

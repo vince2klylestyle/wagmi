@@ -109,7 +109,7 @@ class RegimeTrendStrategy(BaseStrategy):
                 from trading_config import TradingConfig as _TC
                 self.adx_min_trending = _TC().adx_min_trending
             except Exception:
-                self.adx_min_trending = 22.0
+                self.adx_min_trending = 5.0  # Lowered from 22.0 to enable trading on smoothed ADX
 
     def get_required_timeframes(self) -> List[str]:
         return ["1h", "6h"]
@@ -144,14 +144,20 @@ class RegimeTrendStrategy(BaseStrategy):
         df_1h = data.get("1h")
         df_6h = data.get("6h")
 
+        # DIAGNOSTIC: Log data availability
+        logger.info(f"[{symbol}] regime_trend.evaluate() called: 1h={len(df_1h) if df_1h is not None else 'None'} bars, 6h={len(df_6h) if df_6h is not None else 'None'} bars")
+
         if df_1h is None or df_1h.empty or len(df_1h) < 50:
+            logger.info(f"[{symbol}] regime_trend: Skipping (1h data insufficient: {len(df_1h) if df_1h is not None else 'None'} bars)")
             return None
         if df_6h is None or df_6h.empty or len(df_6h) < 10:
+            logger.info(f"[{symbol}] regime_trend: Skipping (6h data insufficient: {len(df_6h) if df_6h is not None else 'None'} bars)")
             return None
 
         # Build HTF candles from 1h
         df_htf = self._build_htf_candles(df_1h)
         if df_htf.empty or len(df_htf) < 5:
+            logger.info(f"[{symbol}] regime_trend: Skipping (HTF candles insufficient: {len(df_htf)} bars)")
             return None
 
         # ADX filter: skip signal generation in ranging markets (ADX < threshold)
@@ -175,10 +181,14 @@ class RegimeTrendStrategy(BaseStrategy):
         cd = bool(cross_dn.iloc[-1])
         mfi_1h_val = float(mfi_1h.iloc[-1])
 
+        logger.info(f"[{symbol}] regime_trend: WaveTrend cross_up={cu}, cross_dn={cd}, MFI={mfi_1h_val:.0f}")
+
         # 6h regime
         regime_6h = self._check_regime(df_6h)
         # HTF regime
         regime_htf = self._check_regime(df_htf)
+
+        logger.info(f"[{symbol}] regime_trend: 6h_regime={regime_6h}, htf_regime={regime_htf}")
 
         multi_bull = regime_6h["ok"] and regime_htf["ok"]
         multi_bear = regime_6h["bearish"] and regime_htf["bearish"]

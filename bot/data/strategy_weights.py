@@ -222,6 +222,14 @@ class StrategyWeightManager:
                     f"long_term={long_term_weight:.2f} — possible regime change"
                 )
                 continue
+            # Skip demotion for regime_trend during Phase 2 (always use base weight)
+            # regime_trend is the primary Phase 2 strategy and needs clean validation
+            if name == "regime_trend":
+                # Phase 2: regime_trend gets base weight, no demotion from old April data
+                dynamic[name] = base
+                continue
+
+            # Standard demotion logic for other strategies
             if len(recent) >= 20 and rolling_wr < 0.35 and long_term_weight < 0.40:
                 dynamic[name] = 0.20 if recovering else 0.15
                 logger.info(
