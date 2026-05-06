@@ -66,7 +66,8 @@ class SignalRanker:
     def __init__(self, data_dir: str, config: Optional[Any] = None):
         self.data_dir = Path(data_dir)
         self.config = config
-        self.decisions_log = self.data_dir / "llm" / "decisions.jsonl"
+        # CYCLE 7 FIX: Read from signal_outcomes.jsonl (current log) instead of decisions.jsonl (stale)
+        self.decisions_log = self.data_dir / "logs" / "signal_outcomes.jsonl"
         self.curator_output = self.data_dir / "CURATOR_DAILY_SIGNALS.json"
 
         # Historical WR by (symbol, side, setup_type, regime)
@@ -223,16 +224,30 @@ class SignalRanker:
                     except json.JSONDecodeError:
                         continue
 
-                    # Filter for GO (trade) decisions
-                    if record.get("action") != "signal_generated":
+                    # CYCLE 7 FIX: Handle signal_outcomes.jsonl format (passed signals)
+                    # Skip counterfactuals and rejected signals
+                    if record.get("type") == "counterfactual":
+                        continue
+                    if not record.get("passed", False):  # Skip hard-rejected signals
                         continue
 
-                    ts = float(record.get("timestamp", 0))
+                    ts = float(record.get("ts", 0))
                     if ts < cutoff_time:
                         continue
 
-                    # Extract signal data
-                    signal_data = record.get("signal", {})
+                    # Extract signal data from new format
+                    signal_data = {
+                        "symbol": record.get("sym", "BTC"),
+                        "side": record.get("side", "BUY"),
+                        "confidence": record.get("conf", 50),
+                        "strategy": record.get("strat", "unknown"),
+                        "setup_type": record.get("strat", "unknown"),
+                        "entry": 0,  # Not available in signal_outcomes
+                        "sl": 0,
+                        "tp1": 0,
+                        "tp2": 0,
+                        "atr": 0,
+                    }
 
                     # Score the signal
                     score = self._calc_signal_score({
@@ -241,18 +256,22 @@ class SignalRanker:
                         "side": signal_data.get("side", "BUY"),
                         "symbol": signal_data.get("symbol", "BTC"),
                         "setup_type": signal_data.get("setup_type", "unknown"),
-                        "regime": record.get("regime", "unknown"),
-                        "num_strategies_agree": record.get("num_agree", 1),
+                        "regime": record.get("regime", "unknown"),  # May be empty in signal_outcomes
+                        "num_strategies_agree": record.get("n_agree", 1),  # CYCLE 7: Use n_agree field
                     })
 
                     # Build ranked signal
+                    # CYCLE 7: signal_outcomes.jsonl doesn't have entry/sl/tp data, use defaults
                     entry = float(signal_data.get("entry", 0))
                     sl = float(signal_data.get("sl", 0))
                     atr = float(signal_data.get("atr", 0))
                     tp1 = float(signal_data.get("tp1", 0))
                     tp2 = float(signal_data.get("tp2", 0))
 
-                    rr = 1.0
+                    # Get R:R from metadata if available
+                    rr = float(record.get("meta", {}).get("rr_tp1", 1.5)) if record.get("meta") else 1.5
+
+                    # Only calculate if we have full data
                     if sl != 0 and entry != 0 and tp1 != 0:
                         risk = abs(entry - sl)
                         reward = abs(tp1 - entry)
