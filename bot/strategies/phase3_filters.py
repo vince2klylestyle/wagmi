@@ -58,16 +58,16 @@ class Phase3StrategySpecificFloors:
     - confidence_scorer: 55% (foundational, conservative)
     """
 
-    # Per-strategy minimum confidence thresholds (Phase 3 validated)
+    # Per-strategy minimum confidence thresholds (Phase 3 aggressive: 20% global floor)
     STRATEGY_FLOORS = {
-        "bollinger_squeeze": 40.0,
-        "vmc_cipher": 35.0,
-        "monte_carlo_zones": 40.0,
-        "regime_trend": 45.0,
-        "confidence_scorer": 55.0,
-        "trend_breakout": 50.0,
-        "multi_tier_quality": 50.0,
-        "probability_engine": 45.0,
+        "bollinger_squeeze": 20.0,
+        "vmc_cipher": 20.0,
+        "monte_carlo_zones": 20.0,
+        "regime_trend": 20.0,
+        "confidence_scorer": 20.0,
+        "trend_breakout": 20.0,
+        "multi_tier_quality": 20.0,
+        "probability_engine": 20.0,
     }
 
     def evaluate(self, ctx: Phase3FilterContext) -> Tuple[bool, str]:
@@ -222,6 +222,8 @@ class Phase3VolatilityScaling:
 class Phase3FilterPipeline:
     """Compose all Phase 3 filters into a single decision point."""
 
+    AGGRESSIVE_MODE = True  # Disable soft filters, let risk gates decide
+
     def __init__(self):
         self.strategy_floors = Phase3StrategySpecificFloors()
         self.clustering = Phase3SignalClustering()
@@ -229,31 +231,37 @@ class Phase3FilterPipeline:
         self.vol_scaling = Phase3VolatilityScaling()
 
     def evaluate(self, ctx: Phase3FilterContext) -> Tuple[bool, Dict[str, str]]:
-        """Run all Phase 3 filters. Return (passes, breakdown).
+        """Run Phase 3 filters. Return (passes, breakdown).
 
-        All filters must pass for signal to continue.
+        AGGRESSIVE_MODE: Skip clustering + regime filters, trust ensemble + risk gates.
         """
         results = {}
 
-        # Filter 1: Strategy-specific floors
+        # Filter 1: Strategy-specific floors (ALWAYS CHECK)
         passes_floor, floor_reason = self.strategy_floors.evaluate(ctx)
         results["strategy_floor"] = floor_reason
         if not passes_floor:
             return False, results
 
-        # Filter 2: Signal clustering
-        passes_clustering, clustering_reason = self.clustering.evaluate(ctx)
-        results["clustering"] = clustering_reason
-        if not passes_clustering:
-            return False, results
+        # Filter 2: Signal clustering (SKIP in AGGRESSIVE_MODE)
+        if not self.AGGRESSIVE_MODE:
+            passes_clustering, clustering_reason = self.clustering.evaluate(ctx)
+            results["clustering"] = clustering_reason
+            if not passes_clustering:
+                return False, results
+        else:
+            results["clustering"] = "SKIPPED (aggressive_mode)"
 
-        # Filter 3: Regime stability
-        passes_regime, regime_reason = self.regime_stability.evaluate(ctx)
-        results["regime_stability"] = regime_reason
-        if not passes_regime:
-            return False, results
+        # Filter 3: Regime stability (SKIP in AGGRESSIVE_MODE)
+        if not self.AGGRESSIVE_MODE:
+            passes_regime, regime_reason = self.regime_stability.evaluate(ctx)
+            results["regime_stability"] = regime_reason
+            if not passes_regime:
+                return False, results
+        else:
+            results["regime_stability"] = "SKIPPED (aggressive_mode)"
 
-        # Filter 4: Volatility scaling (advisory, adjusts floor not blocks)
+        # Filter 4: Volatility scaling (advisory, doesn't block)
         vol_adjustment, vol_reason = self.vol_scaling.evaluate(ctx)
         results["vol_scaling"] = vol_reason
 
