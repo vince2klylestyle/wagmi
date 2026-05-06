@@ -221,9 +221,9 @@ class EnsembleStrategy:
     # Regime-specific strategy allowlist: 9 active strategies, regime-gated.
     # New additions: liquidation_cascade, monte_carlo_zones, funding_rate, oi_delta
     STRATEGY_REGIME_ALLOWLIST = {
-        'trending_bear':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'oi_delta', 'liquidation_cascade'},
-        'trending_bull':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'oi_delta'},
-        'trend':            {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'oi_delta'},
+        'trending_bear':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'trend_breakout', 'vmc_cipher', 'probability_engine', 'oi_delta', 'liquidation_cascade'},
+        'trending_bull':    {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'trend_breakout', 'vmc_cipher', 'probability_engine', 'oi_delta'},
+        'trend':            {'confidence_scorer', 'regime_trend', 'bollinger_squeeze', 'trend_breakout', 'vmc_cipher', 'probability_engine', 'oi_delta'},
         'consolidation':    {'confidence_scorer', 'multi_tier_quality', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'monte_carlo_zones', 'funding_rate', 'mean_reversion'},  # mean_reversion: designed for consolidation
         'range':            {'confidence_scorer', 'multi_tier_quality', 'bollinger_squeeze', 'vmc_cipher', 'probability_engine', 'monte_carlo_zones', 'funding_rate', 'mean_reversion'},  # mean_reversion: designed for range
         'high_volatility':  {'confidence_scorer', 'probability_engine', 'bollinger_squeeze', 'liquidation_cascade', 'oi_delta'},
@@ -233,18 +233,90 @@ class EnsembleStrategy:
         'unknown':          {'confidence_scorer', 'probability_engine', 'monte_carlo_zones', 'mean_reversion'},  # mean_reversion: has internal ADX gate
     }
 
-    def _get_effective_min_votes(self, symbol: str) -> int:
-        """Get min_votes for this symbol.
+    def _extract_adx(self, data: Dict[str, pd.DataFrame], default: float = 25.0) -> float:
+        """Extract current ADX from the 1h dataframe.
+
+        Phase 3: ADX drives dynamic voting thresholds.
+        Returns 0-100 (default 25 if data unavailable).
+        """
+        try:
+            if "1h" not in data or data["1h"].empty:
+                return default
+            df = data["1h"]
+            if len(df) < 15:
+                return default
+            # Use the _adx function from this module (imported at top)
+            adx_val = self._compute_adx_from_df(df)
+            return adx_val
+        except Exception:
+            return default
+
+    def _compute_adx_from_df(self, df: pd.DataFrame, period: int = 14) -> float:
+        """Compute ADX directly from a dataframe (inlined to avoid circular imports)."""
+        try:
+            if len(df) < period + 1:
+                return 25.0
+            high = df["high"].astype(float)
+            low = df["low"].astype(float)
+            close = df["close"].astype(float)
+            prev_close = close.shift(1)
+
+            up_move = high.diff()
+            down_move = -low.diff()
+            plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+            minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+            tr = pd.concat([
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ], axis=1).max(axis=1)
+
+            atr = tr.rolling(period).mean()
+            plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+            minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
+            di_diff = (plus_di - minus_di).abs()
+            di_sum = plus_di + minus_di
+
+            dx = 100 * di_diff / di_sum
+            adx = dx.rolling(period).mean()
+
+            return float(adx.iloc[-1]) if len(adx) > 0 else 25.0
+        except Exception:
+            return 25.0
+
+    def _get_effective_min_votes(self, symbol: str, adx: Optional[float] = None) -> int:
+        """Get min_votes for this symbol, optionally adjusted for volatility (Phase 3).
+
+        Phase 3 volatility-dependent voting:
+        - ADX > 25 (trending): min_votes = 2 (high signal quality)
+        - ADX 15-25 (medium): min_votes = 1.5 effective → use 1 for choppy, 2 for trending
+        - ADX < 15 (choppy): min_votes = 1 but gate by confidence (>70%)
 
         Per-symbol overrides (data/symbol_strategy_profile.py) win over the
         global default. HYPE uses min_votes=1 because only confidence_scorer
         fires reliably on it (see forensic 2026-04-14).
         """
+        # Try per-symbol profile first
         try:
             from data.symbol_strategy_profile import get_min_votes_for_symbol
-            return get_min_votes_for_symbol(symbol, default=self.min_votes)
+            base_votes = get_min_votes_for_symbol(symbol, default=self.min_votes)
         except Exception:
-            return self.min_votes
+            base_votes = self.min_votes
+
+        # Phase 3: Adjust for volatility if ADX provided
+        if adx is not None:
+            if adx > 25:
+                # Trending market: strict voting, keep base min_votes
+                return base_votes
+            elif adx >= 15:
+                # Medium volatility: relax slightly (reduce min_votes by 1)
+                return max(1, base_votes - 1) if base_votes > 1 else base_votes
+            else:
+                # Choppy (ADX < 15): allow single high-confidence signals
+                return 1
+
+        return base_votes
 
     def set_symbol_volatility_profiles(self, profiles: Dict[str, str]):
         """Set volatility profiles for symbols (e.g., {"HYPE": "high", "BTC": "low"}).
@@ -536,13 +608,14 @@ class EnsembleStrategy:
         if not signals:
             return None
 
-        # ── Regime-aware min_votes + graceful degradation ──
-        # In trending regimes, reduce min_votes by 1 since trend confirmation is strong.
-        effective_min_votes = self._get_effective_min_votes(symbol)
-        if effective_min_votes != self.min_votes:
+        # ── Phase 3: ADX-aware min_votes + graceful degradation ──
+        # Extract ADX from 1h data for volatility-dependent voting (Phase 3)
+        current_adx = self._extract_adx(data, default=25.0)
+        effective_min_votes = self._get_effective_min_votes(symbol, adx=current_adx)
+        if effective_min_votes != self.min_votes or current_adx < 15:
             logger.info(
-                f"[{symbol}] Regime-aware min_votes: {self.min_votes} → {effective_min_votes} "
-                f"(regime={self._current_regime.get(symbol, 'unknown')})"
+                f"[{symbol}] Phase 3 ADX-aware min_votes: {self.min_votes} → {effective_min_votes} "
+                f"(ADX={current_adx:.1f}, regime={self._current_regime.get(symbol, 'unknown')})"
             )
         # If strategies errored, lower min_votes so the system doesn't deadlock.
         if error_count > 0 and active_count > 0:
@@ -974,7 +1047,9 @@ class EnsembleStrategy:
         # In LLM-first mode (evaluate_raw), we allow solo signals through
         # because the LLM will make the quality decision. The min_votes
         # requirement is a mechanical filter the LLM should override.
-        effective_min_votes = self._get_effective_min_votes(symbol)
+        # Phase 3: Extract ADX for volatility-dependent voting
+        current_adx = self._extract_adx(data, default=25.0)
+        effective_min_votes = self._get_effective_min_votes(symbol, adx=current_adx)
         if error_count > 0 and active_count > 0:
             degraded = max(2, min(effective_min_votes, active_count - error_count))
             if degraded != effective_min_votes:

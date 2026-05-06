@@ -5,8 +5,8 @@ Exchange priority per symbol (tried in order):
   BTC:      Kraken -> Bybit -> CoinGecko
   SOL:      Kraken -> Bybit -> CoinGecko
   PEPE:     Hyperliquid (as KPEPE) -> Kraken -> Bybit -> CoinGecko
-  HYPE:     Hyperliquid -> CoinGecko
   FARTCOIN: Hyperliquid -> Bybit -> CoinGecko
+  (HYPE disabled due to CoinGecko rate limiting)
 
 CCXT provides real OHLCV candles with open/high/low/close/volume.
 CoinGecko is automatic fallback if CCXT exchanges are unavailable.
@@ -149,7 +149,7 @@ class DataFetcher:
             "BTC": [("hyperliquid", "BTC/USDC:USDC"), ("kraken", "BTC/USDT"), ("bybit", "BTC/USDT")],
             "ETH": [("hyperliquid", "ETH/USDC:USDC"), ("kraken", "ETH/USDT"), ("bybit", "ETH/USDT")],
             "SOL": [("hyperliquid", "SOL/USDC:USDC"), ("kraken", "SOL/USDT"), ("bybit", "SOL/USDT")],
-            "HYPE": [("hyperliquid", "HYPE/USDC:USDC")],
+            # "HYPE": [("hyperliquid", "HYPE/USDC:USDC")],  # Disabled 2026-05-01 — CoinGecko rate limiting
             "XRP": [("hyperliquid", "XRP/USDC:USDC"), ("bybit", "XRP/USDT")],
             "AVAX": [("hyperliquid", "AVAX/USDC:USDC"), ("bybit", "AVAX/USDT")],
             "LINK": [("hyperliquid", "LINK/USDC:USDC"), ("bybit", "LINK/USDT")],

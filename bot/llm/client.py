@@ -66,6 +66,45 @@ def call_llm(
     """
     global _total_input_tokens, _total_output_tokens, _total_calls, _total_failures
 
+    # Check if CLI routing is enabled
+    use_cli = os.getenv("USE_CLI_LLM", "false").lower() in ("true", "1", "yes")
+    if use_cli:
+        try:
+            from llm.claude_cli_client import call_agent
+            cli_model = model.split("-")[0].lower()  # Extract base model: haiku, sonnet, opus
+            if cli_model not in ("haiku", "sonnet", "opus"):
+                cli_model = "haiku"  # Default to haiku
+
+            response = call_agent(
+                user_prompt=snapshot_json,
+                system_prompt=system_prompt,
+                model=cli_model,
+                timeout=int(timeout),
+                max_budget_usd=0.10,
+            )
+
+            if response.ok:
+                _total_calls += 1
+                elapsed_ms = int(response.latency_s * 1000)
+                usage = {
+                    "input_tokens": 0,  # CLI doesn't report token counts
+                    "output_tokens": 0,
+                    "latency_ms": elapsed_ms,
+                    "cost_usd": response.cost_usd,
+                }
+                logger.info(
+                    f"[LLM] CLI Call OK: {elapsed_ms}ms (cost: ${response.cost_usd:.4f}) "
+                    f"(cumulative: {_total_calls} calls via CLI)"
+                )
+                return response.text.strip(), usage
+            else:
+                _total_failures += 1
+                logger.warning(f"[LLM] CLI call failed: {response.error}")
+                # Fall through to API attempt below
+        except Exception as e:
+            logger.warning(f"[LLM] CLI routing failed ({type(e).__name__}): {e}, falling back to API")
+            # Fall through to API attempt below
+
     client = get_client()
     if client is None:
         return None, {"input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "error": "no_client"}

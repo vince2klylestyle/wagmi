@@ -1,85 +1,85 @@
 {
   "symbol": "BTC",
-  "updated_at": "2026-04-29T04:52:59.225651+00:00",
-  "price": 77285.5,
+  "updated_at": "2026-05-06T16:14:52.048786+00:00",
+  "price": 81746.5,
   "levels": {
     "symbol": "BTC",
-    "ts": "2026-04-29T04:52:38.652176+00:00",
-    "price": 77285.5,
+    "ts": "2026-05-06T16:14:39.354420+00:00",
+    "price": 81746.5,
     "daily": {
-      "ema20": 75552.98757594317,
-      "ema50": 74383.12717247575,
-      "slope_pct": 3.7599255496098096,
-      "rsi14": 58.176489742754804,
-      "atr14": 2165.3571428571427,
-      "hi60d": 79434.0,
+      "ema20": 77453.72519057246,
+      "ema50": 76163.49284691668,
+      "slope_pct": 2.9082270681231903,
+      "rsi14": 66.01295589670778,
+      "atr14": 1890.5,
+      "hi60d": 82799.0,
       "lo60d": 64904.0,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 77074.51869846765,
-      "ema50": 76956.5468573289,
-      "rsi14": 39.71861471861471,
-      "atr14": 830.7857142857143,
-      "hi20": 79434.0,
-      "lo20": 75649.0
+      "ema20": 80611.86489757855,
+      "ema50": 79222.34351592966,
+      "rsi14": 71.82626439294563,
+      "atr14": 974.8571428571429,
+      "hi20": 82799.0,
+      "lo20": 78156.0
     },
     "h1": {
-      "ema20": 76566.84340108484,
-      "ema50": 76854.82281819193,
-      "rsi14": 85.3381517811048,
-      "atr14": 312.92857142857144,
-      "hi20": 77414.0,
-      "lo20": 75649.0,
-      "vol_ratio": 1.1385224808437413
+      "ema20": 81608.19396577867,
+      "ema50": 81033.9631856346,
+      "rsi14": 56.67522464698331,
+      "atr14": 463.42857142857144,
+      "hi20": 82799.0,
+      "lo20": 80711.0,
+      "vol_ratio": 0.8769149966735866
     },
     "m5": {
-      "rsi14": 72.09705372616985,
-      "atr14": 85.64285714285714
+      "rsi14": 55.856515373352856,
+      "atr14": 158.35714285714286
     }
   },
   "factors": {
-    "btc_4h_direction": "neutral",
-    "btc_4h_aligned_long": false,
-    "chop_score": 0.18,
+    "btc_4h_direction": "bullish",
+    "btc_4h_aligned_long": true,
+    "chop_score": 0.22,
     "chop_ok": true,
-    "rsi_aligned": false,
-    "rsi_bullish_stack": false,
+    "rsi_aligned": true,
+    "rsi_bullish_stack": true,
     "daily_trend_up": true,
-    "conviction_count": 2,
+    "conviction_count": 4,
     "conviction_max": 4,
-    "conviction_wr_est": 38
+    "conviction_wr_est": 61
   },
   "committee": {
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +3.76%/10d and RSI 58. Price +2.29% vs daily EMA20 ($75,553). ATR 2.80% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +2.91%/10d and RSI 66. Price +5.54% vs daily EMA20 ($77,454). ATR 2.31% \u2014 extended momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
-      "vol_band": "medium",
-      "daily_slope_pct": 3.76,
-      "daily_rsi": 58.0,
-      "h1_rsi": 85.0,
-      "vol_ratio_1h": 1.14
+      "vol_band": "low",
+      "daily_slope_pct": 2.91,
+      "daily_rsi": 66.0,
+      "h1_rsi": 57.0,
+      "vol_ratio_1h": 0.88
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish bias intact. Long entry near $76,567 (1h EMA20) with stop below $75,649 (1h support). Target $77,414 then $79,434.",
+      "narrative": "Bullish bias intact. Long entry near $81,608 (1h EMA20) with stop below $80,711 (1h support). Target $82,799 then $82,799.",
       "latency_s": 0,
       "action": "wait",
       "confidence": 60,
-      "entry_low": 76413.71,
-      "entry_high": 76719.98,
-      "stop": 75555.12,
-      "target1": 77414.0,
-      "target2": 79434.0,
-      "rr_t1": 0.84,
-      "rr_t2": 2.83,
-      "invalidation": 74383.13
+      "entry_low": 81444.98,
+      "entry_high": 81771.41,
+      "stop": 80571.97,
+      "target1": 82799.0,
+      "target2": 82799.0,
+      "rr_t1": 1.15,
+      "rr_t2": 1.15,
+      "invalidation": 76163.49
     },
     "critic": {
       "ok": false,
@@ -87,9 +87,7 @@
       "narrative": "Pass \u2014 no trade proposed. Waiting is the right call when confluence is absent.",
       "latency_s": 0,
       "vote": "pass",
-      "risk_flags": [
-        "rsi1h_overbought"
-      ]
+      "risk_flags": []
     },
     "risk": {
       "ok": false,

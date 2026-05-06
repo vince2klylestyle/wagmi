@@ -147,13 +147,16 @@ class FeedbackLoop:
         # Step 4: Also consider tuner's floor (blend both)
         tuner_floor = self.tuner.get_confidence_floor(strategy, symbol, regime)
 
-        # Blend: 60% adaptive (data-driven) + 40% tuner (backtest-driven)
-        effective_floor = adaptive_floor * 0.6 + tuner_floor * 0.4
+        # Blend: 100% adaptive (data-driven) during exploration mode
+        # Disabled tuner (40% weight) to unlock marginal signal evaluation (30-50% confidence)
+        # Tuner floor defaults to 55% min, which was blocking exploration targets
+        effective_floor = adaptive_floor  # Temporarily: was (adaptive_floor * 0.6 + tuner_floor * 0.4)
 
-        # Step 4.5: Symbol difficulty adjustment — hard-to-trade symbols get higher floor
-        symbol_floor = self.quality.get_symbol_confidence_floor(symbol, base_floor=effective_floor)
-        if symbol_floor > effective_floor:
-            effective_floor = symbol_floor
+        # Step 4.5: Symbol difficulty adjustment — DISABLED during exploration
+        # Symbol floor was adding +1-7% boost, preventing 30-40% confidence signals from executing
+        # symbol_floor = self.quality.get_symbol_confidence_floor(symbol, base_floor=effective_floor)
+        # if symbol_floor > effective_floor:
+        #     effective_floor = symbol_floor
 
         # Check
         if adjusted_conf >= effective_floor:

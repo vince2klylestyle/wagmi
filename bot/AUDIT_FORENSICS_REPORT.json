@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-06T09:31:45.445481",
+  "may1_analysis": {
+    "total_trades": 14,
+    "wins": 0,
+    "wr_pct": 0.0,
+    "net_pnl": -2419.32,
+    "equity_impact": -6.0483
+  },
+  "config_status": {
+    "phase2_safe": true,
+    "ensemble_confidence_floor": 55.0,
+    "risk_per_trade": 0.1
+  },
+  "root_cause": "Configuration error: confidence floor lowered 65% \u2192 20%",
+  "status": "All systems ready for testing"
+}

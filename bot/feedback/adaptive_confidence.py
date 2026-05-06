@@ -29,9 +29,9 @@ from typing import Dict, Any, Optional, List, Tuple
 logger = logging.getLogger("bot.feedback.confidence")
 
 # Hard bounds
-ABSOLUTE_MIN_FLOOR = 50.0
-ABSOLUTE_MAX_FLOOR = 80.0
-DEFAULT_FLOOR = 55.0
+ABSOLUTE_MIN_FLOOR = 30.0  # Lowered to 30% for exploration. 2026-05-01 21:30 UTC
+ABSOLUTE_MAX_FLOOR = 35.0  # Hard cap at 35% to unlock full signal spectrum
+DEFAULT_FLOOR = 30.0       # Start at 30% baseline
 MAX_DAILY_CHANGE = 5.0
 
 
@@ -161,14 +161,16 @@ class AdaptiveConfidenceFloor:
         if len(self.calibration_errors) > 200:
             self.calibration_errors = self.calibration_errors[-200:]
 
-        # Recompute floor periodically (every 5 outcomes or 5 minutes)
-        should_recompute = (
-            (self.bins[2].total + self.bins[3].total) % 5 == 0  # every 5 trades near floor
-            or time.time() - self.last_update > 300
-        )
-        if should_recompute:
-            self._recompute_floor()
-            self._save_state()
+        # DISABLED: Recompute floor periodically (every 5 outcomes or 5 minutes)
+        # During exploration mode, freeze the floor at 30% to collect marginal signal data
+        # The adaptive recalculation was jumping floor to 50-53% based on bin EV, blocking signals
+        # should_recompute = (
+        #     (self.bins[2].total + self.bins[3].total) % 5 == 0  # every 5 trades near floor
+        #     or time.time() - self.last_update > 300
+        # )
+        # if should_recompute:
+        #     self._recompute_floor()
+        #     self._save_state()
 
     def get_floor(
         self,

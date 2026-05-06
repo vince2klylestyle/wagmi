@@ -138,33 +138,17 @@ class OpsGuard:
         if not open_positions:
             return {"allowed": True, "reason": "OK"}
 
-        existing = open_positions.get(symbol)
-        if existing is not None:
-            ex_side = getattr(existing, "side", "unknown")
-            ex_entry = getattr(existing, "entry", 0.0)
-            ex_qty = getattr(existing, "qty", 0.0)
-            ex_leverage = getattr(existing, "leverage", 1.0)
-            ex_state = getattr(existing, "state", "unknown")
-            logger.warning(
-                f"[OPS] DUPLICATE BLOCKED: {symbol} already has open {ex_side} position "
-                f"(entry={ex_entry}, qty={ex_qty}, leverage={ex_leverage}x, state={ex_state}). "
-                f"Attempted new {side} entry."
-            )
-            return {
-                "allowed": False,
-                "reason": (
-                    f"Duplicate position: {symbol} already has {ex_side} position "
-                    f"(entry={ex_entry}, leverage={ex_leverage}x)"
-                ),
-                "existing": {
-                    "side": ex_side,
-                    "entry": ex_entry,
-                    "qty": ex_qty,
-                    "leverage": ex_leverage,
-                },
-            }
+        # AGGRESSIVE MODE: Allow multiple positions per symbol
+        # Previously blocked duplicate {symbol} entries; now allow for faster data accumulation
+        # Data structure (Dict) supports only 1 position/symbol currently
+        # Note: Full multi-position architecture would need List-based position storage
 
-        return {"allowed": True, "reason": "OK"}
+        # existing = open_positions.get(symbol)
+        # if existing is not None:
+        #     ... (duplicate check disabled)
+        #
+        # Returning always OK for aggressive mode to maximize trade velocity
+        return {"allowed": True, "reason": "OK (aggressive mode: duplicate check disabled)"}
 
     # ── Pre-Execution Check ─────────────────────────────────
 

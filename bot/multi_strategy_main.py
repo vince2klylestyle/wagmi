@@ -43,6 +43,7 @@ from strategies.multi_tier_quality import MultiTierQualityStrategy
 from strategies.funding_rate import FundingRateStrategy
 from strategies.oi_delta import OIDeltaStrategy
 from strategies.bollinger_squeeze import BollingerSqueezeStrategy
+from strategies.trend_breakout import TrendBreakoutStrategy
 from strategies.vmc_cipher import VMCCipherStrategy
 from strategies.lead_lag import LeadLagStrategy
 from strategies.liquidation_cascade import LiquidationCascadeStrategy
@@ -450,6 +451,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             self.strategies.append(OIDeltaStrategy(sym_configs))
         if os.getenv("STRATEGY_BOLLINGER_SQUEEZE_ENABLED", "true").lower() == "true":
             self.strategies.append(BollingerSqueezeStrategy(sym_configs))
+        if os.getenv("STRATEGY_TREND_BREAKOUT_ENABLED", "true").lower() == "true":
+            self.strategies.append(TrendBreakoutStrategy(sym_configs))
         if os.getenv("STRATEGY_VMC_CIPHER_ENABLED", "false").lower() == "true":
             self.strategies.append(VMCCipherStrategy(sym_configs))
         if os.getenv("STRATEGY_LEAD_LAG_ENABLED", "false").lower() == "true":

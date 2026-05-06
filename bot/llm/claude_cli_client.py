@@ -92,7 +92,7 @@ def call_agent(
     # Build cmd — keep it short. Windows has an 8191-char argv limit; agent system
     # prompts can be 7000+ chars, so we embed the system prompt in stdin instead
     # of passing it via --append-system-prompt.
-    cmd = [CLAUDE_BIN, "--print",
+    cmd_args = ["--print",
            "--output-format", "json",
            "--model", model,
            "--max-budget-usd", str(max_budget_usd)]
@@ -104,29 +104,41 @@ def call_agent(
         combined_input = user_prompt
 
     if json_schema:
-        cmd.extend(["--json-schema", json.dumps(json_schema)])
+        cmd_args.extend(["--json-schema", json.dumps(json_schema)])
     if not allow_tools:
         # Disable all tools by passing empty allowed-tools list
-        cmd.extend(["--disallowed-tools", "Bash", "Edit", "Write", "Read", "PowerShell"])
+        cmd_args.extend(["--disallowed-tools", "Bash", "Edit", "Write", "Read", "PowerShell"])
 
     start = time.time()
     try:
-        result = subprocess.run(
-            cmd, input=combined_input, capture_output=True, text=True,
-            timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
-        )
+        # On Windows, use PowerShell to invoke the claude command (handles npm wrapper correctly)
+        if os.name == "nt":
+            ps_cmd = f"claude {' '.join(cmd_args)}"
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                input=combined_input, capture_output=True, text=True,
+                timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
+            )
+        else:
+            # Unix: direct subprocess call
+            cmd = [CLAUDE_BIN] + cmd_args
+            result = subprocess.run(
+                cmd, input=combined_input, capture_output=True, text=True,
+                timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
+            )
         latency = time.time() - start
     except subprocess.TimeoutExpired:
         return CliResponse(ok=False, error=f"timeout after {timeout}s",
                            latency_s=time.time() - start, model=model)
     except Exception as e:
-        return CliResponse(ok=False, error=f"subprocess error: {e}",
+        return CliResponse(ok=False, error=f"subprocess error: {type(e).__name__}: {e}",
                            latency_s=time.time() - start, model=model)
 
     if result.returncode != 0:
+        err_msg = result.stderr[:500] if result.stderr else result.stdout[:500]
         return CliResponse(
             ok=False,
-            error=f"exit {result.returncode}: {result.stderr[:500]}",
+            error=f"exit {result.returncode}: {err_msg}",
             latency_s=latency,
             model=model,
         )

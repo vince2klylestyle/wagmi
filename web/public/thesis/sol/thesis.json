@@ -1,90 +1,90 @@
 {
   "symbol": "SOL",
-  "updated_at": "2026-04-28T22:55:17.390186+00:00",
-  "price": 83.6465,
+  "updated_at": "2026-05-06T16:03:00.416797+00:00",
+  "price": 88.9115,
   "levels": {
     "symbol": "SOL",
-    "ts": "2026-04-28T22:55:05.253692+00:00",
-    "price": 83.6465,
+    "ts": "2026-05-06T16:02:44.471707+00:00",
+    "price": 88.9115,
     "daily": {
-      "ema20": 85.29915428626295,
-      "ema50": 85.24051973517173,
-      "slope_pct": 0.5396894997053511,
-      "rsi14": 49.91430797195533,
-      "atr14": 3.0951428571428568,
+      "ema20": 85.14858194956851,
+      "ema50": 85.04398612000779,
+      "slope_pct": -0.3533492136542786,
+      "rsi14": 58.59576235978397,
+      "atr14": 2.4254999999999987,
       "hi60d": 97.638,
       "lo60d": 76.683,
-      "trend": "UP"
+      "trend": "FLAT"
     },
     "h4": {
-      "ema20": 84.83034137180711,
-      "ema50": 85.41186834735059,
-      "rsi14": 31.104651162790702,
-      "atr14": 1.1007142857142835,
-      "hi20": 88.055,
-      "lo20": 82.94
+      "ema20": 86.29948198951551,
+      "ema50": 85.28880412044857,
+      "rsi14": 80.4663655231353,
+      "atr14": 1.1871428571428564,
+      "hi20": 89.999,
+      "lo20": 83.213
     },
     "h1": {
-      "ema20": 83.83820048141098,
-      "ema50": 84.50252493794754,
-      "rsi14": 43.720930232558125,
-      "atr14": 0.4139999999999994,
-      "hi20": 84.389,
-      "lo20": 82.94,
-      "vol_ratio": 0.6028520192041886
+      "ema20": 87.99250733805614,
+      "ema50": 86.65648683777265,
+      "rsi14": 66.18942731277536,
+      "atr14": 0.7695000000000007,
+      "hi20": 89.999,
+      "lo20": 86.073,
+      "vol_ratio": 0.9391153718226131
     },
     "m5": {
-      "rsi14": 47.077577045696515,
-      "atr14": 0.1066428571428578
+      "rsi14": 63.917525773195884,
+      "atr14": 0.2057142857142864
     }
   },
   "factors": {
-    "btc_4h_direction": "bearish",
-    "btc_4h_aligned_long": false,
-    "chop_score": 0.29,
+    "btc_4h_direction": "bullish",
+    "btc_4h_aligned_long": true,
+    "chop_score": 0.2,
     "chop_ok": true,
     "rsi_aligned": true,
-    "rsi_bullish_stack": false,
-    "daily_trend_up": true,
-    "conviction_count": 2,
+    "rsi_bullish_stack": true,
+    "daily_trend_up": false,
+    "conviction_count": 3,
     "conviction_max": 4,
-    "conviction_wr_est": 38
+    "conviction_wr_est": 50
   },
   "committee": {
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.54%/10d and RSI 50. Price -1.94% vs daily EMA20 ($85). ATR 3.70% \u2014 healthy momentum.",
+      "narrative": "Daily trend FLAT with slope -0.35%/10d and RSI 59. Price +4.42% vs daily EMA20 ($85). ATR 2.73% \u2014 healthy momentum.",
       "latency_s": 0,
-      "regime_label": "trending_bull",
-      "confidence": 70,
-      "bias": "bullish",
+      "regime_label": "unknown",
+      "confidence": 40,
+      "bias": "neutral",
       "vol_band": "medium",
-      "daily_slope_pct": 0.54,
-      "daily_rsi": 50.0,
-      "h1_rsi": 44.0,
-      "vol_ratio_1h": 0.6
+      "daily_slope_pct": -0.35,
+      "daily_rsi": 59.0,
+      "h1_rsi": 66.0,
+      "vol_ratio_1h": 0.94
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish bias intact. Long entry near $84 (1h EMA20) with stop below $83 (1h support). Target $84 then $98.",
+      "narrative": "Range/unclear regime. No directional edge. Wait for breakout of $86-$90.",
       "latency_s": 0,
-      "action": "go_long",
-      "confidence": 65,
-      "entry_low": 83.48,
-      "entry_high": 83.81,
-      "stop": 82.82,
-      "target1": 84.39,
+      "action": "wait",
+      "confidence": 40,
+      "entry_low": 88.64,
+      "entry_high": 89.18,
+      "stop": 85.84,
+      "target1": 90.0,
       "target2": 97.64,
-      "rr_t1": 0.89,
-      "rr_t2": 16.84,
-      "invalidation": 85.24
+      "rr_t1": 0.35,
+      "rr_t2": 2.84,
+      "invalidation": 85.04
     },
     "critic": {
       "ok": false,
       "agent": "critic",
-      "narrative": "Primary risks: none major. Size down if any conviction factor missing.",
+      "narrative": "Pass \u2014 no trade proposed. Waiting is the right call when confluence is absent.",
       "latency_s": 0,
       "vote": "pass",
       "risk_flags": []
@@ -92,12 +92,14 @@
     "risk": {
       "ok": false,
       "agent": "risk",
-      "narrative": "Size 0.5x at 3x leverage. Conviction=1/4 . Max loss 2.0% of equity. Flags: none.",
+      "narrative": "Size 0.0x at 1x leverage. Conviction=1/4 . Max loss 0.0% of equity. Flags: no_trade.",
       "latency_s": 0,
-      "size_multiplier": 0.5,
-      "leverage": 3,
-      "max_loss_pct": 2.0,
-      "risk_flags": []
+      "size_multiplier": 0.0,
+      "leverage": 1,
+      "max_loss_pct": 0.0,
+      "risk_flags": [
+        "no_trade"
+      ]
     },
     "mode": "cli"
   }

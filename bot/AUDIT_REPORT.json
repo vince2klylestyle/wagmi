@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-06T09:27:26.574064",
+  "overall_metrics": {
+    "trades": 14,
+    "wins": 0,
+    "losses": 14,
+    "wr_pct": 0.0,
+    "net_pnl": -2419.32
+  },
+  "total_trades_in_db": 219
+}
