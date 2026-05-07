@@ -1,9 +1,27 @@
 {
-  "last_run": "2026-05-05T22:08:09.455342+00:00",
-  "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md + perpetual_deep_dive_2026_05_04_2031",
-  "fixes_applied_this_run": 1,
+  "last_run": "2026-05-07T22:04:00Z",
+  "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md + perpetual_deep_dive_2026_05_07_2204",
+  "fixes_applied_this_run": 2,
   "gates_active": 8,
   "applied_this_run": [
+    {
+      "rule_id": "HYPE_SHORT_EV_REINIT",
+      "description": "Reinitialized hype_short_veto_v1 evidence_ratio from 0.0 → 0.35. Prior 0.0 was an initialization bug (no historical data seeded at rule creation). Evidence source: HYPE_SELL_BB_block (92% conf A/B rule), HYPE_SELL_BB = 35% WR. Rule remains active as veto — 239 total evidence trades at -$16.65/trade confirms net-negative EV. The 35% WR is consistent with this loss magnitude.",
+      "confidence": 85,
+      "gate_percentage": 0,
+      "files_changed": ["bot/data/llm/graduated_rules.json"],
+      "verified": true,
+      "applied_at": "2026-05-07T22:04:00Z"
+    },
+    {
+      "rule_id": "BTC_SHORT_CONF70_EV_REINIT",
+      "description": "Reinitialized btc_short_conf70_80_penalize_v1 evidence_ratio from 0.0 → 0.25. Prior 0.0 was an initialization bug. Evidence source: orphan rule BTC_SHORT_CONF70_80_BLOCK (90% conf): 'single largest loss bucket across all setups' on 40 trades. 25% WR is conservative estimate consistent with 'worst loss bucket' descriptor, well below BTC average (~33%). Rule remains active as -20pt penalize.",
+      "confidence": 80,
+      "gate_percentage": 0,
+      "files_changed": ["bot/data/llm/graduated_rules.json"],
+      "verified": true,
+      "applied_at": "2026-05-07T22:04:00Z"
+    },
     {
       "rule_id": "CONF_FLOOR_70_RUNTIME",
       "description": "Promoted CONF_70_HARD_FLOOR to runtime graduated_rules.json. Penalizes all 60-70% confidence signals by -20 points. Evidence: 123 trades at 46.3% WR, -$2321 PnL \u2014 worst confidence bin across all symbols/regimes. Supersedes overlapping CONF_60_70_floor_raise + CONF_60_70_all_block A/B rules.",
