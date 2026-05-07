@@ -1,41 +1,41 @@
 {
   "symbol": "SOL",
-  "updated_at": "2026-05-06T23:17:58.028545+00:00",
-  "price": 88.9345,
+  "updated_at": "2026-05-06T23:59:21.651353+00:00",
+  "price": 89.1025,
   "levels": {
     "symbol": "SOL",
-    "ts": "2026-05-06T23:17:45.835257+00:00",
-    "price": 88.9345,
+    "ts": "2026-05-06T23:59:09.409086+00:00",
+    "price": 89.1025,
     "daily": {
-      "ema20": 85.15096290194947,
-      "ema50": 85.04559902323359,
-      "slope_pct": -0.3505628615505525,
-      "rsi14": 58.68159203980097,
+      "ema20": 85.16677242575899,
+      "ema50": 85.05630870065295,
+      "slope_pct": -0.33206148358187426,
+      "rsi14": 59.24259774251592,
       "atr14": 2.4254999999999987,
       "hi60d": 97.638,
       "lo60d": 76.683,
       "trend": "FLAT"
     },
     "h4": {
-      "ema20": 86.57662599661253,
-      "ema50": 85.44943564428758,
-      "rsi14": 77.38429600683861,
+      "ema20": 86.59243552042206,
+      "ema50": 85.45594544820914,
+      "rsi14": 78.98541692633692,
       "atr14": 1.2126428571428565,
       "hi20": 89.999,
       "lo20": 83.213
     },
     "h1": {
-      "ema20": 88.54560397112085,
-      "ema50": 87.25071900496523,
-      "rsi14": 44.49491672074414,
-      "atr14": 0.76157142857143,
+      "ema20": 88.56141349493038,
+      "ema50": 87.2572288088868,
+      "rsi14": 46.27740395051006,
+      "atr14": 0.7679285714285727,
       "hi20": 89.999,
       "lo20": 86.65,
-      "vol_ratio": 0.3414274201681466
+      "vol_ratio": 0.38942963847861706
     },
     "m5": {
-      "rsi14": 39.22872340425542,
-      "atr14": 0.15985714285714384
+      "rsi14": 52.86009648518259,
+      "atr14": 0.1516428571428585
     }
   },
   "factors": {
@@ -54,16 +54,16 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend FLAT with slope -0.35%/10d and RSI 59. Price +4.44% vs daily EMA20 ($85). ATR 2.73% \u2014 healthy momentum.",
+      "narrative": "Daily trend FLAT with slope -0.33%/10d and RSI 59. Price +4.62% vs daily EMA20 ($85). ATR 2.72% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "unknown",
       "confidence": 40,
       "bias": "neutral",
       "vol_band": "medium",
-      "daily_slope_pct": -0.35,
+      "daily_slope_pct": -0.33,
       "daily_rsi": 59.0,
-      "h1_rsi": 44.0,
-      "vol_ratio_1h": 0.34
+      "h1_rsi": 46.0,
+      "vol_ratio_1h": 0.39
     },
     "trade": {
       "ok": false,
@@ -72,14 +72,14 @@
       "latency_s": 0,
       "action": "wait",
       "confidence": 40,
-      "entry_low": 88.67,
-      "entry_high": 89.2,
+      "entry_low": 88.84,
+      "entry_high": 89.37,
       "stop": 86.42,
       "target1": 90.0,
       "target2": 97.64,
-      "rr_t1": 0.42,
-      "rr_t2": 3.46,
-      "invalidation": 85.05
+      "rr_t1": 0.33,
+      "rr_t2": 3.18,
+      "invalidation": 85.06
     },
     "critic": {
       "ok": false,

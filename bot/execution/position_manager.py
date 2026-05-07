@@ -21,6 +21,7 @@ Flow:
 7. If TP2 hit or trailing stop triggered (TRAILING -> CLOSED)
 """
 
+import csv
 import json
 import logging
 import os
@@ -895,20 +896,18 @@ class PositionManager:
         total_score = tp1_score + profit_score + momentum_score + mfe_score
 
         # Determine extension based on score
+        # AUDIT MODE (2026-05-07): Disabled extension during Checkpoint 17 validation
+        # to test strict 2-hour TIME_STOP closure behavior
+        extension = 0.0  # NO EXTENSION during audit
         if total_score >= 75:
-            extension = 4.0  # Very healthy — extend maximum (8h -> 12h)
             reason = "very_healthy"
         elif total_score >= 60:
-            extension = 3.0  # Healthy — extend 3h (8h -> 11h)
             reason = "healthy"
         elif total_score >= 45:
-            extension = 1.5  # Mixed — small extension (8h -> 9.5h)
             reason = "mixed"
         elif total_score >= 30:
-            extension = 0.5  # Weak — tiny extension (8h -> 8.5h)
             reason = "weak"
         else:
-            extension = 0.0  # Unhealthy — close at base time stop
             reason = "unhealthy"
 
         logger.debug(
@@ -1471,7 +1470,61 @@ class PositionManager:
         except Exception:
             logger.exception("[SAVE-ON-CLOSE] non-fatal state persistence failure")
 
+        # Persist closed trade to CSV for outcome analysis
+        try:
+            self._persist_closed_trade_to_csv(pos, price, action)
+        except Exception as e:
+            logger.error(f"[{pos.symbol}] Failed to persist closed trade to CSV: {e}")
+
         return event
+
+    def _persist_closed_trade_to_csv(self, pos: "Position", exit_price: float, exit_action: str) -> None:
+        """Append closed trade to closed_trades.csv for forensics and outcome analysis."""
+        csv_path = Path("data/closed_trades.csv")
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+        hold_duration_min = round((pos.close_time - pos.open_time).total_seconds() / 60, 2)
+        net_pnl_pct = round((pos.realized_pnl / (pos.entry * pos.qty * pos.leverage)) * 100, 4) if (pos.entry * pos.qty * pos.leverage) > 0 else 0
+        r_multiple = round(pos.realized_pnl / (abs(pos.entry - pos.original_sl) * pos.qty * pos.leverage), 4) if abs(pos.entry - pos.original_sl) > 0 else 0
+        entry_confidence = (pos.entry_reasons or {}).get("confidence", 0)
+        entry_regime = (pos.entry_reasons or {}).get("regime", "unknown")
+        strategies_agree = ",".join((pos.entry_reasons or {}).get("strategies_agree", []))
+        num_agree = (pos.entry_reasons or {}).get("num_agree", 0)
+
+        row = {
+            "trade_id": f"{pos.symbol}_{int(pos.open_time.timestamp())}",
+            "symbol": pos.symbol,
+            "side": pos.side,
+            "entry_price": round(pos.entry, 4),
+            "exit_price": round(exit_price, 4),
+            "entry_time": pos.open_time.isoformat(),
+            "exit_time": pos.close_time.isoformat(),
+            "hold_duration_min": hold_duration_min,
+            "net_pnl": round(pos.realized_pnl, 4),
+            "net_pnl_pct": net_pnl_pct,
+            "r_multiple": r_multiple,
+            "entry_confidence": round(entry_confidence, 2),
+            "entry_regime": entry_regime,
+            "exit_reason": exit_action,
+            "outcome": pos.outcome,
+            "leverage": pos.leverage,
+            "strategies_agree": strategies_agree,
+            "num_agree": num_agree,
+            "mfe": round(pos.mfe, 4),
+            "mae": round(pos.mae, 4),
+            "mfe_pct": round((pos.mfe / pos.entry) * 100, 4) if pos.entry else 0,
+            "mae_pct": round((pos.mae / pos.entry) * 100, 4) if pos.entry else 0,
+            "total_fees": round(pos.fees_paid, 4),
+            "funding_costs": round(pos.funding_costs, 4),
+            "state_path": pos.state_path_str,
+        }
+
+        file_exists = csv_path.exists()
+        with open(csv_path, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=row.keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
 
     def force_close(self, symbol: str, price: float, reason: str = "EMERGENCY") -> Optional[TradeEvent]:
         """Force close a position (circuit breaker, liquidation avoidance, etc.)."""

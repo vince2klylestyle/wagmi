@@ -1546,6 +1546,11 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _consecutive_failures = 0
         _MAX_CONSECUTIVE_FAILURES = 3
 
+        # Session timeout for audit cycles (3 hours = 10800s)
+        _session_timeout_s = float(os.getenv("SESSION_TIMEOUT_S", "10800"))
+        _session_start_time = time.time()
+        _session_timeout_active = _session_timeout_s > 0
+
         while not self.stop_event.is_set():
             try:
                 self._tick_once()
@@ -1606,6 +1611,33 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     break
 
             self._tick += 1
+
+            # Check session timeout (for audit cycles — default 3 hours)
+            if _session_timeout_active:
+                _elapsed = time.time() - _session_start_time
+                if _elapsed >= _session_timeout_s:
+                    _hours = int(_session_timeout_s / 3600)
+                    logger.info(f"[SESSION] {_hours}-hour session timeout reached ({_elapsed:.0f}s elapsed). Initiating graceful shutdown.")
+                    log_health_event("SESSION_TIMEOUT", "INFO", f"Session timeout after {_hours} hours")
+                    # Save position state before shutdown
+                    try:
+                        save_position_state(self.pos_mgr)
+                        logger.info("[SHUTDOWN] Position state saved (session timeout)")
+                    except Exception as _pe:
+                        logger.error(f"[SHUTDOWN] Failed to save position state: {_pe}")
+                    # Alert via Telegram
+                    if self.alerts:
+                        try:
+                            self.alerts.send_trade_event(
+                                "SESSION_END", "INFO",
+                                f"Bot session ended after {_hours} hours.\n"
+                                f"Final equity: ${self.risk_mgr.equity:.2f}\n"
+                                f"Open positions: {self.pos_mgr.get_open_count()}"
+                            )
+                        except Exception:
+                            pass
+                    self.stop_event.set()
+                    break
 
             # Check for graceful restart request (written by other terminals/tools)
             if self._tick % 5 == 0:  # Check every 5th tick (~2-3 min)
@@ -4256,6 +4288,30 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             logger.info(f"[{trace_id}][{symbol}] ENSEMBLE RESULT: {signal_result}")
             if signal_result:
                 logger.info(f"[{trace_id}][{symbol}] Signal: {signal_result.side} conf={signal_result.confidence:.0f}%")
+
+        # ── AUDIT CYCLE 12: Direct Mechanical Execution (Bypass Sniper Gates) ──
+        # Consensus signals that pass ensemble voting go directly to execution.
+        # This collects real trading data without sniper's 20+ filtering gates.
+        # Remove this block after audit cycle completes.
+        if signal_result is not None and os.getenv("MECHANICAL_CONSENSUS_EXECUTION", "true").lower() == "true":
+            try:
+                _mech_symbol = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+                _mech_price = current_price if 'current_price' in locals() else None
+                if _mech_price is None:
+                    # Fallback: get current price
+                    try:
+                        _ohlcv = data.get('5m', [])
+                        if _ohlcv is not None and not _ohlcv.empty:
+                            _mech_price = float(_ohlcv['close'].iloc[-1])
+                    except:
+                        pass
+                if _mech_price is not None:
+                    logger.info(f"[MECHANICAL][{_mech_symbol}] Executing consensus: {signal_result.side} conf={signal_result.confidence:.0f}% @ {_mech_price:.2f} sl={signal_result.sl:.2f} tp1={signal_result.tp1:.2f}")
+                    # Call existing sniper execution with the consensus signal
+                    if hasattr(self, '_execute_sniper_signal'):
+                        self._execute_sniper_signal(signal_result, symbol, _mech_price)
+            except Exception as _me_err:
+                logger.debug(f"[MECHANICAL] Execution error (non-fatal): {_me_err}")
 
         # If mechanical returned None (solo signal or sub-consensus), route to
         # the LLM-first pathway when LLM_FIRST_MODE is active.

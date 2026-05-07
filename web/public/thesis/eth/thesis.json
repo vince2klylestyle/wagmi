@@ -1,41 +1,41 @@
 {
   "symbol": "ETH",
-  "updated_at": "2026-05-06T23:17:08.143387+00:00",
-  "price": 2343.35,
+  "updated_at": "2026-05-07T00:02:31.361428+00:00",
+  "price": 2350.25,
   "levels": {
     "symbol": "ETH",
-    "ts": "2026-05-06T23:16:55.814042+00:00",
-    "price": 2343.35,
+    "ts": "2026-05-07T00:02:14.603943+00:00",
+    "price": 2350.25,
     "daily": {
-      "ema20": 2306.5421296643117,
-      "ema50": 2282.1741736619706,
-      "slope_pct": 0.6597329771214242,
-      "rsi14": 45.86275063541376,
-      "atr14": 72.06428571428566,
+      "ema20": 2311.425313071516,
+      "ema50": 2288.0066431028913,
+      "slope_pct": 0.8687451726505628,
+      "rsi14": 53.5090609555189,
+      "atr14": 65.27857142857137,
       "hi60d": 2462.5,
-      "lo60d": 1910.0,
+      "lo60d": 1928.3,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 2356.093147205256,
-      "ema50": 2335.6751228449702,
-      "rsi14": 48.62068965517243,
-      "atr14": 33.59285714285719,
+      "ema20": 2356.11806574884,
+      "ema50": 2336.59429496211,
+      "rsi14": 48.66117404737376,
+      "atr14": 30.635714285714293,
       "hi20": 2423.8,
       "lo20": 2308.4
     },
     "h1": {
-      "ema20": 2361.7323306523176,
-      "ema50": 2364.029128909794,
-      "rsi14": 10.616438356164139,
-      "atr14": 16.12142857142859,
+      "ema20": 2361.2192893266397,
+      "ema50": 2363.5303415710496,
+      "rsi14": 15.0700934579436,
+      "atr14": 15.735714285714266,
       "hi20": 2423.8,
       "lo20": 2336.3,
-      "vol_ratio": 0.32962748079878545
+      "vol_ratio": 0.29168528962997764
     },
     "m5": {
-      "rsi14": 40.99999999999971,
-      "atr14": 3.1785714285714284
+      "rsi14": 53.62318840579718,
+      "atr14": 3.0357142857142856
     }
   },
   "factors": {
@@ -54,39 +54,39 @@
     "regime": {
       "ok": false,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.66%/10d and RSI 46. Price +1.60% vs daily EMA20 ($2,307). ATR 3.08% \u2014 healthy momentum.",
+      "narrative": "Daily trend UP with slope +0.87%/10d and RSI 54. Price +1.68% vs daily EMA20 ($2,311). ATR 2.78% \u2014 healthy momentum.",
       "latency_s": 0,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "medium",
-      "daily_slope_pct": 0.66,
-      "daily_rsi": 46.0,
-      "h1_rsi": 11.0,
-      "vol_ratio_1h": 0.33
+      "daily_slope_pct": 0.87,
+      "daily_rsi": 54.0,
+      "h1_rsi": 15.0,
+      "vol_ratio_1h": 0.29
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish bias intact. Long entry near $2,362 (1h EMA20) with stop below $2,336 (1h support). Target $2,424 then $2,462.",
+      "narrative": "Bullish bias intact. Long entry near $2,361 (1h EMA20) with stop below $2,336 (1h support). Target $2,424 then $2,462.",
       "latency_s": 0,
       "action": "go_long",
       "confidence": 65,
-      "entry_low": 2338.66,
-      "entry_high": 2348.04,
-      "stop": 2331.46,
+      "entry_low": 2345.55,
+      "entry_high": 2354.95,
+      "stop": 2331.58,
       "target1": 2423.8,
       "target2": 2462.5,
-      "rr_t1": 6.77,
-      "rr_t2": 10.02,
-      "invalidation": 2282.17
+      "rr_t1": 3.94,
+      "rr_t2": 6.01,
+      "invalidation": 2288.01
     },
     "critic": {
       "ok": false,
       "agent": "critic",
       "narrative": "Primary risks: thin_volume, rsi1h_oversold. Size down if any conviction factor missing.",
       "latency_s": 0,
-      "vote": "pass",
+      "vote": "veto",
       "risk_flags": [
         "thin_volume",
         "rsi1h_oversold"
@@ -95,12 +95,14 @@
     "risk": {
       "ok": false,
       "agent": "risk",
-      "narrative": "Size 0.5x at 3x leverage. Conviction=1/4 . Max loss 2.0% of equity. Flags: none.",
+      "narrative": "Size 0.0x at 1x leverage. Conviction=1/4 . Max loss 0.0% of equity. Flags: critic_veto.",
       "latency_s": 0,
-      "size_multiplier": 0.5,
-      "leverage": 3,
-      "max_loss_pct": 2.0,
-      "risk_flags": []
+      "size_multiplier": 0.0,
+      "leverage": 1,
+      "max_loss_pct": 0.0,
+      "risk_flags": [
+        "critic_veto"
+      ]
     },
     "mode": "cli"
   }

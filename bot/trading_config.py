@@ -519,8 +519,8 @@ class TradingConfig:
     )  # Was 1.5: at 0.69% stops, 8bps fees consume 11.6%. At 2.0x → 0.92% stops,
     # fee drag drops to 8.7%. Fewer SL hits from wicks in volatile crypto.
     ensemble_confidence_floor: float = field(
-        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 55.0)
-    )  # Lowered from 60: HTF penalty now reduces confidence by 15-20pts, floor at 60 double-penalizes. EV gate handles quality.
+        default_factory=lambda: _env_float("ENSEMBLE_CONFIDENCE_FLOOR", 40.0)
+    )  # TEST: Temporarily lowered to 40 from 55 to trigger test trades for CSV validation
     max_ensemble_confidence: float = field(
         default_factory=lambda: _env_float("MAX_ENSEMBLE_CONFIDENCE", 95.0)
     )  # Raised from 92: reduces clustering at cap, lets unanimous signals get proper bonus

@@ -1,5 +1,5 @@
 {
-  "last_updated": 1778085726,
+  "last_updated": 1778117486,
   "notes": [
     {
       "text": "BB is only profitable strategy: 57% WR, +0.15%/trade. All others negative EV.",
@@ -108,6 +108,42 @@
       "ts": 1778085726.2350714,
       "symbol": "MARKET",
       "regime": ""
+    },
+    {
+      "text": "ETH SHORT WIN +$170 in illiquid, conf=54%, held 62min\u2014replicate this setup",
+      "ts": 1778116247.6039116,
+      "symbol": "ETH",
+      "regime": "illiquid"
+    },
+    {
+      "text": "ETH SHORT WIN +$175 in unknown, conf=54%, held 77min\u2014replicate this setup",
+      "ts": 1778116248.7114127,
+      "symbol": "ETH",
+      "regime": ""
+    },
+    {
+      "text": "ETH SHORT WIN +$132 in unknown, conf=54%, held 112min\u2014replicate this setup",
+      "ts": 1778117382.1402862,
+      "symbol": "ETH",
+      "regime": ""
+    },
+    {
+      "text": "ETH SHORT WIN +$141 in illiquid, conf=54%, held 113min\u2014replicate this setup",
+      "ts": 1778117443.5085838,
+      "symbol": "ETH",
+      "regime": "illiquid"
+    },
+    {
+      "text": "ETH SHORT WIN +$129 in illiquid, conf=54%, held 98min\u2014replicate this setup",
+      "ts": 1778117476.2304738,
+      "symbol": "ETH",
+      "regime": "illiquid"
+    },
+    {
+      "text": "ETH SHORT WIN +$127 in illiquid, conf=54%, held 105min\u2014replicate this setup",
+      "ts": 1778117486.9002364,
+      "symbol": "ETH",
+      "regime": "illiquid"
     }
   ]
 }

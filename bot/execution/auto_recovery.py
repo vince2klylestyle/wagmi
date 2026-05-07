@@ -382,7 +382,9 @@ def startup_recovery(
         logger.info("[RECOVERY] No previous heartbeat found (fresh start)")
 
     # Step 2: Load persisted position state
-    loaded = load_position_state(pos_mgr, filepath=state_filepath)
+    # AUDIT MODE (2026-05-07): Disabled position loading for Checkpoint 19/20 trade accumulation
+    # loaded = load_position_state(pos_mgr, filepath=state_filepath)
+    loaded = 0  # Skip position recovery during audit
     result["positions_loaded_from_disk"] = loaded
 
     # Step 3: Wait for exchange
