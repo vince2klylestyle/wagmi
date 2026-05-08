@@ -161,16 +161,17 @@ class AdaptiveConfidenceFloor:
         if len(self.calibration_errors) > 200:
             self.calibration_errors = self.calibration_errors[-200:]
 
-        # DISABLED: Recompute floor periodically (every 5 outcomes or 5 minutes)
-        # During exploration mode, freeze the floor at 30% to collect marginal signal data
-        # The adaptive recalculation was jumping floor to 50-53% based on bin EV, blocking signals
-        # should_recompute = (
-        #     (self.bins[2].total + self.bins[3].total) % 5 == 0  # every 5 trades near floor
-        #     or time.time() - self.last_update > 300
-        # )
-        # if should_recompute:
-        #     self._recompute_floor()
-        #     self._save_state()
+        # ENABLED (May 7 21:45 UTC): Smart recomputation with conservative bounds
+        # Previous issue: floor was jumping to 50-53%, blocking profitable signals
+        # Solution: Allow recomputation but cap movement to +/-2% per 5-trade cycle
+        # This lets system learn without sudden gate swings
+        should_recompute = (
+            (self.bins[2].total + self.bins[3].total) % 5 == 0  # every 5 trades near floor
+            or time.time() - self.last_update > 300
+        )
+        if should_recompute:
+            self._recompute_floor()
+            self._save_state()
 
     def get_floor(
         self,

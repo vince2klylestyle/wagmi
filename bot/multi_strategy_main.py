@@ -4619,6 +4619,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     # Track signal in signal tracker (all signals, not just approved)
                     from core.signal_tracker import get_signal_tracker
                     tracker = get_signal_tracker()
+                    # Get regime from signal metadata or filter_metadata (fallback in signal_tracker.py)
+                    signal_regime = ""
+                    if hasattr(annotated_ensemble.signal, 'metadata') and annotated_ensemble.signal.metadata:
+                        signal_regime = annotated_ensemble.signal.metadata.get("regime", "")
+                    if not signal_regime and annotated_ensemble.filter_metadata:
+                        signal_regime = annotated_ensemble.filter_metadata.get("regime", "")
+
                     tracker.record_signal(
                         symbol=symbol,
                         side=annotated_ensemble.signal.side if hasattr(annotated_ensemble.signal, 'side') else "",
@@ -4633,7 +4640,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         ],
                         filter_metadata=annotated_ensemble.filter_metadata,
                         num_strategies_agree=annotated_ensemble.filter_metadata.get("num_strategies_signaled", 0),
-                        regime=annotated_ensemble.filter_metadata.get("regime", ""),
+                        regime=signal_regime,
                     )
             except Exception as e:
                 logger.debug(f"[{symbol}] Soft-filter annotation error: {e}")
@@ -5287,6 +5294,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             # Track the chain-rejected signal
                             from core.signal_tracker import get_signal_tracker
                             tracker = get_signal_tracker()
+                            # Extract regime from annotated signal
+                            chain_regime = ""
+                            if hasattr(_annotated, 'signal') and hasattr(_annotated.signal, 'metadata') and _annotated.signal.metadata:
+                                chain_regime = _annotated.signal.metadata.get("regime", "")
+                            if not chain_regime and _annotated.filter_metadata:
+                                chain_regime = _annotated.filter_metadata.get("regime", "")
                             tracker.record_signal(
                                 symbol=symbol,
                                 side=signal_result.side,
@@ -5301,6 +5314,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                 ],
                                 filter_metadata=_annotated.filter_metadata,
                                 num_strategies_agree=num_agree,
+                                regime=chain_regime,
                             )
                     except Exception as ann_e:
                         logger.debug(f"[{symbol}] Annotated chain error: {ann_e}")

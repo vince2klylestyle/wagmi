@@ -56,6 +56,10 @@ class SignalTracker:
         Called for EVERY signal that reaches the filter chain, regardless
         of whether it was approved, soft-rejected, or hard-rejected.
         """
+        # Fallback: if regime not provided, extract from filter_metadata
+        if not regime and filter_metadata:
+            regime = filter_metadata.get("regime", "")
+
         record = {
             "ts": time.time(),
             "sym": symbol,

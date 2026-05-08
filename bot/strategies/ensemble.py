@@ -809,6 +809,12 @@ class EnsembleStrategy:
             except Exception as _ll_err:
                 logger.debug(f"Lead-lag boost error: {_ll_err}")
 
+        # Ensure regime is in metadata for logging (critical fix: regime field was empty)
+        if result.metadata is None:
+            result.metadata = {}
+        if "regime" not in result.metadata or not result.metadata.get("regime"):
+            result.metadata["regime"] = self._current_regime.get(result.symbol, "unknown")
+
         # Log SIGNAL_GENERATED for the final consensus signal
         try:
             tel = _get_tel()
@@ -1082,6 +1088,10 @@ class EnsembleStrategy:
         result.metadata["raw_confidence"] = result.confidence
         result.metadata["signal_source"] = "evaluate_raw"
 
+        # Ensure regime is in metadata for logging (critical fix: regime field was empty)
+        if "regime" not in result.metadata or not result.metadata.get("regime"):
+            result.metadata["regime"] = self._current_regime.get(result.symbol, "unknown")
+
         # Log SIGNAL_GENERATED
         try:
             tel = _get_tel()
@@ -1205,6 +1215,12 @@ class EnsembleStrategy:
             # Not enough votes — nothing meaningful to annotate
             return None
 
+        # Ensure regime is in metadata (same as evaluate() lines 812-816)
+        if result.metadata is None:
+            result.metadata = {}
+        if "regime" not in result.metadata or not result.metadata.get("regime"):
+            result.metadata["regime"] = self._current_regime.get(symbol, "unknown")
+
         # Quality adjustment (same as evaluate())
         if self._quality_scorer is not None:
             try:
@@ -1290,7 +1306,12 @@ class EnsembleStrategy:
         else:
             # Trend may have adjusted confidence
             trend_score = trend_result.metadata.get("trend_score", 0)
+            # Preserve regime from original result before replacing with trend_result
+            saved_regime = result.metadata.get("regime", "")
             result = trend_result
+            # Restore regime to trend_result (which may not have had it)
+            if saved_regime and not result.metadata.get("regime"):
+                result.metadata["regime"] = saved_regime
             annotations.append(FilterAnnotation(
                 gate="trend_alignment",
                 passed=True,
@@ -2208,7 +2229,7 @@ class EnsembleStrategy:
         and daily-TF caps. Caps daily-timeframe strategies (monte_carlo_zones) at
         MAX_OPPOSITION_WEIGHT to prevent a single high-timeframe strategy from dominating voting."""
         if self.weight_manager is not None:
-            w = self.weight_manager.get_weight(strategy_name)
+            w = self.weight_manager.get_weight(strategy_name, self._current_eval_symbol)
         else:
             w = self.weights.get(strategy_name, 1.0)
         # Static base multiplier: demote strategies with poor backtest performance
