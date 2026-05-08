@@ -4416,7 +4416,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             self._manual_alerter.send_sniper_alert(_sniper_sig, equity=self.risk_mgr.equity)
                         if hasattr(self, '_signal_tracker') and self._signal_tracker is not None:
                             try:
-                                self._signal_tracker.record_signal(_sniper_sig)
+                                self._signal_tracker.record_signal(
+                                    symbol=_sniper_sig.symbol,
+                                    side=_sniper_sig.side,
+                                    confidence=_sniper_sig.confidence,
+                                    strategy="|".join(_sniper_sig.strategies) if _sniper_sig.strategies else "sniper",
+                                    passed=True,  # Sniper only records signals that passed filtering
+                                    hard_rejected=False,
+                                    annotations=[],
+                                    filter_metadata={"regime": _sniper_sig.regime, "ev_per_dollar": _sniper_sig.ev_per_dollar},
+                                    num_strategies_agree=_sniper_sig.num_agree,
+                                    regime=_sniper_sig.regime,
+                                )
                             except Exception:
                                 pass
                         if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
@@ -4467,7 +4478,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         # Signal Value Tracker
                         if hasattr(self, '_signal_tracker') and self._signal_tracker is not None:
                             try:
-                                self._signal_tracker.record_signal(_sniper_sig)
+                                self._signal_tracker.record_signal(
+                                    symbol=_sniper_sig.symbol,
+                                    side=_sniper_sig.side,
+                                    confidence=_sniper_sig.confidence,
+                                    strategy="|".join(_sniper_sig.strategies) if _sniper_sig.strategies else "sniper",
+                                    passed=True,  # Sniper only records signals that passed filtering
+                                    hard_rejected=False,
+                                    annotations=[],
+                                    filter_metadata={"regime": _sniper_sig.regime, "ev_per_dollar": _sniper_sig.ev_per_dollar},
+                                    num_strategies_agree=_sniper_sig.num_agree,
+                                    regime=_sniper_sig.regime,
+                                )
                             except Exception:
                                 pass
                         # Sniper Auto-Execute
