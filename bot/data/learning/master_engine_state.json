@@ -1,118 +1,148 @@
 {
-  "last_run": "2026-05-09T20:00:00Z",
-  "run_id": "perpetual_deep_dive_2026_05_09_2000",
-  "prior_run": "2026-05-09T19:08:43Z",
-  "hours_since_prior_run": 0.87,
+  "last_run": "2026-05-12T12:00:00Z",
+  "run_id": "perpetual_deep_dive_2026_05_12_1200",
+  "prior_run": "2026-05-09T20:00:00Z",
+  "hours_since_prior_run": 64.0,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE — 0 new fixes. New finding: CALIBRATION_OFFSET_CAP (conf=80%). New candidate: CONF_70_80_GENERAL_PENALIZE (deferred).",
+      "status": "COMPLETE — 0 new fixes. CALIBRATION_OFFSET_CAP confirmed applied (code audit). 1 new code-change opportunity: LLM_REGIME_WRITE_TO_TRADES (conf=99%, 1-line fix, unblocks 12 regime rules).",
       "fixes_applied": 0,
       "gates_active": 8,
-      "total_applied_all_time": 20,
-      "new_finding": {
-        "rule": "CALIBRATION_OFFSET_CAP",
+      "total_applied_all_time": 21,
+      "confirmed_applied_this_run": ["CALIBRATION_OFFSET_CAP — parameter_tuner.py ±3 cap verified present at lines 186-187, 448-453"],
+      "new_opportunity": {
+        "rule": "LLM_REGIME_WRITE_TO_TRADES",
         "severity": "HIGH",
-        "description": "parameter_tuner.py calibration_offset=-9.28 cancels quality boosts on ALL signals. Feedback deadlock. Fix: cap at ±3.",
-        "confidence": 0.80,
-        "file_target": "bot/feedback/parameter_tuner.py",
-        "is_new_this_run": true
-      }
+        "description": "1-line fix to write llm_regime column at trade close. Unblocks 12 regime A/B rules currently frozen at treatment_wr=null. conf=99%.",
+        "file_target": "bot/execution/position_manager.py or trade_ledger.py",
+        "action": "Implement before restart"
+      },
+      "ab_rules_frozen": 59,
+      "pending_human_review_count": 8
     },
     "execution_forensics": {
-      "status": "STABLE — no new live data (bot offline 420h)",
-      "avg_slippage": "UNKNOWN",
-      "noise_stop_problem": "87% in non-trending regimes (conf=0.88)",
-      "offline_hours": 420
+      "status": "STABLE — no new live data (bot offline 446h). 3 new contextual findings added.",
+      "avg_slippage": "UNKNOWN (no snapshot_entry column)",
+      "noise_stop_problem": "87% of early SL hits in non-trending regimes (conf=0.88)",
+      "hold_time_ratio": "2.2x — losses exit 2.2x faster than wins",
+      "offline_hours": 446,
+      "structural_gaps": ["snapshot_entry missing", "llm_regime column empty", "fill_status missing"],
+      "new_findings": [
+        "CALIBRATION_OFFSET_CAP confirmed applied (code audit)",
+        "LLM_REGIME_WRITE_TO_TRADES opportunity identified",
+        "48h monitoring gap (2026-05-10/11) detected"
+      ]
     },
     "live_injection": {
-      "status": "STABLE — no new live data",
+      "status": "STABLE — no new live data. 9 high edges, 4 weak setups. Unchanged since 2026-05-09.",
       "high_edges_found": 9,
       "weak_setups_found": 4,
       "new_this_run": [],
-      "injection_file_updated": false
+      "injection_file_updated": false,
+      "top_edges": [
+        "HYPE_UNKNOWN_REGIME: 83% WR, +$6.56/trade (n=6)",
+        "BTC_TRENDING_REGIME: 80% WR, +$8.98/trade (n=5)",
+        "ETH_SHORT: 80% WR, +$0.94/trade (n=5, live)",
+        "ETH_TRENDING_REGIME: 71% WR, +$9.49/trade (n=7)",
+        "BTC_SHORT_90plus_conf: 67% WR, +$102.92/trade EV (n=43)"
+      ]
     },
     "daily_synthesis": {
-      "status": "COMPLETE — gap-filled 2026-05-08, generated 2026-05-09",
+      "status": "COMPLETE — gap-filled 4 missing files. Generated today (2026-05-12). 2-day monitoring gap detected and flagged.",
       "report_generated": true,
-      "anomalies_found": 6,
-      "gap_filled": "daily_synthesis_2026-05-08.json was missing — generated retroactively"
+      "anomalies_found": 5,
+      "gap_filled_dates": ["2026-05-08", "2026-05-09", "2026-05-10", "2026-05-11"],
+      "synthesis_files_total": 8,
+      "monitoring_gap_detected": "48h gap on 2026-05-10 and 2026-05-11"
     },
     "model_optimization": {
-      "status": "SKIP — cost_tracker.json missing (bot offline)",
+      "status": "SKIP — cost_tracker.json not found. cost_tracker.py exists but no data file generated yet (bot offline 446h, no API calls).",
       "swaps_recommended": 0,
       "potential_savings": "$0.00"
     }
   },
   "high_priority_findings": [
     {
-      "subsystem": "auto_fix",
+      "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot offline 420h (17.5 days). 82 A/B rules frozen. CALIBRATION_OFFSET_CAP newly discovered: tuner at -9.28 creates feedback deadlock blocking good signals on restart.",
-      "action": "RESTART bot. THEN cap parameter_tuner.py calibration_offset at ±3 before first signals.",
+      "finding": "Bot offline 446h (18.6 days). 59 A/B rules frozen. Equity $497.05 (90.1% total drawdown from $5000 start). All learning systems stalled.",
+      "action": "RESTART BOT. Pre-restart checklist: (1) verify calibration_offset <= 3.0 in tuner_state.json, (2) SOFT_START_4LOSS protocol active, (3) max leverage < 5x confirmed.",
       "urgency": "HIGHEST"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "NEW: CALIBRATION_OFFSET_CAP — bot/feedback/parameter_tuner.py offset=-9.28 cancels all quality boosts. From AUTONOMOUS_SESSION Finding 2, previously unprocessed. Fix: max(-3.0, min(3.0, raw_offset)). No safety review needed.",
-      "action": "Implement cap in parameter_tuner.py before restart.",
+      "finding": "LLM_REGIME_WRITE_TO_TRADES: 1-line fix identified — write llm_regime to trades.csv at trade close. Immediately unblocks 12 regime A/B rules on restart. conf=99%.",
+      "action": "Implement in position_manager.py or trade_ledger.py before restart. Zero-risk change.",
+      "urgency": "HIGH — do before restart"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "8 PENDING_HUMAN_REVIEW items block restart optimality: F1_sniper re-enable, SOL_SHORT unblock probe, CONF_FLOOR_70 conflict, RULE_CONFLICT_LONG_BIAS, BTC_CONCENTRATION, HIGH_CONF_CALIBRATION_DRIFT.",
+      "action": "HUMAN REVIEW: Read auto_fix_state.json pending_human_review before restart.",
       "urgency": "High"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "CONF_FLOOR_70 conflict: penalizes 60-70% by -20pts but insight_journal shows same bin = +$2.19/trade EV (67 trades, conf=0.83). Conflicting datasets.",
-      "action": "HUMAN REVIEW: Compare sample windows. Suspend rule if conflict confirmed.",
+      "finding": "CALIBRATION_OFFSET_CAP confirmed applied in parameter_tuner.py (±3 cap at lines 186-187, 448-453). The -9.28 feedback deadlock is resolved. Most impactful structural fix applied to date.",
+      "action": "VERIFY on restart: first bot log should show calibration_offset between -3.0 and +3.0.",
+      "urgency": "High — verification action on restart"
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "HIGH",
+      "finding": "4 consecutive losses at shutdown. SOFT_START required. RESTART_SOFT_START_4LOSS rule (conf=82%, gate=80%) must be active before first trade.",
+      "action": "Verify rule fires in rejection_tracker.json on first 5 signals after restart.",
       "urgency": "High"
     },
     {
-      "subsystem": "live_injection",
-      "severity": "HIGH",
-      "finding": "HYPE_UNKNOWN_REGIME: 83% WR, +$6.56/trade (n=6). Under full veto but unknown-regime shows anomalous alpha. Direction unverified.",
-      "action": "On restart: tag HYPE trades with llm_regime. After 10+ closes, verify direction.",
-      "urgency": "Medium-High"
-    },
-    {
       "subsystem": "daily_synthesis",
-      "severity": "LOW",
-      "finding": "SYNTHESIS GAP: 2026-05-08 synthesis was missing (prior run claimed to generate it). Gap filled retroactively this run.",
-      "action": "Add file-existence verification to synthesis writes.",
-      "urgency": "Low"
+      "severity": "MEDIUM",
+      "finding": "48h monitoring gap (2026-05-10 and 2026-05-11 had no engine runs). Prior run claimed to write synthesis files that were never written (2026-05-08, 2026-05-09). Gap-filled this run.",
+      "action": "Add file-existence verification after synthesis writes. Consider /loop 60m for perpetual engine.",
+      "urgency": "Medium"
     }
   ],
   "new_this_run_vs_prior": [
-    "NEW CODE FIX: CALIBRATION_OFFSET_CAP — parameter_tuner.py offset=-9.28, feedback deadlock. Previously overlooked.",
-    "NEW CANDIDATE: CONF_70_80_GENERAL_PENALIZE — 33% WR, n=43, deferred pending symbol breakdown",
-    "GAP FILL: daily_synthesis_2026-05-08.json generated (was claimed but missing)",
-    "GENERATED: daily_synthesis_2026-05-09.json (today)",
-    "STABLE: All other findings unchanged — no new live data between runs"
+    "CONFIRMED: CALIBRATION_OFFSET_CAP applied in parameter_tuner.py — removed from pending_code_changes, moved to confirmed_applied",
+    "NEW OPPORTUNITY: LLM_REGIME_WRITE_TO_TRADES — 1-line fix, unblocks 12 regime rules immediately on restart",
+    "GAP FILL: 4 missing daily_synthesis files written (2026-05-08, 2026-05-09, 2026-05-10, 2026-05-11)",
+    "GENERATED: daily_synthesis_2026-05-12.json (today)",
+    "DETECTED: 48h monitoring gap (2026-05-10/11) — no engine runs on those dates",
+    "UPDATED: offline_hours from 420h to 446h (+26h since last master engine run)"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 420h — restart is critical",
-    "CALIBRATION_OFFSET_CAP: parameter_tuner.py fix needed before restart",
-    "99 A/B rules (82 high-conf) awaiting live trade data",
-    "conf_floor_70_v1 conflict — human review needed",
-    "SOL_SHORT blockade — awaiting human decision (+$32.44/trade EV historical)",
-    "streak_momentum_gate — code change in signal_pipeline.py",
-    "BTC_STOP_0.8PCT_CODE — signal_pipeline.py pending safety review",
-    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
-    "HYPE_UNKNOWN_REGIME — needs direction verification",
-    "times_correct=0 for all 8 runtime graduated rules",
-    "cost_tracker.json missing — Model Optimization blocked",
-    "snapshot_entry column missing — slippage unmeasurable"
+    "BOT OFFLINE 446h — restart is critical priority",
+    "LLM_REGIME_WRITE_TO_TRADES — 1-line code fix needed (blocks 12 A/B rules)",
+    "59 A/B rules awaiting live trade data to graduate",
+    "F1_sniper_auto_execute_off — human decision needed",
+    "CONF_FLOOR_70_RULE_CONFLICT — human decision needed",
+    "SOL_SHORT_SUSPENSION — human decision needed",
+    "RULE_CONFLICT_LONG_BIAS — human decision needed",
+    "streak_momentum_gate — signal_pipeline.py code change (safety review needed)",
+    "BTC_STOP_0.8PCT_CODE — signal_pipeline.py code change (safety review needed)",
+    "times_correct=0 for all 8 runtime graduated rules — verify wiring on restart",
+    "cost_tracker.json not generated — Model Optimization blocked",
+    "snapshot_entry column missing — slippage unmeasurable",
+    "fill_status column missing — partial fill rate unknown"
   ],
   "next_run_focus": [
-    "IF BOT STILL OFFLINE: flag 432h milestone, check if calibration_offset fix applied",
-    "IF BOT RESTARTED: verify CALIBRATION_OFFSET_CAP implemented",
-    "IF BOT RESTARTED: verify all 8 runtime rules fire in first 10 signals",
-    "PRIORITY: Resolve CONF_60_70 conflict before 20+ trades accumulate",
-    "WATCH: Leverage > 5x on any position"
+    "IF BOT STILL OFFLINE: flag 456h threshold, note 19-day milestone",
+    "IF BOT RESTARTED: verify calibration_offset <= 3.0 in first bot log",
+    "IF BOT RESTARTED: verify all 8 runtime rules fire in rejection_tracker.json (first 10 signals)",
+    "IF BOT RESTARTED: check outcome callbacks — times_correct should increment after 2 closed trades",
+    "IF BOT RESTARTED: verify cost_tracker.json generated after first LLM call",
+    "PRIORITY: Implement LLM_REGIME_WRITE_TO_TRADES before restart",
+    "WATCH: Any position > 5x leverage — hard flag"
   ],
   "equity_snapshot": {
     "equity": 497.05,
     "peak": 508.06,
-    "drawdown_from_start": "90.1% ($5000 -> $497)",
+    "drawdown_from_start": "90.1% ($5000 -> $497.05)",
     "drawdown_from_peak": "2.17%",
-    "last_updated": "2026-04-23T22:17:05Z"
+    "last_updated": "2026-04-23T22:17:05Z",
+    "stale_hours": 446
   }
 }

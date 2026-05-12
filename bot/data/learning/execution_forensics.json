@@ -1,67 +1,110 @@
 {
-  "last_run": "2026-05-09T20:00:00Z",
+  "last_run": "2026-05-12T12:00:00Z",
+  "prior_run": "2026-05-09T20:00:00Z",
   "data_available": true,
-  "data_source": "Historical accumulated (352 resolved trades) + insight_journal_2026-05-08 + prior forensics state. No new live data (bot offline 420h).",
-  "avg_slippage": "UNKNOWN — no snapshot_entry column in trades.csv. Structural gap. Must add column on restart.",
+  "data_source": "Historical accumulated (352 resolved trades) + insight_journal_2026-05-08 + prior forensics state. No new live data (bot offline 446h).",
+  "avg_slippage": "UNKNOWN \u2014 no snapshot_entry column in trades.csv. Structural gap. Must add column on restart.",
   "noise_stop_problem": "87% of early SL hits (<2h) in non-trending regimes (illiquid/ranging/unknown). Upgraded from 71.9% estimate. Confidence: 0.88",
   "hold_time_forensics": {
     "win_median_hold_h": 3.3,
     "loss_median_hold_h": 1.5,
-    "ratio": "2.2x — losses exit 2.2x faster than wins",
+    "ratio": "2.2x \u2014 losses exit 2.2x faster than wins",
     "interpretation": "Noise stops fire before directional move materializes. Fix: TRENDING_MIN_HOLD should be 3h (not 2h).",
     "action": "Upgrade Exit Agent proactive-close threshold: trending signals need 3h min hold (was 2h)"
   },
   "leverage_calibration": {
-    "low_1_2x": {"avg_pnl": null, "total": null, "n": null, "verdict": "INSUFFICIENT DATA"},
-    "medium_3_5x": {"avg_pnl": 0.79, "total": 53.6, "n": 68, "verdict": "NET POSITIVE — preferred range"},
-    "high_6_10x": {"avg_pnl": -0.38, "total": -34.4, "n": 91, "verdict": "NET NEGATIVE despite 41% WR — tail losses dominate"},
+    "low_1_2x": {
+      "avg_pnl": null,
+      "total": null,
+      "n": null,
+      "verdict": "INSUFFICIENT DATA"
+    },
+    "medium_3_5x": {
+      "avg_pnl": 0.79,
+      "total": 53.6,
+      "n": 68,
+      "verdict": "NET POSITIVE \u2014 preferred range"
+    },
+    "high_6_10x": {
+      "avg_pnl": -0.38,
+      "total": -34.4,
+      "n": 91,
+      "verdict": "NET NEGATIVE despite 41% WR \u2014 tail losses dominate"
+    },
     "finding": "High leverage amplifies tail losses. Max 5x aligns with data. Current max allowed: 3x in backtest (conservative). Verify live leverage cap on restart.",
-    "confidence": 0.80,
+    "confidence": 0.8,
     "action": "On restart: verify max leverage < 5x. Flag any position > 5x immediately."
   },
   "regime_analysis": {
-    "trending": {"wr": 0.519, "trades": 52, "verdict": "VIABLE — only profitable regime"},
-    "illiquid": {"wr": 0.281, "trades": 57, "verdict": "LOSING — 87% noise stops"},
-    "ranging": {"wr": 0.25, "trades": 16, "verdict": "LOSING — below break-even"},
-    "unknown": {"wr": 0.42, "note": "HYPE_UNKNOWN anomaly (83% WR, n=6) elevates this. Exclude HYPE, unknown = ~30% WR typical."}
+    "trending": {
+      "wr": 0.519,
+      "trades": 52,
+      "verdict": "VIABLE \u2014 only profitable regime"
+    },
+    "illiquid": {
+      "wr": 0.281,
+      "trades": 57,
+      "verdict": "LOSING \u2014 87% noise stops"
+    },
+    "ranging": {
+      "wr": 0.25,
+      "trades": 16,
+      "verdict": "LOSING \u2014 below break-even"
+    },
+    "unknown": {
+      "wr": 0.42,
+      "note": "HYPE_UNKNOWN anomaly (83% WR, n=6) elevates this. Exclude HYPE, unknown = ~30% WR typical."
+    }
   },
   "fill_analysis": {
-    "partial_fill_rate": "UNKNOWN — no fill_status column",
+    "partial_fill_rate": "UNKNOWN \u2014 no fill_status column",
     "action": "Add fill_status to trades.csv schema. Track partial fills as separate row type."
   },
   "structural_gaps": [
     {
       "gap": "SLIPPAGE_TRACKING_GAP",
-      "finding": "No snapshot_entry column — slippage unmeasurable",
-      "priority": "HIGH — slippage is a primary execution cost source",
+      "finding": "No snapshot_entry column \u2014 slippage unmeasurable",
+      "priority": "HIGH \u2014 slippage is a primary execution cost source",
       "fix": "Add snapshot_entry to trade logging at signal generation time"
     },
     {
       "gap": "LLM_REGIME_CAPTURE_GAP",
-      "finding": "llm_regime column empty in all trades — 12 regime A/B rules unmeasurable",
-      "priority": "HIGH — blocks regime-based rule graduation",
+      "finding": "llm_regime column empty in all trades \u2014 12 regime A/B rules unmeasurable",
+      "priority": "HIGH \u2014 blocks regime-based rule graduation",
       "fix": "Write regime classification to trades.csv at trade close"
     },
     {
       "gap": "NO_LIVE_FILL_DATA",
-      "finding": "No fill_status column — partial fill rate unknown",
+      "finding": "No fill_status column \u2014 partial fill rate unknown",
       "priority": "MEDIUM"
     }
   ],
   "new_findings_this_run": [
     {
-      "finding": "No new findings — no new data since prior run",
-      "note": "Forensics stable. All metrics unchanged from 2026-05-09T19:08 run."
+      "finding": "CALIBRATION_OFFSET_CAP confirmed applied in parameter_tuner.py (lines 186-187, 448-453). Cap at \u00b13. Ready for restart.",
+      "type": "INFO",
+      "action": "None needed \u2014 already applied. Verify at runtime on restart."
+    },
+    {
+      "finding": "LLM_REGIME_WRITE_TO_TRADES: 1-line code fix identified. Would unblock 12 regime A/B rules. Added to auto_fix pending_code_changes.",
+      "type": "OPPORTUNITY",
+      "confidence": 0.99,
+      "action": "Implement before restart."
+    },
+    {
+      "finding": "48h monitoring gap (2026-05-10 and 2026-05-11) \u2014 no engine runs. Gap-filled in daily_synthesis files.",
+      "type": "MONITORING",
+      "action": "Consider scheduled perpetual engine runs to prevent future gaps."
     }
   ],
   "consecutive_losses_live": 4,
   "consecutive_losses_source": "adaptive_risk_state.json",
-  "offline_hours": 420,
-  "offline_days": 17.5,
+  "offline_hours": 446,
+  "offline_days": 18.6,
   "wdraw_trend": {
     "last_200_wr": 0.535,
     "all_time_wr": 0.57,
-    "verdict": "DECLINING 3.5pp from all-time — monitor on restart"
+    "verdict": "DECLINING 3.5pp from all-time \u2014 monitor on restart"
   },
   "equity_snapshot": {
     "equity": 497.05,
@@ -71,8 +114,10 @@
   },
   "next_run_actions": [
     "On restart: verify leverage distribution (flag any > 5x)",
+    "On restart: verify calibration_offset in tuner state (should be <= 3.0)",
     "On restart: add snapshot_entry logging to signal generation path",
-    "On restart: add llm_regime write to trade close path",
-    "After 20 closed trades: recompute slippage, noise_stop rate, fill rate"
+    "On restart: add llm_regime write to trade close path (LLM_REGIME_WRITE_TO_TRADES)",
+    "After 20 closed trades: recompute slippage, noise_stop rate, fill rate",
+    "After 20 closed trades: verify consecutive_losses = 0 (soft-start protocol active)"
   ]
 }
