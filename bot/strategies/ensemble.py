@@ -19,6 +19,7 @@ Modes:
 """
 
 import logging
+import os
 from copy import deepcopy
 from dataclasses import replace
 from typing import Optional, Dict, Any, List
@@ -2626,7 +2627,8 @@ class EnsembleStrategy:
         }
         _slippage_bps = _REGIME_SLIPPAGE_BPS.get(_regime_ev, 2)
         _total_cost_bps = _fee_bps * 2 + _slippage_bps  # round-trip fees + slippage
-        fee_drag = (entry * _total_cost_bps / 10000.0) / stop_width if stop_width > 0 else 0
+        # FIX: fee_drag should be cost as % of entry, not inflated by stop_width
+        fee_drag = _total_cost_bps / 100.0  # Convert bps to percentage (e.g., 22 bps = 0.0022)
         # Partial-close-aware EV: model TP1 partial close + TP2 continuation
         # After TP1 hit, SL moves to breakeven → remaining position is risk-free
         # but only ~50% chance of reaching TP2 (conservative estimate)
@@ -2642,13 +2644,9 @@ class EnsembleStrategy:
         ev_per_dollar = round(win_prob * _win_payoff - (1.0 - win_prob) * (1.0 + fee_drag), 4)
 
         # Defense-in-depth: reject negative-EV signals at ensemble level.
-        # The signal pipeline also checks EV, but this prevents wasted computation
-        # on signals that are mathematically unprofitable.
-        #
-        # 2026-04-29: Curator system is now primary filter. Disabled hard EV block
-        # to allow curator's backtest-validated win rates (63.4% SOL_SHORT) to flow
-        # through without excessive gating. EV calculated but not enforced.
-        if ev_per_dollar < 0 and not llm_first_raw:
+        # Hard EV floor: no trade below 0 EV. LLM validates quality above floor.
+        # 2026-05-11: Re-enabled hard EV block. LLM+EV as dual gatekeepers.
+        if ev_per_dollar < 0:
             logger.info(
                 f"[ENSEMBLE] {symbol} {side} EV={ev_per_dollar:.4f} (passed through, no hard block) "
                 f"R:R={rr_tp1:.2f} fee_drag={fee_drag:.3f} win_prob={win_prob:.2f}"
@@ -2778,9 +2776,39 @@ class EnsembleStrategy:
                     pass
 
             if not _ev_override:
-                # 2026-04-29: Disabled hard EV block. Curator ranking is primary filter.
-                logger.info(f"[ENSEMBLE] {symbol} {side} negative EV (continuing to curator ranking)")
-                pass  # Allow signal through to curator for ranking/filtering
+                # 2026-05-11: Hard EV floor re-enabled. No trade below 0 EV.
+                logger.info(f"[ENSEMBLE] {symbol} {side} REJECTED: negative EV={ev_per_dollar:.4f} (no override)")
+
+                # Wire counterfactual tracking for learning system
+                if os.getenv("ENABLE_COUNTERFACTUAL", "true").lower() in ("1", "true", "yes"):
+                    try:
+                        from llm.counterfactual_learner import CounterfactualRecord, CounterfactualLearner
+                        cf_record = CounterfactualRecord(
+                            symbol=symbol,
+                            side=side,
+                            entry_price=entry,
+                            sl=best_sl,
+                            tp1=best_tp1,
+                            tp2=best_tp2,
+                            confidence=combined_conf,
+                            skip_reason=f"negative_ev={ev_per_dollar:.4f}",
+                            strategy="|".join([s.strategy for s in signals]),
+                            regime=self._current_regime.get(symbol, "unknown"),
+                            metadata={
+                                "ev": round(ev_per_dollar, 4),
+                                "win_prob": round(win_prob, 2),
+                                "rr_tp1": round(rr_tp1, 2),
+                                "n_agree": n_agree,
+                                "fee_drag": round(fee_drag, 3),
+                            }
+                        )
+                        learner = CounterfactualLearner()
+                        learner.track_skipped_trade(cf_record)
+                        logger.info(f"[COUNTERFACTUAL] Tracked rejected EV signal {symbol} {side} for learning")
+                    except Exception as cf_err:
+                        logger.warning(f"[COUNTERFACTUAL] Error tracking rejection: {cf_err}")
+
+                return None  # Hard reject negative EV trades
             # Continue to signal construction (override active: source={_ev_override_source})
 
         # Propagate chop_score from input signals (attached by chop detector pre-merge)
