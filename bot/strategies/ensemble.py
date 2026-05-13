@@ -2628,7 +2628,7 @@ class EnsembleStrategy:
         _slippage_bps = _REGIME_SLIPPAGE_BPS.get(_regime_ev, 2)
         _total_cost_bps = _fee_bps * 2 + _slippage_bps  # round-trip fees + slippage
         # FIX: fee_drag should be cost as % of entry, not inflated by stop_width
-        fee_drag = _total_cost_bps / 100.0  # Convert bps to percentage (e.g., 22 bps = 0.0022)
+        fee_drag = _total_cost_bps / 10000.0  # Convert bps to percentage (e.g., 92 bps = 0.0092)
         # Partial-close-aware EV: model TP1 partial close + TP2 continuation
         # After TP1 hit, SL moves to breakeven → remaining position is risk-free
         # but only ~50% chance of reaching TP2 (conservative estimate)
