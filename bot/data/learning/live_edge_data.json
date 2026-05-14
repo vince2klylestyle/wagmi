@@ -64,7 +64,7 @@
       "trades": 6,
       "pnl": 6.56,
       "source": "insight_journal_2026-05-08_NEW",
-      "note": "HYPE in UNKNOWN regime: 83% WR, +6.56/trade (n=6). Possible regime-transition breakout signal. NEW — not in any prior state. Needs investigation: unknown regime may signal regime-transition breakout with alpha when HYPE involved."
+      "note": "HYPE in UNKNOWN regime: 83% WR, +6.56/trade (n=6). Possible regime-transition breakout signal. NEW \u2014 not in any prior state. Needs investigation: unknown regime may signal regime-transition breakout with alpha when HYPE involved."
     },
     {
       "setup": "CONF_60_70_CONFLICT_FLAG",
@@ -106,23 +106,23 @@
     "trending": {
       "wr": 0.519,
       "trades": 52,
-      "verdict": "TRADE — only viable regime"
+      "verdict": "TRADE \u2014 only viable regime"
     },
     "illiquid": {
       "wr": 0.281,
       "trades": 57,
-      "verdict": "AVOID — 71.9% noise stops"
+      "verdict": "AVOID \u2014 71.9% noise stops"
     },
     "ranging": {
       "wr": 0.25,
       "trades": 16,
-      "verdict": "AVOID — below break-even"
+      "verdict": "AVOID \u2014 below break-even"
     }
   },
   "new_insights_this_run": {
     "ETH_TRENDING_REGIME": "NEW: 71% WR, +9.49/trade (insight_journal update)",
     "BTC_TRENDING_REGIME": "NEW: 80% WR, +8.98/trade (insight_journal update)",
-    "HYPE_UNKNOWN_REGIME": "NEW_UNDISCOVERED: 83% WR, +6.56/trade — not in any prior state",
+    "HYPE_UNKNOWN_REGIME": "NEW_UNDISCOVERED: 83% WR, +6.56/trade \u2014 not in any prior state",
     "CONF_60_70_CONFLICT": "CRITICAL: insight shows +EV but conf_floor_70_v1 penalizes -20pts",
     "CONF_70_80_WORST": "NEW WEAK: 33% WR, -4.05/trade (worst confidence band)"
   },
@@ -130,15 +130,26 @@
   "top_killer": "SOL_LONG: 24% WR on 34 trades, -$21.89. HYPE_LONG: 23% WR on 35 trades, -$77.26",
   "new_block": "BTC_SHORT at 70-79% confidence (orphan rule finding: worst loss bucket)",
   "injection_prompt_update": {
-    "boost_setups": ["ETH_SHORT", "ETH_SHORT_BB", "BTC_BUY_BB", "BB_solo"],
-    "block_setups": ["SOL_SHORT", "HYPE_LONG", "SOL_LONG", "HYPE_SELL_BB", "BB_MTQ_combo"],
+    "boost_setups": [
+      "ETH_SHORT",
+      "ETH_SHORT_BB",
+      "BTC_BUY_BB",
+      "BB_solo"
+    ],
+    "block_setups": [
+      "SOL_SHORT",
+      "HYPE_LONG",
+      "SOL_LONG",
+      "HYPE_SELL_BB",
+      "BB_MTQ_combo"
+    ],
     "regime_filter": "Only trade in TRENDING regime unless conf > 85%",
     "time_filter": "Prefer 06:00-12:00 UTC (morning edge confirmed 71-75% WR)",
-    "new_block_conf_range": "BTC_SHORT at 70-79% confidence — avoid or reduce to 50% size",
+    "new_block_conf_range": "BTC_SHORT at 70-79% confidence \u2014 avoid or reduce to 50% size",
     "night_session_block": "00:00-06:00 UTC fully blocked (19% WR, 27 trades, -$136.83)",
     "early_close_priority": "Exit agent should proactively close before SL in 93% of cases",
     "new_conf_filter": "conf_floor_70_v1 active in runtime: 60-70% conf signals penalized -20pts. Effective minimum bar is now ~70%+ for any signal to pass.",
-    "bb_pattern_alert": "BB solo signals (no MTQ) = 67.6% WR — BOOST. BB+MTQ agreement = 35% WR — ANTI-PATTERN, penalize -10pts or skip.",
+    "bb_pattern_alert": "BB solo signals (no MTQ) = 67.6% WR \u2014 BOOST. BB+MTQ agreement = 35% WR \u2014 ANTI-PATTERN, penalize -10pts or skip.",
     "bb_golden_setups": "ETH_SHORT+BB = 70% WR, BTC_BUY+BB = 69% WR, SOL_BUY+BB = 67% WR (all tier-1 golden setups awaiting live confirmation)"
   },
   "high_edges_found": 9,
@@ -146,17 +157,53 @@
   "new_insights_found": 5,
   "new_anti_patterns": {
     "BB_MTQ_combo": "BB+MTQ co-agreement = 35% WR (92% conf, pending live confirmation). Treat as contra-indicator.",
-    "HYPE_SELL_BB": "HYPE_SELL+BB = 35% WR (92% conf). Worst BB setup — block or -15pt penalty."
+    "HYPE_SELL_BB": "HYPE_SELL+BB = 35% WR (92% conf). Worst BB setup \u2014 block or -15pt penalty."
   },
   "backtest_vs_live_gap": {
     "warning": "SIGNIFICANT OVERFITTING DETECTED in trades_10d.csv backtest",
     "gaps": {
-      "BTC_LONG": {"backtest_wr": 0.639, "live_wr": 0.19, "gap": "+45%"},
-      "SOL_LONG": {"backtest_wr": 0.533, "live_wr": 0.24, "gap": "+29%"},
-      "HYPE_LONG": {"backtest_wr": 0.57, "live_wr": 0.23, "gap": "+34%"},
-      "BTC_SHORT": {"backtest_wr": 0.538, "live_wr": "N/A (same as backtest)", "gap": "consistent"},
-      "SOL_SHORT": {"backtest_wr": 0.637, "live_wr": 0.637, "gap": "consistent"}
+      "BTC_LONG": {
+        "backtest_wr": 0.639,
+        "live_wr": 0.19,
+        "gap": "+45%"
+      },
+      "SOL_LONG": {
+        "backtest_wr": 0.533,
+        "live_wr": 0.24,
+        "gap": "+29%"
+      },
+      "HYPE_LONG": {
+        "backtest_wr": 0.57,
+        "live_wr": 0.23,
+        "gap": "+34%"
+      },
+      "BTC_SHORT": {
+        "backtest_wr": 0.538,
+        "live_wr": "N/A (same as backtest)",
+        "gap": "consistent"
+      },
+      "SOL_SHORT": {
+        "backtest_wr": 0.637,
+        "live_wr": 0.637,
+        "gap": "consistent"
+      }
     },
     "implication": "Trust live data over backtest for long/direction rules. SOL_SHORT and HYPE_SHORT are consistent between backtest and live."
+  },
+  "stale_hours": 123.1,
+  "last_refresh_check": "2026-05-14T22:10:43.252996+00:00",
+  "priority_restart_edges": [
+    {
+      "setup": "BTC_SHORT_90plus",
+      "wr": 0.67,
+      "trades": 43,
+      "ev_per_trade": 102.92,
+      "action_on_restart": "Allow BTC_SHORT signals at 90%+ confidence to bypass btc_short_conf70_80_penalize_v1 rule. The existing rule penalizes 70-80% bin which is correct. 90%+ bin should be explicitly whitelisted.",
+      "urgency": "HIGH"
+    }
+  ],
+  "projected_ev_on_restart": {
+    "BTC_SHORT_90plus_weekly": "+$59/week estimated",
+    "note": "Based on historical WR. Requires live validation."
   }
 }

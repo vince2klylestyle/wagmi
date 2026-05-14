@@ -1,163 +1,145 @@
 {
-  "last_run": "2026-05-14T00:00:00Z",
-  "run_id": "perpetual_deep_dive_2026_05_14_0000",
-  "prior_run": "2026-05-09T20:00:00Z",
-  "hours_since_prior_run": 100.0,
-  "bot_offline_hours": 504,
-  "bot_offline_days": 21.0,
+  "last_run": "2026-05-14T22:12:19.228900+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_14_0001",
+  "prior_run": "2026-05-14T00:00:00Z",
+  "hours_since_prior_run": 22.2,
+  "bot_offline_hours": 506.0,
+  "bot_offline_days": 21.1,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE — 0 new fixes. KEY RECONCILIATION: CALIBRATION_OFFSET_CAP confirmed implemented in code. Removed from pending_code_changes. 2 code changes still pending safety review.",
+      "status": "COMPLETE \u2014 0 new fixes. 3 high-conf candidates blocked by prerequisites.",
       "fixes_applied": 0,
       "gates_active": 8,
       "total_applied_all_time": 20,
-      "reconciliation_this_run": {
-        "item": "CALIBRATION_OFFSET_CAP",
-        "finding": "Code already implemented at parameter_tuner.py:186 + :448-453 since 2026-04-15. graduated_rules.json status=APPLIED. Prior state incorrectly listed as pending.",
-        "action_taken": "Moved from pending_code_changes to resolved_code_changes in auto_fix_state.json"
-      },
-      "still_pending_code": [
-        "streak_momentum_gate (conf=90%, requires safety review)",
-        "BTC_STOP_0.8PCT_CODE (conf=80%, requires safety review)"
-      ],
       "ab_rules_awaiting_live_data": 82,
-      "graduated_rules_total": 99,
-      "graduated_rules_by_status": {
-        "applied": 11,
-        "ab_active": 59,
-        "suspended": 2,
-        "pending_human_review": 8,
-        "superseded_archived": 10,
-        "other": 9
-      }
+      "blocked_high_conf_candidates": [
+        {
+          "id": "streak_momentum_gate",
+          "conf": 0.9,
+          "reason": "REQUIRES_SAFETY_REVIEW + code change to signal_pipeline.py"
+        },
+        {
+          "id": "BTC_STOP_0.8PCT_CODE",
+          "conf": 0.8,
+          "reason": "REQUIRES_SAFETY_REVIEW + code change to signal_pipeline.py"
+        },
+        {
+          "id": "CONF_70_80_GENERAL_PENALIZE",
+          "conf": 0.76,
+          "reason": "Needs symbol+regime breakdown from 20+ live trades first"
+        }
+      ]
     },
     "execution_forensics": {
-      "status": "STABLE — no new live data (bot offline 504h). All metrics unchanged from 2026-05-09.",
-      "avg_slippage": "UNKNOWN — no snapshot_entry column",
-      "noise_stop_problem": "87% of early SL hits (<2h) in non-trending regimes (conf=0.88)",
-      "leverage_finding": "High leverage (6-10x) net negative: -$0.38/trade avg, -$34.4 total (n=91). 3-5x range is +EV: +$0.79/trade avg.",
+      "status": "STABLE \u2014 cached data. Bot offline 506h, no new live data.",
+      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing",
+      "noise_stops": "87% of early SL hits in non-trending regimes",
+      "leverage_finding": "6-10x net negative (-$0.38/trade); 3-5x net positive (+$0.79/trade)",
       "structural_gaps": [
-        "SLIPPAGE_TRACKING_GAP: no snapshot_entry column — add on restart",
-        "LLM_REGIME_CAPTURE_GAP: llm_regime empty in trades — add on restart",
-        "NO_LIVE_FILL_DATA: no fill_status column"
-      ],
-      "offline_hours": 504,
-      "new_findings_this_run": []
+        "SLIPPAGE_TRACKING_GAP",
+        "LLM_REGIME_CAPTURE_GAP",
+        "NO_LIVE_FILL_DATA"
+      ]
     },
     "live_injection": {
-      "status": "STABLE — no new live data. 9 high edges, 4 weak setups unchanged.",
-      "high_edges_found": 9,
-      "weak_setups_found": 4,
-      "top_edges": [
-        "HYPE_UNKNOWN_REGIME: 83% WR, +$6.56/trade (n=6, needs verification)",
-        "BTC_TRENDING_REGIME: 80% WR, +$8.98/trade (n=5)",
-        "ETH_SHORT: 80% WR (n=5)",
-        "ETH_TRENDING_REGIME: 71% WR, +$9.49/trade (n=7)",
-        "ETH_SHORT_BB_golden: 70% WR (A/B pending)",
-        "BB_solo_high_WR: 67.6% WR (vs ensemble 51.9%)",
-        "BTC_SHORT_90plus_conf: 67% WR, +$102.92/trade (n=43)"
-      ],
-      "top_weak_setups": [
-        "BTC_LONG: 18% WR (n=17)",
-        "SOL_LONG: 24% WR (n=34, -$21.89 total)",
-        "HYPE_LONG: 23% WR (n=35, -$77.26 total)",
-        "CONF_70_80_BIN: 33% WR (n=43)"
-      ],
-      "injection_file_updated": false,
-      "new_this_run": []
+      "status": "STABLE \u2014 123h stale, no new live data.",
+      "high_edges": 9,
+      "weak_setups": 4,
+      "data_stale_hours": 123.1,
+      "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43)",
+      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)"
     },
     "daily_synthesis": {
-      "status": "COMPLETE — gap-filled 2026-05-10/11/12/13, generated 2026-05-14",
-      "report_generated": true,
+      "status": "COMPLETE \u2014 6 gap fills + today generated.",
       "anomalies_found": 8,
-      "gap_filled": ["2026-05-10", "2026-05-11", "2026-05-12", "2026-05-13"],
-      "today_synthesis": "daily_synthesis_2026-05-14.json",
-      "new_milestone": "21-DAY offline milestone crossed (504h)"
+      "report_generated": true,
+      "gap_filled": [
+        "2026-05-08",
+        "2026-05-09",
+        "2026-05-10",
+        "2026-05-11",
+        "2026-05-12",
+        "2026-05-13"
+      ],
+      "today_synthesis": "daily_synthesis_2026-05-14.json"
     },
     "model_optimization": {
-      "status": "SKIP — cost_tracker.json missing (bot offline for 21 days, no API calls logged)",
+      "status": "SKIP \u2014 cost_tracker.json missing (bot offline 21d)",
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
-      "note": "Will re-run on bot restart when cost_tracker.json is populated."
+      "note": "Will re-run on bot restart when cost_tracker.json populated."
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "Bot offline 504h (21 days). 82 A/B rules frozen. 59 A/B_ACTIVE rules all at treatment_wr=null. Learning paralysis deepens each hour.",
+      "finding": "Bot offline 506h (21.1 days). 82 A/B rules frozen. All 8 runtime graduated rules have times_correct=0. Learning paralysis compounds hourly.",
       "action": "RESTART bot immediately: cd bot && python run.py paper",
       "urgency": "HIGHEST"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "RECONCILIATION: CALIBRATION_OFFSET_CAP previously listed as pending code change — confirmed ALREADY IMPLEMENTED in parameter_tuner.py:186 + :448-453 since 2026-04-15. auto_fix_state.json updated to reflect this.",
-      "action": "No action needed — code fix already live. 1 outstanding code change resolved.",
-      "urgency": "INFO"
+      "finding": "streak_momentum_gate (conf=90%): penalize -15pts on consecutive_losses >= 2. Especially critical given 4 consecutive losses at shutdown. Code change required in signal_pipeline.py.",
+      "action": "SAFETY REVIEW THEN IMPLEMENT before restart. This is the most important pre-restart code change.",
+      "urgency": "HIGH \u2014 implement before restart"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "streak_momentum_gate (conf=90%): signal_pipeline.py penalize -15 if consecutive_losses >= 2. Especially relevant on restart with 4 prior consecutive losses. Awaiting safety review.",
-      "action": "HUMAN SAFETY REVIEW required before implementing in signal_pipeline.py",
-      "urgency": "HIGH — implement before restart or after restart with soft-start protocol"
+      "finding": "BTC_STOP_0.8PCT_CODE (conf=80%): 47/47 BTC losses are instant SL hits with avg stop 0.494%. Min stop should be 0.8% for BTC.",
+      "action": "SAFETY REVIEW THEN IMPLEMENT in signal_pipeline.py ~line 265",
+      "urgency": "HIGH \u2014 stop bleeding BTC trades on restart"
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "BTC_SHORT@90%+ confidence = 67% WR, +$102.92/trade EV (n=43). CONTRADICTS general BTC_SHORT negative view. The problem bin is 70-80%, not 90%+.",
-      "action": "On restart: track BTC_SHORT trades by confidence bin. Verify 90%+ edge holds with 10+ live trades.",
+      "finding": "BTC_SHORT@90%+ confidence = 67% WR, +$102.92/trade EV (n=43). Must whitelist this bin explicitly \u2014 it is EXCLUDED from btc_short_conf70_80_penalize_v1 by design but verify the rule conditions correctly cap at 80%.",
+      "action": "On restart: verify btc_short_conf70_80_penalize_v1 only applies to confidence 70-80 (not 80+). Track BTC_SHORT at 80%+ separately.",
       "urgency": "Medium-High"
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "HIGH",
-      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) — currently fully blocked by SUSPENDED_LIVE_CONTRADICTION. 21 days of potential alpha foregone.",
-      "action": "HUMAN DECISION: allow controlled 50% gate probe on restart OR maintain full block.",
-      "urgency": "HIGHEST — primary alpha source"
-    },
-    {
-      "subsystem": "daily_synthesis",
-      "severity": "MEDIUM",
-      "finding": "SYNTHESIS GAP: 4 consecutive days missing (2026-05-10 through 2026-05-13). Gap-filled retroactively this run.",
-      "action": "Gap filled. Add synthesis existence check in next deep-dive write path.",
-      "urgency": "Low"
+      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) \u2014 SUSPENDED for 21+ days. Every offline day is foregone alpha from the bot's single best historical setup.",
+      "action": "HUMAN DECISION: Allow controlled 50% gate probe on restart OR maintain full block.",
+      "urgency": "HIGHEST \u2014 primary alpha source, human decision required"
     },
     {
       "subsystem": "execution_forensics",
-      "severity": "HIGH",
-      "finding": "8/8 runtime graduated rules have times_correct=0. Outcome callback wiring unverified — rules may not be learning from trades.",
-      "action": "First priority after restart: verify times_correct increments within 2 closed trades.",
-      "urgency": "HIGH"
+      "severity": "MEDIUM",
+      "finding": "3 structural data gaps will block learning on restart: (1) snapshot_entry missing \u2014 slippage unmeasurable; (2) llm_regime empty \u2014 12 regime rules unmeasurable; (3) fill_status missing \u2014 partial fill rate unknown.",
+      "action": "Add columns to trade logging before restart. Priority order: llm_regime > snapshot_entry > fill_status.",
+      "urgency": "MEDIUM \u2014 these gaps compound with each trade logged"
     }
   ],
   "new_this_run_vs_prior": [
-    "RECONCILIATION: CALIBRATION_OFFSET_CAP confirmed implemented — removed from pending_code_changes",
-    "GAP FILL: daily_synthesis 2026-05-10, 2026-05-11, 2026-05-12, 2026-05-13 generated retroactively",
-    "GENERATED: daily_synthesis_2026-05-14.json (today)",
-    "21-DAY OFFLINE MILESTONE: bot now 504h offline (was 420h on May 9, +84h elapsed)",
-    "STABLE: All edges, forensics, model optimization — no new live data"
+    "GAP FILL: generated daily_synthesis for 2026-05-08, 2026-05-09, 2026-05-10, 2026-05-11, 2026-05-12, 2026-05-13 (7 total files including today)",
+    "LIVE_EDGE stale_hours updated: 123h (was 120h at prior run)",
+    "AUTO_FIX: added gap_analysis_2026_05_14 note (streak_momentum_gate urgency escalated)",
+    "EXECUTION_FORENSICS: added AB_DATA_GAP_DEEPENING finding (506h offline milestone)",
+    "MASTER ENGINE: run_id incremented to perpetual_deep_dive_2026_05_14_0001"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 504h — restart is most critical action",
+    "BOT OFFLINE 506h \u2014 restart is most critical action",
     "99 rules in graduated_rules.json (82 high-conf) awaiting live trade data",
-    "streak_momentum_gate — code change in signal_pipeline.py, needs safety review",
-    "BTC_STOP_0.8PCT_CODE — code change in signal_pipeline.py, needs safety review",
-    "conf_floor_70_v1 conflict — human review needed (conflicting sample windows)",
-    "SOL_SHORT blockade — awaiting human decision (+$5807 historical alpha)",
-    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
-    "HYPE_UNKNOWN_REGIME — needs direction verification after 10+ trades",
-    "times_correct=0 for all 8 runtime graduated rules",
-    "cost_tracker.json missing — Model Optimization blocked",
-    "snapshot_entry column missing — slippage unmeasurable"
+    "streak_momentum_gate \u2014 code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
+    "BTC_STOP_0.8PCT_CODE \u2014 code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
+    "conf_floor_70_v1 conflict \u2014 human review needed (conflicting sample windows)",
+    "SOL_SHORT blockade \u2014 HUMAN DECISION REQUIRED (+$5807 historical alpha)",
+    "LLM_REGIME_CAPTURE_GAP \u2014 llm_regime not written to trades.csv",
+    "HYPE_UNKNOWN_REGIME \u2014 needs direction verification after 10+ live trades",
+    "times_correct=0 for all 8 runtime graduated rules \u2014 unverified wiring",
+    "cost_tracker.json missing \u2014 Model Optimization blocked",
+    "snapshot_entry column missing \u2014 slippage unmeasurable"
   ],
   "next_run_focus": [
-    "IF BOT STILL OFFLINE: flag 528h milestone (22 days), escalate to human",
+    "IF BOT STILL OFFLINE: flag 507h milestone, escalate to human",
     "IF BOT RESTARTED: verify all 8 runtime rules fire in first 10 signals",
-    "IF BOT RESTARTED: verify times_correct increments after first 2 closed trades",
-    "IF BOT RESTARTED: collect symbol+regime breakdown after 20 trades for CONF_70_80 candidate",
-    "PRIORITY: Resolve SOL_SHORT suspension — human decision needed",
+    "IF BOT RESTARTED: verify times_correct > 0 after 2 closed trades",
+    "IF BOT RESTARTED: collect symbol+regime breakdown after 20 trades",
+    "PRIORITY: Resolve SOL_SHORT suspension \u2014 human decision needed",
     "PRIORITY: Safety review for streak_momentum_gate and BTC_STOP_0.8PCT_CODE"
   ],
   "equity_snapshot": {
@@ -166,6 +148,6 @@
     "drawdown_from_start": "90.1% ($5000 -> $497)",
     "drawdown_from_peak": "2.17%",
     "last_updated": "2026-04-23T22:17:05Z",
-    "note": "No equity updates — bot offline since 2026-04-23"
+    "note": "No equity updates \u2014 bot offline since 2026-04-23"
   }
 }
