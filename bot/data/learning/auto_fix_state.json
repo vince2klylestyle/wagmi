@@ -1,7 +1,7 @@
 {
-  "last_run": "2026-05-15T21:10:05.000000+00:00",
+  "last_run": "2026-05-15T23:10:30.497945+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md + perpetual_deep_dive_2026_05_15 + perpetual_deep_dive_2026_05_15_2110",
-  "fixes_applied_this_run": 2,
+  "fixes_applied_this_run": 0,
   "gates_active": 11,
   "new_fixes_this_run": [
     {
@@ -26,24 +26,38 @@
   "resolved_this_run": [
     {
       "fix_id": "BTC_SHORT_90PLUS_WHITELIST",
-      "resolution": "REDUNDANT — NOT NEEDED",
+      "resolution": "REDUNDANT \u2014 NOT NEEDED",
       "reason": "btc_short_conf70_80_penalize_v1 has confidence_max=80.0. graduated_rules.py line 74: rule rejects when signal confidence > confidence_max. BTC SELL at 90%+ CANNOT trigger the penalize rule. Whitelist is redundant. btc_short_90plus_boost_v1 (+10pts) is the only needed rule."
     }
   ],
   "reason_no_additional_fixes": [
-    "CONF_70_80_GENERAL_PENALIZE: Deferred — still needs symbol+regime breakdown from 20+ live trades.",
+    "CONF_70_80_GENERAL_PENALIZE: Deferred \u2014 still needs symbol+regime breakdown from 20+ live trades.",
     "HYPE_UNKNOWN_REGIME_EXCEPTION: n=6 too small. Direction unverified.",
     "CONF_FLOOR_70_RULE_CONFLICT: Conflict between insight_journal (+2.19/trade EV) and runtime rule (-$2321 total). Human decision needed.",
-    "BTC_TRENDING_REGIME: n=5 (80% WR, +$8.98/trade) — borderline sample, deferred until n>=10."
+    "BTC_TRENDING_REGIME: n=5 (80% WR, +$8.98/trade) \u2014 borderline sample, deferred until n>=10."
   ],
   "pending_human_review": [
-    "CONF_FLOOR_70_RULE_CONFLICT — suspend conf_floor_70_v1? Insight journal shows 60-70% = +$2.19/trade EV (42% WR, 67 trades) — asymmetric R:R may be blocked.",
-    "SOL_SHORT_SUSPENSION — #1 historical alpha (+$5807, 63.7% WR). Allow 50% gate probe or maintain full block?",
-    "F1_sniper_auto_execute_off — enable SNIPER_AUTO_EXECUTE=true? Review first.",
-    "BOT_INACTIVE_ALERT — now 507h+ (21.1 days)"
+    "CONF_FLOOR_70_RULE_CONFLICT \u2014 suspend conf_floor_70_v1? Insight journal shows 60-70% = +$2.19/trade EV (42% WR, 67 trades) \u2014 asymmetric R:R may be blocked.",
+    "SOL_SHORT_SUSPENSION \u2014 #1 historical alpha (+$5807, 63.7% WR). Allow 50% gate probe or maintain full block?",
+    "F1_sniper_auto_execute_off \u2014 enable SNIPER_AUTO_EXECUTE=true? Review first.",
+    "BOT_INACTIVE_ALERT \u2014 now 507h+ (21.1 days)"
   ],
   "pending_code_changes": [],
   "total_applied_all_time": 26,
   "runtime_rules_now_active": 11,
-  "ab_rules_awaiting_live_data": 82
+  "ab_rules_awaiting_live_data": 82,
+  "new_finding_this_run": {
+    "finding_id": "OUTCOME_FEEDBACK_BROKEN_v1",
+    "detected_at": "2026-05-15T23:10:30.497945+00:00",
+    "severity": "HIGH",
+    "detail": "10 LLM graduated rules have times_applied=17 total but times_correct=0 across all. Outcome callback (the code that increments times_correct on trade close) is never firing. Rules affected: night_session_block_v1 (4 apps), rule_1777922205_0 BTC_TREND (3 apps), hype_short_veto_v1 (3 apps), btc_short_conf70_80_penalize_v1 (2 apps), conf_floor_70_v1 (2 apps), plus 5 others. RISK: conf_floor_70_v1 may be blocking 60-70% +EV signals with no validation.",
+    "fix_needed": "Find outcome callback registration in decision_engine.py or coordinator.py. Wire trade_result (win/loss) back to GraduatedRulesEngine.record_outcome(rule_id, correct=bool).",
+    "confidence": 0.99
+  },
+  "superseded_rules_flag": {
+    "rule_id": "TRENDING_MIN_HOLD_2H",
+    "superseded_by": "trending_min_hold_3h_v1",
+    "status": "Both rules now active at different pipeline layers. Monitor for conflict on restart.",
+    "flagged_at": "2026-05-15T23:10:30.497945+00:00"
+  }
 }
