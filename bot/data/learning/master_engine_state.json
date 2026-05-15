@@ -1,162 +1,177 @@
 {
-  "last_run": "2026-05-15T21:10:05.000000+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_15_2110",
-  "prior_run": "2026-05-15T20:14:02.795777+00:00",
-  "hours_since_prior_run": 0.93,
-  "bot_offline_hours": 507.1,
-  "bot_offline_days": 21.1,
+  "last_run": "2026-05-15T22:15:07.489989+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_15_2215",
+  "prior_run": "2026-05-15T21:10:05.000000+00:00",
+  "hours_since_prior_run": 1.08,
+  "bot_offline_hours": 528.0,
+  "bot_offline_days": 22.0,
+  "eod_run": true,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE — 2 fixes applied this run.",
-      "fixes_applied": 2,
+      "status": "STABLE \u2014 0 new fixes this run. Compound penalty risk CONFIRMED SAFE.",
+      "fixes_applied": 0,
       "gates_active": 11,
-      "fix_ids": [
-        "eth_trending_regime_boost_v1",
-        "trending_min_hold_3h_v1"
-      ],
-      "resolved_ids": [
-        "BTC_SHORT_90PLUS_WHITELIST (REDUNDANT — confidence_max=80 in penalize rule prevents it firing at 90+)"
-      ],
       "total_applied_all_time": 26,
-      "detail": [
-        "eth_trending_regime_boost_v1: +8pts boost for ETH in TREND regime. 71% WR, +$9.49/trade EV, n=7. 20% A/B gate added to graduated_rules.json.",
-        "trending_min_hold_3h_v1: hold_time_rules_state.json created with trend min_hold=3.0h. Evidence: wins exit 3.3h median, losses 1.5h — noise fires before signal. Upgrade from 2.0h default.",
-        "BTC_SHORT_90PLUS_WHITELIST RESOLVED REDUNDANT: btc_short_conf70_80_penalize_v1 has confidence_max=80.0. Rule engine (line 74) skips rule when signal confidence > confidence_max. BTC SELL 90%+ cannot trigger it. No whitelist needed."
+      "new_insight": {
+        "insight_id": "streak_compounding_safe_v1",
+        "finding": "CONFIRMED SAFE: streak_gate runs AFTER graduated_rules in signal_pipeline.py:445. GraduatedRulesEngine.evaluate_signal() sees original confidence, not post-streak. conf_floor_70_v1 (60-70% range) cannot compound with streak_gate (-15pts). Example: 80% signal \u2192 graduated_rules see 80% \u2192 conf_floor_70 no-fire \u2192 streak_gate: 65% \u2192 passes floor.",
+        "confidence": 0.95,
+        "action": "No code change needed. Compound risk eliminated.",
+        "verified_at": "2026-05-15T22:15:07.489989+00:00"
+      },
+      "still_deferred": [
+        "BTC_TRENDING_REGIME: 80% WR, n=5 (confidence 72% < 75% threshold) \u2014 awaiting n>=10",
+        "HYPE_UNKNOWN_REGIME: 83% WR, n=6 (confidence 68% < 75%) \u2014 direction unverified",
+        "CONF_FLOOR_70_RULE_CONFLICT \u2014 HUMAN DECISION REQUIRED",
+        "SOL_SHORT \u2014 HUMAN DECISION REQUIRED (+$5807 historical alpha)",
+        "SNIPER_AUTO_EXECUTE \u2014 HUMAN DECISION REQUIRED (#1 alpha source)"
       ]
     },
     "execution_forensics": {
-      "status": "STABLE — bot offline 507h+. No new trade data. Prior forensics persist. trending_min_hold fix applied this run based on prior findings.",
-      "avg_slippage": "UNKNOWN — snapshot_entry column missing",
-      "noise_stops": "87% of early SL hits in non-trending regimes (prior data, frozen)",
-      "leverage_finding": "3-5x net positive (+$0.79/trade); 6-10x net negative (-$0.38/trade)",
-      "hold_time_fix_applied": "trending_min_hold_3h_v1 — from forensics finding: wins=3.3h, losses=1.5h",
-      "structural_gaps_unchanged": [
-        "SLIPPAGE_TRACKING_GAP — snapshot_entry column missing",
-        "LLM_REGIME_CAPTURE_GAP — llm_regime column empty",
-        "NO_LIVE_FILL_DATA — fill_status column missing"
+      "status": "FROZEN \u2014 bot offline 528.0h. No new execution data.",
+      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing from trades.csv",
+      "noise_stops": "87% of early SL hits (<2h) in non-trending regimes (frozen, confidence=0.88)",
+      "hold_time_forensics": {
+        "win_median_h": 3.3,
+        "loss_median_h": 1.5,
+        "fix_applied": "trending_min_hold_3h_v1 (prior run)",
+        "status": "FIX LIVE \u2014 awaiting restart to validate"
+      },
+      "leverage_finding": "3-5x = +$0.79/trade (net positive); 6-10x = -$0.38/trade (net negative)",
+      "structural_gaps": [
+        "snapshot_entry missing \u2014 slippage unmeasurable",
+        "llm_regime empty \u2014 12 regime A/B rules unmeasurable",
+        "fill_status missing \u2014 partial fill rate unknown"
       ],
-      "offline_hours": 507.1
+      "offline_hours": 528.0,
+      "new_this_run": "COMPOUND_PENALTY_SAFE: verified graduated_rules evaluate before streak_gate in pipeline"
     },
     "live_injection": {
-      "status": "STALE — last updated 2026-05-09 (6 days). No new trade data. eth_trending_regime_boost_v1 marks one high-edge as applied.",
+      "status": "STALE \u2014 6 days since last update. Bot offline, no new trades.",
       "high_edges_found": 9,
       "weak_setups_found": 4,
-      "newly_applied_this_run": "ETH_TRENDING_REGIME (71% WR, n=7) → eth_trending_regime_boost_v1",
-      "unapplied_pending_high_edges": [
-        "ETH_SHORT: 80% WR, n=5 — borderline n, awaiting more data before rule",
-        "BTC_TRENDING_REGIME: 80% WR, n=5 — borderline n, deferred",
-        "HYPE_UNKNOWN_REGIME: 83% WR, n=6 — unclear direction, deferred",
-        "BB_solo_high_WR: 67.6% WR, n=0 — needs live n count before rule"
+      "data_freshness_days": 6,
+      "top_applied": "eth_trending_regime_boost_v1 (ETH TREND, 71% WR, +8pts, 20% gate)",
+      "pending_high_edges": [
+        {
+          "setup": "ETH_SHORT",
+          "wr": 0.8,
+          "n": 5,
+          "note": ""
+        },
+        {
+          "setup": "ETH_SHORT_BB_golden",
+          "wr": 0.7,
+          "n": null,
+          "note": "ETH_SELL_BB = 70% WR, trending-ETH avg +$9.49. Tier-1 BB golden setup (BB_solo ="
+        },
+        {
+          "setup": "BTC_BUY_BB_golden",
+          "wr": 0.69,
+          "n": null,
+          "note": "BTC_BUY_BB = 69% WR. Second-best BB setup. SOL_BUY_BB = 67% WR (third). BB solo "
+        },
+        {
+          "setup": "BB_solo_high_WR",
+          "wr": 0.676,
+          "n": null,
+          "note": "BB firing ALONE (without MTQ agreement) = 67.6% WR. BB+MTQ co-agreement = 35% WR"
+        }
       ],
-      "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43) — btc_short_90plus_boost_v1 active",
-      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)"
+      "top_weak": [
+        "BTC_LONG",
+        "SOL_LONG",
+        "HYPE_LONG"
+      ],
+      "action": "No new data available. Will refresh on bot restart with live trades."
     },
     "daily_synthesis": {
-      "status": "UPDATED — 2 new INFO anomalies added for trending_min_hold and ETH boost",
-      "anomalies_found": 6,
-      "report_generated": false,
+      "status": "EOD_REPORT_GENERATED",
+      "anomalies_found": 7,
+      "report_generated": true,
       "report_file": "data/sessions/daily_synthesis_2026-05-15.json",
-      "new_anomaly_types": [
-        "TRENDING_MIN_HOLD_UPGRADED",
-        "ETH_TRENDING_BOOST_ACTIVE"
-      ],
-      "eod_pending": true,
-      "eod_threshold_utc": 22
+      "new_anomaly": "OFFLINE_22_DAY_EOD_MILESTONE (CRITICAL)",
+      "tomorrows_focus": [
+        "ETH trending",
+        "BTC SHORT 90%+",
+        "restart gate verification"
+      ]
     },
     "model_optimization": {
-      "status": "SKIP — cost_tracker.json missing (bot offline 21.1d)",
+      "status": "SKIP \u2014 cost_tracker.json missing. Bot offline 22 days. No LLM calls logged.",
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
-      "note": "Will re-run on bot restart when cost_tracker.json populated."
+      "note": "Will re-activate on bot restart. Cost data requires live LLM calls."
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "eth_trending_regime_boost_v1 APPLIED: ETH in TREND regime = 71% WR, +$9.49/trade (n=7). 20% A/B gate active in graduated_rules.json.",
-      "action": "On restart: verify boost fires for ETH TREND signals in first 5 ETH trades."
-    },
-    {
-      "subsystem": "execution_forensics",
-      "severity": "HIGH",
-      "finding": "trending_min_hold_3h_v1 APPLIED: hold_time_rules_state.json created with trend min_hold=3.0h. Based on forensics: loss median exit 1.5h, win median exit 3.3h. Will block premature exits in trending regime.",
-      "action": "On restart: verify HoldTimeRuleManager loads state file and blocks exits at <3h in trend regime."
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "HIGH_RESOLVED",
-      "finding": "BTC_SHORT_90PLUS_WHITELIST resolved as REDUNDANT. Confidence_max=80.0 in penalize rule already prevents it from firing at 90%+. No code change needed.",
-      "action": "DONE — removed from pending_code_changes."
+      "severity": "INFO_POSITIVE",
+      "finding": "COMPOUND_PENALTY_SAFE: streak_gate runs after graduated_rules in signal_pipeline. conf_floor_70_v1 cannot compound-penalize with streak_gate. Both gates are independent.",
+      "action": "No fix needed. Verification complete."
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot offline 507h (21.1 days). 11 rules active but unvalidated without live trades. 82 A/B rules frozen.",
-      "action": "RESTART bot: cd bot && python run.py paper",
+      "finding": "EOD MILESTONE: Bot offline 528h (22+ days). EOD report generated. 3 human decisions blocking restart effectiveness: SOL_SHORT probe, SNIPER_AUTO_EXECUTE, CONF_FLOOR_70.",
+      "action": "RESTART bot AND make 3 human decisions before restart.",
       "urgency": "HIGHEST"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "SNIPER_AUTO_EXECUTE=false: +$328 in 34 sniper trades blocked. Only profitable strategy path. All other strategies net-negative. Pending human decision.",
+      "action": "Human: review Finding 1 in AUTONOMOUS_SESSION_2026_04_15.md, enable SNIPER_AUTO_EXECUTE=true",
+      "urgency": "HIGH \u2014 primary alpha source disabled"
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "SOL_SHORT suspended 21+ days — #1 historical alpha (+$5807, 63.7% WR, 179 trades). HUMAN DECISION REQUIRED.",
-      "action": "Allow controlled 50% gate probe on restart OR maintain full block.",
-      "urgency": "HIGHEST — primary alpha source, human decision required"
-    },
-    {
-      "subsystem": "live_injection",
-      "severity": "MEDIUM",
-      "finding": "CONF_FLOOR_70_RULE_CONFLICT: conf_floor_70_v1 (-20pts, 123 trades, -$2321 total) vs insight_journal (+$2.19/trade EV, 42% WR, 67 trades). 42% WR with positive EV implies asymmetric R:R being blocked. Needs human review.",
-      "action": "Human decision: suspend conf_floor_70_v1 for 50-trade live test?",
-      "urgency": "MEDIUM"
+      "finding": "SOL_SHORT suspended 22+ days. #1 historical alpha: +$5807, 63.7% WR, 179 trades. Fat-tailed: 8 wins +$491, 15 losses -$439 on last 23 sniper SOL SHORT.",
+      "action": "Human: allow controlled 50% gate probe on restart OR maintain block.",
+      "urgency": "HIGH \u2014 primary alpha frozen"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "3 structural data gaps: snapshot_entry, llm_regime, fill_status missing from trades.csv. 12 regime A/B rules remain unmeasurable.",
-      "action": "Add columns to trade logging before restart.",
+      "finding": "3 structural data gaps still unresolved (snapshot_entry, llm_regime, fill_status). 12 regime A/B rules unmeasurable without llm_regime in trades.csv.",
+      "action": "Add columns to trade logging before restart (one-time schema change).",
+      "urgency": "MEDIUM"
+    },
+    {
+      "subsystem": "live_injection",
+      "severity": "MEDIUM",
+      "finding": "CONF_FLOOR_70 conflict: runtime rule (-$2321 total, 123 trades) vs insight journal (+$2.19/trade EV, 67 trades, 42% WR = asymmetric R:R). May be blocking +EV asymmetric setups.",
+      "action": "Human: suspend conf_floor_70_v1 for 50-trade live re-eval?",
       "urgency": "MEDIUM"
     }
   ],
-  "code_changes_this_run": [
-    {
-      "file": "bot/data/llm/graduated_rules.json",
-      "change": "Added eth_trending_regime_boost_v1: +8pts for ETH TREND regime. 71% WR, n=7, confidence=0.85. 20% A/B gate.",
-      "gate_id": "eth_trending_regime_boost_v1",
-      "type": "graduated_rule"
-    },
-    {
-      "file": "bot/data/feedback/hold_time_rules_state.json",
-      "change": "Created new state file. Set trend min_hold_hours=3.0 (from default 2.0). Evidence: wins=3.3h, losses=1.5h median hold.",
-      "gate_id": "trending_min_hold_3h_v1",
-      "type": "state_override"
-    }
-  ],
+  "code_changes_this_run": [],
   "new_this_run_vs_prior": [
-    "eth_trending_regime_boost_v1: IMPLEMENTED — ETH TREND +8pts boost, 20% A/B gate",
-    "trending_min_hold_3h_v1: IMPLEMENTED — trend min hold 2.0h→3.0h state file created",
-    "BTC_SHORT_90PLUS_WHITELIST: RESOLVED REDUNDANT — pending_code_changes cleared",
-    "Rules active: 10 → 11 (+1 new graduated rule)"
+    "EOD_REPORT_GENERATED: daily_synthesis_2026-05-15.json updated with full EOD report",
+    "COMPOUND_PENALTY_SAFE: Verified streak_gate runs after graduated_rules (no compounding risk)",
+    "OFFLINE_22_DAY_EOD_MILESTONE: Added to anomalies \u2014 critical escalation to human",
+    "No new graduated rules applied (all pending < 75% confidence or human decisions)"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 507h — restart is the most critical action",
-    "82 rules in graduated_rules.json awaiting live trade data",
-    "SOL_SHORT blockade — HUMAN DECISION REQUIRED (+$5807 historical alpha)",
-    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
-    "CONF_FLOOR_70 conflict — human decision needed (suspend for live re-eval?)",
-    "times_correct=0 for all runtime rules — outcome callbacks unverified",
-    "cost_tracker.json missing — Model Optimization blocked",
-    "snapshot_entry column missing — slippage unmeasurable",
-    "BTC_TRENDING_REGIME edge (n=5, 80% WR) — deferred, need n>=10",
-    "HYPE_UNKNOWN_REGIME edge (n=6, 83% WR) — deferred, need directional clarity"
+    "BOT OFFLINE 22 DAYS \u2014 restart is the most critical action",
+    "82 A/B rules frozen in feedback/graduated_rules.json",
+    "SOL_SHORT blockade \u2014 HUMAN DECISION REQUIRED (+$5807 historical alpha)",
+    "SNIPER_AUTO_EXECUTE=false \u2014 HUMAN DECISION REQUIRED (restores primary alpha)",
+    "CONF_FLOOR_70 conflict \u2014 human decision needed (suspend for live re-eval?)",
+    "LLM_REGIME_CAPTURE_GAP \u2014 llm_regime not written to trades.csv (pre-restart task)",
+    "snapshot_entry column missing \u2014 slippage unmeasurable",
+    "BTC_TRENDING_REGIME edge (n=5, 80% WR) \u2014 deferred, need n>=10",
+    "HYPE_UNKNOWN_REGIME edge (n=6, 83% WR) \u2014 deferred, need directional clarity",
+    "cost_tracker.json missing \u2014 Model Optimization blocked until restart"
   ],
   "next_run_focus": [
-    "IF BOT STILL OFFLINE: escalate urgency. Consider flagging CONF_FLOOR_70 conflict for immediate human review.",
+    "IF BOT STILL OFFLINE (next run): escalate SNIPER_AUTO_EXECUTE to critical. Both it and SOL_SHORT are primary alpha sources.",
     "IF BOT RESTARTED: verify eth_trending_regime_boost_v1 fires for ETH TREND signals",
-    "IF BOT RESTARTED: verify hold_time_rules_state.json loaded (trend min_hold=3.0h in HoldTimeRuleManager)",
-    "IF BOT RESTARTED: verify Gate 1a fires (btc_stop_width in rejection_tracker.json)",
-    "IF BOT RESTARTED: verify Gate 1h fires (streak_penalty applied to first signal)",
-    "PRIORITY: Monitor A/B split — eth_trending_regime_boost_v1 20% cohort vs 80% control",
+    "IF BOT RESTARTED: verify hold_time_rules_state.json loaded (trend min_hold=3.0h)",
+    "IF BOT RESTARTED: verify streak_gate fires (consecutive_losses=4 \u2192 -15pts on first signal)",
+    "IF BOT RESTARTED: populate cost_tracker.json \u2192 re-enable Model Optimization",
     "PRIORITY: Add data column logging (snapshot_entry, llm_regime, fill_status) before restart"
   ],
   "equity_snapshot": {
@@ -165,6 +180,6 @@
     "drawdown_from_start": "90.1% ($5000 -> $497)",
     "drawdown_from_peak": "2.17%",
     "last_updated": "2026-04-23T22:17:05Z",
-    "note": "No equity updates — bot offline since 2026-04-23"
+    "note": "No equity updates \u2014 bot offline 528h (22 days)"
   }
 }
