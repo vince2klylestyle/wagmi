@@ -1,9 +1,9 @@
 {
   "date": "2026-05-15",
-  "generated_at": "2026-05-15T20:14:02.795777+00:00",
+  "generated_at": "2026-05-15T21:10:05.000000+00:00",
   "run_type": "hourly_engine",
   "bot_status": "OFFLINE",
-  "offline_duration_hours": 506.1,
+  "offline_duration_hours": 507.1,
   "offline_duration_days": 21.1,
   "today_trades": 0,
   "today_pnl": 0.0,
@@ -14,33 +14,49 @@
     {
       "type": "BOT_OFFLINE_CRITICAL",
       "severity": "CRITICAL",
-      "value": "506h (21.1 days) \u2014 no change since last run",
+      "value": "507h (21.1 days) — no change since last run",
       "action": "RESTART: cd bot && python run.py paper"
     },
     {
       "type": "STREAK_GATE_ACTIVE_ON_RESTART",
       "severity": "HIGH",
-      "value": "NEW THIS RUN: Gate 1h now live. 4 consecutive losses at shutdown \u2192 -15pts penalty on every new signal until streak breaks.",
+      "value": "Gate 1h live. 4 consecutive losses at shutdown → -15pts penalty on every new signal until streak breaks.",
       "detail": "With 4 consecutive losses, any signal < 85% confidence will be penalized to < 70%. conf_floor_70_v1 (-20pts for 60-70%) may then compound. Monitor: first signal on restart should show 'STREAK GATE: consecutive_losses=4' in logs.",
       "action": "On restart: verify Gate 1h fires in first signal. After first win, consecutive_losses resets to 0."
     },
     {
       "type": "BTC_STOP_GATE_ACTIVE",
       "severity": "MEDIUM",
-      "value": "NEW THIS RUN: Gate 1a live. BTC signals with stop < 0.8% now hard-rejected.",
-      "action": "Monitor: btc_stop_width rejections in rejection_tracker.json. If >50% of BTC signals are rejected, consider softening to 0.6% or checking ATR-based stop calculation."
+      "value": "Gate 1a live. BTC signals with stop < 0.8% now hard-rejected.",
+      "action": "Monitor: btc_stop_width rejections in rejection_tracker.json. If >50% of BTC signals are rejected, consider softening to 0.6%."
     },
     {
       "type": "CONSECUTIVE_LOSSES",
       "severity": "HIGH",
       "value": 4,
-      "detail": "4 consecutive losses at shutdown. Circuit breaker fires at 5. Gate 1h now provides soft-start protection via -15pt confidence reduction.",
+      "detail": "4 consecutive losses at shutdown. Circuit breaker fires at 5. Gate 1h now provides soft-start protection.",
       "action": "Monitor first 5 trades on restart."
+    },
+    {
+      "type": "TRENDING_MIN_HOLD_UPGRADED",
+      "severity": "INFO",
+      "value": "NEW RUN 2110: Trend regime min hold upgraded 2.0h -> 3.0h via hold_time_rules_state.json. Forensics: losses exit 1.5h median, wins exit 3.3h. Noise fires before signal materializes.",
+      "action": "On restart: verify HoldTimeRuleManager loads state file. First trend trade blocked from early exit at <3h."
+    },
+    {
+      "type": "ETH_TRENDING_BOOST_ACTIVE",
+      "severity": "INFO",
+      "value": "NEW RUN 2110: eth_trending_regime_boost_v1 added (+8pts for ETH in TREND). 71% WR, +$9.49/trade, n=7. 20% A/B gate.",
+      "action": "On restart: verify boost fires for ETH TREND signals. Monitor A/B cohort performance."
     }
   ],
   "new_this_run": [
-    "BTC_STOP_0.8PCT_CODE: Gate 1a added \u2014 BTC min stop 0.8%",
-    "streak_momentum_gate: Gate 1h added \u2014 -15pt penalty when consecutive_losses >= 2"
+    "BTC_STOP_0.8PCT_CODE: Gate 1a active — BTC min stop 0.8%",
+    "streak_momentum_gate: Gate 1h active — -15pt penalty when consecutive_losses >= 2",
+    "eth_trending_regime_boost_v1: +8pts ETH in TRENDING regime (20% A/B gate)",
+    "trending_min_hold_3h_v1: Trend min hold 2.0h→3.0h (hold_time_rules_state.json created)"
   ],
-  "report_generated": false
+  "report_generated": false,
+  "end_of_day_report_pending": true,
+  "eod_threshold_utc_hour": 22
 }

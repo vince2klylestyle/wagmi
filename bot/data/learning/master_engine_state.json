@@ -1,66 +1,70 @@
 {
-  "last_run": "2026-05-15T20:14:02.795777+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_15_2014",
-  "prior_run": "2026-05-15T01:00:00.000000+00:00",
-  "hours_since_prior_run": 19.23,
-  "bot_offline_hours": 506.1,
+  "last_run": "2026-05-15T21:10:05.000000+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_15_2110",
+  "prior_run": "2026-05-15T20:14:02.795777+00:00",
+  "hours_since_prior_run": 0.93,
+  "bot_offline_hours": 507.1,
   "bot_offline_days": 21.1,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE \u2014 2 code fixes applied this run.",
-      "fixes_applied": 3,
-      "gates_active": 10,
+      "status": "COMPLETE — 2 fixes applied this run.",
+      "fixes_applied": 2,
+      "gates_active": 11,
       "fix_ids": [
-        "BTC_STOP_0.8PCT_CODE",
-        "streak_momentum_gate",
-        "btc_short_90plus_boost_v1"
+        "eth_trending_regime_boost_v1",
+        "trending_min_hold_3h_v1"
       ],
-      "total_applied_all_time": 25,
+      "resolved_ids": [
+        "BTC_SHORT_90PLUS_WHITELIST (REDUNDANT — confidence_max=80 in penalize rule prevents it firing at 90+)"
+      ],
+      "total_applied_all_time": 26,
       "detail": [
-        "BTC_STOP_0.8PCT_CODE: Gate 1a added to signal_pipeline.py. BTC signals with stop_width < 0.8% now rejected. 47/47 BTC instant-SL-hit bucket eliminated.",
-        "streak_momentum_gate: Gate 1h added to signal_pipeline.py. -15 confidence penalty when consecutive_losses >= 2. Reads self.risk_mgr.consecutive_losses. Critical for restart (4 consecutive losses at shutdown).",
-        "btc_short_90plus_boost_v1: Added to graduated_rules.json. BTC SHORT at 90%+ confidence gets +10pt boost. 67% WR, +$102.92/trade EV (n=43). Confidence=0.85. 20% A/B gate."
+        "eth_trending_regime_boost_v1: +8pts boost for ETH in TREND regime. 71% WR, +$9.49/trade EV, n=7. 20% A/B gate added to graduated_rules.json.",
+        "trending_min_hold_3h_v1: hold_time_rules_state.json created with trend min_hold=3.0h. Evidence: wins exit 3.3h median, losses 1.5h — noise fires before signal. Upgrade from 2.0h default.",
+        "BTC_SHORT_90PLUS_WHITELIST RESOLVED REDUNDANT: btc_short_conf70_80_penalize_v1 has confidence_max=80.0. Rule engine (line 74) skips rule when signal confidence > confidence_max. BTC SELL 90%+ cannot trigger it. No whitelist needed."
       ]
     },
     "execution_forensics": {
-      "status": "STABLE \u2014 bot offline 506h+. No new trade data. Prior forensics persist.",
-      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing",
+      "status": "STABLE — bot offline 507h+. No new trade data. Prior forensics persist. trending_min_hold fix applied this run based on prior findings.",
+      "avg_slippage": "UNKNOWN — snapshot_entry column missing",
       "noise_stops": "87% of early SL hits in non-trending regimes (prior data, frozen)",
       "leverage_finding": "3-5x net positive (+$0.79/trade); 6-10x net negative (-$0.38/trade)",
-      "new_finding_this_run": "streak_momentum_gate implemented \u2014 addresses the 4-consecutive-loss state at shutdown directly in the signal pipeline",
+      "hold_time_fix_applied": "trending_min_hold_3h_v1 — from forensics finding: wins=3.3h, losses=1.5h",
       "structural_gaps_unchanged": [
-        "SLIPPAGE_TRACKING_GAP \u2014 snapshot_entry column missing",
-        "LLM_REGIME_CAPTURE_GAP \u2014 llm_regime column empty",
-        "NO_LIVE_FILL_DATA \u2014 fill_status column missing"
+        "SLIPPAGE_TRACKING_GAP — snapshot_entry column missing",
+        "LLM_REGIME_CAPTURE_GAP — llm_regime column empty",
+        "NO_LIVE_FILL_DATA — fill_status column missing"
       ],
-      "offline_hours": 506.1
+      "offline_hours": 507.1
     },
     "live_injection": {
-      "status": "STABLE \u2014 132h+ stale. BTC_STOP_0.8PCT_CODE now active, changes BTC signal throughput.",
+      "status": "STALE — last updated 2026-05-09 (6 days). No new trade data. eth_trending_regime_boost_v1 marks one high-edge as applied.",
       "high_edges_found": 9,
       "weak_setups_found": 4,
-      "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43)",
-      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)",
-      "new_implication_this_run": "Gate 1a (BTC_STOP_0.8PCT_CODE) will pre-filter BTC signals before graduated rules. BTC_SHORT 90%+ signals likely have wider stops (breakout momentum) so whitelist still relevant \u2014 they should survive Gate 1a.",
-      "priority_new_rule": {
-        "rule": "BTC_SHORT_90PLUS_WHITELIST",
-        "description": "Exempt BTC SHORT at 90%+ confidence from btc_short_conf70_80_penalize_v1. 67% WR, +$102.92/trade EV.",
-        "action": "Add exception condition to graduated_rules.json",
-        "confidence": 0.85
-      }
+      "newly_applied_this_run": "ETH_TRENDING_REGIME (71% WR, n=7) → eth_trending_regime_boost_v1",
+      "unapplied_pending_high_edges": [
+        "ETH_SHORT: 80% WR, n=5 — borderline n, awaiting more data before rule",
+        "BTC_TRENDING_REGIME: 80% WR, n=5 — borderline n, deferred",
+        "HYPE_UNKNOWN_REGIME: 83% WR, n=6 — unclear direction, deferred",
+        "BB_solo_high_WR: 67.6% WR, n=0 — needs live n count before rule"
+      ],
+      "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43) — btc_short_90plus_boost_v1 active",
+      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)"
     },
     "daily_synthesis": {
-      "status": "UPDATED \u2014 synthesis written with 2 new code fix anomalies",
-      "anomalies_found": 4,
+      "status": "UPDATED — 2 new INFO anomalies added for trending_min_hold and ETH boost",
+      "anomalies_found": 6,
       "report_generated": false,
       "report_file": "data/sessions/daily_synthesis_2026-05-15.json",
       "new_anomaly_types": [
-        "STREAK_GATE_ACTIVE_ON_RESTART",
-        "BTC_STOP_GATE_ACTIVE"
-      ]
+        "TRENDING_MIN_HOLD_UPGRADED",
+        "ETH_TRENDING_BOOST_ACTIVE"
+      ],
+      "eod_pending": true,
+      "eod_threshold_utc": 22
     },
     "model_optimization": {
-      "status": "SKIP \u2014 cost_tracker.json missing (bot offline 21.1d)",
+      "status": "SKIP — cost_tracker.json missing (bot offline 21.1d)",
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
       "note": "Will re-run on bot restart when cost_tracker.json populated."
@@ -69,91 +73,91 @@
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
-      "severity": "HIGH_RESOLVED",
-      "finding": "FIXED THIS RUN: Gate 1h (streak_momentum_gate) added to signal_pipeline.py. With 4 consecutive losses at shutdown, this gate immediately applies -15pt confidence penalty on restart, preventing loss-amplification into circuit breaker trip.",
-      "action": "DONE \u2014 verify on restart: 'STREAK GATE: consecutive_losses=4' in first signal log",
-      "urgency": "VERIFIED \u2014 confirm on restart"
+      "severity": "HIGH",
+      "finding": "eth_trending_regime_boost_v1 APPLIED: ETH in TREND regime = 71% WR, +$9.49/trade (n=7). 20% A/B gate active in graduated_rules.json.",
+      "action": "On restart: verify boost fires for ETH TREND signals in first 5 ETH trades."
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "HIGH",
+      "finding": "trending_min_hold_3h_v1 APPLIED: hold_time_rules_state.json created with trend min_hold=3.0h. Based on forensics: loss median exit 1.5h, win median exit 3.3h. Will block premature exits in trending regime.",
+      "action": "On restart: verify HoldTimeRuleManager loads state file and blocks exits at <3h in trend regime."
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH_RESOLVED",
-      "finding": "FIXED THIS RUN: Gate 1a (BTC_STOP_0.8PCT_CODE) added to signal_pipeline.py. 47/47 BTC loss bucket (instant SL hits at avg 0.494% stop) now hard-rejected at gate.",
-      "action": "DONE \u2014 verify on restart: btc_stop_width rejections appear in rejection_tracker.json",
-      "urgency": "VERIFIED \u2014 confirm on restart"
+      "finding": "BTC_SHORT_90PLUS_WHITELIST resolved as REDUNDANT. Confidence_max=80.0 in penalize rule already prevents it from firing at 90%+. No code change needed.",
+      "action": "DONE — removed from pending_code_changes."
     },
     {
-      "subsystem": "auto_fix",
+      "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot offline 506h (21.1 days). 82 A/B rules frozen. 2 new code gates active but unvalidated without live trades.",
+      "finding": "Bot offline 507h (21.1 days). 11 rules active but unvalidated without live trades. 82 A/B rules frozen.",
       "action": "RESTART bot: cd bot && python run.py paper",
       "urgency": "HIGHEST"
     },
     {
       "subsystem": "live_injection",
-      "severity": "HIGH_RESOLVED",
-      "finding": "BTC_SHORT 90%+ confidence = 67% WR, +$102.92/trade EV (n=43). This is the #1 active edge. Needs graduated_rules whitelist to prevent btc_short_conf70_80_penalize_v1 from blocking 90%+ signals. \u2014 FIXED THIS RUN: btc_short_90plus_boost_v1 added with +10 boost.",
-      "action": "DONE \u2014 btc_short_90plus_boost_v1 active in graduated_rules.json",
-      "urgency": "VERIFIED \u2014 confirm boost fires on restart for BTC SHORT 90%+ signals"
+      "severity": "HIGH",
+      "finding": "SOL_SHORT suspended 21+ days — #1 historical alpha (+$5807, 63.7% WR, 179 trades). HUMAN DECISION REQUIRED.",
+      "action": "Allow controlled 50% gate probe on restart OR maintain full block.",
+      "urgency": "HIGHEST — primary alpha source, human decision required"
     },
     {
-      "subsystem": "daily_synthesis",
-      "severity": "HIGH",
-      "finding": "SOL_SHORT suspended 21+ days \u2014 #1 historical alpha (+$5807, 63.7% WR, 179 trades). HUMAN DECISION REQUIRED.",
-      "action": "Allow controlled 50% gate probe on restart OR maintain full block.",
-      "urgency": "HIGHEST \u2014 primary alpha source, human decision required"
+      "subsystem": "live_injection",
+      "severity": "MEDIUM",
+      "finding": "CONF_FLOOR_70_RULE_CONFLICT: conf_floor_70_v1 (-20pts, 123 trades, -$2321 total) vs insight_journal (+$2.19/trade EV, 42% WR, 67 trades). 42% WR with positive EV implies asymmetric R:R being blocked. Needs human review.",
+      "action": "Human decision: suspend conf_floor_70_v1 for 50-trade live test?",
+      "urgency": "MEDIUM"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "3 structural data gaps: snapshot_entry, llm_regime, fill_status missing from trades.csv. 12 regime A/B rules remain unmeasurable until llm_regime is written.",
+      "finding": "3 structural data gaps: snapshot_entry, llm_regime, fill_status missing from trades.csv. 12 regime A/B rules remain unmeasurable.",
       "action": "Add columns to trade logging before restart.",
       "urgency": "MEDIUM"
     }
   ],
   "code_changes_this_run": [
     {
-      "file": "bot/core/signal_pipeline.py",
-      "change": "Gate 1a: BTC minimum stop width 0.8%. Rejects BTC signals with stop_width_pct < 0.008. 47/47 BTC instant-SL-hit bucket addressed.",
-      "gate_id": "btc_stop_width",
-      "lines_changed": "after Gate 1 validity block (~line 277)"
-    },
-    {
-      "file": "bot/core/signal_pipeline.py",
-      "change": "Gate 1h: consecutive-loss streak penalty -15pts when consecutive_losses >= 2. Reads self.risk_mgr.consecutive_losses. Prevents loss-amplification on restart.",
-      "gate_id": "streak_penalty",
-      "lines_changed": "after Gate 1g graduated rules (~line 436)"
-    },
-    {
       "file": "bot/data/llm/graduated_rules.json",
-      "change": "Added btc_short_90plus_boost_v1: BOOST +10pts for BTC SELL at 90%+ confidence. Evidence: 67% WR, +$102.92/trade EV, n=43. 20% A/B gate.",
-      "gate_id": "btc_short_90plus_boost_v1",
-      "lines_changed": "new rule added before conf_floor_70_v1"
+      "change": "Added eth_trending_regime_boost_v1: +8pts for ETH TREND regime. 71% WR, n=7, confidence=0.85. 20% A/B gate.",
+      "gate_id": "eth_trending_regime_boost_v1",
+      "type": "graduated_rule"
+    },
+    {
+      "file": "bot/data/feedback/hold_time_rules_state.json",
+      "change": "Created new state file. Set trend min_hold_hours=3.0 (from default 2.0). Evidence: wins=3.3h, losses=1.5h median hold.",
+      "gate_id": "trending_min_hold_3h_v1",
+      "type": "state_override"
     }
   ],
   "new_this_run_vs_prior": [
-    "Gate 1a (BTC_STOP_0.8PCT_CODE): IMPLEMENTED \u2014 BTC min stop 0.8% hard gate",
-    "Gate 1h (streak_momentum_gate): IMPLEMENTED \u2014 -15pt confidence penalty when consecutive_losses >= 2",
-    "Gates active count: 8 \u2192 10 (+2 new code gates)",
-    "BTC_SHORT_90PLUS_WHITELIST: PENDING \u2014 eligible for next run (confidence=0.85 >= 0.75)",
-    "btc_short_90plus_boost_v1: IMPLEMENTED \u2014 +10pt boost for BTC SHORT 90%+ confidence (best edge protected)"
+    "eth_trending_regime_boost_v1: IMPLEMENTED — ETH TREND +8pts boost, 20% A/B gate",
+    "trending_min_hold_3h_v1: IMPLEMENTED — trend min hold 2.0h→3.0h state file created",
+    "BTC_SHORT_90PLUS_WHITELIST: RESOLVED REDUNDANT — pending_code_changes cleared",
+    "Rules active: 10 → 11 (+1 new graduated rule)"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 506h \u2014 restart is the most critical action",
+    "BOT OFFLINE 507h — restart is the most critical action",
     "82 rules in graduated_rules.json awaiting live trade data",
-    "SOL_SHORT blockade \u2014 HUMAN DECISION REQUIRED (+$5807 historical alpha)",
-    "LLM_REGIME_CAPTURE_GAP \u2014 llm_regime not written to trades.csv",
-    "times_correct=0 for all runtime rules \u2014 outcome callbacks unverified",
-    "cost_tracker.json missing \u2014 Model Optimization blocked",
-    "snapshot_entry column missing \u2014 slippage unmeasurable",
-    "CONF_FLOOR_70 conflict \u2014 insight_journal shows 60-70% = +$2.19/trade EV vs runtime rule"
+    "SOL_SHORT blockade — HUMAN DECISION REQUIRED (+$5807 historical alpha)",
+    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
+    "CONF_FLOOR_70 conflict — human decision needed (suspend for live re-eval?)",
+    "times_correct=0 for all runtime rules — outcome callbacks unverified",
+    "cost_tracker.json missing — Model Optimization blocked",
+    "snapshot_entry column missing — slippage unmeasurable",
+    "BTC_TRENDING_REGIME edge (n=5, 80% WR) — deferred, need n>=10",
+    "HYPE_UNKNOWN_REGIME edge (n=6, 83% WR) — deferred, need directional clarity"
   ],
   "next_run_focus": [
-    "IF BOT STILL OFFLINE: escalate urgency, add BTC_SHORT_90PLUS_WHITELIST to graduated_rules.json",
+    "IF BOT STILL OFFLINE: escalate urgency. Consider flagging CONF_FLOOR_70 conflict for immediate human review.",
+    "IF BOT RESTARTED: verify eth_trending_regime_boost_v1 fires for ETH TREND signals",
+    "IF BOT RESTARTED: verify hold_time_rules_state.json loaded (trend min_hold=3.0h in HoldTimeRuleManager)",
     "IF BOT RESTARTED: verify Gate 1a fires (btc_stop_width in rejection_tracker.json)",
-    "IF BOT RESTARTED: verify Gate 1h fires (streak_penalty in signal meta after first signal)",
-    "IF BOT RESTARTED: verify all 10 rules loading in first 10 signals",
-    "IF BOT RESTARTED: check consecutive_losses resets to 0 after first win",
-    "PRIORITY: Add BTC_SHORT_90PLUS_WHITELIST \u2014 confidence=0.85 eligible for auto-apply"
+    "IF BOT RESTARTED: verify Gate 1h fires (streak_penalty applied to first signal)",
+    "PRIORITY: Monitor A/B split — eth_trending_regime_boost_v1 20% cohort vs 80% control",
+    "PRIORITY: Add data column logging (snapshot_entry, llm_regime, fill_status) before restart"
   ],
   "equity_snapshot": {
     "equity": 497.05,
@@ -161,6 +165,6 @@
     "drawdown_from_start": "90.1% ($5000 -> $497)",
     "drawdown_from_peak": "2.17%",
     "last_updated": "2026-04-23T22:17:05Z",
-    "note": "No equity updates \u2014 bot offline since 2026-04-23"
+    "note": "No equity updates — bot offline since 2026-04-23"
   }
 }
