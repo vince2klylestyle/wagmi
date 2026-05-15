@@ -190,8 +190,8 @@
     },
     "implication": "Trust live data over backtest for long/direction rules. SOL_SHORT and HYPE_SHORT are consistent between backtest and live."
   },
-  "stale_hours": 123.1,
-  "last_refresh_check": "2026-05-14T22:10:43.252996+00:00",
+  "stale_hours": 125.0,
+  "last_refresh_check": "2026-05-15T00:10:13.323075+00:00",
   "priority_restart_edges": [
     {
       "setup": "BTC_SHORT_90plus",

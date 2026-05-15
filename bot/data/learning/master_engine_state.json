@@ -1,17 +1,28 @@
 {
-  "last_run": "2026-05-14T22:12:19.228900+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_14_0001",
-  "prior_run": "2026-05-14T00:00:00Z",
-  "hours_since_prior_run": 22.2,
-  "bot_offline_hours": 506.0,
+  "last_run": "2026-05-15T00:10:13.323075+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_15_0000",
+  "prior_run": "2026-05-14T22:12:19.228900+00:00",
+  "hours_since_prior_run": 1.96,
+  "bot_offline_hours": 505.9,
   "bot_offline_days": 21.1,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE \u2014 0 new fixes. 3 high-conf candidates blocked by prerequisites.",
+      "status": "COMPLETE — 0 new fixes. Same 3 blocked candidates. NEW: conf_floor_70_v1 wiring suspect (0 applications detected).",
       "fixes_applied": 0,
       "gates_active": 8,
       "total_applied_all_time": 20,
       "ab_rules_awaiting_live_data": 82,
+      "rule_application_totals": {
+        "night_session_block_v1": 3,
+        "hype_long_veto_v1": 1,
+        "sol_long_veto_v1": 1,
+        "illiquid_regime_penalize_v1": 1,
+        "hype_short_veto_v1": 1,
+        "btc_short_conf70_80_penalize_v1": 1,
+        "BTC_trend_boost": 1,
+        "conf_floor_70_v1": 0
+      },
+      "new_finding": "conf_floor_70_v1 has 0 applications — possible wiring gap. All other rules show 1-3. On restart: verify rule is connected to signal_pipeline.py evaluation loop.",
       "blocked_high_conf_candidates": [
         {
           "id": "streak_momentum_gate",
@@ -31,8 +42,8 @@
       ]
     },
     "execution_forensics": {
-      "status": "STABLE \u2014 cached data. Bot offline 506h, no new live data.",
-      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing",
+      "status": "STABLE — no new live trades. Bot offline 505.9h. Prior findings persist.",
+      "avg_slippage": "UNKNOWN — snapshot_entry column missing",
       "noise_stops": "87% of early SL hits in non-trending regimes",
       "leverage_finding": "6-10x net negative (-$0.38/trade); 3-5x net positive (+$0.79/trade)",
       "structural_gaps": [
@@ -42,29 +53,22 @@
       ]
     },
     "live_injection": {
-      "status": "STABLE \u2014 123h stale, no new live data.",
+      "status": "STABLE — 125.0h stale. No new live data. Edge map unchanged.",
       "high_edges": 9,
       "weak_setups": 4,
-      "data_stale_hours": 123.1,
+      "data_stale_hours": 125.0,
       "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43)",
       "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)"
     },
     "daily_synthesis": {
-      "status": "COMPLETE \u2014 6 gap fills + today generated.",
-      "anomalies_found": 8,
+      "status": "COMPLETE — 2026-05-15 synthesis generated. 6 anomalies. NEW: conf_floor_70_v1 wiring suspect.",
+      "anomalies_found": 6,
       "report_generated": true,
-      "gap_filled": [
-        "2026-05-08",
-        "2026-05-09",
-        "2026-05-10",
-        "2026-05-11",
-        "2026-05-12",
-        "2026-05-13"
-      ],
-      "today_synthesis": "daily_synthesis_2026-05-14.json"
+      "report_file": "daily_synthesis_2026-05-15.json",
+      "new_anomaly_this_run": "CONF_FLOOR_70_WIRING_SUSPECT — rule has 0 applications vs 1-3 for all other rules"
     },
     "model_optimization": {
-      "status": "SKIP \u2014 cost_tracker.json missing (bot offline 21d)",
+      "status": "SKIP — cost_tracker.json missing (bot offline 21.1d)",
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
       "note": "Will re-run on bot restart when cost_tracker.json populated."
@@ -74,72 +78,80 @@
     {
       "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "Bot offline 506h (21.1 days). 82 A/B rules frozen. All 8 runtime graduated rules have times_correct=0. Learning paralysis compounds hourly.",
+      "finding": "Bot offline 505.9h (21.1 days). 82 A/B rules frozen. All 8 runtime graduated rules have times_correct=0. Learning paralysis compounds every hour.",
       "action": "RESTART bot immediately: cd bot && python run.py paper",
       "urgency": "HIGHEST"
     },
     {
-      "subsystem": "auto_fix",
+      "subsystem": "daily_synthesis",
       "severity": "HIGH",
-      "finding": "streak_momentum_gate (conf=90%): penalize -15pts on consecutive_losses >= 2. Especially critical given 4 consecutive losses at shutdown. Code change required in signal_pipeline.py.",
-      "action": "SAFETY REVIEW THEN IMPLEMENT before restart. This is the most important pre-restart code change.",
-      "urgency": "HIGH \u2014 implement before restart"
+      "finding": "NEW THIS RUN: conf_floor_70_v1 shows 0 applications out of 8 runtime rules (others show 1-3). Rule may not be connected to signal evaluation pipeline despite being marked active=True.",
+      "action": "On restart: generate sub-70% confidence signal, verify -20pt penalty fires. If not, debug signal_pipeline.py rule application loop.",
+      "urgency": "HIGH — this rule penalizes -20pts on low-conf signals. If broken, garbage signals may pass unpenalized."
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "BTC_STOP_0.8PCT_CODE (conf=80%): 47/47 BTC losses are instant SL hits with avg stop 0.494%. Min stop should be 0.8% for BTC.",
+      "finding": "streak_momentum_gate (conf=90%): penalize -15pts on consecutive_losses >= 2. 4 consecutive losses at shutdown means this would fire immediately on 2nd post-restart loss.",
+      "action": "SAFETY REVIEW THEN IMPLEMENT before restart. Most important pre-restart code change.",
+      "urgency": "HIGH — implement before restart"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "BTC_STOP_0.8PCT_CODE (conf=80%): 47/47 BTC losses are instant SL hits avg stop 0.494%. Min stop should be 0.8% for BTC.",
       "action": "SAFETY REVIEW THEN IMPLEMENT in signal_pipeline.py ~line 265",
-      "urgency": "HIGH \u2014 stop bleeding BTC trades on restart"
+      "urgency": "HIGH — stop bleeding BTC trades on restart"
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "BTC_SHORT@90%+ confidence = 67% WR, +$102.92/trade EV (n=43). Must whitelist this bin explicitly \u2014 it is EXCLUDED from btc_short_conf70_80_penalize_v1 by design but verify the rule conditions correctly cap at 80%.",
+      "finding": "BTC_SHORT@90%+ confidence = 67% WR, +$102.92/trade EV (n=43). Must whitelist this bin to bypass btc_short_conf70_80_penalize_v1 which correctly targets only 70-80% range.",
       "action": "On restart: verify btc_short_conf70_80_penalize_v1 only applies to confidence 70-80 (not 80+). Track BTC_SHORT at 80%+ separately.",
       "urgency": "Medium-High"
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "HIGH",
-      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) \u2014 SUSPENDED for 21+ days. Every offline day is foregone alpha from the bot's single best historical setup.",
+      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) — SUSPENDED 21+ days. Every offline day is foregone alpha from the bot's single best historical setup.",
       "action": "HUMAN DECISION: Allow controlled 50% gate probe on restart OR maintain full block.",
-      "urgency": "HIGHEST \u2014 primary alpha source, human decision required"
+      "urgency": "HIGHEST — primary alpha source, human decision required"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "3 structural data gaps will block learning on restart: (1) snapshot_entry missing \u2014 slippage unmeasurable; (2) llm_regime empty \u2014 12 regime rules unmeasurable; (3) fill_status missing \u2014 partial fill rate unknown.",
-      "action": "Add columns to trade logging before restart. Priority order: llm_regime > snapshot_entry > fill_status.",
-      "urgency": "MEDIUM \u2014 these gaps compound with each trade logged"
+      "finding": "3 structural data gaps block learning on restart: (1) snapshot_entry missing; (2) llm_regime empty; (3) fill_status missing.",
+      "action": "Add columns to trade logging before restart. Priority: llm_regime > snapshot_entry > fill_status.",
+      "urgency": "MEDIUM — these gaps compound with each trade logged"
     }
   ],
   "new_this_run_vs_prior": [
-    "GAP FILL: generated daily_synthesis for 2026-05-08, 2026-05-09, 2026-05-10, 2026-05-11, 2026-05-12, 2026-05-13 (7 total files including today)",
-    "LIVE_EDGE stale_hours updated: 123h (was 120h at prior run)",
-    "AUTO_FIX: added gap_analysis_2026_05_14 note (streak_momentum_gate urgency escalated)",
-    "EXECUTION_FORENSICS: added AB_DATA_GAP_DEEPENING finding (506h offline milestone)",
-    "MASTER ENGINE: run_id incremented to perpetual_deep_dive_2026_05_14_0001"
+    "NEW FINDING: conf_floor_70_v1 — 0 applications detected. All other rules show 1-3. Wiring suspected broken.",
+    "NEW DATA: runtime_rule_applications confirmed from data/llm/graduated_rules.json — night_session_block fired 3x most.",
+    "DAILY SYNTHESIS: generated daily_synthesis_2026-05-15.json with 6 anomalies",
+    "LIVE_EDGE stale_hours updated: 125.0h (was 123.1h)",
+    "OFFLINE HOURS: 505.9h (was 506.0h, minor rounding correction — midnight May 15 now)"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 506h \u2014 restart is most critical action",
-    "99 rules in graduated_rules.json (82 high-conf) awaiting live trade data",
-    "streak_momentum_gate \u2014 code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
-    "BTC_STOP_0.8PCT_CODE \u2014 code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
-    "conf_floor_70_v1 conflict \u2014 human review needed (conflicting sample windows)",
-    "SOL_SHORT blockade \u2014 HUMAN DECISION REQUIRED (+$5807 historical alpha)",
-    "LLM_REGIME_CAPTURE_GAP \u2014 llm_regime not written to trades.csv",
-    "HYPE_UNKNOWN_REGIME \u2014 needs direction verification after 10+ live trades",
-    "times_correct=0 for all 8 runtime graduated rules \u2014 unverified wiring",
-    "cost_tracker.json missing \u2014 Model Optimization blocked",
-    "snapshot_entry column missing \u2014 slippage unmeasurable"
+    "BOT OFFLINE 505.9h — restart is the most critical action",
+    "82 rules in graduated_rules.json (high-conf) awaiting live trade data",
+    "streak_momentum_gate — code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
+    "BTC_STOP_0.8PCT_CODE — code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
+    "conf_floor_70_v1 wiring — NEW: 0 applications, may be disconnected from pipeline",
+    "conf_floor_70_v1 conflict — human review needed (conflicting sample windows)",
+    "SOL_SHORT blockade — HUMAN DECISION REQUIRED (+$5807 historical alpha)",
+    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
+    "HYPE_UNKNOWN_REGIME — needs direction verification after 10+ live trades",
+    "times_correct=0 for all 8 runtime graduated rules — outcome callbacks unverified",
+    "cost_tracker.json missing — Model Optimization blocked",
+    "snapshot_entry column missing — slippage unmeasurable"
   ],
   "next_run_focus": [
-    "IF BOT STILL OFFLINE: flag 507h milestone, escalate to human",
-    "IF BOT RESTARTED: verify all 8 runtime rules fire in first 10 signals",
+    "IF BOT STILL OFFLINE: flag 507h milestone, escalate urgency",
+    "IF BOT RESTARTED: monitor conf_floor_70_v1 — verify it fires on first sub-70% signal",
     "IF BOT RESTARTED: verify times_correct > 0 after 2 closed trades",
     "IF BOT RESTARTED: collect symbol+regime breakdown after 20 trades",
-    "PRIORITY: Resolve SOL_SHORT suspension \u2014 human decision needed",
+    "PRIORITY: Resolve SOL_SHORT suspension — human decision needed",
     "PRIORITY: Safety review for streak_momentum_gate and BTC_STOP_0.8PCT_CODE"
   ],
   "equity_snapshot": {
@@ -148,6 +160,6 @@
     "drawdown_from_start": "90.1% ($5000 -> $497)",
     "drawdown_from_peak": "2.17%",
     "last_updated": "2026-04-23T22:17:05Z",
-    "note": "No equity updates \u2014 bot offline since 2026-04-23"
+    "note": "No equity updates — bot offline since 2026-04-23"
   }
 }
