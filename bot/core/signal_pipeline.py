@@ -424,9 +424,13 @@ class RiskFilterChain:
                 _log_rejection(signal, "graduated_rule_veto", _reason)
                 self._log_signal_filtered(signal, "graduated_rule_veto", _reason)
                 return FilterResult(approved=False, signal=signal, rejection_reason=_reason, metadata=meta)
-            if _gr_applied and abs(_gr_adj_conf - signal.confidence) > 0.5:
-                meta["graduated_rules_adj"] = round(_gr_adj_conf - signal.confidence, 1)
-                meta["graduated_rules_applied"] = _gr_applied[:120]
+            if _gr_applied:
+                _adj_delta = _gr_adj_conf - signal.confidence
+                if abs(_adj_delta) > 0.5:
+                    signal = copy.copy(signal)
+                    signal.confidence = max(0.0, min(100.0, _gr_adj_conf))
+                    meta["graduated_rules_adj"] = round(_adj_delta, 1)
+                    meta["graduated_rules_applied"] = _gr_applied[:120]
         except Exception:
             pass
 

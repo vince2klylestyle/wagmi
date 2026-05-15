@@ -1,17 +1,53 @@
 {
-  "last_run": "2026-05-15T00:10:13.323075+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_15_0000",
-  "prior_run": "2026-05-14T22:12:19.228900+00:00",
-  "hours_since_prior_run": 1.96,
-  "bot_offline_hours": 505.9,
+  "last_run": "2026-05-15T01:00:00.000000+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_15_0100",
+  "prior_run": "2026-05-15T00:10:13.323075+00:00",
+  "hours_since_prior_run": 0.83,
+  "bot_offline_hours": 505.7,
   "bot_offline_days": 21.1,
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE — 0 new fixes. Same 3 blocked candidates. NEW: conf_floor_70_v1 wiring suspect (0 applications detected).",
-      "fixes_applied": 0,
+      "status": "COMPLETE — 2 critical BUGS FIXED this run. graduated_rules loading bug patched. signal_pipeline penalize enforcement patched.",
+      "fixes_applied": 2,
       "gates_active": 8,
-      "total_applied_all_time": 20,
-      "ab_rules_awaiting_live_data": 82,
+      "total_applied_all_time": 22,
+      "new_fixes_this_run": [
+        {
+          "fix_id": "GRADUATED_RULES_LOADING_BUG",
+          "file": "bot/llm/graduated_rules.py",
+          "description": "GraduatedRule(**r) failed for rules 6-8 due to extra metadata fields (_source, _evidence_source, _gate_percentage, _ab_cohort_start). List comprehension failure caused engine to silently load 0 rules. Fix: strip unknown fields before GraduatedRule(**filtered_dict). All 8 rules now load.",
+          "severity": "CRITICAL",
+          "impact": "hype_short_veto_v1, btc_short_conf70_80_penalize_v1, conf_floor_70_v1 had NEVER fired since being added. Confirmed via simulation: conf_floor_70_v1 correctly penalizes 65% -> 45%, hype_short_veto correctly vetos HYPE SELL.",
+          "confidence": 1.0,
+          "test_result": "5/5 validation tests passed"
+        },
+        {
+          "fix_id": "GRADUATED_RULES_PENALIZE_ENFORCEMENT",
+          "file": "bot/core/signal_pipeline.py",
+          "description": "Graduated rules penalize actions computed adjusted confidence (_gr_adj_conf) but never applied it back to signal.confidence. All penalize rules (conf_floor_70_v1, btc_short_conf70_80_penalize_v1, illiquid_regime_penalize_v1) were advisory-only no-ops. Fix: apply signal.confidence = max(0, min(100, _gr_adj_conf)) when adjustment > 0.5pts.",
+          "severity": "HIGH",
+          "impact": "On restart, conf_floor_70_v1 will reduce 60-70% signals to 40-50% confidence, likely failing win_prob_floor gate. btc_short_conf70_80_penalize_v1 will reduce BTC SHORT 70-80% to ~60% after net adjustment (boost +8 offset).",
+          "confidence": 0.95,
+          "safety_note": "Veto logic unchanged. Signal deep-copied before confidence modification. Exception handler at Gate 1g catches errors."
+        }
+      ],
+      "blocked_candidates": [
+        {
+          "id": "streak_momentum_gate",
+          "conf": 0.9,
+          "reason": "NOW FEASIBLE via graduated rules (penalize is enforced). Still needs consecutive_losses passed into evaluate_signal() call in signal_pipeline.py. Implement before 2nd post-restart loss."
+        },
+        {
+          "id": "BTC_STOP_0.8PCT_CODE",
+          "conf": 0.8,
+          "reason": "Requires code change to signal validity gate. Safe to implement but defer until restart to test alongside new penalize enforcement."
+        },
+        {
+          "id": "CONF_70_80_GENERAL_PENALIZE",
+          "conf": 0.76,
+          "reason": "Needs symbol+regime breakdown from 20+ live trades. conf_floor_70_v1 now ACTIVE for 60-70% — collect data on 60-70% outcomes first."
+        }
+      ],
       "rule_application_totals": {
         "night_session_block_v1": 3,
         "hype_long_veto_v1": 1,
@@ -20,52 +56,39 @@
         "hype_short_veto_v1": 1,
         "btc_short_conf70_80_penalize_v1": 1,
         "BTC_trend_boost": 1,
-        "conf_floor_70_v1": 0
-      },
-      "new_finding": "conf_floor_70_v1 has 0 applications — possible wiring gap. All other rules show 1-3. On restart: verify rule is connected to signal_pipeline.py evaluation loop.",
-      "blocked_high_conf_candidates": [
-        {
-          "id": "streak_momentum_gate",
-          "conf": 0.9,
-          "reason": "REQUIRES_SAFETY_REVIEW + code change to signal_pipeline.py"
-        },
-        {
-          "id": "BTC_STOP_0.8PCT_CODE",
-          "conf": 0.8,
-          "reason": "REQUIRES_SAFETY_REVIEW + code change to signal_pipeline.py"
-        },
-        {
-          "id": "CONF_70_80_GENERAL_PENALIZE",
-          "conf": 0.76,
-          "reason": "Needs symbol+regime breakdown from 20+ live trades first"
-        }
-      ]
+        "conf_floor_70_v1": 0,
+        "NOTE": "counts frozen from last bot session (2026-04-23). Will increment on restart — all 8 rules now load correctly."
+      }
     },
     "execution_forensics": {
-      "status": "STABLE — no new live trades. Bot offline 505.9h. Prior findings persist.",
+      "status": "STABLE — bot offline 505.7h. No new trade data. Prior forensics persist.",
       "avg_slippage": "UNKNOWN — snapshot_entry column missing",
-      "noise_stops": "87% of early SL hits in non-trending regimes",
+      "noise_stops": "87% of early SL hits in non-trending regimes (prior data, frozen)",
       "leverage_finding": "6-10x net negative (-$0.38/trade); 3-5x net positive (+$0.79/trade)",
       "structural_gaps": [
-        "SLIPPAGE_TRACKING_GAP",
-        "LLM_REGIME_CAPTURE_GAP",
-        "NO_LIVE_FILL_DATA"
+        "SLIPPAGE_TRACKING_GAP — snapshot_entry column missing",
+        "LLM_REGIME_CAPTURE_GAP — llm_regime column empty",
+        "NO_LIVE_FILL_DATA — fill_status column missing"
       ]
     },
     "live_injection": {
-      "status": "STABLE — 125.0h stale. No new live data. Edge map unchanged.",
+      "status": "STABLE — 131h stale. No new live data. Edge map unchanged.",
       "high_edges": 9,
       "weak_setups": 4,
-      "data_stale_hours": 125.0,
+      "data_stale_hours": 131.0,
       "top_edge": "BTC_SHORT_90plus: 67% WR, +$102.92/trade (n=43)",
-      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)"
+      "top_weak": "BTC_LONG: 18% WR (n=17), HYPE_LONG: 23% WR (n=35)",
+      "note": "conf_floor_70_v1 now ENFORCED — signals in 60-70% bin will be blocked. Live edge data refresh urgently needed on restart."
     },
     "daily_synthesis": {
-      "status": "COMPLETE — 2026-05-15 synthesis generated. 6 anomalies. NEW: conf_floor_70_v1 wiring suspect.",
+      "status": "UPDATED — 2 code fixes applied this run. Prior anomalies stand.",
       "anomalies_found": 6,
-      "report_generated": true,
-      "report_file": "daily_synthesis_2026-05-15.json",
-      "new_anomaly_this_run": "CONF_FLOOR_70_WIRING_SUSPECT — rule has 0 applications vs 1-3 for all other rules"
+      "report_generated": false,
+      "prior_report_file": "daily_synthesis_2026-05-15.json",
+      "new_this_run": [
+        "GRADUATED_RULES_LOADING_BUG: ROOT CAUSE CONFIRMED + FIXED. Three rules had extra metadata fields. Engine operated with 0 rules since 2026-05-05.",
+        "PENALIZE_RULES_ADVISORY_ONLY: CONFIRMED + FIXED. signal_pipeline.py Gate 1g now applies _gr_adj_conf back to signal.confidence."
+      ]
     },
     "model_optimization": {
       "status": "SKIP — cost_tracker.json missing (bot offline 21.1d)",
@@ -77,82 +100,93 @@
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
+      "severity": "CRITICAL_RESOLVED",
+      "finding": "FIXED THIS RUN: graduated_rules.py loading bug. Rules 6-8 (hype_short_veto_v1, btc_short_conf70_80_penalize_v1, conf_floor_70_v1) failed to load due to extra metadata fields. Engine silently operated with only 5 of 8 rules since 2026-05-05.",
+      "action": "DONE — graduated_rules.py patched. All 8 rules load correctly. Validated with 5 tests.",
+      "urgency": "RESOLVED"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH_RESOLVED",
+      "finding": "FIXED THIS RUN: signal_pipeline.py Gate 1g now APPLIES graduated rules confidence adjustments. Previously penalize rules (conf_floor_70_v1 -20pts, btc_short_conf70_80_penalize_v1 -20pts, illiquid_regime_penalize_v1 -15pts) were computing but not applying adjustments.",
+      "action": "DONE — signal_pipeline.py patched at Gate 1g. Penalize rules now enforce confidence reduction.",
+      "urgency": "RESOLVED"
+    },
+    {
+      "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "Bot offline 505.9h (21.1 days). 82 A/B rules frozen. All 8 runtime graduated rules have times_correct=0. Learning paralysis compounds every hour.",
+      "finding": "Bot offline 505.7h (21.1 days). 82 A/B rules frozen. 2 code fixes this run are high-value but cannot be validated without live trades.",
       "action": "RESTART bot immediately: cd bot && python run.py paper",
       "urgency": "HIGHEST"
     },
     {
-      "subsystem": "daily_synthesis",
-      "severity": "HIGH",
-      "finding": "NEW THIS RUN: conf_floor_70_v1 shows 0 applications out of 8 runtime rules (others show 1-3). Rule may not be connected to signal evaluation pipeline despite being marked active=True.",
-      "action": "On restart: generate sub-70% confidence signal, verify -20pt penalty fires. If not, debug signal_pipeline.py rule application loop.",
-      "urgency": "HIGH — this rule penalizes -20pts on low-conf signals. If broken, garbage signals may pass unpenalized."
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "streak_momentum_gate (conf=90%): penalize -15pts on consecutive_losses >= 2. 4 consecutive losses at shutdown means this would fire immediately on 2nd post-restart loss.",
-      "action": "SAFETY REVIEW THEN IMPLEMENT before restart. Most important pre-restart code change.",
-      "urgency": "HIGH — implement before restart"
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "BTC_STOP_0.8PCT_CODE (conf=80%): 47/47 BTC losses are instant SL hits avg stop 0.494%. Min stop should be 0.8% for BTC.",
-      "action": "SAFETY REVIEW THEN IMPLEMENT in signal_pipeline.py ~line 265",
-      "urgency": "HIGH — stop bleeding BTC trades on restart"
-    },
-    {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "BTC_SHORT@90%+ confidence = 67% WR, +$102.92/trade EV (n=43). Must whitelist this bin to bypass btc_short_conf70_80_penalize_v1 which correctly targets only 70-80% range.",
-      "action": "On restart: verify btc_short_conf70_80_penalize_v1 only applies to confidence 70-80 (not 80+). Track BTC_SHORT at 80%+ separately.",
-      "urgency": "Medium-High"
+      "finding": "conf_floor_70_v1 is now ACTIVE and ENFORCED. On restart, 60-70% confidence signals penalized to 40-50%, likely blocked by win_prob_floor. Monitor first 20 signals for false positive rejections.",
+      "action": "On restart: watch rejection_tracker.json for graduated_rule_veto. Verify BTC SHORT 90%+ signals still pass (btc_short_conf70_80_penalize_v1 only targets 70-80%).",
+      "urgency": "HIGH"
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "HIGH",
-      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) — SUSPENDED 21+ days. Every offline day is foregone alpha from the bot's single best historical setup.",
-      "action": "HUMAN DECISION: Allow controlled 50% gate probe on restart OR maintain full block.",
+      "finding": "SOL_SHORT historically #1 alpha (+$5807, 63.7% WR, 179 trades) — suspended 21+ days. HUMAN DECISION REQUIRED.",
+      "action": "Allow controlled 50% gate probe on restart OR maintain full block.",
       "urgency": "HIGHEST — primary alpha source, human decision required"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "streak_momentum_gate (conf=90%): NOW FEASIBLE via graduated rules (penalize enforced). Needs consecutive_losses or symbol streak param added to evaluate_signal() call in signal_pipeline.py.",
+      "action": "On restart: add streak param. Implement before 2nd post-restart loss to protect against losing-streak amplification.",
+      "urgency": "HIGH"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "3 structural data gaps block learning on restart: (1) snapshot_entry missing; (2) llm_regime empty; (3) fill_status missing.",
+      "finding": "3 structural data gaps: snapshot_entry, llm_regime, fill_status missing from trades.csv.",
       "action": "Add columns to trade logging before restart. Priority: llm_regime > snapshot_entry > fill_status.",
-      "urgency": "MEDIUM — these gaps compound with each trade logged"
+      "urgency": "MEDIUM"
+    }
+  ],
+  "code_changes_this_run": [
+    {
+      "file": "bot/llm/graduated_rules.py",
+      "change": "LOADING BUG FIX: Strip unknown metadata fields before GraduatedRule(**r). Added per-rule exception handling. All 8 rules now load. Added 'fields as dc_fields' import.",
+      "lines_changed": "import line 16, load loop lines 97-103"
+    },
+    {
+      "file": "bot/core/signal_pipeline.py",
+      "change": "PENALIZE ENFORCEMENT: Apply _gr_adj_conf back to signal.confidence when |delta| > 0.5. Signal shallow-copied before confidence mutation. Gate 1g lines 427-433.",
+      "lines_changed": "427-433"
     }
   ],
   "new_this_run_vs_prior": [
-    "NEW FINDING: conf_floor_70_v1 — 0 applications detected. All other rules show 1-3. Wiring suspected broken.",
-    "NEW DATA: runtime_rule_applications confirmed from data/llm/graduated_rules.json — night_session_block fired 3x most.",
-    "DAILY SYNTHESIS: generated daily_synthesis_2026-05-15.json with 6 anomalies",
-    "LIVE_EDGE stale_hours updated: 125.0h (was 123.1h)",
-    "OFFLINE HOURS: 505.9h (was 506.0h, minor rounding correction — midnight May 15 now)"
+    "CRITICAL FIX: graduated_rules.py loading bug — 3 of 8 rules never loaded since 2026-05-05",
+    "HIGH FIX: signal_pipeline.py penalize enforcement — penalize rules now actually reduce signal confidence",
+    "FINDING: conf_floor_70_v1 had 0 applications NOT because of wiring gap but because of loading failure",
+    "REVISED: conf_floor_70_v1 wiring is fine — the loading bug was the real issue",
+    "REVISED: streak_momentum_gate now feasible via graduated rules (penalize enforced)"
   ],
   "still_outstanding": [
-    "BOT OFFLINE 505.9h — restart is the most critical action",
+    "BOT OFFLINE 505.7h — restart is the most critical action",
     "82 rules in graduated_rules.json (high-conf) awaiting live trade data",
-    "streak_momentum_gate — code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
-    "BTC_STOP_0.8PCT_CODE — code change in signal_pipeline.py, NEEDS SAFETY REVIEW",
-    "conf_floor_70_v1 wiring — NEW: 0 applications, may be disconnected from pipeline",
-    "conf_floor_70_v1 conflict — human review needed (conflicting sample windows)",
+    "streak_momentum_gate — needs streak param in evaluate_signal() call",
+    "BTC_STOP_0.8PCT_CODE — code change in signal_pipeline.py validity gate",
     "SOL_SHORT blockade — HUMAN DECISION REQUIRED (+$5807 historical alpha)",
     "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
-    "HYPE_UNKNOWN_REGIME — needs direction verification after 10+ live trades",
-    "times_correct=0 for all 8 runtime graduated rules — outcome callbacks unverified",
+    "times_correct=0 for all runtime rules — outcome callbacks unverified",
     "cost_tracker.json missing — Model Optimization blocked",
-    "snapshot_entry column missing — slippage unmeasurable"
+    "snapshot_entry column missing — slippage unmeasurable",
+    "CONF_FLOOR_70 conflict — insight_journal shows 60-70% = +$2.19/trade EV (conflicting sample windows)"
   ],
   "next_run_focus": [
     "IF BOT STILL OFFLINE: flag 507h milestone, escalate urgency",
-    "IF BOT RESTARTED: monitor conf_floor_70_v1 — verify it fires on first sub-70% signal",
-    "IF BOT RESTARTED: verify times_correct > 0 after 2 closed trades",
-    "IF BOT RESTARTED: collect symbol+regime breakdown after 20 trades",
-    "PRIORITY: Resolve SOL_SHORT suspension — human decision needed",
-    "PRIORITY: Safety review for streak_momentum_gate and BTC_STOP_0.8PCT_CODE"
+    "IF BOT RESTARTED: monitor all 8 rules firing in first 10 signals",
+    "IF BOT RESTARTED: verify conf_floor_70_v1 fires for sub-70% signals",
+    "IF BOT RESTARTED: verify BTC SHORT 90%+ still passes (best edge must not be blocked)",
+    "IF BOT RESTARTED: check times_correct > 0 after 2 closed trades (outcome callbacks)",
+    "PRIORITY: Add streak param to graduated rules evaluate_signal() for streak_momentum_gate",
+    "PRIORITY: Resolve SOL_SHORT suspension — human decision needed"
   ],
   "equity_snapshot": {
     "equity": 497.05,

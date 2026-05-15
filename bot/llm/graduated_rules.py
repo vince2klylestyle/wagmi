@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as dc_fields
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger("bot.llm.graduated_rules")
@@ -94,7 +94,14 @@ class GraduatedRulesEngine:
             if os.path.exists(_RULES_FILE):
                 with open(_RULES_FILE, "r") as f:
                     data = json.load(f)
-                self._rules = [GraduatedRule(**r) for r in data.get("rules", [])]
+                _known = {f.name for f in dc_fields(GraduatedRule)}
+                _loaded_rules: List[GraduatedRule] = []
+                for _r in data.get("rules", []):
+                    try:
+                        _loaded_rules.append(GraduatedRule(**{k: v for k, v in _r.items() if k in _known}))
+                    except Exception as _re:
+                        logger.warning(f"[GRAD-RULES] Skip malformed rule {_r.get('rule_id', '?')}: {_re}")
+                self._rules = _loaded_rules
                 logger.info(f"[GRAD-RULES] Loaded {len(self._rules)} rules ({sum(1 for r in self._rules if r.active)} active)")
         except Exception as e:
             logger.warning(f"[GRAD-RULES] Load error: {e}")
