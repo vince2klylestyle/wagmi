@@ -1,242 +1,214 @@
 {
-  "last_run": "2026-05-17T02:10:36+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_17_0210",
-  "prior_run": "2026-05-17T01:21:00+00:00",
-  "hours_since_prior_run": 0.83,
-  "bot_offline_hours": 555.9,
-  "bot_offline_days": 23.2,
-  "current_session": "NIGHT_BLOCK (00:00-06:00 UTC)",
-  "next_optimal_window": "2026-05-17T06:00:00Z",
-  "hours_to_next_window": 3.82,
+  "last_run": "2026-05-17T21:07:03.948728+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_17_2107",
+  "prior_run": "2026-05-17T02:10:36+00:00",
+  "hours_since_prior_run": 18.94,
+  "bot_offline_hours": 574.8,
+  "bot_offline_days": 23.9,
+  "current_session": "EVENING (18:00-00:00 UTC)",
+  "morning_window_passed_today": true,
+  "consecutive_morning_windows_missed": 5,
+  "next_morning_window": "2026-05-18T06:00:00Z",
+  "hours_to_next_window": 8.92,
+  "approaching_eod": true,
+  "eod_time_utc": "2026-05-17T23:00:00Z",
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 0,
-      "gates_active": 11,
+      "gates_active": 10,
       "total_applied_all_time": 30,
       "new_fix_this_run": null,
-      "code_verifications_this_run": [
-        {
-          "fix_id": "GRADUATED_RULES_VETO_ISOLATION",
-          "status": "CONFIRMED_IN_CODE",
-          "file": "bot/llm/graduated_rules.py:279",
-          "evidence": "record_outcome() skips veto rules at line 279 with 'continue'. Docstring at lines 268-275 confirms intent. No risk of re-corruption on restart."
-        },
-        {
-          "fix_id": "VETO_CF_WIRE_IMPLEMENTED",
-          "status": "CONFIRMED_IN_CODE",
-          "file": "bot/llm/counterfactual_learner.py:462",
-          "evidence": "Line 462: 'if graduated_rule_veto in (rec.skip_reason or ...): calls get_graduated_rules_engine().record_outcome()'. Veto accuracy loop is closed."
-        }
-      ],
+      "recommendations_reviewed": 5,
+      "high_confidence_pending_human": 5,
+      "audit_source": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings)",
       "new_finding_this_run": {
-        "finding_id": "RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK",
+        "finding_id": "FIFTH_MORNING_WINDOW_MISSED",
         "severity": "CRITICAL",
-        "detected_at": "2026-05-17T02:10:36+00:00",
+        "detected_at": "2026-05-17T21:07:03.948728+00:00",
         "is_new": true,
-        "detail": "COMPOUNDING PENALTY ANALYSIS: On restart, two active rules stack their penalties on incoming signals. (1) streak_gate fires -15pts due to 4 consecutive losses at shutdown. (2) conf_floor_70_v1 fires -20pts for signals in 60-70% band. SIMULATION: 80% signal -> streak_gate -> 65% -> conf_floor_70_v1 triggers (65 in [60,70]) -> -20pts -> 45% BLOCKED. 85% -> 70% -> blocked. 90% -> 75% -> PASSES. RESULT: Only signals at raw confidence >=90% survive both filters. ETH/BTC trending signals (morning edge) typically arrive at 70-85% confidence. RISK: ZERO trades may fire at 06:00 UTC restart even in the highest-edge morning window.",
-        "simulation_results": {
-          "70pct_raw": "55% final — BLOCKED",
-          "75pct_raw": "40% final — BLOCKED (conf_floor fired)",
-          "80pct_raw": "45% final — BLOCKED (conf_floor fired)",
-          "85pct_raw": "50% final — BLOCKED (conf_floor fired)",
-          "90pct_raw": "75% final — PASS",
-          "95pct_raw": "80% final — PASS"
-        },
-        "minimum_signal_to_trade": "90% raw confidence (very rare for trending setups)",
-        "recommendation": "HUMAN DECISION REQUIRED before 06:00 UTC (T-3.82h): Suspend conf_floor_70_v1 for soft-start period (first 5 trades). Evidence: (a) 2 applications, 0 correct. (b) Insight journal shows 60-70% = +$2.19/trade EV on 67 trades. (c) Compounding with streak_gate creates effective shutdown. Action: Set conf_floor_70_v1.active=False OR reduce adjustment from -20 to -5 for first 5 trades. Reactivate after streak resets (1 winning trade).",
-        "urgency": "PRE-RESTART — T-3.82h to morning window",
-        "confidence": 0.95,
+        "detail": "The 06:00-12:00 UTC morning window on May 17 passed without bot restart. This is the 5th consecutive morning window missed. Prior run (02:10 UTC) issued T-3.82h URGENT warning about conf_floor_70_v1 compounding deadlock \u2014 warning was not acted on. Morning window missed exactly as predicted by simulation. Next window: 2026-05-18T06:00Z (T-8.92h). Without fixing conf_floor_70_v1, tomorrow's window will also produce zero trades.",
+        "consecutive_windows_missed": 5,
+        "confidence": 0.99,
         "auto_applied": false,
-        "reason_not_auto_applied": "Prior runs flagged conf_floor_70_v1 as HUMAN DECISION. Compounding analysis is new but rule-change authority deferred to user. Documented here for immediate human review."
+        "reason_not_auto_applied": "HUMAN DECISION required. Fix requires modifying graduated_rules.json (rule governing trade execution confidence). Rule-authority deferred to user per prior run policy."
       },
       "outstanding_pending": [
-        "CONF_FLOOR_70_COMPOUNDING_DEADLOCK: NEW CRITICAL — suspend before 06:00 UTC restart? (2/0 correct, compounding with streak_gate blocks all <90% signals)",
-        "CONF_FLOOR_70_CONFLICT: conf_floor_70_v1 has 2 apps, 0 correct — human decision needed. Insight journal shows 60-70% conf = +$2.19/trade EV (67 trades). Runtime rule penalizes -20pts based on 123 trades at -$2321 total. Conflicting evidence windows.",
-        "SOL_SHORT_SUSPENSION: human decision (+$5807 historical alpha, conf 90%, gate=20% probe).",
-        "SNIPER_AUTO_EXECUTE: human decision (primary alpha, +$328/34-trade path, conf 90%, gate=0% pending human).",
-        "LLM_REGIME_CAPTURE_GAP: llm_regime not written to trades.csv — 12 regime rules unmeasurable.",
-        "SNAPSHOT_ENTRY_GAP: snapshot_entry missing from signal generation — slippage unmeasurable.",
-        "HYPE_SHORT_VETO_RISK: hype_short_veto_v1 has 3 apps, 0 correct (all 3 blocked HYPE SELL signals would have WON per counterfactual). 7 more apps to auto-retire threshold at 35% accuracy.",
-        "RULE_CONFLICT_SOL_SHORT: SOL_SHORT_full_block (100%) blocks probe data for SOL_SHORT_reversal (20%). Deadlock. Human decision.",
-        "RULE_CONFLICT_LONG_BIAS: SIDE_BIAS_LONG_filter + SIDE_BIAS_LONG_SUSPENSION both at 80% cancel each other. Human decision.",
-        "BTC_TRENDING_REGIME: n=5 (80% WR, +$8.98/trade) — borderline sample, deferred until n>=10."
+        "CONF_FLOOR_70_COMPOUNDING_DEADLOCK: T-8.92h to next window. URGENT. streak_gate(-15pts)+conf_floor_70_v1(-20pts)=-35pts total, blocks ALL signals <90% confidence on restart. Morning window missed AGAIN (5th time). Fix: set conf_floor_70_v1 adjustment=-5 or active=False in bot/data/llm/graduated_rules.json BEFORE 06:00 UTC May 18.",
+        "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). HUMAN DECISION. Requires leverage cap verification before enabling.",
+        "POSITION_MANAGER_EXIT_LABEL: position_manager.py:1215 mislabels profitable trailed-SL exits. 21 historical wins affected. Cheap fix, needs test suite.",
+        "CALIBRATION_OFFSET_CAP: tuner offset=-9.28 creating feedback deadlock. Cap at \u00b13 in parameter_tuner.py.",
+        "LLM_MODE_GUARD: Scout/Overseer/Exit bypass LLM_MODE=0. 3 one-line fixes needed.",
+        "SOL_SHORT_SUSPENSION: +$5807 historical alpha. Human decision (+50% gate probe).",
+        "HYPE_SHORT_VETO_RISK: 3 apps, 0 correct. Approaching auto-retire at 10 apps.",
+        "SNAPSHOT_ENTRY_GAP: slippage unmeasurable without snapshot_entry column.",
+        "LLM_REGIME_CAPTURE_GAP: llm_regime not written to trades.csv.",
+        "RULE_CONFLICT_SOL_SHORT: full block deadlocks probe data collection.",
+        "RULE_CONFLICT_LONG_BIAS: two cancelling 80% gates."
       ],
-      "status": "ACTIVE — 0 new fixes (data unchanged). 30 total all-time. 2 prior fixes confirmed in code. 1 new CRITICAL finding: RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK."
+      "status": "ACTIVE \u2014 0 new fixes (all high-confidence items require human decision). 30 total all-time. 1 new CRITICAL finding: FIFTH_MORNING_WINDOW_MISSED."
     },
     "execution_forensics": {
-      "avg_slippage": "UNKNOWN — snapshot_entry column missing from signal generation (structural gap)",
-      "noise_stops": "87% early SL hits (<2h) in non-trending regimes (illiquid/ranging/unknown) — STALE 556h",
-      "status": "FROZEN — bot offline 555.9h. No new execution data. All validated findings from prior runs unchanged.",
-      "hours_stale": 556,
-      "data_source": "trades.csv: EMPTY (header only, zero trade rows). No computation possible.",
+      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing from signal generation",
+      "noise_stops": "87% early SL hits (<2h) in non-trending regimes (STALE 574.8h)",
+      "status": "FROZEN \u2014 bot offline 574.8h. No new execution data.",
+      "hours_stale": 574.8,
+      "data_source": "trades.csv: EMPTY (header only, 0 trade rows).",
+      "key_validated_findings_stale": {
+        "leverage_3_5x": "+$0.79/trade (n=68) \u2014 PREFERRED RANGE",
+        "leverage_6_10x": "-$0.38/trade (n=91) \u2014 NET NEGATIVE",
+        "win_median_hold": "3.3h",
+        "loss_median_hold": "1.5h",
+        "noise_stop_regime": "87% in illiquid/ranging/unknown"
+      },
       "structural_gaps_persist": [
-        "snapshot_entry missing from signal generation (slippage unmeasurable on restart)",
-        "llm_regime empty in trades.csv (12 regime A/B rules unmeasurable)",
+        "snapshot_entry missing (slippage unmeasurable)",
+        "llm_regime empty (12 regime rules unmeasurable)",
         "fill_status missing (partial fill rate unknown)"
-      ],
-      "key_validated_findings_unchanged": {
-        "leverage": "3-5x = +$0.79/trade POSITIVE (n=68); 6-10x = -$0.38/trade NEGATIVE (n=91)",
-        "hold_time": "Wins at 3.3h median, losses at 1.5h. trending_min_hold_3h_v1 applied.",
-        "regime": "trending=51.9% WR only viable; illiquid=28.1%, ranging=25.0%",
-        "consecutive_losses": "4 at shutdown. streak_gate fires -15pts on next signal."
-      }
+      ]
     },
     "live_injection": {
       "high_edges_found": 9,
       "weak_setups_found": 4,
-      "stale_hours": 556,
-      "status": "STALE — 556h since last live data. No change from prior runs. No new computation possible (trades.csv empty).",
-      "top_edge": "ETH_SHORT + trending + morning (06:00-12:00 UTC): ~80% WR (5 live trades + 70% historical)",
-      "top_killers": [
+      "stale_hours": 45.9,
+      "status": "STALE \u2014 edge_data last updated 2026-05-15T23:10. No new trade data available.",
+      "top_edges_cached": [
+        "ETH_SHORT+trending: 80% WR (n=5 live, +$9.49 EV) \u2014 MORNING WINDOW PRIORITY",
+        "BTC_SHORT@90%+: 67% WR (+$102.92/trade EV, n=43)",
+        "BB_solo (no MTQ): 67.6% WR (anti-pattern: BB+MTQ=35%)"
+      ],
+      "top_killers_cached": [
         "HYPE_LONG: 23% WR, -$77.26 total (veto active)",
-        "SOL_LONG: 24% WR, -$21.89 total (veto active)"
+        "SOL_LONG: 24% WR, -$21.89 total (veto active)",
+        "BTC_SELL@70-80%: -$20pts penalize rule active"
       ],
-      "restart_priority_edges": [
-        "ETH TREND signals 06:00-12:00 UTC: 80% WR (eth_trending_regime_boost_v1 +8pts, active)",
-        "BTC_SHORT at 90%+ confidence: 67% WR, +$102.92/trade EV (btc_short_90plus_boost_v1 +10pts, active)",
-        "BB solo (no MTQ): 67.6% WR vs BB+MTQ=35% WR (anti-pattern — documented in feedback rules)"
-      ],
-      "hard_blocks_on_restart": [
-        "night_session_block_v1 00:00-06:00 UTC: active RIGHT NOW (19% WR historically)",
-        "HYPE_LONG veto (hype_long_veto_v1 active)",
-        "SOL_LONG veto (sol_long_veto_v1 active)",
-        "illiquid regime penalized (-15pts, illiquid_regime_penalize_v1 active)"
-      ],
-      "compounding_interaction_warning": "streak_gate (-15pts) + conf_floor_70_v1 (-20pts for 60-70%) effectively blocks ALL signals <90% on restart. Morning window edges (ETH/BTC trending, typically 70-85%) will NOT fire. See RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK finding."
+      "restart_injection_ready": "10 graduated rules + 2 boost rules will fire automatically on restart. conf_floor_70_v1 needs adjustment first.",
+      "new_computation": "NONE"
     },
     "daily_synthesis": {
-      "anomalies_found": 5,
+      "anomalies_found": 7,
       "report_generated": false,
       "date": "2026-05-17",
-      "run_time_utc": "02:10",
+      "run_time_utc": "21:07",
       "is_eod": false,
-      "status": "MID-NIGHT SYNTHESIS 2026-05-17 at 02:10 UTC. Daily synthesis generated at 00:12 UTC. No new trade data. +1 NEW anomaly vs prior synthesis: CONFIDENCE_COMPOUNDING_DEADLOCK.",
-      "anomalies": [
+      "approaching_eod": true,
+      "status": "EVENING SYNTHESIS 2026-05-17 at 21:07 UTC. EOD report at 23:00 UTC. 3 new anomalies vs start-of-day synthesis.",
+      "new_anomalies_this_run": [
         {
-          "type": "BOT_OFFLINE",
+          "type": "FIFTH_MORNING_WINDOW_MISSED",
           "severity": "CRITICAL",
-          "value": "555.9h (23.2 days) offline. Zero trades. Zero equity change.",
-          "action": "RESTART at 06:00 UTC (T-3.82h)"
+          "value": "06:00-12:00 UTC May 17 window passed. 5 consecutive morning windows missed.",
+          "action": "RESTART at 06:00 UTC May 18 (T-8.92h). Fix conf_floor_70_v1 BEFORE restart."
         },
         {
-          "type": "CONFIDENCE_COMPOUNDING_DEADLOCK",
+          "type": "CONF_FLOOR_WARNING_EXPIRED",
           "severity": "CRITICAL",
-          "value": "NEW THIS RUN: streak_gate (-15pts) + conf_floor_70_v1 (-20pts) blocks ALL signals <90% confidence on restart. Morning window edges (ETH/BTC trending, 70-85% typical) will produce ZERO trades.",
-          "action": "URGENT: Human decision before 06:00 UTC — suspend conf_floor_70_v1 for soft-start (first 5 trades). See simulation in auto_fix.new_finding_this_run."
+          "value": "T-3.82h warning from 02:10 UTC run was not acted on. Morning missed as predicted by simulation.",
+          "action": "Fix now \u2014 T-8.92h to next window. Edit graduated_rules.json."
         },
         {
-          "type": "NIGHT_SESSION_BLOCK_ACTIVE",
+          "type": "APPROACHING_EOD",
           "severity": "INFO",
-          "value": "night_session_block_v1 veto firing RIGHT NOW (02:10 UTC). Feature not bug.",
-          "action": "No action — block is correct. Wait for 06:00 UTC."
-        },
-        {
-          "type": "STREAK_GATE_ACTIVE",
-          "severity": "HIGH",
-          "value": "4 consecutive losses at shutdown — streak gate fires -15pt penalty on first signal after restart.",
-          "action": "Soft-start: 50% sizing, max 3x leverage, ETH/BTC TRENDING only for first 5 trades. ALSO: suspend conf_floor_70_v1 to prevent deadlock."
-        },
-        {
-          "type": "MORNING_WINDOW_APPROACHING",
-          "severity": "HIGH",
-          "value": "T-3.82h to 06:00-12:00 UTC (highest-edge session). Fourth consecutive missed morning window if bot not restarted.",
-          "action": "RESTART at 2026-05-17T06:00:00Z. Suspend conf_floor_70_v1 first."
+          "value": "21:02 UTC \u2014 EOD synthesis scheduled at 23:00 UTC (T-1.97h).",
+          "action": "EOD report will generate. Today: 0 trades, $0 PnL."
         }
       ],
-      "day_summary": {
+      "preliminary_eod": {
         "trades_today": 0,
         "pnl_today": 0.0,
         "wr_today": null,
-        "note": "Bot offline — no trades executed today"
-      }
+        "equity": 497.05,
+        "consecutive_loss_streak_carried": 4,
+        "note": "Bot offline all day. No trades executed. 5th consecutive missed morning window."
+      },
+      "tomorrow_focus": [
+        "06:00 UTC May 18: RESTART (fix conf_floor_70_v1 first)",
+        "ETH TRENDING signals: 80% WR primary target on restart",
+        "BTC SHORT @90%+: 67% WR secondary target",
+        "Soft-start: 50% sizing, 3x max leverage, first 5 trades only ETH/BTC"
+      ]
     },
     "model_optimization": {
       "swaps_recommended": 0,
       "potential_savings": "$0.00",
-      "status": "SKIP — cost_tracker.json not found. Bot offline 556h, zero LLM calls.",
+      "status": "SKIP \u2014 cost_tracker.json not found. Bot offline 574.8h, zero LLM calls.",
       "reactivate_after": "50 LLM calls post-restart"
     }
   },
   "high_priority_findings": [
     {
-      "subsystem": "auto_fix",
+      "subsystem": "auto_fix + daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "NEW — RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK: streak_gate (-15pts for 4-loss streak) + conf_floor_70_v1 (-20pts for 60-70% confidence) creates a -35pt compounding penalty that blocks ALL signals with raw confidence <90% on restart. SIMULATION: 80% signal -> 65% (streak) -> 45% (conf_floor) = BLOCKED. 85% -> 70% -> 50% = BLOCKED. Only 90%+ passes. ETH/BTC trending signals (morning edge) typically arrive at 70-85% confidence. RESULT: ZERO trades may fire at 06:00 UTC morning window even with best-edge setup active.",
-      "action": "URGENT HUMAN DECISION before 06:00 UTC (T-3.82h): Option A — Set conf_floor_70_v1.active=False in bot/data/llm/graduated_rules.json (file edit, takes effect on restart). Option B — Reduce conf_floor_70_v1 adjustment from -20 to -5 (softens but doesn't eliminate). Evidence: conf_floor_70_v1 has 2 apps, 0 correct AND insight_journal shows 60-70% = +$2.19/trade EV on 67 trades. Safe to suspend for soft-start.",
-      "urgency": "CRITICAL — T-3.82h to morning window"
+      "finding": "FIFTH_MORNING_WINDOW_MISSED: 06:00-12:00 UTC May 17 passed without restart. Prior run (02:10 UTC) issued T-3.82h URGENT warning about conf_floor_70_v1 compounding deadlock \u2014 warning not acted on, morning missed exactly as predicted. This is now the 5th consecutive morning window missed. Bot has been offline 574.8h (23.9 days). Equity static at $497.05 (90.1% DD from $5000 start).",
+      "action": "TWO-STEP for tomorrow: (1) Fix conf_floor_70_v1 TONIGHT \u2014 change adjustment from -20 to -5, OR set active=False in bot/data/llm/graduated_rules.json. (2) cd bot && python run.py paper at 06:00 UTC May 18. Apply soft-start: 50% sizing, 3x max leverage, ETH/BTC TRENDING only.",
+      "urgency": "CRITICAL \u2014 T-8.92h to morning window"
     },
     {
-      "subsystem": "daily_synthesis",
+      "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "BOT_OFFLINE_DAY_23: 555.9h offline. T-3.82h to morning window (06:00 UTC). Four consecutive missed morning windows. All 80 A/B rules await live data. Equity static at $497.05 (90.1% DD from $5000 start). Even if restarted correctly, compounding deadlock (above) may prevent all signals from firing.",
-      "action": "TWO-STEP RESTART: (1) Fix conf_floor_70_v1 before 06:00 UTC. (2) cd bot && python run.py paper at 06:00 UTC. Apply soft-start: 50% size, 3x max leverage, ETH/BTC TRENDING only for first 5 trades.",
-      "urgency": "CRITICAL — T-3.82h to window"
+      "finding": "CONF_FLOOR_70_COMPOUNDING_DEADLOCK UNRESOLVED: streak_gate(-15pts) + conf_floor_70_v1(-20pts) = -35pts total on restart. Simulation: 80% signal\u219245% BLOCKED, 85%\u219250% BLOCKED, 90%\u219275% PASS. Only signals \u226590% fire on restart. ETH/BTC trending morning signals arrive at 70-85% typically. Evidence: conf_floor_70_v1 has 2 apps, 0 correct. insight_journal shows 60-70% = +$2.19/trade EV on 67 trades. Third CRITICAL warning in a row \u2014 still unresolved.",
+      "action": "Edit bot/data/llm/graduated_rules.json: change conf_floor_70_v1 'adjustment' from -20.0 to -5.0. This is a 3-second edit. T-8.92h to next window.",
+      "urgency": "CRITICAL \u2014 do this before sleeping tonight"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "HYPE_SHORT_VETO_APPROACHING_RISK: hype_short_veto_v1 has 3 applications, 0 correct. All 3 blocked HYPE SELL signals would have WON (per counterfactual). At 10 applications with <35% accuracy → auto-retire fires. The underlying evidence (239 live trades, -$16.65/trade EV) is solid, but 3 recent incorrect vetoes are a signal worth monitoring.",
-      "action": "Monitor from restart. Escalate to human if 0 correct at 5 applications total.",
-      "urgency": "MEDIUM — monitor from restart, escalate at 5 apps"
+      "finding": "SNIPER_AUTO_EXECUTE=false: +$328 on 34-trade path vs -$76 all other strategies combined. This is THE primary alpha. Bot has been trading without its only profitable execution path since Apr 6. Top 3 historical wins are all sniper SOL SHORT (+$160, +$130, +$100). The -$147 blowup was real but manageable with hard leverage cap verification.",
+      "action": "Verify max_sniper_leverage cap actually binds at execution. Add per-trade-loss ceiling ($50 or 10% equity). Then enable SNIPER_AUTO_EXECUTE=true. This is the highest single $ lever available.",
+      "urgency": "HIGH \u2014 review before first restart"
     },
     {
       "subsystem": "auto_fix",
-      "severity": "MEDIUM",
-      "finding": "CONF_FLOOR_70_BLOCKING_EV: conf_floor_70_v1 (-20pts for 60-70% confidence) has 2 applications, 0 correct. Both blocked signals would have WON. Insight journal shows 60-70% = +$2.19/trade EV (67 trades). BUT the rule is based on 123 trades at -$2321 total (larger window). Conflicting evidence at different sample sizes/time windows. NOW COMPOUNDED with streak_gate to create a restart deadlock.",
-      "action": "Shadow-watch: 8 more applications to auto-retire threshold. URGENT: Human decision needed NOW (T-3.82h) due to compounding deadlock.",
-      "urgency": "URGENT (was MEDIUM, elevated by compounding deadlock finding)"
+      "severity": "HIGH",
+      "finding": "POSITION_MANAGER_EXIT_LABEL: position_manager.py:1215 returns 'CLEAN_LOSS' unconditionally. 21 historical trailing-SL wins mislabeled as losses. Impacts analysis, dashboards, ML training labels (NOT runtime PnL loops). One-line fix.",
+      "action": "Replace return 'CLEAN_LOSS' with return 'CLEAN_WIN' if win else 'CLEAN_LOSS' at line 1215. Run full test suite. Low risk.",
+      "urgency": "MEDIUM \u2014 schedule for this week"
     }
   ],
   "new_this_run_vs_prior": [
-    "NEW CRITICAL FINDING: RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK — streak_gate (-15pts) + conf_floor_70_v1 (-20pts) compounds to -35pts total. All signals <90% confidence blocked on restart. Morning window edges (70-85% typical) produce zero trades. Action: disable conf_floor_70_v1 before 06:00 UTC restart.",
-    "MORNING_WINDOW: T-3.82h (was T-4.7h in prior run 01:21 UTC). Countdown continues.",
-    "OFFLINE_HOURS: 555.9h (was 554.9h in prior run). No new data — all subsystems stale.",
-    "CODE_VERIFICATION: Both prior code fixes confirmed present — veto isolation (graduated_rules.py:279) and CF-wire (counterfactual_learner.py:462).",
-    "NO_NEW_TRADE_DATA: trades.csv remains empty (header only). Bot offline 23.2 days."
+    "MORNING WINDOW PASSED: 06:00-12:00 UTC May 17 missed \u2014 5th consecutive. T+18.9h since prior run warning.",
+    "CONF_FLOOR_70 WARNING UNRESOLVED: T-3.82h warning (02:10 UTC) expired without action. Morning missed as predicted.",
+    "APPROACHING EOD: 21:02 UTC, EOD synthesis in ~2h (23:00 UTC).",
+    "OFFLINE_HOURS: 574.8h (was 555.9h in prior run). Delta: +18.9h, no new data.",
+    "NO_NEW_TRADE_DATA: trades.csv remains empty (0 trade rows). Bot offline 23.9 days.",
+    "NEXT_WINDOW_COUNTDOWN: T-8.92h to 2026-05-18T06:00Z morning window."
   ],
   "code_changes_this_run": [],
   "still_outstanding": [
-    "CONF_FLOOR_70_COMPOUNDING_DEADLOCK — URGENT HUMAN DECISION before 06:00 UTC (T-3.82h)",
-    "BOT OFFLINE 556h — RESTART at 06:00 UTC 2026-05-17 is #1 priority (T-3.82h)",
-    "SOL_SHORT blockade — HUMAN DECISION REQUIRED (+$5807 historical alpha)",
-    "SNIPER_AUTO_EXECUTE=false — HUMAN DECISION REQUIRED (+$328/34-trade path)",
-    "CONF_FLOOR_70 conflict — HUMAN DECISION (2/0 correct, compounding deadlock identified)",
-    "LLM_REGIME_CAPTURE_GAP — llm_regime not written to trades.csv",
-    "SNAPSHOT_ENTRY_MISSING — slippage unmeasurable",
-    "RULE_CONFLICT_SOL_SHORT — deadlock: full block prevents probe data collection",
-    "RULE_CONFLICT_LONG_BIAS — two cancelling 80% gates, net effect ambiguous",
-    "HYPE_SHORT_VETO_RISK — 3/0 correct, approaching auto-retire at 10 apps",
-    "AB_RESULT_TRACKER — treatment_wr evaluation needs 20+ live trades per cohort"
+    "CONF_FLOOR_70_COMPOUNDING_DEADLOCK \u2014 CRITICAL HUMAN DECISION before 06:00 UTC May 18 (T-8.92h)",
+    "BOT OFFLINE 574.8h \u2014 RESTART at 06:00 UTC May 18 is #1 operational priority",
+    "SNIPER_AUTO_EXECUTE=false \u2014 #1 profit lever (+$328/34-trade path). Human verification + enable.",
+    "POSITION_MANAGER_EXIT_LABEL \u2014 position_manager.py:1215 one-line fix needed",
+    "CALIBRATION_OFFSET_CAP \u2014 parameter_tuner.py cap at \u00b13",
+    "LLM_MODE_GUARD \u2014 3 call sites need should_call_llm() guard",
+    "SOL_SHORT_SUSPENSION \u2014 human decision (+$5807 historical alpha, 50% gate probe)",
+    "HYPE_SHORT_VETO_RISK \u2014 3/0 correct, 7 apps to auto-retire threshold",
+    "SNAPSHOT_ENTRY_MISSING \u2014 add column to signal generation on restart",
+    "LLM_REGIME_CAPTURE_GAP \u2014 add llm_regime write to trades.csv",
+    "RULE_CONFLICTS \u2014 SOL_SHORT deadlock + LONG_BIAS cancel need human resolution"
   ],
   "equity_snapshot": {
     "equity": 497.05,
     "peak": 508.06,
-    "drawdown_from_start": "90.1% ($5000 -> $497)",
+    "drawdown_from_start": "90.1% ($5000 \u2192 $497)",
     "drawdown_from_peak": "2.17%",
     "last_updated": "2026-04-23T22:17:05Z",
-    "note": "No equity updates — bot offline 556h"
+    "hours_unchanged": 574.8
   },
-  "graduated_rules_status": {
+  "graduated_rules_summary": {
     "total_rules": 10,
     "veto_rules": 4,
     "boost_rules": 3,
     "penalize_rules": 3,
-    "rules_with_zero_correct": 10,
-    "rules_approaching_auto_retire": [
-      "hype_short_veto_v1 (3 apps, 0 correct — 7 apps to threshold; accuracy tracked ONLY via counterfactual_learner)",
-      "night_session_block_v1 (4 apps, 0 correct — 6 apps to threshold; accuracy tracked ONLY via counterfactual_learner)",
-      "rule_1777922205_0 (3 apps, 0 correct — 7 apps to threshold; accuracy tracked via record_outcome for closed BTC+TREND trades)"
-    ],
-    "compounding_interaction": "conf_floor_70_v1 (-20pts, penalize, active) + streak_gate (-15pts, external) = -35pts compounding penalty. Effective confidence minimum for ANY signal on restart = 90%. CRITICAL: see RESTART_CONFIDENCE_COMPOUNDING_DEADLOCK finding.",
-    "veto_isolation_fix": "CONFIRMED in code (graduated_rules.py:279 + counterfactual_learner.py:462)"
+    "critical_interaction": "conf_floor_70_v1(-20pts) + streak_gate(-15pts) = -35pts total on restart. Blocks all signals <90% raw confidence.",
+    "fix_needed": "Reduce conf_floor_70_v1 adjustment from -20 to -5 in bot/data/llm/graduated_rules.json"
   },
   "next_run_focus": [
-    "T-3.82h: conf_floor_70_v1 DECISION before restart is #1 priority",
-    "T-3.82h: RESTART at 06:00 UTC is #2 priority",
+    "T-8.92h: Fix conf_floor_70_v1 before sleep (tonight)",
+    "T-8.92h: RESTART at 06:00 UTC May 18 is #1 priority",
     "ON RESTART: verify streak_gate fires (-15pts) in first signal log",
-    "ON RESTART: verify conf_floor_70_v1 does NOT compound with streak_gate (if suspended)",
-    "ON RESTART: verify veto rules do NOT have times_correct > 0 after first daytime trade closes",
-    "ON RESTART: verify counterfactual_learner fires CF->RULES log for blocked night signals",
-    "MONITOR: hype_short_veto_v1 — if still 0% after 5 total apps, escalate to human"
+    "ON RESTART: confirm conf_floor_70_v1 does NOT compound (if fixed)",
+    "ON RESTART: soft-start protocol (50% sizing, 3x max, ETH/BTC only, first 5 trades)",
+    "POST-RESTART: review SNIPER_AUTO_EXECUTE enablement (leverage cap verification first)",
+    "MONITOR: hype_short_veto_v1 \u2014 escalate if 0% at 5 total apps"
   ]
 }
