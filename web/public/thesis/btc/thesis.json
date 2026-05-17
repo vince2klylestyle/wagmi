@@ -1,102 +1,101 @@
 {
   "symbol": "BTC",
-  "updated_at": "2026-05-07T00:13:22.423247+00:00",
-  "price": 81441.5,
+  "updated_at": "2026-05-13T06:28:24.616053+00:00",
+  "price": 81054.0,
   "levels": {
     "symbol": "BTC",
-    "ts": "2026-05-07T00:13:10.514236+00:00",
-    "price": 81441.5,
+    "ts": "2026-05-13T06:26:19.879624+00:00",
+    "price": 81054.0,
     "daily": {
-      "ema20": 77809.31897370871,
-      "ema50": 76527.7491106368,
-      "slope_pct": 3.2254169690942294,
-      "rsi14": 64.76540938362466,
-      "atr14": 1775.357142857143,
+      "ema20": 79205.74345365468,
+      "ema50": 78023.49271759678,
+      "slope_pct": 3.3678210369959634,
+      "rsi14": 72.60088165479823,
+      "atr14": 1759.2857142857142,
       "hi60d": 82799.0,
       "lo60d": 64904.0,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 80733.84912853166,
-      "ema50": 79395.52865920287,
-      "rsi14": 62.271874466996415,
-      "atr14": 837.9285714285714,
-      "hi20": 82799.0,
-      "lo20": 78156.0
+      "ema20": 80920.65152522031,
+      "ema50": 80515.51964677799,
+      "rsi14": 40.81463009143807,
+      "atr14": 759.5,
+      "hi20": 82436.0,
+      "lo20": 79804.0
     },
     "h1": {
-      "ema20": 81486.08899417096,
-      "ema50": 81124.70872865562,
-      "rsi14": 32.83270755110554,
-      "atr14": 433.7857142857143,
-      "hi20": 82799.0,
-      "lo20": 80888.0,
-      "vol_ratio": 0.48720993993094774
+      "ema20": 80866.6447465517,
+      "ema50": 80904.62275504574,
+      "rsi14": 72.78056951423785,
+      "atr14": 306.2142857142857,
+      "hi20": 81268.0,
+      "lo20": 79804.0,
+      "vol_ratio": 0.3311429612782832
     },
     "m5": {
-      "rsi14": 84.00702987697716,
-      "atr14": 82.42857142857143
+      "rsi14": 48.049281314168375,
+      "atr14": 49.142857142857146
     }
   },
   "factors": {
-    "btc_4h_direction": "bullish",
-    "btc_4h_aligned_long": true,
-    "chop_score": 0.23,
+    "btc_4h_direction": "neutral",
+    "btc_4h_aligned_long": false,
+    "chop_score": 0.21,
     "chop_ok": true,
     "rsi_aligned": false,
     "rsi_bullish_stack": false,
     "daily_trend_up": true,
-    "conviction_count": 3,
+    "conviction_count": 2,
     "conviction_max": 4,
-    "conviction_wr_est": 50
+    "conviction_wr_est": 38
   },
   "committee": {
     "regime": {
-      "ok": false,
+      "ok": true,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +3.23%/10d and RSI 65. Price +4.67% vs daily EMA20 ($77,809). ATR 2.18% \u2014 healthy momentum.",
-      "latency_s": 0,
+      "narrative": "**Regime: `trending_bull` | Directional Bias: Long (with caution) | Volatility Band: Low-moderate (ATR 0.38% 1h / 0.94% 4h)**\n\nDaily structure is firmly bullish \u2014 slope +3.37%/10d with price above both EMAs and RSI 73 \u2014 but intraday signals are mixed: 4h RSI has cooled to 41 while 1h RSI sits at 73, triggering the `rsi_div_aligned=NO` flag, and volume is thin at 0.33x, consistent with the historically weak 04-07 UTC window (15% WR). Price is compressing within $79,804\u2013$82,436 against the 60d high of $82,799, suggesting the trend is intact but running into supply near resistance with conviction_count at only 2/4 (historical WR 38%); the graduated rule grants a BTC-trend boost, but the time-of-day dead zone and RSI multi-TF divergence argue for patience over aggression here.",
+      "latency_s": 22.21442461013794,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "low",
-      "daily_slope_pct": 3.23,
-      "daily_rsi": 65.0,
-      "h1_rsi": 33.0,
-      "vol_ratio_1h": 0.49
+      "daily_slope_pct": 3.37,
+      "daily_rsi": 73.0,
+      "h1_rsi": 73.0,
+      "vol_ratio_1h": 0.33
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish structure but 5m RSI 84 overbought. Wait for pullback to $81,486 (1h EMA20), stop at $80,888.",
+      "narrative": "Bullish bias intact. Long entry near $80,867 (1h EMA20) with stop below $79,804 (1h support). Target $81,268 then $82,799.",
       "latency_s": 0,
       "action": "wait",
-      "confidence": 55,
-      "entry_low": 81323.12,
-      "entry_high": 81649.06,
-      "stop": 80757.86,
-      "target1": 82799.0,
+      "confidence": 60,
+      "entry_low": 80704.91,
+      "entry_high": 81028.38,
+      "stop": 79712.14,
+      "target1": 81268.0,
       "target2": 82799.0,
-      "rr_t1": 1.8,
-      "rr_t2": 1.8,
-      "invalidation": 76527.75
+      "rr_t1": 0.35,
+      "rr_t2": 1.67,
+      "invalidation": 78023.49
     },
     "critic": {
-      "ok": false,
+      "ok": true,
       "agent": "critic",
-      "narrative": "Pass \u2014 no trade proposed. Waiting is the right call when confluence is absent.",
-      "latency_s": 0,
+      "narrative": "**PASS on the WAIT action.** The thesis correctly holds \u2014 entering now would be fighting two structural headwinds simultaneously: UTC 04-07 is the dead zone (15% WR historically) and rsi_div_aligned=NO confirms the 4h RSI (41) diverges sharply from the 1h RSI (73), meaning the Bonferroni-cleared IC +0.456 signal is actively working against this long.\n\n**#1 risk**: The 4h RSI at 41 signals bearish momentum at the intermediate timeframe that could drag price through the $79,804 stop before the daily trend reasserts \u2014 and that stop is the obvious level, making it a 52% stop-hunt candidate per structural data. TP1 at $81,268 is also only ~0.38R from the proposed entry, failing the R:R \u2265 1.0 minimum on the first target.\n\n**Counter-thesis**: Fade the long entirely. 4h RSI 41 + neutral btc_4h_return_signed + only 2/4 conviction = 38% WR base rate with no structural edge stacking. Best case: wait for UTC 20-23 window (55% WR) AND rsi_div_aligned to flip before sizing in.",
+      "latency_s": 31.886247873306274,
       "vote": "pass",
       "risk_flags": [
-        "thin_volume",
-        "rsi5m_overbought"
+        "thin_volume"
       ]
     },
     "risk": {
-      "ok": false,
+      "ok": true,
       "agent": "risk",
-      "narrative": "Size 0.0x at 1x leverage. Conviction=1/4 . Max loss 0.0% of equity. Flags: no_trade.",
-      "latency_s": 0,
+      "narrative": "Size 0.25x at 1.0x leverage because critic passed but the 0.35 R:R is mathematically indefensible (risk $1 to make $0.35). Max loss 0.5% of equity. Watch for poor risk-reward geometry and slippage magnification from 2.17% ATR.",
+      "latency_s": 27.233516931533813,
       "size_multiplier": 0.0,
       "leverage": 1,
       "max_loss_pct": 0.0,

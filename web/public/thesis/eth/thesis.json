@@ -1,49 +1,49 @@
 {
   "symbol": "ETH",
-  "updated_at": "2026-05-07T00:02:31.361428+00:00",
-  "price": 2350.25,
+  "updated_at": "2026-05-13T06:29:46.504191+00:00",
+  "price": 2301.45,
   "levels": {
     "symbol": "ETH",
-    "ts": "2026-05-07T00:02:14.603943+00:00",
-    "price": 2350.25,
+    "ts": "2026-05-13T06:29:02.503260+00:00",
+    "price": 2301.45,
     "daily": {
-      "ema20": 2311.425313071516,
-      "ema50": 2288.0066431028913,
-      "slope_pct": 0.8687451726505628,
-      "rsi14": 53.5090609555189,
-      "atr14": 65.27857142857137,
+      "ema20": 2311.4713574564153,
+      "ema50": 2298.3896046503846,
+      "slope_pct": 0.5941039876913033,
+      "rsi14": 56.546838100236165,
+      "atr14": 63.499999999999936,
       "hi60d": 2462.5,
-      "lo60d": 1928.3,
+      "lo60d": 1935.2,
       "trend": "UP"
     },
     "h4": {
-      "ema20": 2356.11806574884,
-      "ema50": 2336.59429496211,
-      "rsi14": 48.66117404737376,
-      "atr14": 30.635714285714293,
-      "hi20": 2423.8,
-      "lo20": 2308.4
+      "ema20": 2308.617469785855,
+      "ema50": 2318.5191983270333,
+      "rsi14": 32.292732855680754,
+      "atr14": 26.27142857142855,
+      "hi20": 2382.3,
+      "lo20": 2255.2
     },
     "h1": {
-      "ema20": 2361.2192893266397,
-      "ema50": 2363.5303415710496,
-      "rsi14": 15.0700934579436,
-      "atr14": 15.735714285714266,
-      "hi20": 2423.8,
-      "lo20": 2336.3,
-      "vol_ratio": 0.29168528962997764
+      "ema20": 2291.882645967254,
+      "ema50": 2302.13353961139,
+      "rsi14": 74.58703939008903,
+      "atr14": 10.435714285714246,
+      "hi20": 2308.1,
+      "lo20": 2255.2,
+      "vol_ratio": 0.3244939061814986
     },
     "m5": {
-      "rsi14": 53.62318840579718,
-      "atr14": 3.0357142857142856
+      "rsi14": 52.63157894736819,
+      "atr14": 2.2499999999999027
     }
   },
   "factors": {
-    "btc_4h_direction": "neutral",
+    "btc_4h_direction": "bearish",
     "btc_4h_aligned_long": false,
-    "chop_score": 0.18,
+    "chop_score": 0.2,
     "chop_ok": true,
-    "rsi_aligned": true,
+    "rsi_aligned": false,
     "rsi_bullish_stack": false,
     "daily_trend_up": true,
     "conviction_count": 2,
@@ -52,56 +52,55 @@
   },
   "committee": {
     "regime": {
-      "ok": false,
+      "ok": true,
       "agent": "regime",
-      "narrative": "Daily trend UP with slope +0.87%/10d and RSI 54. Price +1.68% vs daily EMA20 ($2,311). ATR 2.78% \u2014 healthy momentum.",
-      "latency_s": 0,
+      "narrative": "**Regime: `range` | Directional Bias: neutral-to-bearish | Volatility Band: moderate**\n\nETH is printing a multi-timeframe RSI contradiction \u2014 4h RSI 32 (oversold, pulling back) while 1h RSI 75 (overbought bounce) \u2014 with price trading below EMA20 on both daily ($2,311) and 4h ($2,309), indicating the daily uptrend slope (+0.59%/10d) is intact but short-term structure is churning inside a `range` regime. The rsi_div_aligned factor is NO, BTC 4h is bearish, conviction sits at 2/4 (historical WR 38%), and 1h volume is suppressed at 0.32x \u2014 all pointing to low-edge, mean-reverting conditions rather than a trending move. Volatility is moderate (ATR 1.14% on 4h, 2.76% daily), chop score is clean at 0.20, but with BTC headwind, sub-threshold conviction, and an overbought 1h bounce into resistance, this setup does not clear the structural threshold for directional entries \u2014 wait for conviction stack to reach \u22653 aligned or the 4h RSI to reclaim 45+ with BTC confirmation.",
+      "latency_s": 21.821765422821045,
       "regime_label": "trending_bull",
       "confidence": 70,
       "bias": "bullish",
       "vol_band": "medium",
-      "daily_slope_pct": 0.87,
-      "daily_rsi": 54.0,
-      "h1_rsi": 15.0,
-      "vol_ratio_1h": 0.29
+      "daily_slope_pct": 0.59,
+      "daily_rsi": 57.0,
+      "h1_rsi": 75.0,
+      "vol_ratio_1h": 0.32
     },
     "trade": {
       "ok": false,
       "agent": "trade",
-      "narrative": "Bullish bias intact. Long entry near $2,361 (1h EMA20) with stop below $2,336 (1h support). Target $2,424 then $2,462.",
+      "narrative": "Bullish bias intact. Long entry near $2,292 (1h EMA20) with stop below $2,255 (1h support). Target $2,308 then $2,462.",
       "latency_s": 0,
-      "action": "go_long",
-      "confidence": 65,
-      "entry_low": 2345.55,
-      "entry_high": 2354.95,
-      "stop": 2331.58,
-      "target1": 2423.8,
+      "action": "wait",
+      "confidence": 60,
+      "entry_low": 2287.3,
+      "entry_high": 2296.47,
+      "stop": 2252.07,
+      "target1": 2308.1,
       "target2": 2462.5,
-      "rr_t1": 3.94,
-      "rr_t2": 6.01,
-      "invalidation": 2288.01
+      "rr_t1": 0.41,
+      "rr_t2": 4.29,
+      "invalidation": 2298.39
     },
     "critic": {
       "ok": false,
       "agent": "critic",
-      "narrative": "Primary risks: thin_volume, rsi1h_oversold. Size down if any conviction factor missing.",
+      "narrative": "Pass \u2014 no trade proposed. Waiting is the right call when confluence is absent.",
       "latency_s": 0,
-      "vote": "veto",
+      "vote": "pass",
       "risk_flags": [
-        "thin_volume",
-        "rsi1h_oversold"
+        "thin_volume"
       ]
     },
     "risk": {
       "ok": false,
       "agent": "risk",
-      "narrative": "Size 0.0x at 1x leverage. Conviction=1/4 . Max loss 0.0% of equity. Flags: critic_veto.",
+      "narrative": "Size 0.0x at 1x leverage. Conviction=1/4 . Max loss 0.0% of equity. Flags: no_trade.",
       "latency_s": 0,
       "size_multiplier": 0.0,
       "leverage": 1,
       "max_loss_pct": 0.0,
       "risk_flags": [
-        "critic_veto"
+        "no_trade"
       ]
     },
     "mode": "cli"

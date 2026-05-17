@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(*)",
+      "PowerShell(*)",
       "Bash(python run.py backtest --symbols BTC,SOL,HYPE --days 30 --equity 10000 --csv data/baseline_30d.csv --output data/baseline_30d.json)",
       "Bash(python run.py backtest --symbols BTC,SOL,HYPE --days 30 --equity 10000 --csv data/optimized_30d.csv --output data/optimized_30d.json)",
       "Bash(python -c)",
@@ -9,7 +11,19 @@
       "Bash(python -c \"from llm.autonomy import get_llm_mode; print\\(f''LLM Mode: {get_llm_mode\\(\\)}''\\)\")",
       "Bash(python -c \":*)",
       "Bash(python -m py_compile multi_strategy_main.py trading_config.py)",
-      "Bash(python3 -c \":*)"
-    ]
+      "Bash(python3 -c \":*)",
+      "PowerShell(python --version)",
+      "PowerShell(Get-Content \"C:\\\\Users\\\\vince\\\\WAGMI PROJECT\\\\WAGMI\\\\bot\\\\data\\\\bot.log\" -Tail 50 -Wait)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Read(//c/Users/vince/WAGMI PROJECT/WAGMI/**)",
+      "Bash(timeout 2 python -c ' *)",
+      "Bash(grep -q \"ENSEMBLE.*BTC.*EV=\" bot_trades_push.log)",
+      "Bash(python -c ' *)"
+    ],
+    "defaultMode": "dontAsk"
   }
 }
