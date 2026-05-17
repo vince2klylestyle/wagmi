@@ -816,7 +816,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Wire SignalQualityScorer into ensemble so session/hour/entry_type WR
         # adjustments (US=57% WR, Asia=14% WR) actually affect confidence scoring.
         self.ensemble.set_quality_scorer(self.feedback.quality)
+        # Wire StrategyWeightManager for fast weight recomputation (every 10 trades)
+        self.feedback.set_weight_manager(self.weight_mgr)
         logger.info("[INIT] SignalQualityScorer wired into ensemble — session/hour WR now adjusts confidence")
+        logger.info("[INIT] StrategyWeightManager wired into feedback loop — fast weight updates enabled")
         logger.info("[DEBUG] About to initialize quant system (line 819)")
 
         # Quant system: IC tracker, Kelly engine, trade ledger, shadow ledger, daily report
@@ -1997,7 +2000,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                             f"R:R={_ant_entry.rr_ratio:.1f}"
                                         )
                                 # Auto-execute if enabled
-                                if self._sniper_auto_execute and _ant_sniper.tier in ("SNIPER", "PREMIUM"):
+                                logger.info(f"[SNIPER-CHECK-2] {_ant_entry.symbol}: auto_execute={self._sniper_auto_execute}, tier={getattr(_ant_sniper, 'tier', 'MISSING')}")
+                                if self._sniper_auto_execute and getattr(_ant_sniper, 'tier', 'STANDARD') in ("SNIPER", "PREMIUM", "STANDARD"):
                                     try:
                                         self._execute_sniper_signal(_ant_sniper, _ant_entry.symbol, _ant_price)
                                     except Exception as _sae_err:
@@ -4430,7 +4434,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                 )
                             except Exception:
                                 pass
-                        if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
+                        logger.info(f"[SNIPER-CHECK-1] {symbol}: auto_execute={self._sniper_auto_execute}, tier={getattr(_sniper_sig, 'tier', 'MISSING')}")
+                        if self._sniper_auto_execute and getattr(_sniper_sig, 'tier', 'STANDARD') in ("SNIPER", "PREMIUM", "STANDARD"):
                             try:
                                 self._execute_sniper_signal(_sniper_sig, symbol, current_price)
                             except Exception as _sae_err:
@@ -4493,7 +4498,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             except Exception:
                                 pass
                         # Sniper Auto-Execute
-                        if self._sniper_auto_execute and _sniper_sig.tier in ("SNIPER", "PREMIUM"):
+                        logger.info(f"[SNIPER-CHECK-3] {symbol}: auto_execute={self._sniper_auto_execute}, tier={getattr(_sniper_sig, 'tier', 'MISSING')}")
+                        if self._sniper_auto_execute and getattr(_sniper_sig, 'tier', 'STANDARD') in ("SNIPER", "PREMIUM", "STANDARD"):
                             try:
                                 self._execute_sniper_signal(_sniper_sig, symbol, current_price)
                             except Exception as _sae_err:

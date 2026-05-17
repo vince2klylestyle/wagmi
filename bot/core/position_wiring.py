@@ -462,10 +462,10 @@ class PositionWiringMixin:
 
         logger.info(
             f"[SNIPER-EXEC] Executing {symbol} {side} | "
-            f"tier={sniper_sig.tier} conf={sniper_sig.confidence:.0f}% "
+            f"tier={getattr(sniper_sig, 'tier', 'STANDARD')} conf={sniper_sig.confidence:.0f}% "
             f"lev={leverage:.0f}x qty={qty:.6f} "
             f"entry=${current_price:.2f} sl=${sniper_sig.sl:.2f} "
-            f"tp_scalp=${sniper_sig.tp_scalp:.2f}"
+            f"tp_scalp=${getattr(sniper_sig, 'tp_scalp', sniper_sig.tp1):.2f}"
         )
 
         order_result = self.order_executor.open_position(
@@ -507,9 +507,10 @@ class PositionWiringMixin:
                     f"TP2 ${sniper_sig.tp_swing:.2f}->${_tp2:.2f} R:R={_rr:.1f}:1"
                 )
             else:
-                _tp1 = sniper_sig.tp_scalp
-                _tp2 = sniper_sig.tp_swing
+                _tp1 = getattr(sniper_sig, 'tp_scalp', sniper_sig.tp1)
+                _tp2 = getattr(sniper_sig, 'tp_swing', sniper_sig.tp2)
 
+            _tier = getattr(sniper_sig, 'tier', 'STANDARD')
             self.pos_mgr.open_position(
                 symbol=symbol,
                 side="LONG" if side == "BUY" else "SHORT",
@@ -519,10 +520,10 @@ class PositionWiringMixin:
                 tp1=_tp1,
                 tp2=_tp2,
                 leverage=leverage,
-                strategy=f"sniper_{sniper_sig.tier.lower()}",
+                strategy=f"sniper_{_tier.lower()}",
                 confidence=getattr(sniper_sig, 'confidence', 0),
                 entry_reasons={
-                    "sniper_tier": sniper_sig.tier,
+                    "sniper_tier": _tier,
                     "auto_executed": True,
                 },
             )
@@ -542,12 +543,13 @@ class PositionWiringMixin:
                 logger.warning(f"[SNIPER-EXEC] SL order error: {_sl_err}")
 
             try:
+                _tp_price = getattr(sniper_sig, 'tp_scalp', sniper_sig.tp1)
                 tp_result = self.order_executor.place_take_profit(
                     symbol=symbol, side=close_side,
-                    qty=fill_qty, trigger_price=sniper_sig.tp_scalp,
+                    qty=fill_qty, trigger_price=_tp_price,
                 )
                 if tp_result.success:
-                    logger.info(f"[SNIPER-EXEC] TP order placed @ ${sniper_sig.tp_scalp:.2f}")
+                    logger.info(f"[SNIPER-EXEC] TP order placed @ ${_tp_price:.2f}")
                 else:
                     logger.warning(f"[SNIPER-EXEC] TP order FAILED: {tp_result.error}")
             except Exception as _tp_err:
@@ -557,19 +559,22 @@ class PositionWiringMixin:
             if hasattr(self, 'ops_guard') and self.ops_guard is not None:
                 self.ops_guard.record_trade()
 
+            _tp1_show = getattr(sniper_sig, 'tp_scalp', sniper_sig.tp1)
+            _tp2_show = getattr(sniper_sig, 'tp_swing', sniper_sig.tp2)
             logger.info(
                 f"[SNIPER-EXEC] FILLED {symbol} {side} @ ${fill_price:.2f} "
                 f"qty={fill_qty:.6f} lev={leverage:.0f}x | "
-                f"SL=${sniper_sig.sl:.2f} TP1=${sniper_sig.tp_scalp:.2f} "
-                f"TP2=${sniper_sig.tp_swing:.2f}"
+                f"SL=${sniper_sig.sl:.2f} TP1=${_tp1_show:.2f} "
+                f"TP2=${_tp2_show:.2f}"
             )
 
             if self.alerts:
+                _grade = getattr(sniper_sig, 'quality_grade', 'C')
                 self.alerts.send_trade_alert(
-                    f"SNIPER {sniper_sig.tier} EXECUTED: {symbol} {side} "
+                    f"SNIPER {_tier} EXECUTED: {symbol} {side} "
                     f"@ ${fill_price:.2f} | {leverage:.0f}x | "
                     f"conf={sniper_sig.confidence:.0f}% "
-                    f"grade={sniper_sig.quality_grade}"
+                    f"grade={_grade}"
                 )
         else:
             logger.error(
