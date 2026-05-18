@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-18T01:10:31+00:00",
+  "last_updated": "2026-05-18T23:04:47+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2069,19 +2069,21 @@
     {
       "rule_id": "TRENDING_MIN_HOLD_2H",
       "source": "execution_forensics \u2014 perpetual_deep_dive_2026_05_05",
-      "description": "In trending regime, losses exit 2x faster than wins (1.5h vs 3.3h median). Positions closed by SL within 2h in trending regime are likely noise stops before directional move.",
+      "description": "In trending regime, losses exit 2x faster than wins (1.5h vs 3.3h median). Noise stops fire before directional move. EXIT_AGENT_PROMPT_AMENDMENT enforces 3h patience for BTC/ETH LONG+trending. This gate routes 50% of trending signals through min-hold flag.",
       "problem": "71.9% of illiquid-regime stops hit in noise. Even in trending, losses resolve at 1.5h median \u2014 SL hit before the move develops.",
       "fix_applied": "A/B gate: 20% of trending-regime signals get min_hold_2h treatment flag. Exit agent should respect this flag before recommending SL-triggered close.",
       "status": "A/B_ACTIVE",
       "confidence": 80,
-      "gate_percentage": 20,
+      "gate_percentage": 50,
       "baseline_wr": 0.519,
       "treatment_wr": null,
       "sample_count": 52,
       "applied_date": "2026-05-05",
       "action": "Flag trending-regime positions closed via SL in <2h as noise_stop_candidate. Exit agent should consider hold if still within 2h and thesis intact.",
       "ab_cohort_start": "2026-05-05T00:00:00Z",
-      "min_sample_to_graduate": 30
+      "min_sample_to_graduate": 30,
+      "gate_escalated_at": "2026-05-18T23:04:47+00:00",
+      "gate_escalated_reason": "EXIT_AGENT_PROMPT_AMENDMENT_BTC_ETH_TRENDING now live (applied 2026-05-18T22:07:30). Exec forensics: wins hold 3.3h vs losses 1.5h (2.2x ratio). 87% noise stops <2h confirmed. Upgrade 20->50% A/B gate. conf=80 >= 75 threshold."
     },
     {
       "rule_id": "HYPE_UNKNOWN_REGIME_PROBE",
@@ -3443,5 +3445,13 @@
     "ab_rules_archived": 1,
     "ab_rules_active": 98,
     "ab_rules_total": 99
+  },
+  "run_log_2026_05_18_2304": {
+    "run_at": "2026-05-18T23:04:47+00:00",
+    "run_type": "perpetual_deep_dive_EOD",
+    "fixes_applied": [
+      "TRENDING_MIN_HOLD_2H_gate_upgrade_20pct_to_50pct"
+    ],
+    "reason": "EXIT_AGENT_PROMPT_AMENDMENT live + exec forensics 3h hold validated. Gate upgrade aligns rule with prompt."
   }
 }

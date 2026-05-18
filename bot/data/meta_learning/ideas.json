@@ -43,10 +43,13 @@
       },
       "expected_edge": "~5-10% WR improvement during morning hours",
       "source_pattern": "Time-of-day edge: 'morning' (6:00-12:00 UTC) wins 67% vs 'evening' at 50% (spread: 17%)",
-      "status": "proposed",
+      "status": "covered_by_graduated_rule",
       "test_results": {},
       "created_at": 1774424723.0163088,
-      "updated_at": 1774424723.0163088
+      "updated_at": 1774424723.0163088,
+      "covered_by": "TOD_morning_edge (graduated_rules.json, A/B 50% gate, conf=82)",
+      "covered_at": "2026-05-18T23:04:47+00:00",
+      "note": "Redundant with graduated rule TOD_morning_edge. Marking covered to prevent double-application on restart."
     },
     {
       "id": "idea_2238f358",
