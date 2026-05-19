@@ -23,10 +23,14 @@
       },
       "expected_edge": "Reduce outsized losses from high-leverage, low-edge trades",
       "source_pattern": "Size bias detected: larger positions (>1.5x) have 40% WR vs 60% for smaller positions. Avg PnL: $-0.52 vs $-0.31",
-      "status": "proposed",
+      "status": "partially_invalidated",
       "test_results": {},
       "created_at": 1774408112.036554,
-      "updated_at": 1774408112.036554
+      "updated_at": 1747613466.0,
+      "invalidation_reason": "10x leverage tier (>85% confidence) invalidated by execution_forensics: 6-10x leverage = -$0.38/trade net negative on 91 trades despite 41% WR, due to tail-loss domination. High WR at high leverage is misleading without PnL cross-validation. Only the 3x (<75% conf) and 5x (75-85% conf) tiers are supported by forensics evidence.",
+      "invalidated_at": "2026-05-19T00:11:06+00:00",
+      "invalidated_by": "perpetual_deep_dive_subsystem1_2026_05_19",
+      "note": "Lower tiers (3x and 5x) remain valid. Do NOT apply 10x at >85% tier. See HIGH_LEV_10X_FORENSICS_BLOCK in graduated_rules.json."
     },
     {
       "id": "idea_f5e1b611",

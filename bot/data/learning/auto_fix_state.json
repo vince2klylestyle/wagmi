@@ -1,20 +1,20 @@
 {
-  "last_run": "2026-05-18T23:04:47+00:00",
+  "last_run": "2026-05-19T00:11:06+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
   "fixes_applied_this_run": 1,
-  "gates_active": 12,
-  "total_applied_all_time": 36,
+  "gates_active": 14,
+  "total_applied_all_time": 37,
   "last_fix": {
-    "fix_id": "TRENDING_MIN_HOLD_2H_GATE_UPGRADE",
-    "applied_at": "2026-05-18T23:04:47+00:00",
+    "fix_id": "HIGH_LEV_10X_FORENSICS_BLOCK",
+    "applied_at": "2026-05-19T00:11:06+00:00",
     "file": "bot/feedback/graduated_rules.json",
-    "description": "TRENDING_MIN_HOLD_2H gate upgraded 20% -> 50%. EXIT_AGENT_PROMPT_AMENDMENT (BTC/ETH LONG+TRENDING 3h patience) is now live in prompts.py. Gate upgrade aligns graduated rule with prompt amendment. Exec forensics evidence: wins hold 3.3h vs losses 1.5h (2.2x ratio). 87% noise stops in <2h confirmed.",
+    "description": "New rule: block leverage >6x via forensics evidence (6-10x = -$0.38/trade net negative on 91 trades). idea_f36e9743 10x tier marked partially_invalidated in ideas.json. Resolves META_LEARNING_SIZE_INSIGHTS_CONFLICT finding (conf=80%).",
     "confidence": 0.8,
-    "gate_percentage": 50,
+    "gate_percentage": 20,
     "status": "ACTIVE",
-    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 600.8h. Gate active for live trading.",
-    "justification": "conf=80 >= 75 threshold. EXIT_AGENT_PROMPT_AMENDMENT now live means the underlying fix is deployed. Gate upgrade expands A/B coverage from 20% to 50% to collect faster graduation data on restart.",
-    "expected_impact": "50% of trending-regime signals now get min-hold treatment. Combined with prompt amendment, should reduce noise stops by 20-30% in trending regime."
+    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 601.9h",
+    "justification": "conf=80 >= 75 threshold. Forensics cross-validation: WR alone at high leverage misleads. 91-trade sample shows net negative PnL at 6-10x. Prevents idea_f36e9743 10x tier from being applied on restart.",
+    "expected_impact": "20% of high-confidence sizing attempts capped at 5x. Reduces tail-loss exposure from rare but large high-leverage losers."
   },
   "new_findings_this_run": [
     {
@@ -34,8 +34,9 @@
         "idea_98fac4ad: side balance enforcement \u2014 CORRECT direction (80% LONG, 38% WR LONG)",
         "idea_e5ebabb4: strategy weight rebalancing \u2014 neutral, no obvious inversion"
       ],
-      "action": "HUMAN REVIEW: Delete or invert the 4 bad ideas. Fix idea generator to check WR vs 50% breakeven before assigning 'boost'. RISK: if any inverted idea is ever applied, it would harm the bot during its worst trading hours.",
-      "confidence_to_flag": 0.95
+      "action": "RESOLVED \u2014 all 4 inverted ideas already invalidated in 2026-05-18 run. No further action required.",
+      "confidence_to_flag": 0.95,
+      "resolved_at": "2026-05-19T00:11:06+00:00"
     },
     {
       "finding_id": "META_LEARNING_SIZE_INSIGHTS_CONFLICT",
@@ -54,6 +55,14 @@
       "source": "bot/data/meta_learning/insights.json",
       "detail": "3 near-identical 'size edge: larger positions >5.0x have X% WR' insights with slightly different WR values (57%, 60%, 58%) at the same confidence (0.75) and evidence_count (50). Indicates the insights accumulator is appending rather than updating on each run. This inflates confidence through repetition rather than new evidence.",
       "action": "Deduplicate insights by category+evidence_count+description similarity. Insights accumulator should UPDATE existing entries rather than append."
+    },
+    {
+      "finding_id": "IDEA_98FAC4AD_GRADUATION_CANDIDATE",
+      "detected_at": "2026-05-19T00:11:06+00:00",
+      "severity": "MEDIUM",
+      "source": "bot/data/meta_learning/ideas.json + live_edge_data.json",
+      "detail": "idea_98fac4ad (SIDE_BALANCE_ENFORCEMENT) still 'proposed' after 25 days of offline analysis. Evidence: 80% LONG bias in historical trades, LONG WR = 38% vs SHORT WR ~60%. A -5pt confidence penalty when >65% LONG would shift 12-15 trades per 100 from forced-LONG to neutral/SKIP. Estimated EV: +$0.8-1.2/affected trade.",
+      "action": "Graduate idea_98fac4ad \u2192 new graduated rule SIDE_BIAS_ENFORCEMENT_V2 at gate=20% on restart. Requires bot to be live to measure treatment vs control."
     }
   ],
   "active_fixes": [
@@ -75,6 +84,13 @@
       "fix_id": "TRENDING_MIN_HOLD_2H_GATE_UPGRADE",
       "applied_at": "2026-05-18T23:04:47+00:00",
       "gate_pct": 50,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+    },
+    {
+      "fix_id": "HIGH_LEV_10X_FORENSICS_BLOCK",
+      "applied_at": "2026-05-19T00:11:06+00:00",
+      "gate_pct": 20,
       "status": "ACTIVE",
       "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
     }
