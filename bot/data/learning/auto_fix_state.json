@@ -1,37 +1,38 @@
 {
-  "last_run": "2026-05-19T03:07:00+00:00",
+  "last_run": "2026-05-19T22:04:02+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
   "fixes_applied_this_run": 2,
-  "gates_active": 62,
-  "total_applied_all_time": 41,
+  "gates_active": 88,
+  "total_applied_all_time": 43,
   "last_fix": {
-    "fix_id": "ENSEMBLE_WR_DEGRADATION_ALERT + SIZE_META_LEARNING_BIN_GRANULARITY_AUDIT",
-    "applied_at": "2026-05-19T03:07:00+00:00",
+    "fix_id": "MORNING_WINDOW_7TH_MISS_EOD + HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
+    "applied_at": "2026-05-19T22:04:02+00:00",
     "file": "bot/feedback/graduated_rules.json",
-    "description": "Flagged ensemble WR degradation (30% WR, 27 trades, conf=0.80). Documented meta_learning bin granularity bug that creates false size bias signals. Both gate=0% (monitoring/dev tasks). Root cause interventions (SIDE_BIAS_ENFORCEMENT_V2, HIGH_LEV_10X_FORENSICS_BLOCK) already applied in prior runs.",
-    "confidence": 0.8,
-    "gate_percentage": 0,
-    "status": "MONITORING",
-    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 604.8h"
+    "description": "EOD Day 26: documented 7th consecutive morning window miss (P0 escalation) + added gate=5% calibration probe for 80-90% confidence bin (realized WR=60%, 25pt gap).",
+    "confidence": 95,
+    "gate_percentage": "0% + 5%",
+    "status": "MONITORING + A/B_PROBE_ACTIVE",
+    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 623.8h"
   },
   "new_findings_this_run": [
     {
-      "finding_id": "ENSEMBLE_WR_DEGRADATION",
-      "detected_at": "2026-05-19T03:07:00+00:00",
-      "severity": "HIGH",
-      "detail": "Ensemble strategy WR = 30% on recent 27 trades (conf=0.80). Down from 57% all-time and 53.5% recent-200. Root causes: 74% LONG bias (LONG WR=30%) + likely non-trending regime contamination. Root cause fixes (SIDE_BIAS_V2 + TRENDING_MIN_HOLD) already applied in prior runs. Monitoring flag added; no new gate needed.",
+      "finding_id": "7TH_MORNING_WINDOW_MISSED",
+      "detected_at": "2026-05-19T22:04:02+00:00",
+      "severity": "CRITICAL",
+      "detail": "7th consecutive morning window (06:00-12:00 UTC May 19) missed. Total bot offline: 623.8h. Cumulative alpha lost: $1,624-3,274. Self-improvement loop cannot progress without live trade data. A/B graduation requires n>=15 per gate \u2014 at 0 new trades, all 14 active probes remain stalled.",
+      "action": "RESTART P0 before 05:30 UTC May 20. All rules live. Soft-start protocol ready.",
       "resolved_at": null,
-      "requires_human_review": false,
-      "monitor_post_restart": "Track ensemble WR on trades 1-50. Escalate to ENSEMBLE_CIRCUIT_BREAKER if WR < 35% persists."
+      "requires_human_review": false
     },
     {
-      "finding_id": "SIZE_META_LEARNING_BIN_GRANULARITY_BUG",
-      "detected_at": "2026-05-19T03:07:00+00:00",
+      "finding_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE_ADDED",
+      "detected_at": "2026-05-19T22:04:02+00:00",
       "severity": "MEDIUM",
-      "detail": "Meta_learning bias insights claim >2.1x leverage has -$3.46 avg PnL, but forensics shows 3-5x = +$0.79/trade (best band). Contradiction is because meta_learning bins all positions >threshold together, mixing the good (3-5x) with the bad (6-10x). Dev fix: use leverage tier bins instead of single thresholds.",
+      "detail": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE added (conf=88, gate=5%). 80-90% confidence signals realize only 60% WR (25pt gap). 90%+ signals realize 56% WR (34pt gap). A/B probe: -2pt adjustment to treatment group to measure survival rate difference. Current calibration rules only address 60-70% bin \u2014 upper bins completely unaddressed.",
+      "action": "Monitor on restart: track 5% treatment vs 95% control for high-conf (80%+) signals. Graduate to gate=20% with -4pt if treatment WR improves (n>=20).",
       "resolved_at": null,
       "requires_human_review": false,
-      "dev_task": "meta_learning insight generator: add leverage tier bins. ~2h. Priority: MEDIUM."
+      "rule_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE"
     }
   ],
   "active_fixes": [
@@ -76,6 +77,13 @@
       "gate_pct": 20,
       "status": "ACTIVE",
       "outcome_tracking": "PENDING_RESTART \u2014 bot offline 603.8h"
+    },
+    {
+      "fix_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
+      "applied_at": "2026-05-19T22:04:02+00:00",
+      "gate_pct": 5,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART \u2014 bot offline 623.8h"
     }
   ],
   "rule_accuracy_tracking": {

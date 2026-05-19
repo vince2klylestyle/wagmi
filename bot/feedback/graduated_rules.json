@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-19T03:07:00+00:00",
+  "last_updated": "2026-05-19T22:04:00+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2215,6 +2215,38 @@
       "expected_impact": "After dev fix: meta_learning will generate accurate per-tier signals. Currently it's generating noise that could override the correct HIGH_LEV_10X_FORENSICS_BLOCK with contradictory 'size edge' signals.",
       "dev_task": "bot/data/learning.py or meta_learning insight generator: replace single threshold with leverage tier bins. ~2h dev.",
       "priority": "MEDIUM \u2014 structural insight quality fix, not urgent but prevents future rule conflicts"
+    },
+    {
+      "rule_id": "MORNING_WINDOW_7TH_MISS_EOD_ESCALATION",
+      "source": "perpetual_deep_dive_2026_05_19_2204 \u2014 EOD Day 26 synthesis",
+      "description": "ESCALATION: 7 consecutive morning windows missed (Apr 23 - May 19). Restart is now P0 above all other tasks. Bot offline 623h.",
+      "problem": "7 consecutive morning windows missed (06:00-12:00 UTC). ETH+trending = 71% WR, BTC SHORT 90%+ = 67% WR. Total cumulative alpha lost: $1,624-3,274 estimated. Each additional day compounds: ~$56-113 direct + structural learning gap (A/B data gap deepens, graduation backlog grows).",
+      "fix_applied": "DOCUMENTATION ONLY. No trading rule added. This rule flags that restart urgency has reached P0 (above all dev tasks, above all optimization). The self-improvement loop cannot improve without live trade data.",
+      "status": "MONITORING_FLAG",
+      "confidence": 95,
+      "gate_percentage": 0,
+      "baseline_wr": null,
+      "treatment_wr": null,
+      "applied_date": "2026-05-19",
+      "verified": false,
+      "expected_impact": "Restart at any time within +2h window produces approximately $56-113 EV from the ETH/BTC trending morning edge. Each 1h delay after 06:00 UTC = ~$9-19 marginal cost (2-4 signals/window).",
+      "priority": "P0 \u2014 blocks all other improvement subsystems"
+    },
+    {
+      "rule_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
+      "source": "perpetual_deep_dive_2026_05_19_2204 \u2014 HIGH_CONF_CALIBRATION_DRIFT (conf=88) + execution forensics",
+      "description": "Soft probe: apply -2pt confidence adjustment to signals in 80-90% bin. Realized WR = 60% (25pt gap from stated confidence).",
+      "problem": "Confidence bins 80-90% realize 60% WR \u2014 25 points below stated confidence. Confidence 90%+ realizes 56% WR \u2014 34 points below. Existing calibration rules (conf_floor_70_v1, F2_calibration_offset_cap) only address 60-70% bin and floor. Upper bins completely unaddressed. This means the bot's most 'confident' signals are actually only 56-60% WR \u2014 barely above coin-flip.",
+      "fix_applied": "Gate=5% A/B probe: treatment group receives -2pt confidence adjustment on signals in 80-90% bin. Conservative: -2pt is below the measurement noise floor. Control group unchanged. Track: does -2pt adjustment change signal survival rate vs control? If 80-90% bin signals exit treated group at meaningful rate, escalate correction.",
+      "status": "A/B_PROBE_ACTIVE",
+      "confidence": 88,
+      "gate_percentage": 5,
+      "baseline_wr": 0.6,
+      "treatment_wr": null,
+      "applied_date": "2026-05-19",
+      "verified": false,
+      "expected_impact": "At -2pt adjustment: minimal near-term impact (few signals near the 70-point floor threshold). Primary value: establishes calibration probe infrastructure for upper bins. If graduated to -5pt, expected to filter ~8% of 80-90% signals, recovering ~$0.40/trade EV (60% WR \u2192 same trade with 63% actual WR).",
+      "graduation_criteria": "Graduate to gate=20% with -4pt if treatment signals show improved realized WR vs control (n>=20). Retire if no WR difference after n=30."
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
