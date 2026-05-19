@@ -1,41 +1,37 @@
 {
-  "last_run": "2026-05-19T02:06:08.791705+00:00",
+  "last_run": "2026-05-19T03:07:00+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
-  "fixes_applied_this_run": 3,
+  "fixes_applied_this_run": 2,
   "gates_active": 62,
   "total_applied_all_time": 41,
   "last_fix": {
-    "fix_id": "INSIGHTS_REINVERSION_MARK_FIX",
-    "applied_at": "2026-05-19T02:06:08.791705+00:00",
-    "file": "bot/data/meta_learning/insights.json + bot/feedback/graduated_rules.json",
-    "description": "Marked 2 inverted insights as invalidated. Graduated SIDE_BIAS_ENFORCEMENT_V2 to 20% probe. Flagged CONF_60_70 collision cluster for human review.",
-    "confidence": 0.82,
-    "gate_percentage": null,
-    "status": "ACTIVE",
-    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 603.8h"
+    "fix_id": "ENSEMBLE_WR_DEGRADATION_ALERT + SIZE_META_LEARNING_BIN_GRANULARITY_AUDIT",
+    "applied_at": "2026-05-19T03:07:00+00:00",
+    "file": "bot/feedback/graduated_rules.json",
+    "description": "Flagged ensemble WR degradation (30% WR, 27 trades, conf=0.80). Documented meta_learning bin granularity bug that creates false size bias signals. Both gate=0% (monitoring/dev tasks). Root cause interventions (SIDE_BIAS_ENFORCEMENT_V2, HIGH_LEV_10X_FORENSICS_BLOCK) already applied in prior runs.",
+    "confidence": 0.8,
+    "gate_percentage": 0,
+    "status": "MONITORING",
+    "outcome_tracking": "PENDING_RESTART \u2014 bot offline 604.8h"
   },
   "new_findings_this_run": [
     {
-      "finding_id": "INSIGHTS_RESIDUAL_INVERSIONS_POST_DEDUP",
-      "detected_at": "2026-05-19T02:06:08.791705+00:00",
+      "finding_id": "ENSEMBLE_WR_DEGRADATION",
+      "detected_at": "2026-05-19T03:07:00+00:00",
       "severity": "HIGH",
-      "detail": "Evening 65% WR and afternoon 64% WR insights survived dedup pruning at conf=0.85. Fixed: marked invalidated in insights.json.",
-      "resolved_at": "2026-05-19T02:06:08.791705+00:00"
-    },
-    {
-      "finding_id": "CONF_60_70_RULE_COLLISION_CLUSTER",
-      "detected_at": "2026-05-19T02:06:08.791705+00:00",
-      "severity": "MEDIUM",
-      "detail": "6 rules collide on 60-70% confidence range. Flagged CONF_60_70_COLLISION_AUDIT for human review.",
+      "detail": "Ensemble strategy WR = 30% on recent 27 trades (conf=0.80). Down from 57% all-time and 53.5% recent-200. Root causes: 74% LONG bias (LONG WR=30%) + likely non-trending regime contamination. Root cause fixes (SIDE_BIAS_V2 + TRENDING_MIN_HOLD) already applied in prior runs. Monitoring flag added; no new gate needed.",
       "resolved_at": null,
-      "requires_human_review": true
+      "requires_human_review": false,
+      "monitor_post_restart": "Track ensemble WR on trades 1-50. Escalate to ENSEMBLE_CIRCUIT_BREAKER if WR < 35% persists."
     },
     {
-      "finding_id": "SIDE_BIAS_GRADUATION_READY",
-      "detected_at": "2026-05-19T02:06:08.791705+00:00",
+      "finding_id": "SIZE_META_LEARNING_BIN_GRANULARITY_BUG",
+      "detected_at": "2026-05-19T03:07:00+00:00",
       "severity": "MEDIUM",
-      "detail": "idea_98fac4ad graduated to SIDE_BIAS_ENFORCEMENT_V2 at gate=20%. 74% LONG bias, LONG WR=30% vs SHORT=77%.",
-      "resolved_at": "2026-05-19T02:06:08.791705+00:00"
+      "detail": "Meta_learning bias insights claim >2.1x leverage has -$3.46 avg PnL, but forensics shows 3-5x = +$0.79/trade (best band). Contradiction is because meta_learning bins all positions >threshold together, mixing the good (3-5x) with the bad (6-10x). Dev fix: use leverage tier bins instead of single thresholds.",
+      "resolved_at": null,
+      "requires_human_review": false,
+      "dev_task": "meta_learning insight generator: add leverage tier bins. ~2h. Priority: MEDIUM."
     }
   ],
   "active_fixes": [
@@ -154,7 +150,9 @@
     "AB_RESULT_TRACKER_CODE: P0 structural gap \u2014 no code closes A/B feedback loop. treatment_wr stays null forever.",
     "META_LEARNING_IDEAS_INVERSION_BUG: 4/8 ideas have inverted direction (boosting losing sessions). Fix idea generator before any idea is applied.",
     "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates, inflating confidence artificially. Fix accumulator to UPDATE not APPEND.",
-    "EVENING_BOOST_MONITORING: After restart, track treatment_wr for EVENING_session_boost. Re-escalate to 50% ONLY if treatment_wr >= 0.60 after 20 evening signals."
+    "EVENING_BOOST_MONITORING: After restart, track treatment_wr for EVENING_session_boost. Re-escalate to 50% ONLY if treatment_wr >= 0.60 after 20 evening signals.",
+    "ENSEMBLE_WR_30PCT_DEGRADATION: Monitor trades 1-50 post-restart. Escalate if WR < 35% persists after 30 trades.",
+    "META_LEARNING_LEVERAGE_BIN_FIX: Fix insight generator to use binned leverage tiers (1-2x, 3-5x, 6-10x). ~2h dev. Prevents future false bias signals on profitable 3-5x range."
   ],
   "code_audit_confirmed": {
     "F2_calibration_cap": "CODED at parameter_tuner.py:186",

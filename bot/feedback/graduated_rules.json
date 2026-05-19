@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-19T02:04:49.654374+00:00",
+  "last_updated": "2026-05-19T03:07:00+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2182,6 +2182,39 @@
       "applied_date": "2026-05-19",
       "verified": false,
       "expected_impact": "Rule collision cleanup: 6 rules -> 2 (block + rollback probe). Reduces confusion and potential for contradictory rule execution."
+    },
+    {
+      "rule_id": "ENSEMBLE_WR_DEGRADATION_ALERT",
+      "source": "perpetual_deep_dive_2026_05_19_0307 \u2014 meta_learning insights.json ensemble weakness (conf=0.80, n=27)",
+      "description": "ALERT: ensemble strategy WR has degraded to 30% on recent 27 trades (conf=0.80). All-time WR: 57%. Recent 200: 53.5%. 27-trade collapse to 30% is statistically significant.",
+      "problem": "Strategy 'ensemble' accounts for 94% of trades. Recent 27-trade WR of 30% is 23pp below all-time WR. Primary drivers: (1) 74% LONG bias with LONG WR=30% (SIDE_BIAS_ENFORCEMENT_V2 applied), (2) likely non-trending regime contamination (illiquid WR=28.1%, ranging=25%). The two root causes compound: most LONG trades are taken in illiquid/ranging regimes where market structure is unfavorable.",
+      "fix_applied": "MONITORING FLAG \u2014 gate=0%. Root cause interventions already applied: SIDE_BIAS_ENFORCEMENT_V2 (gate=20%, conf=76%) addresses the directional bias. TRENDING_MIN_HOLD_2H_GATE_UPGRADE (gate=50%) addresses regime contamination. No additional direct rule added \u2014 29 ensemble rules already exist; new rule risks conflicts.",
+      "status": "MONITORING",
+      "confidence": 80,
+      "gate_percentage": 0,
+      "baseline_wr": 0.3,
+      "treatment_wr": null,
+      "applied_date": "2026-05-19",
+      "verified": false,
+      "expected_impact": "Post-restart: if SIDE_BIAS + TRENDING_MIN_HOLD fixes are effective, ensemble WR should recover from 30% toward 45%+ within 30-50 trades. Track trade #1-50 post-restart carefully.",
+      "graduation_criteria": "Escalate to ENSEMBLE_CIRCUIT_BREAKER (halt ensemble, force sniper_premium) if WR < 35% persists after 30 live trades post-restart."
+    },
+    {
+      "rule_id": "SIZE_META_LEARNING_BIN_GRANULARITY_AUDIT",
+      "source": "perpetual_deep_dive_2026_05_19_0307 \u2014 forensics vs meta_learning contradiction (conf=0.80 bias insights vs +$0.79/trade forensics at 3-5x)",
+      "description": "AUDIT: meta_learning bias insights (conf=0.80) claim >2.1x leverage has avg PnL=-$3.46 vs -$0.40 for smaller. This CONTRADICTS execution forensics which shows 3-5x leverage = +$0.79/trade on 68 trades. Root cause: meta_learning bins ALL positions >2.1x together, including the 6-10x tail that forensics shows is -$0.38/trade on 91 trades.",
+      "problem": "Meta_learning size bias insights use single threshold cutoffs (>1.5x, >2.0x, >2.1x, >5.0x) that mix profitable mid-leverage (3-5x: +$0.79/trade) with losing high-leverage (6-10x: -$0.38/trade). This creates false negative signal for the 3-5x range which is actually the BEST leverage band per forensics.",
+      "fix_applied": "DOCUMENTATION + DEV TASK: (1) No new trading rule applied \u2014 HIGH_LEV_10X_FORENSICS_BLOCK already correctly blocks >6x. (2) Dev task added: fix meta_learning insight generator to use binned leverage tiers (1-2x, 3-5x, 6-10x, >10x) instead of single 'larger vs smaller' threshold. This prevents future false bias signals about the profitable 3-5x range. (3) The 8 conflicting size insights should remain valid but be interpreted as: 'the edge insights track WR, the bias insights track mixed-leverage-PnL \u2014 neither is actionable until properly binned'.",
+      "status": "PENDING_DEV_FIX",
+      "confidence": 80,
+      "gate_percentage": 0,
+      "baseline_wr": null,
+      "treatment_wr": null,
+      "applied_date": "2026-05-19",
+      "verified": false,
+      "expected_impact": "After dev fix: meta_learning will generate accurate per-tier signals. Currently it's generating noise that could override the correct HIGH_LEV_10X_FORENSICS_BLOCK with contradictory 'size edge' signals.",
+      "dev_task": "bot/data/learning.py or meta_learning insight generator: replace single threshold with leverage tier bins. ~2h dev.",
+      "priority": "MEDIUM \u2014 structural insight quality fix, not urgent but prevents future rule conflicts"
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [

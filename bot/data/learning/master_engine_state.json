@@ -1,123 +1,120 @@
 {
-  "last_run": "2026-05-19T02:05:57.349237+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_19_0207",
-  "prior_run": "2026-05-19T01:07:41+00:00",
+  "last_run": "2026-05-19T03:07:00+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_19_0307",
+  "prior_run": "2026-05-19T02:05:57+00:00",
   "hours_since_prior_run": 1.0,
-  "bot_offline_hours": 603.8,
+  "bot_offline_hours": 604.8,
   "bot_offline_days": 25.2,
-  "current_session": "EARLY_HOURS_RUN (02:07 UTC May 19)",
+  "current_session": "EARLY_HOURS_RUN (03:07 UTC May 19)",
   "morning_window_status": {
     "date": "2026-05-19",
-    "status": "T-3.9h until 06:00 UTC. RESTART DEADLINE: 05:30 UTC",
+    "status": "T-2.9h until 06:00 UTC. RESTART DEADLINE: 05:30 UTC (T-2.4h from now)",
     "consecutive_missed": 6,
     "next_window": "2026-05-19T06:00:00Z",
-    "hours_until_next": 3.9,
+    "hours_until_next": 2.9,
     "restart_required_by": "2026-05-19T05:30:00Z",
-    "urgency": "CRITICAL"
+    "urgency": "CRITICAL \u2014 FINAL PREP WINDOW BEFORE 7TH OPPORTUNITY"
   },
   "subsystems": {
     "auto_fix": {
-      "fixes_applied": 3,
-      "gates_active": 65,
-      "total_rules": 105,
-      "total_all_time": 41,
-      "status": "3 FIXES APPLIED: INSIGHTS_REINVERSION_MARK_FIX (conf=82%), SIDE_BIAS_ENFORCEMENT_V2 graduated (conf=76%), CONF_60_70_COLLISION_AUDIT flagged (conf=72% - below threshold, gate=0%).",
+      "fixes_applied": 2,
+      "gates_active": 62,
+      "total_rules": 107,
+      "total_all_time": 43,
+      "status": "2 FINDINGS DOCUMENTED: ENSEMBLE_WR_DEGRADATION_ALERT (conf=80%, gate=0% monitoring) and SIZE_META_LEARNING_BIN_GRANULARITY_AUDIT (conf=80%, gate=0% dev task). Root cause fixes from prior runs (SIDE_BIAS_ENFORCEMENT_V2 + HIGH_LEV_10X_FORENSICS_BLOCK) are the active interventions. Both new rules are monitoring/documentation flags.",
       "fixes_detail": [
         {
-          "fix_id": "INSIGHTS_REINVERSION_MARK_FIX",
-          "description": "Marked evening (65% WR, conf=0.85) and afternoon (64% WR, conf=0.85) insights as invalidated in insights.json. Both claimed by pre-dedup sample \u2014 post-dedup reality is evening=33% WR, afternoon=27% WR.",
-          "confidence": 0.82,
-          "severity": "HIGH",
-          "file": "bot/data/meta_learning/insights.json",
-          "gate_percentage": null,
-          "baseline_wr": null,
-          "treatment_wr": null,
-          "expected_impact": "Prevents meta_learning from re-proposing inverted ideas (2238f358/920b3e13) in next cycle. Without this fix, EVENING_session_boost would re-escalate from 20%->80% within 2-3 cycles."
-        },
-        {
-          "fix_id": "SIDE_BIAS_ENFORCEMENT_V2",
-          "description": "Graduated idea_98fac4ad to SIDE_BIAS_ENFORCEMENT_V2. Gate=20% A/B probe. -5pt confidence penalty when >65% of recent 20 trades are same direction. Evidence: 74% LONG, LONG WR=30% vs SHORT=77% (n=50, conf=0.75).",
-          "confidence": 0.76,
+          "fix_id": "ENSEMBLE_WR_DEGRADATION_ALERT",
+          "description": "Flagged: ensemble strategy WR = 30% on 27 recent trades (conf=0.80). Root causes already addressed by SIDE_BIAS_ENFORCEMENT_V2 and TRENDING_MIN_HOLD. Monitor post-restart trades 1-50. Escalate to circuit breaker if WR < 35% persists.",
+          "confidence": 0.8,
           "severity": "HIGH",
           "file": "bot/feedback/graduated_rules.json",
-          "gate_percentage": 20,
+          "gate_percentage": 0,
           "baseline_wr": 0.3,
           "treatment_wr": null,
-          "expected_impact": "20% of same-side over-loaded signals redirected to neutral. If LONG WR=30% persists: ~$0.70/affected trade EV improvement."
+          "expected_impact": "If SIDE_BIAS + TRENDING_MIN_HOLD are effective, ensemble WR should recover from 30% toward 45%+ within first 50 post-restart trades."
+        },
+        {
+          "fix_id": "SIZE_META_LEARNING_BIN_GRANULARITY_AUDIT",
+          "description": "Documented meta_learning bug: single threshold bins mix profitable 3-5x leverage (+$0.79/trade) with losing 6-10x (-$0.38/trade), creating false negative signals for the best leverage band. HIGH_LEV_10X_FORENSICS_BLOCK correctly handles the real risk. Dev task: use tier-binned leverage analysis.",
+          "confidence": 0.8,
+          "severity": "MEDIUM",
+          "file": "bot/feedback/graduated_rules.json",
+          "gate_percentage": 0,
+          "baseline_wr": null,
+          "treatment_wr": null,
+          "expected_impact": "After dev fix: meta_learning generates accurate per-tier insights, preventing future noise rules that could incorrectly penalize profitable 3-5x positioning."
         }
       ],
       "new_findings_this_run": [
         {
-          "finding_id": "INSIGHTS_RESIDUAL_INVERSIONS_POST_DEDUP",
-          "detected_at": "2026-05-19T02:05:57.349237+00:00",
+          "finding_id": "ENSEMBLE_WR_30PCT_DEGRADATION",
+          "detected_at": "2026-05-19T03:07:00+00:00",
           "severity": "HIGH",
-          "source": "bot/data/meta_learning/insights.json vs auto_fix_state.json + meta_learning ideas",
-          "detail": "After INSIGHTS_DEDUP_PRUNING (2026-05-18) reduced 108->19 insights, two inverted time-of-day claims survived: evening 65% WR (conf=0.85, n=27) and afternoon 64% WR (conf=0.85, n=27). These are the same sample that previously drove EVENING_session_boost to 80% gate. The meta_learning ideas engine would re-detect these as high-confidence edges and re-propose boost rules. Additionally, the morning weakness insight (14% WR, conf=0.675) survived but is below the conflicting morning edge (71% WR, conf=0.73) \u2014 morning is safe. The evening/afternoon inversions are the risk.",
-          "action": "RESOLVED THIS RUN: both insights marked invalidated=True in insights.json.",
-          "confidence_to_flag": 0.82,
-          "resolved_at": "2026-05-19T02:05:57.349237+00:00"
+          "source": "bot/data/meta_learning/insights.json (ensemble weakness, conf=0.80, n=27)",
+          "detail": "ensemble strategy WR = 30% on recent 27 trades vs 57% all-time. 27pp degradation from historical baseline. Root causes: (1) 74% LONG bias \u2014 LONG WR=30% \u2014 already addressed by SIDE_BIAS_ENFORCEMENT_V2. (2) Likely non-trending regime contamination (illiquid=28.1% WR, ranging=25%). These are the combined primary leak.",
+          "action": "MONITORING FLAG. Root cause fixes applied in prior runs. Post-restart: track trades 1-50. Circuit breaker trigger if ensemble WR < 35% after 30 trades.",
+          "confidence_to_flag": 0.8,
+          "resolved_at": null
         },
         {
-          "finding_id": "CONF_60_70_RULE_COLLISION_CLUSTER",
-          "detected_at": "2026-05-19T02:05:57.349237+00:00",
+          "finding_id": "SIZE_INSIGHT_VS_FORENSICS_RECONCILIATION",
+          "detected_at": "2026-05-19T03:07:00+00:00",
           "severity": "MEDIUM",
-          "source": "bot/feedback/graduated_rules.json rule analysis",
-          "detail": "6 rules all target 60-70% confidence range: confidence_60_70_sweet_spot(20%), confidence_60_70_ROUTING_FIX(100%), CONF_60_70_floor_raise(80%), CONF_60_70_all_block(100%), CONF_60_70_rollback_probe(20%), CONF_CALIBRATION_INVERSION_AUDIT(0%). Two 100% gates (ROUTING_FIX + all_block) + one 80% gate + two 20% probes. Net execution behavior is undefined. Rule 2 (ROUTING_FIX) was added to SUSPEND rule 1 (sweet_spot) \u2014 but instead of retiring rule 1, a new 100% rule was stacked. This is a rule accumulation anti-pattern.",
-          "action": "FLAGGED for human review as CONF_60_70_COLLISION_AUDIT (gate=0%). Recommend: consolidate to CONF_60_70_all_block + CONF_60_70_rollback_probe (2 rules). Retire the other 4.",
-          "confidence_to_flag": 0.72,
-          "resolved_at": null,
-          "requires_human_review": true
-        },
-        {
-          "finding_id": "SIDE_BIAS_GRADUATION_READY",
-          "detected_at": "2026-05-19T02:05:57.349237+00:00",
-          "severity": "MEDIUM",
-          "source": "bot/data/meta_learning/insights.json side_bias insight (conf=0.75, n=50)",
-          "detail": "insight: '74% of trades are LONG but LONG WR is 30% vs 77% for the other side' (conf=0.75, n=50). Plus: HYPE_LONG hard_block (23% WR) and SOL_LONG hard_block (24% WR) corroborate directional imbalance. idea_98fac4ad (SIDE_BALANCE_ENFORCEMENT) had inferred conf=0.72 in prior analysis \u2014 but the source insight is conf=0.75, which meets the graduation threshold.",
-          "action": "RESOLVED THIS RUN: SIDE_BIAS_ENFORCEMENT_V2 graduated to gate=20% probe.",
-          "confidence_to_flag": 0.76,
-          "resolved_at": "2026-05-19T02:05:57.349237+00:00"
+          "source": "insights.json bias claims vs execution_forensics.json leverage tier data",
+          "detail": "Meta_learning claims >2.1x leverage = -$3.46 avg PnL (conf=0.80). Forensics shows 3-5x = +$0.79/trade POSITIVE (n=68). Contradiction resolved: meta_learning bins 3-5x and 6-10x together. The 6-10x tail (-$0.38/trade, n=91) contaminates the calculation. HIGH_LEV_10X_FORENSICS_BLOCK already correctly handles this. Forensics data is more reliable (granular tier analysis).",
+          "action": "DEV TASK: fix meta_learning leverage insight generator to use tier bins. ~2h. Prevents future false bias signals on profitable 3-5x range.",
+          "confidence_to_flag": 0.8,
+          "resolved_at": null
         }
       ]
     },
     "execution_forensics": {
       "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing",
-      "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes [STALE 603.8h]",
+      "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes [STALE 604.8h]",
       "fill_analysis": "UNKNOWN \u2014 no fill_status column",
-      "data_age_hours": 603.8,
-      "status": "FROZEN \u2014 bot offline 603.8h. No new data.",
-      "new_this_run": "None"
+      "data_age_hours": 604.8,
+      "status": "FROZEN \u2014 bot offline 604.8h. No new data.",
+      "new_this_run": "None \u2014 leverage band forensics reconciled with meta_learning insights (see auto_fix subsystem). 3-5x = +$0.79/trade confirmed as optimal band per prior forensics."
     },
     "live_injection": {
       "high_edges_found": 9,
       "weak_setups_found": 5,
-      "data_stale_hours": 603.8,
-      "status": "FROZEN \u2014 no new trade data. Side bias insight promoted to graduated rule this run.",
-      "new_this_run": "SIDE_BIAS_ENFORCEMENT_V2 probe live. insights.json reinversion risk mitigated."
+      "data_stale_hours": 604.8,
+      "status": "FROZEN \u2014 no new trade data.",
+      "new_this_run": "No new edges. Ensemble WR degradation finding reinforces existing weak_setups (HYPE_LONG, SOL_LONG, BTC_LONG as root cause of LONG-side bias). Priority injection update: after restart, boost regime=TRENDING signals and penalize regime=ILLIQUID/RANGING signals (already in injection_prompt_update from prior live_edge_data).",
+      "top_edge_unchanged": "ETH_SHORT+trending+morning (~80% WR, 5 live + 70% historical)",
+      "top_killer_unchanged": "SOL_LONG (24% WR, -$21.89) + HYPE_LONG (23% WR, -$77.26)"
     },
     "daily_synthesis": {
       "date": "2026-05-19",
       "is_eod": false,
-      "run_time_utc": "02:07",
+      "run_time_utc": "03:07",
       "report_generated": false,
       "today_trades": 0,
-      "anomalies_found": 7,
+      "anomalies_found": 9,
       "new_anomalies_this_run": 2,
       "anomalies": [
         {
-          "type": "BOT_OFFLINE_DAY_26_H4",
+          "type": "BOT_OFFLINE_DAY_26_H5",
           "severity": "CRITICAL",
-          "value": "603.8h offline. T-3.8h until 7th morning window (06:00 UTC May 19). DEADLINE: 05:30 UTC. Cumulative alpha: ~$1,568-3,161."
+          "value": "604.8h offline. T-2.9h until 7th morning window (06:00 UTC May 19). RESTART DEADLINE: 05:30 UTC (T-2.4h). Cumulative alpha: ~$1,568-3,161."
         },
         {
-          "type": "INSIGHTS_INVERTED_RESIDUAL",
+          "type": "MORNING_WINDOW_FINAL_APPROACH",
+          "severity": "CRITICAL",
+          "value": "NEW: With T-2.4h to restart deadline, this is the final hourly check before the go/no-go window closes. Each passing hour reduces preparation time and increases cold-start risk. Soft-start protocol must be verified NOW: 50% sizing, 3x max leverage, ETH/BTC trending only, first 5 trades."
+        },
+        {
+          "type": "ENSEMBLE_WR_DEGRADATION",
           "severity": "HIGH",
-          "value": "NEW THIS RUN: 2 inverted insights (evening 65%, afternoon 64%) survived dedup pruning at conf=0.85. Would have driven re-escalation of EVENING_session_boost. Fixed: marked invalidated."
+          "value": "NEW THIS RUN: ensemble strategy 30% WR on 27 recent trades (conf=0.80). Down from 57% all-time. Root causes already addressed (SIDE_BIAS_V2 + TRENDING_MIN_HOLD). Post-restart monitoring critical.",
+          "monitor": "Track trades 1-50. Alert if ensemble WR < 35% after 30 trades."
         },
         {
-          "type": "CONF_60_70_RULE_COLLISION",
+          "type": "SIZE_META_LEARNING_BIN_BUG",
           "severity": "MEDIUM",
-          "value": "NEW THIS RUN: 6 rules collide on 60-70% confidence range with contradictory evidence. Needs human consolidation. CONF_60_70_COLLISION_AUDIT flagged at gate=0%."
+          "value": "NEW THIS RUN: meta_learning size insights are misleading due to single-threshold binning. 3-5x leverage is actually +$0.79/trade (best band) \u2014 not negative as bias insights claim. Dev fix: tier-binned analysis. ~2h."
         },
         {
           "type": "CONSECUTIVE_LOSSES_4",
@@ -138,17 +135,23 @@
           "type": "DATA_GAP_STRUCTURAL",
           "severity": "HIGH",
           "value": "snapshot_entry + llm_regime columns missing. 12+ rules unmeasurable."
+        },
+        {
+          "type": "CONF_60_70_RULE_COLLISION",
+          "severity": "MEDIUM",
+          "value": "PENDING HUMAN REVIEW: 6 rules collide on 60-70% confidence range. CONF_60_70_COLLISION_AUDIT flagged at gate=0%. Consolidate to 2 rules."
         }
       ],
       "tomorrow_focus": [
-        "CRITICAL: RESTART before 05:30 UTC May 19 (T-3.9h)",
+        "CRITICAL: RESTART before 05:30 UTC May 19 (T-2.4h) \u2014 FINAL WINDOW",
         "Soft-start: 50% sizing, 3x max leverage, ETH/BTC trending, first 5 trades",
-        "Watch SIDE_BIAS_ENFORCEMENT_V2 probe: track LONG/SHORT ratio in first 20 trades",
-        "Verify EVENING_session_boost stays at 20% gate (inverted insight now invalidated)",
+        "Monitor ENSEMBLE WR on trades 1-50. Alert if < 35% after 30 trades.",
+        "Watch SIDE_BIAS_ENFORCEMENT_V2 probe: track LONG/SHORT ratio",
         "HUMAN REVIEW: CONF_60_70_COLLISION_AUDIT \u2014 consolidate 6 rules to 2",
         "HUMAN REVIEW: HYPE_SHORT_VETO accuracy (0/3 correct)",
         "DEV P0: AB_RESULT_TRACKER_CODE (~4h)",
-        "DEV P1: snapshot_entry + llm_regime columns (~2h)"
+        "DEV P1: snapshot_entry + llm_regime columns (~2h)",
+        "DEV P2: META_LEARNING leverage tier bins (~2h)"
       ]
     },
     "model_optimization": {
@@ -160,39 +163,39 @@
   },
   "high_priority_findings": [
     {
-      "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "INSIGHTS_RESIDUAL_INVERSIONS_POST_DEDUP: Evening 65% WR and afternoon 64% WR insights survived dedup pruning at conf=0.85. Without invalidation, meta_learning would re-propose and re-escalate the EVENING_session_boost rule that was just de-escalated to 20% probe.",
-      "action": "RESOLVED THIS RUN: insights marked invalidated. EVENING_session_boost re-escalation risk eliminated."
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "SIDE_BIAS_GRADUATION_READY: 74% LONG bias with LONG WR=30% vs SHORT=77% (n=50, conf=0.75). idea_98fac4ad had sufficient evidence for graduation threshold.",
-      "action": "RESOLVED THIS RUN: SIDE_BIAS_ENFORCEMENT_V2 graduated to gate=20% probe."
-    },
-    {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "MORNING_WINDOW_7TH: 06:00-12:00 UTC May 19 is T-3.9h. 7th consecutive miss if bot not restarted by 05:30 UTC. Cumulative alpha lost: ~$1,568-3,161.",
+      "finding": "MORNING_WINDOW_FINAL_APPROACH: T-2.4h to restart deadline (05:30 UTC May 19). 7th morning window opens at 06:00 UTC. This is the last hourly check before the go/no-go window for the morning window closes. Cumulative alpha missed: ~$1,568-3,161.",
       "action": "RESTART NOW. Soft-start: 50% sizing, 3x max leverage, ETH/BTC trending, first 5 trades."
     },
     {
       "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "ENSEMBLE_WR_30PCT_DEGRADATION: ensemble strategy WR = 30% on recent 27 trades (conf=0.80). Root cause: 74% LONG bias (LONG WR=30%) + non-trending regime contamination. Root cause fixes applied (SIDE_BIAS_V2, TRENDING_MIN_HOLD). Monitor trades 1-50 post-restart.",
+      "action": "Post-restart monitoring. If ensemble WR < 35% after 30 trades, escalate to ENSEMBLE_CIRCUIT_BREAKER (pause ensemble, route to sniper_premium)."
+    },
+    {
+      "subsystem": "auto_fix",
       "severity": "MEDIUM",
-      "finding": "CONF_60_70_RULE_COLLISION: 6 overlapping rules on 60-70% confidence with contradictory evidence. Undefined net execution behavior. Rule accumulation anti-pattern.",
-      "action": "PENDING HUMAN REVIEW: consolidate to 2 rules (block + probe). Retire 4 superseded rules."
+      "finding": "SIZE_META_LEARNING_BIN_GRANULARITY_BUG: meta_learning generates false negative size signals for the profitable 3-5x leverage band by mixing it with the losing 6-10x range. HIGH_LEV_10X_FORENSICS_BLOCK is correct. The 3-5x band is actually +$0.79/trade.",
+      "action": "DEV TASK (P2, ~2h): fix meta_learning leverage insight generator to use tier-binned analysis. Prevents future contradictory rules."
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "MEDIUM",
+      "finding": "CONF_60_70_RULE_COLLISION: 6 overlapping rules on 60-70% confidence with contradictory evidence. Undefined net execution behavior. PENDING HUMAN REVIEW.",
+      "action": "PENDING HUMAN REVIEW: consolidate to 2 rules (CONF_60_70_all_block + rollback_probe). Retire 4 superseded rules."
     }
   ],
   "run_summary": {
     "subsystems_completed": 5,
-    "fixes_applied": 3,
-    "gates_active": 65,
+    "fixes_applied": 2,
+    "gates_active": 62,
     "high_priority_findings_count": 4,
-    "new_findings_this_run": 3,
+    "new_findings_this_run": 2,
     "eod_report_generated": false,
-    "data_status": "FROZEN \u2014 bot offline 603.8h. Morning window T-3.9h.",
-    "next_run_eta": "2026-05-19T03:07:00+00:00",
-    "critical_action": "RESTART BOT by 05:30 UTC May 19. 7th morning window at 06:00 UTC. T-3.9h. All fixes live."
+    "data_status": "FROZEN \u2014 bot offline 604.8h. Morning window T-2.9h.",
+    "next_run_eta": "2026-05-19T04:07:00+00:00",
+    "critical_action": "RESTART BOT by 05:30 UTC May 19. 7th morning window at 06:00 UTC. T-2.4h. All fixes live."
   }
 }
