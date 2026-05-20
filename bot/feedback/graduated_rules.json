@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-20T01:06:59.220350+00:00",
+  "last_updated": "2026-05-20T02:11:24.427606+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2318,6 +2318,27 @@
       "source": "perpetual_deep_dive_subsystem4",
       "notes": "Escalated from T-7h CRITICAL_IMMINENT. Window opens in <5h. Soft-start protocol: 50% size, 3x max lev, ETH/BTC trending only, first 5 trades.",
       "requires_human_action": true
+    },
+    {
+      "rule_id": "BTC_TREND_LONG_COUNTER_V1",
+      "source": "perpetual_deep_dive_2026_05_20_0206 \u2014 Subsystem1 auto-fix",
+      "description": "Counter-penalize BTC BUY in TREND regime. rule_1777922205_0 boosts BTC+trend (side-agnostic +8pts) with 0/3 accuracy. BTC LONG overall = 18% WR (17 trades). BTC+trend+SHORT = 80% WR (n=5). Side-agnostic boost contaminates BTC LONG signals. This rule adds -13pts for BTC+BUY+trend, making net = -5pts (correct direction). Gate=20% A/B probe.",
+      "problem": "rule_1777922205_0 fires on BTC LONG in TREND regime with +8pts. But BTC LONG is 18% WR (17 live trades). The boost is directionally backwards for LONG side. 0/3 accuracy on rule applications confirms the contamination.",
+      "fix_applied": "Added BTC_TREND_LONG_COUNTER_V1: penalize -13pts when BTC+BUY+trend. Net of +8 (existing rule) + (-13) = -5pts on BTC LONG trending. 20% A/B gate. Graduate at WR>=0.55 after n>=10 BTC_LONG_TREND observations.",
+      "status": "ACTIVE",
+      "confidence": 82,
+      "gate_percentage": 20,
+      "baseline_wr": 0.18,
+      "treatment_wr": null,
+      "applied_date": "2026-05-20T02:11:24.427606+00:00",
+      "verified": false,
+      "conditions": {
+        "symbol": "BTC",
+        "side": "BUY",
+        "regime": "trend"
+      },
+      "adjustment": -13.0,
+      "action": "penalize"
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
@@ -3713,5 +3734,23 @@
       "All 109 rules stalled at 0 applications \u2014 AB_RESULT_TRACKER_CODE is P0 blocker"
     ]
   },
-  "total_rules": 114
+  "total_rules": 115,
+  "run_log_2026_05_20_0211": {
+    "run_at": "2026-05-20T02:11:24.427606+00:00",
+    "run_id": "perpetual_deep_dive_2026_05_20_0211",
+    "fixes_applied": [
+      "BTC_TREND_LONG_COUNTER_V1"
+    ],
+    "prior_run": "perpetual_deep_dive_2026_05_20_0106",
+    "hours_since_prior": 1.0,
+    "new_rule_count": 1,
+    "total_rule_count": 115,
+    "subsystem": "perpetual_improvement_deep_dive",
+    "key_findings": [
+      "BTC+trend boost (rule_1777922205_0) has 0/3 accuracy \u2014 side-agnostic fire contaminates BTC LONG (18% WR). Counter added: -13pts for BTC+BUY+trend.",
+      "MORNING_WINDOW T-229m: 3.8h until May 20 06:00 UTC window. WITHIN 4H THRESHOLD. 9th window risk.",
+      "Bot offline day 26.2. Cumulative alpha lost ~$1,956-3,953.",
+      "hype_short_veto_v1 accuracy: 0/3 \u2014 approaching human-review threshold before 4th application."
+    ]
+  }
 }

@@ -1,28 +1,28 @@
 {
-  "last_run": "2026-05-20T01:06:59.220350+00:00",
+  "last_run": "2026-05-20T02:11:24.427606+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
   "fixes_applied_this_run": 1,
-  "gates_active": 79,
-  "total_applied_all_time": 48,
+  "gates_active": 80,
+  "total_applied_all_time": 49,
   "last_fix": {
-    "fix_id": "MORNING_WINDOW_T295M_FINAL_RESTART_ALERT",
-    "applied_at": "2026-05-20T01:06:59.220350+00:00",
+    "fix_id": "BTC_TREND_LONG_COUNTER_V1",
+    "applied_at": "2026-05-20T02:11:24.427606+00:00",
     "file": "bot/feedback/graduated_rules.json",
-    "description": "Day 28 T-293m: Morning window countdown escalation. 9th consecutive window opens in 4h 53m. Soft-start protocol reconfirmed.",
-    "confidence": 99,
-    "gate_percentage": 0,
+    "description": "BTC+trend boost (rule_1777922205_0) fires side-agnostic (+8pts) with 0/3 accuracy. BTC LONG = 18% WR (17 trades) makes the boost directionally harmful on LONG side. Added counter: -13pts for BTC+BUY+trend \u2192 net -5pts. Gate=20% probe. Graduate at WR<=0.45 after n>=10.",
+    "confidence": 82,
+    "gate_percentage": 20,
     "status": "APPLIED",
     "outcome_tracking": "PENDING_RESTART \u2014 bot offline"
   },
   "new_findings_this_run": [
     {
-      "finding_id": "SOL_SHORT_CONTRADICTION_AUDIT",
-      "detected_at": "2026-05-20T01:06:59.220350+00:00",
+      "finding_id": "BTC_TREND_SIDE_AGNOSTIC_CONTAMINATION",
+      "detected_at": "2026-05-20T02:11:24.427606+00:00",
       "severity": "HIGH",
-      "detail": "SOL_SHORT shows 63.7% WR on 179 live trades (conf=84, gate=20) BUT rule is SUSPENDED_LIVE_CONTRADICTION while hard block at 100% remains active. This blocks the best historical alpha (+$5807). Contradiction must be resolved on restart.",
-      "action": "Human review: resolve SOL_SHORT_edge_promote vs hard block. If live contradiction was a data artifact, re-enable probe gate=20.",
-      "resolved_at": null,
-      "requires_human_review": true
+      "detail": "rule_1777922205_0 (BTC+trend boost, side-agnostic) confirmed as contamination source for BTC LONG signals. 0/3 accuracy on rule applications = all 3 times BTC boosted in trend, the trade lost. BTC LONG baseline WR=18% (17 trades). Fix applied this run: BTC_TREND_LONG_COUNTER_V1 (-13pts, gate=20%).",
+      "action": "Monitor BTC LONG trending outcomes post-restart. After n>=10, if WR<=0.45, graduate counter to gate=50%.",
+      "resolved_at": "2026-05-20T02:11:24.427606+00:00",
+      "requires_human_review": false
     }
   ],
   "active_fixes": [
@@ -31,136 +31,141 @@
       "applied_at": "2026-05-17T23:03:11+00:00",
       "gate_pct": 20,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "hype_unknown_regime_probe_v1",
       "applied_at": "2026-05-18T01:10:31+00:00",
       "gate_pct": 20,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "TRENDING_MIN_HOLD_2H_GATE_UPGRADE",
       "applied_at": "2026-05-18T23:04:47+00:00",
       "gate_pct": 50,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "HIGH_LEV_10X_FORENSICS_BLOCK",
       "applied_at": "2026-05-19T00:11:06+00:00",
       "gate_pct": 20,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "EVENING_BOOST_DEESCALATE_FIX",
       "applied_at": "2026-05-19T01:07:41+00:00",
       "gate_pct": 20,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 no live data yet"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "SIDE_BIAS_ENFORCEMENT_V2",
-      "applied_at": "2026-05-19T02:06:08.791705+00:00",
+      "applied_at": "2026-05-19T02:06:08+00:00",
       "gate_pct": 20,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 bot offline 603.8h"
+      "outcome_tracking": "PENDING_RESTART"
     },
     {
       "fix_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
       "applied_at": "2026-05-19T22:04:02+00:00",
       "gate_pct": 5,
       "status": "ACTIVE",
-      "outcome_tracking": "PENDING_RESTART \u2014 bot offline 623.8h"
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "BTC_TREND_LONG_COUNTER_V1",
+      "applied_at": "2026-05-20T02:11:24.427606+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
     }
   ],
   "rule_accuracy_tracking": {
+    "rule_1777922205_0": {
+      "times_applied": 3,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "0/3 accuracy. BTC+trend SIDE-AGNOSTIC boost. BTC LONG in trend = disaster (18% WR). Counter rule BTC_TREND_LONG_COUNTER_V1 added this run (-13pts, gate=20%). Will re-evaluate accuracy split by side post-restart.",
+      "status": "PARTIALLY_FIXED"
+    },
     "hype_short_veto_v1": {
       "times_applied": 3,
       "times_correct": 0,
       "accuracy": 0.0,
       "auto_retire_threshold": 10,
       "apps_to_threshold": 7,
-      "status": "WATCH_ESCALATING",
-      "note": "0% accuracy on 3 applications (all blocked signals were profitable). Underlying evidence: -$16.65/trade EV on 239 trades. CONFLICT: large historical sample negative EV vs small live block sample 0/3 correct. Recommend human review at restart before 4th application."
+      "status": "WATCH_ESCALATING \u2014 HUMAN REVIEW BEFORE 4TH APPLICATION",
+      "note": "0/3 correct (all blocked signals profitable). Historical: -$16.65/trade EV on 239 trades. Conflict unresolved. Do not auto-escalate gate. Human review required on restart."
     },
     "night_session_block_v1": {
       "times_applied": 4,
       "times_correct": 0,
       "accuracy": 0.0,
-      "note": "4 blocks 0 correct but underlying WR=19% on 27 trades is strong. Block sample too small to override. Keep active."
+      "note": "4 blocks 0 correct. Underlying WR=19% (27 trades) strong. Keep active."
     },
     "hype_long_veto_v1": {
       "times_applied": 1,
       "times_correct": 0,
       "accuracy": 0.0,
-      "note": "1 application. Evidence: 23% WR, -$77.26 on 35 trades. Keep active."
+      "note": "Evidence: 23% WR, -$77.26/35 trades. Keep active."
     },
     "sol_long_veto_v1": {
       "times_applied": 1,
       "times_correct": 0,
       "accuracy": 0.0,
-      "note": "1 application. Evidence: 24% WR, -$21.89 on 34 trades. Keep active."
+      "note": "Evidence: 24% WR, -$21.89/34 trades. Keep active."
     },
     "btc_short_conf70_80_penalize_v1": {
       "times_applied": 2,
       "times_correct": 0,
       "accuracy": 0.0,
-      "note": "2 applications. Evidence: worst confidence bin, 40 trades. Keep active."
+      "note": "Evidence: worst confidence bin, 40 trades. Keep active."
     }
   },
   "pending_ab_graduation": [
     {
       "id": "BB_SOLO_BOOST_RULE",
-      "description": "BB firing alone (no MTQ agreement) = 67.6% WR. Pending 95% confidence live confirmation.",
-      "action": "WAIT for live data post-restart. After 20+ BB_solo signals, evaluate for +10pt boost."
+      "description": "BB firing alone = 67.6% WR. Pending live n>=20.",
+      "action": "WAIT for live data post-restart."
     },
     {
       "id": "BB_MTQ_ANTI_PATTERN_RULE",
-      "description": "BB+MTQ co-agreement = 35% WR (anti-pattern). Pending 92% confidence.",
-      "action": "WAIT for live data. After 20+ BB+MTQ co-signals, evaluate for -10pt penalize."
+      "description": "BB+MTQ co-agreement = 35% WR (anti-pattern). Pending n>=20.",
+      "action": "WAIT for live data."
     },
     {
       "id": "HYPE_UNKNOWN_REGIME_PROBE_v1",
-      "description": "HYPE in UNKNOWN regime = 83% WR (n=6). 20% A/B probe active.",
-      "action": "Collect live data. Graduate at n>=15 WR>=0.65, retire at WR<0.50 by n=15."
+      "description": "HYPE in UNKNOWN regime = 83% WR (n=6). 20% probe active.",
+      "action": "Graduate at n>=15 WR>=0.65."
+    },
+    {
+      "id": "BTC_TREND_LONG_COUNTER_V1",
+      "description": "New this run: BTC+BUY+trend = -13pts (gate=20%). Graduate at n>=10 WR<=0.45.",
+      "action": "Collect live data post-restart."
     }
   ],
   "graduation_pipeline_next": {
-    "nearest_candidate": "idea_98fac4ad (side balance enforcement)",
+    "nearest_candidate": "BTC_TREND_LONG_COUNTER_V1 (new, gate=20%) \u2014 lowest bar: needs 10 obs",
+    "second_candidate": "idea_98fac4ad (side balance enforcement)",
     "inferred_confidence": 0.72,
-    "data": "80% of trades are LONG, LONG WR = 38% vs SHORT WR = 60%. Side imbalance contributing to overall losses.",
     "gap_to_threshold": 0.03,
-    "action": "At restart, collect first 20 trades. If LONG-side imbalance persists with <45% WR, this reaches 0.75 threshold for -5pt penalize rule on same-side overload."
+    "action": "First 20 trades post-restart: track BTC LONG trending. If WR<=0.45, escalate gate to 50%."
   },
-  "recommendations_reviewed": 12,
-  "high_confidence_pending_human": 8,
-  "resolved_this_run": [],
+  "recommendations_reviewed": 13,
+  "high_confidence_pending_human": 7,
   "outstanding_pending": [
-    "CONF_60_70_FREEZE: Do NOT escalate any 60-70% conf rules until live data (post-restart n>=20).",
-    "8TH_MORNING_WINDOW_IMMINENT: RESTART before 05:30 UTC May 20. T-7h.",
-    "STALE_SHADOW_FILE: Delete data/llm/graduated_rules.json (15 min dev). Prevents silent rule miss.",
-    "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). Verify leverage cap + add $50/10%-equity loss ceiling, then enable.",
-    "SOL_SHORT_SUSPENSION: +$807 historical alpha. Human decision.",
-    "HYPE_SHORT_VETO_RISK: 3 apps, 0 correct. 7 apps to auto-retire. Human review recommended on restart.",
-    "SNAPSHOT_ENTRY_GAP: add snapshot_entry column on restart (~1h dev).",
-    "LLM_REGIME_CAPTURE_GAP: add llm_regime write to trades.csv on restart (~1h dev).",
-    "RULE_CONFLICT_SOL_SHORT: 100% block prevents probe data collection \u2014 needs human resolution.",
-    "AB_RESULT_TRACKER_CODE: P0 structural gap \u2014 no code closes A/B feedback loop. treatment_wr stays null forever.",
-    "META_LEARNING_IDEAS_INVERSION_BUG: 4/8 ideas have inverted direction (boosting losing sessions). Fix idea generator before any idea is applied.",
-    "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates, inflating confidence artificially. Fix accumulator to UPDATE not APPEND.",
-    "EVENING_BOOST_MONITORING: After restart, track treatment_wr for EVENING_session_boost. Re-escalate to 50% ONLY if treatment_wr >= 0.60 after 20 evening signals.",
-    "ENSEMBLE_WR_30PCT_DEGRADATION: Monitor trades 1-50 post-restart. Escalate if WR < 35% persists after 30 trades.",
-    "META_LEARNING_LEVERAGE_BIN_FIX: Fix insight generator to use binned leverage tiers (1-2x, 3-5x, 6-10x). ~2h dev. Prevents future false bias signals on profitable 3-5x range.",
-    "SOL_SHORT_CONTRADICTION_AUDIT: resolve edge_promote vs hard-block conflict on restart (conf=84, 63.7% WR, 179 trades vs SUSPENDED status)."
-  ],
-  "code_audit_confirmed": {
-    "F2_calibration_cap": "CODED at parameter_tuner.py:186",
-    "F5_llm_mode_guard": "CODED at llm_integration.py:972/1143/1221",
-    "F16_clean_win_label": "CODED at position_manager.py:1296",
-    "F17_l1_sector_cap": "CONFIRMED_CODED at bot/execution/sector_exposure.py:55 (l1: 1.50)",
-    "VETO_CF_WIRE": "CODED at bot/llm/counterfactual_learner.py (2026-05-16)"
-  }
+    "HYPE_SHORT_VETO_RISK: 0/3 correct. HUMAN REVIEW BEFORE 4TH APPLICATION.",
+    "SOL_SHORT_SUSPENSION: +$807 historical alpha. Human decision on restart.",
+    "AB_RESULT_TRACKER_CODE: P0 structural gap \u2014 all 80 gated rules stalled.",
+    "SNAPSHOT_ENTRY_GAP: add snapshot_entry column (~1h dev).",
+    "LLM_REGIME_CAPTURE_GAP: add llm_regime write to trades.csv (~1h dev).",
+    "STALE_SHADOW_FILE: Delete data/llm/graduated_rules.json (15 min dev).",
+    "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). Enable post-5-trade soft-start.",
+    "META_LEARNING_IDEAS_INVERSION_BUG: 4/8 ideas inverted. Fix before applying any idea.",
+    "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates. Fix accumulator to UPDATE not APPEND.",
+    "CRITIC_PROMPT_BTC_LONG_BIAS: Add BTC_LONG directional bias check to Critic prompt (19% WR, 16 trades unvetoed)."
+  ]
 }

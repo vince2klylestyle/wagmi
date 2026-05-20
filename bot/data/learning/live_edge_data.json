@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-05-20T01:06:59.220350+00:00",
-  "data_source": "Historical accumulated + insight journals. Bot offline 627h (26.1d). No new data.",
+  "last_run": "2026-05-20T02:11:24.427606+00:00",
+  "data_source": "Historical accumulated + insight journals. Bot offline 627.9h (26.2d). No new data.",
   "high_edges_found": 9,
   "weak_setups_found": 5,
   "high_edges": [
@@ -13,11 +13,11 @@
       "rule_coverage": "ETH_SHORT_BB_golden (gate=80%)"
     },
     {
-      "setup": "BTC_TRENDING_REGIME",
+      "setup": "BTC_TRENDING_REGIME_SHORT",
       "wr": 0.8,
       "trades": 5,
       "source": "insight_journal",
-      "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%)"
+      "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%) + BTC_TREND_LONG_COUNTER_V1 now blocking LONG contamination"
     },
     {
       "setup": "HYPE_UNKNOWN_REGIME",
@@ -67,8 +67,8 @@
       "trades": 7,
       "source": "insight_journal_composite",
       "rule_coverage": "TOD_morning_edge (gate=50%) + TRENDING_EARLY_HOLD_GUARD (gate=80%)",
-      "window_status": "UPCOMING",
-      "note": "TODAY's window is UPCOMING. ETH+BTC+trending+06:00-12:00 UTC composite edge."
+      "window_status": "T-229m \u2014 WITHIN 4H THRESHOLD",
+      "note": "TODAY's window opens in 3.8h (06:00-12:00 UTC). FINAL RESTART WINDOW. ETH+BTC+trending+morning composite edge 74% WR."
     }
   ],
   "weak_setups": [
@@ -76,7 +76,7 @@
       "setup": "BTC_LONG",
       "wr": 0.18,
       "trades": 17,
-      "rule": "BTC_LONG_reduce (gate=50%) + BTC_directional_correction (gate=80%)"
+      "rule": "BTC_LONG_reduce (gate=50%) + BTC_TREND_LONG_COUNTER_V1 (gate=20%, NEW this run)"
     },
     {
       "setup": "SOL_LONG",
@@ -106,17 +106,25 @@
   "conflict_flags": [
     {
       "id": "CONF_60_70_CONFLICT",
-      "detail": "60-70% conf bin: insight shows +$2.19/trade (42% WR, n=67) vs runtime rule shows -$18.86/trade (n=123). Frozen by CONF_60_70_CONFLICT_FREEZE_V2 pending live data.",
+      "detail": "60-70% conf bin: insight +$2.19/trade (42% WR, n=67) vs runtime -$18.86/trade (n=123). Frozen by CONF_60_70_CONFLICT_FREEZE_V2 pending live data.",
       "severity": "HIGH",
       "status": "FROZEN"
+    },
+    {
+      "id": "BTC_TREND_SIDE_CONTAMINATION",
+      "detail": "rule_1777922205_0 (side-agnostic BTC+trend boost) now partially fixed by BTC_TREND_LONG_COUNTER_V1 applied this run. Net effect for BTC LONG in trend: -5pts. Monitor.",
+      "severity": "MEDIUM",
+      "status": "PARTIALLY_RESOLVED"
     }
   ],
-  "coverage_gap": "All 8 high-edge setups have rules in graduated_rules.json. Zero live applications. Coverage exists on paper; validation blocked until bot restart.",
+  "coverage_gap": "All 9 high-edge setups have rules in graduated_rules.json. Zero live applications. Coverage exists on paper; validation blocked until bot restart.",
   "morning_window_countdown": {
     "window": "2026-05-20 06:00-12:00 UTC",
-    "minutes_until_open": 293,
-    "status": "UPCOMING",
+    "minutes_until_open": 229,
+    "hours_until_open": 3.8,
+    "status": "T-229m \u2014 WITHIN 4H THRESHOLD. CRITICAL ESCALATION.",
     "edge": "74% WR composite (ETH+BTC+trending+morning)",
-    "action": "Restart before 05:30 UTC to capture full window"
+    "action": "RESTART IMMEDIATELY to capture full window. 9th window. Cumulative alpha ~$1,956-3,953.",
+    "note": "Previous run was T-293m (4h53m). This run is T-233m (3h53m). Crossed 4h threshold."
   }
 }
