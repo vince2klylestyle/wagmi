@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-20T00:08:44+00:00",
+  "last_updated": "2026-05-20T01:06:59.220350+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2306,6 +2306,18 @@
       "treatment_wr": null,
       "applied_date": "2026-05-20",
       "cumulative_alpha_lost_est": "$1,900-3,840"
+    },
+    {
+      "id": null,
+      "status": "CRITICAL_ESCALATION",
+      "confidence": 99,
+      "gate_percentage": 0,
+      "category": "operational_alert",
+      "description": "T-293m final alert: Morning window (06:00-12:00 UTC May 20) opens in 4h 53m. 9th consecutive window. Cumulative alpha lost ~$1,900-3,840. RESTART before 05:30 UTC.",
+      "added_at": "2026-05-20T01:06:59.220350+00:00",
+      "source": "perpetual_deep_dive_subsystem4",
+      "notes": "Escalated from T-7h CRITICAL_IMMINENT. Window opens in <5h. Soft-start protocol: 50% size, 3x max lev, ETH/BTC trending only, first 5 trades.",
+      "requires_human_action": true
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [
@@ -3701,5 +3713,5 @@
       "All 109 rules stalled at 0 applications \u2014 AB_RESULT_TRACKER_CODE is P0 blocker"
     ]
   },
-  "total_rules": 113
+  "total_rules": 114
 }

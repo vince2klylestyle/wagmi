@@ -1,18 +1,22 @@
 {
-  "last_run": "2026-05-20T00:08:44+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_20_0008",
+  "last_run": "2026-05-20T01:06:59.220350+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_20_0106",
+  "hours_since_prev_run": 0.97,
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 1,
-      "gates_active": 77,
-      "total_rules": 113,
+      "gates_active": 79,
+      "total_rules": 114,
       "new_rules": [
-        "MORNING_WINDOW_9TH_MISS_DAY28"
+        "MORNING_WINDOW_T295M_FINAL_RESTART_ALERT"
+      ],
+      "new_findings": [
+        "SOL_SHORT_CONTRADICTION_AUDIT"
       ]
     },
     "execution_forensics": {
-      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing. Day 27 gap. 0 measurable trades.",
-      "noise_stop_problem": "87.0% of early SL hits (<2h) in non-trending regimes (illiquid/ranging/unknown). Upgraded from 71.9%. Confidence 0.88.",
+      "avg_slippage": "UNKNOWN \u2014 snapshot_entry missing. Day 28 gap. 0 measurable trades.",
+      "noise_stop_problem": "87% of early SL hits (<2h) in non-trending regimes. Confidence 0.88.",
       "hold_forensics": {
         "win_median_hold_h": 3.3,
         "loss_median_hold_h": 1.5,
@@ -22,118 +26,141 @@
         "medium_3_5x": "OPTIMAL avg +0.79R",
         "high_6_10x": "BLOCKED avg -4.62R"
       },
-      "new_finding": {
-        "id": "ZERO_TRADE_BASELINE_RISK",
-        "detail": "Bot offline 27 days. When it restarts, there will be ZERO slippage baseline and ZERO regime tracking data for the first N trades. First 10-20 trades will operate fully blind on forensics. snapshot_entry P1 dev must be deployed ON RESTART.",
-        "severity": "HIGH",
-        "action": "Add snapshot_entry write at signal creation time. Zero-cost: just store signal.entry before broker fill."
-      },
-      "gap_deepening": true,
-      "days_offline": 27.0
+      "days_offline": 26.1,
+      "gap_deepening": true
     },
     "live_injection": {
       "high_edges_found": 9,
       "weak_setups_found": 5,
-      "new_edges_added": 1,
-      "top_edge": "HYPE_UNKNOWN_REGIME 83% WR (n=6) + MORNING composite 74% WR",
-      "conflict_frozen": "CONF_60_70 \u2014 6 conflicting rules frozen pending live data",
-      "data_status": "CACHED \u2014 no new trades. Bot offline 27d.",
-      "decay_applied": false
+      "new_edges_added": 0,
+      "top_edge": "MORNING_WINDOW T-293m (74% WR composite) \u2014 TODAY",
+      "data_status": "FROZEN \u2014 no new trades. Bot offline 26.1d.",
+      "morning_window_countdown_min": 293
     },
     "daily_synthesis": {
       "anomalies": 5,
-      "report_generated": true,
-      "morning_window_status": "UPCOMING",
-      "critical_action": "RESTART NOW"
+      "report_generated": false,
+      "today_trades": 0,
+      "today_pnl": 0.0,
+      "morning_window_status": "UPCOMING \u2014 T-293m",
+      "anomaly_list": [
+        {
+          "type": "MORNING_WINDOW_T295M",
+          "severity": "CRITICAL"
+        },
+        {
+          "type": "BOT_OFFLINE_DAY_28",
+          "severity": "CRITICAL"
+        },
+        {
+          "type": "AB_RESULT_TRACKER_CODE_P0",
+          "severity": "HIGH"
+        },
+        {
+          "type": "SOL_SHORT_RULE_CONTRADICTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "CONSECUTIVE_LOSSES_TRAILING",
+          "severity": "MEDIUM"
+        }
+      ]
     },
     "model_optimization": {
       "model_swaps_recommended": 1,
-      "potential_savings": "$0.006/hr architectural (Scout frequency optimization)",
+      "potential_savings": "$0.289/month",
       "status": "ANALYZED \u2014 no cost_tracker.json (architecture-derived estimates)",
+      "new_finding": "Critic Agent (Sonnet) missing BTC_LONG directional bias check \u2014 19% WR on 16 live trades not caught",
       "agent_roi_summary": {
         "Regime": {
-          "roi": 7800.0,
+          "roi": 15600,
           "model": "Haiku"
         },
         "Trade": {
-          "roi": 236.7,
+          "roi": 237,
           "model": "Sonnet"
         },
         "Risk": {
-          "roi": 8200.0,
+          "roi": 16400,
           "model": "Haiku"
         },
         "Critic": {
-          "roi": 230.0,
+          "roi": 230,
           "model": "Sonnet"
         },
         "Learning": {
-          "roi": 7500.0,
+          "roi": 15000,
           "model": "Haiku"
         },
         "Exit": {
-          "roi": 7200.0,
+          "roi": 14400,
           "model": "Haiku"
         },
         "Scout": {
-          "roi": 6800.0,
+          "roi": 13600,
           "model": "Haiku"
         }
       },
       "recommendations": [
         {
           "agent": "Scout",
-          "current_model": "Haiku",
-          "current_freq": "every cycle",
-          "recommendation": "Reduce Scout frequency to every 3rd cycle (idle-only) \u2014 same model, -66% call cost",
-          "accuracy_impact": "0% (Scout runs on idle time, not on every signal)",
-          "estimated_savings": "$0.006/hour at current architecture scale",
-          "roi_delta": "+200% ROI on Scout calls (same accuracy, 3x fewer calls)"
+          "recommendation": "Reduce to every 3rd idle-cycle call \u2014 same model, -66% call cost",
+          "accuracy_impact": "0%",
+          "estimated_savings": "$0.289/month"
+        },
+        {
+          "agent": "Critic",
+          "recommendation": "Add BTC_LONG directional bias check to Critic prompt \u2014 catches systematic short bias",
+          "accuracy_impact": "+3-5% expected on BTC trades",
+          "estimated_savings": "N/A \u2014 accuracy improvement"
         }
-      ],
-      "overseer_audit": {
-        "agent": "Overseer",
-        "note": "CLAUDE.md mentions Overseer agent but not in LLM rules active list \u2014 verify if deployed or stub",
-        "action": "Audit coordinator.py for overseer calls \u2014 if stub, no cost impact"
-      }
+      ]
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "MORNING_WINDOW_UPCOMING_DAY28: May 20 06:00-12:00 UTC window UPCOMING. 9th consecutive window. Bot offline 27d. Cumulative alpha lost $1,900-3,840.",
-      "action": "RESTART NOW. Soft-start: 50% size, 3x max lev, ETH/BTC trending only."
+      "finding": "MORNING_WINDOW_T293M: May 20 06:00-12:00 UTC window opens in 4h 53m. 9th consecutive window. Bot still offline. Cumulative alpha lost $1,900-3,840.",
+      "action": "RESTART NOW. Soft-start: 50% size, 3x max lev, ETH/BTC trending only, first 5 trades."
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "ALL_113_RULES_ZERO_LIVE_APPLICATIONS: 77 A/B gates active, all treatment_wr=null. AB_RESULT_TRACKER never implemented. Self-improvement pipeline structurally blind.",
+      "finding": "SOL_SHORT_CONTRADICTION: 63.7% WR on 179 trades (conf=84) SUSPENDED while hard block active. Best historical alpha (+$5807) blocked.",
+      "action": "Human review on restart: if live contradiction was data artifact, re-enable probe gate=20."
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "ALL_114_RULES_ZERO_LIVE_APPLICATIONS: 79 A/B gates active, all treatment_wr=null. AB_RESULT_TRACKER not implemented.",
       "action": "P0 dev: post_trade hooks in feedback/loop.py (~4h). Unblocks entire graduation pipeline."
     },
     {
       "subsystem": "execution_forensics",
       "severity": "HIGH",
-      "finding": "STRUCTURAL_GAP_DAY28: snapshot_entry (slippage) and llm_regime missing for entire history. Zero baseline when bot restarts.",
-      "action": "Dev P1: snapshot_entry write at signal time (~1h). Dev P2: llm_regime at close (~1h)."
+      "finding": "DAY_28_GAP_DEEPENS: snapshot_entry (slippage) and llm_regime missing. Bot offline 627h. Zero baseline on restart.",
+      "action": "P1 dev on restart: snapshot_entry write at signal creation (~1h). P2: llm_regime at close (~1h)."
     },
     {
       "subsystem": "model_optimization",
-      "severity": "LOW",
-      "finding": "Scout Agent frequency optimization available: -66% call cost, 0% accuracy loss",
-      "action": "Reduce Scout to every 3rd idle-cycle call. Low-risk, minimal savings."
+      "severity": "MEDIUM",
+      "finding": "Critic Agent missing BTC_LONG directional bias check. 19% WR on 16 live BTC_LONG trades not caught by Critic veto.",
+      "action": "Add BTC directional bias check to Critic prompt \u2014 low-risk prompt change, no model swap needed."
     }
   ],
   "run_summary": {
     "subsystems_completed": 5,
     "subsystems_with_new_data": 0,
     "fixes_applied": 1,
-    "gates_active": 77,
-    "total_rules": 113,
-    "high_priority_findings_count": 4,
+    "gates_active": 79,
+    "total_rules": 114,
+    "high_priority_findings_count": 5,
     "new_rules_added_this_run": 1,
-    "morning_window_status": "UPCOMING",
-    "data_status": "FROZEN \u2014 bot offline 27d. 0 trades. No live data.",
-    "critical_action": "RESTART BOT \u2014 morning window UPCOMING. 9th consecutive. All 113 rules ready."
+    "morning_window_status": "UPCOMING \u2014 T-293m (4h 53m)",
+    "data_status": "FROZEN \u2014 bot offline 26.1d. 0 trades. No live data.",
+    "critical_action": "RESTART BOT \u2014 morning window UPCOMING in 4h 53m. Soft-start: 50% size, 3x lev, ETH/BTC trending.",
+    "equity": 497.05,
+    "opportunity_cost_today": "$56-113 (morning window 06:00-12:00 UTC)"
   }
 }
