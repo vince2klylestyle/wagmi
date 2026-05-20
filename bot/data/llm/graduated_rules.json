@@ -16,7 +16,9 @@
       "last_applied": 1778811039.5393455,
       "times_applied": 3,
       "times_correct": 0,
-      "active": true
+      "active": false,
+      "deactivated_at": "2026-05-20T23:06:00Z",
+      "deactivation_reason": "0/3 correct (0.0 accuracy). No side filter — boosts BTC LONG trending (18% WR = worst setup). Conflicts with CRITIC_PROMPT_BTC_LONG_BIAS and BTC_TREND_LONG_COUNTER_V1. BTC SHORT trending handled by btc_short_90plus_boost_v1. Auto-retire threshold is 10 but early deactivation applied due to directional conflict severity."
     },
     {
       "rule_id": "hype_long_veto_v1",
@@ -201,11 +203,13 @@
       "last_applied": 1778811039.5375004,
       "times_applied": 2,
       "times_correct": 0,
-      "active": true,
+      "active": false,
       "gate_percentage": 20,
       "gated_at": "2026-05-17T23:03:00Z",
       "prior_adjustment": -20.0,
-      "gate_reason": "COMPOUNDING_DEADLOCK: -20pts + self_tuning CONSERVATIVE = total block on all signals <90%. T-6.95h to morning window. 5th consecutive missed window. Reduced to -5 to allow ETH/BTC trending signals (typically 70-85%) to pass on restart."
+      "gate_reason": "COMPOUNDING_DEADLOCK: -20pts + self_tuning CONSERVATIVE = total block on all signals <90%. T-6.95h to morning window. 5th consecutive missed window. Reduced to -5 to allow ETH/BTC trending signals (typically 70-85%) to pass on restart.",
+      "deactivated_at": "2026-05-20T23:06:00Z",
+      "deactivation_reason": "0/2 correct (both penalized signals were winners). Confirmed data contradiction: 60-70% IS the confidence sweet spot (+$2.19/trade EV, 42% WR, +$197 total — better than 70-80% and 80-90%). Improvement system has this rule SUSPENDED_DATA_CONTRADICTION. Deactivating to stop penalizing the most reliably profitable confidence bin."
     }
   ]
 }
