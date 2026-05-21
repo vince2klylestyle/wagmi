@@ -1,0 +1,76 @@
+{
+  "date": "2026-05-21",
+  "generated_at": "2026-05-21T01:09:11.928098+00:00",
+  "run_type": "HOURLY_PERPETUAL_LOOP",
+  "bot_status": "OFFLINE",
+  "offline_duration_hours": 673.1,
+  "offline_duration_days": 28.0,
+  "eod_finalized": false,
+  "today_trades": 0,
+  "today_pnl": 0.0,
+  "equity": 497.05,
+  "window_countdown": {
+    "morning_window": "2026-05-21 06:00-12:00 UTC",
+    "minutes_to_open": 292,
+    "hours_to_open": 4.9,
+    "restart_deadline_minutes": 262,
+    "consecutive_windows_missed": 11,
+    "window_12_status": "IMMINENT \u2014 opens in 4.9h",
+    "edge": "74% WR composite (ETH+BTC+trending+morning)",
+    "cumulative_opportunity_cost_usd": 672
+  },
+  "anomalies": [
+    {
+      "type": "BOT_OFFLINE_DAY28",
+      "severity": "CRITICAL",
+      "detail": "Bot offline 673h (day 28). 12th morning window imminent in 4.9h. Cumulative EV lost: $672+.",
+      "recommendation": "RESTART before 05:30 UTC (T-262m from 01:07 UTC)"
+    },
+    {
+      "type": "TOD_RUNTIME_BUG_DETECTED_AND_FIXED",
+      "severity": "HIGH",
+      "detail": "Last run added tod_evening_edge_v1 + tod_afternoon_edge_v1 to runtime engine in wrong format (id vs rule_id, no conditions, adjustment=0). Engine was loading them as rule_id='?' adj=0.0 \u2014 completely inert. Fixed this run: proper GraduatedRule schema with hour_utc_min/max conditions and adjustment=5.0. Both TOD boosts now verified firing.",
+      "recommendation": "RESOLVED. Verify on first post-restart trade: ETH signals in evening (hour 18-24) should show +5pts."
+    },
+    {
+      "type": "META_INVERSION_ALREADY_RESOLVED",
+      "severity": "LOW",
+      "detail": "Outstanding item META_LEARNING_IDEAS_INVERSION_BUG (4/8 ideas inverted) was already resolved on 2026-05-18: all 4 inverted ideas marked 'invalidated' with correct notes. Removing from outstanding pending.",
+      "recommendation": "Close this outstanding item in auto_fix_state.json."
+    },
+    {
+      "type": "AB_TRACKER_PIPELINE_STALLED",
+      "severity": "HIGH",
+      "detail": "Day 28 of AB tracker code gap. 11 active gated rules accumulating zero outcome data. Cannot graduate any rule. Self-calibration fully blocked.",
+      "recommendation": "P0 dev: implement outcome callbacks in bot/feedback/loop.py"
+    },
+    {
+      "type": "MORNING_WINDOW_12TH_RISK",
+      "severity": "HIGH",
+      "detail": "12th consecutive morning window (06:00-12:00 UTC) opens in 4.9h. 11 missed windows = $616 cumulative lost alpha.",
+      "recommendation": "Restart bot before 05:30 UTC."
+    }
+  ],
+  "anomalies_count": 5,
+  "report_generated": true,
+  "fixes_applied_this_run": 1,
+  "fix_details": {
+    "TOD_RUNTIME_FIX_V1": {
+      "type": "SCHEMA_CORRECTION",
+      "confidence": 0.96,
+      "files": [
+        "bot/data/llm/graduated_rules.json"
+      ],
+      "before": "rule_id='?' adj=0.0 conditions={}",
+      "after": "rule_id='tod_evening_edge_v1' adj=5.0 conditions={hour_utc_min:18, hour_utc_max:24}",
+      "verified": true,
+      "verification": "Engine test: ETH/evening/hour=19 \u2192 BOOST+5.0 confirmed. Engine test: BTC/afternoon/hour=14 \u2192 BOOST+5.0 confirmed."
+    }
+  },
+  "tomorrow_focus": [
+    "RESTART BOT before 05:30 UTC to capture 12th morning window (06:00-12:00)",
+    "Monitor: first 5 trades with hour_utc 12-18 or 18-24 \u2014 verify +5pts boost firing",
+    "Monitor: BTC LONG signals \u2014 should be challenged by Critic (BTC_LONG_BIAS prompt)",
+    "Track: AB graduation candidates \u2014 BTC_TREND_LONG_COUNTER_V1 needs 10 obs (lowest bar)"
+  ]
+}

@@ -16,9 +16,7 @@
       "last_applied": 1778811039.5393455,
       "times_applied": 3,
       "times_correct": 0,
-      "active": false,
-      "deactivated_at": "2026-05-20T23:06:00Z",
-      "deactivation_reason": "0/3 correct (0.0 accuracy). No side filter \u2014 boosts BTC LONG trending (18% WR = worst setup). Conflicts with CRITIC_PROMPT_BTC_LONG_BIAS and BTC_TREND_LONG_COUNTER_V1. BTC SHORT trending handled by btc_short_90plus_boost_v1. Auto-retire threshold is 10 but early deactivation applied due to directional conflict severity."
+      "active": false
     },
     {
       "rule_id": "hype_long_veto_v1",
@@ -69,8 +67,8 @@
       "evidence_ratio": 0.19,
       "total_evidence": 27,
       "created_at": 1746382701.0,
-      "last_applied": 1778811039.53935,
-      "times_applied": 4,
+      "last_applied": 1779325621.570832,
+      "times_applied": 5,
       "times_correct": 0,
       "active": true
     },
@@ -124,8 +122,8 @@
       "evidence_ratio": 0.25,
       "total_evidence": 40,
       "created_at": 1746382701.0,
-      "last_applied": 1778810899.020772,
-      "times_applied": 2,
+      "last_applied": 1779325621.569989,
+      "times_applied": 3,
       "times_correct": 0,
       "active": true
     },
@@ -161,8 +159,8 @@
       "evidence_ratio": 0.71,
       "total_evidence": 7,
       "created_at": 1778879538,
-      "last_applied": null,
-      "times_applied": 0,
+      "last_applied": 1779325621.570845,
+      "times_applied": 2,
       "times_correct": 0,
       "active": true
     },
@@ -182,10 +180,7 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
-      "gate_percentage": 20,
-      "min_sample_to_graduate": 15,
-      "probe_note": "Small sample (n=6). 20% A/B probe only. Graduate at n>=15 with WR>=0.65. Retire if WR falls below 0.50 by n=15."
+      "active": true
     },
     {
       "rule_id": "conf_floor_70_v1",
@@ -203,49 +198,43 @@
       "last_applied": 1778811039.5375004,
       "times_applied": 2,
       "times_correct": 0,
-      "active": false,
-      "gate_percentage": 20,
-      "gated_at": "2026-05-17T23:03:00Z",
-      "prior_adjustment": -20.0,
-      "gate_reason": "COMPOUNDING_DEADLOCK: -20pts + self_tuning CONSERVATIVE = total block on all signals <90%. T-6.95h to morning window. 5th consecutive missed window. Reduced to -5 to allow ETH/BTC trending signals (typically 70-85%) to pass on restart.",
-      "deactivated_at": "2026-05-20T23:06:00Z",
-      "deactivation_reason": "0/2 correct (both penalized signals were winners). Confirmed data contradiction: 60-70% IS the confidence sweet spot (+$2.19/trade EV, 42% WR, +$197 total \u2014 better than 70-80% and 80-90%). Improvement system has this rule SUSPENDED_DATA_CONTRADICTION. Deactivating to stop penalizing the most reliably profitable confidence bin."
+      "active": false
     },
     {
-      "id": "tod_evening_edge_v1",
+      "rule_id": "tod_evening_edge_v1",
+      "hypothesis_statement": "Evening session 18:00-24:00 UTC yields 65% WR vs 10% night (spread 55%). n=27 live trades. Second-best TOD window after morning.",
       "action": "boost",
-      "active": true,
+      "conditions": {
+        "hour_utc_min": 18,
+        "hour_utc_max": 24
+      },
+      "adjustment": 5.0,
       "confidence": 0.85,
-      "gate_percentage": 20,
-      "description": "Evening session 18:00-24:00 UTC wins 65% vs 10% night (spread 55%). n=27.",
-      "effect": "+5pts confidence for signals in 18:00-24:00 UTC window",
-      "source": "meta_learning/insights.json (perpetual_loop 2026-05-21T00:09)",
-      "evidence_count": 27,
-      "win_rate": 0.65,
-      "added_at": "2026-05-21T00:12:52.387053+00:00",
-      "ab_gate": true,
-      "graduation_threshold": "n>=20 post-restart, WR>=0.60",
-      "baseline_wr": null,
-      "treatment_wr": null
+      "evidence_ratio": 0.65,
+      "total_evidence": 27,
+      "created_at": 1779310372.0,
+      "last_applied": 1779325621.5691223,
+      "times_applied": 1,
+      "times_correct": 0,
+      "active": true
     },
     {
-      "id": "tod_afternoon_edge_v1",
+      "rule_id": "tod_afternoon_edge_v1",
+      "hypothesis_statement": "Afternoon session 12:00-18:00 UTC yields 64% WR vs 31% night (spread 33%). n=27 live trades. Third-best TOD window.",
       "action": "boost",
-      "active": true,
+      "conditions": {
+        "hour_utc_min": 12,
+        "hour_utc_max": 18
+      },
+      "adjustment": 5.0,
       "confidence": 0.85,
-      "gate_percentage": 20,
-      "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
-      "effect": "+5pts confidence for signals in 12:00-18:00 UTC window",
-      "source": "meta_learning/insights.json (perpetual_loop 2026-05-21T00:09)",
-      "evidence_count": 27,
-      "win_rate": 0.64,
-      "added_at": "2026-05-21T00:12:52.387053+00:00",
-      "ab_gate": true,
-      "graduation_threshold": "n>=20 post-restart, WR>=0.58",
-      "baseline_wr": null,
-      "treatment_wr": null
+      "evidence_ratio": 0.64,
+      "total_evidence": 27,
+      "created_at": 1779310372.0,
+      "last_applied": 1779325621.5699947,
+      "times_applied": 1,
+      "times_correct": 0,
+      "active": true
     }
-  ],
-  "last_updated": "2026-05-21T00:12:52.387053+00:00",
-  "total_rules": 13
+  ]
 }

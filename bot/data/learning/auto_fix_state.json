@@ -1,27 +1,35 @@
 {
-  "last_run": "2026-05-20T03:11:24+00:00",
+  "last_run": "2026-05-21T01:09:32.358251+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
   "fixes_applied_this_run": 1,
   "gates_active": 81,
-  "total_applied_all_time": 50,
+  "total_applied_all_time": 51,
   "last_fix": {
-    "fix_id": "CRITIC_PROMPT_BTC_LONG_BIAS",
-    "applied_at": "2026-05-20T03:11:24+00:00",
-    "file": "bot/llm/agents/prompts.py",
-    "description": "BTC LONG = 18% WR on 17 live trades. Critic Agent was passing all BTC LONG signals without challenge. Added BTC BUY to STRATEGY TRUST (default CHALLENGE, require 3+ red flags) and RED FLAGS list. Critic will now auto-flag BTC BUY signals, requiring strong bullish catalysts to approve.",
-    "confidence": 78,
+    "fix_id": "TOD_RUNTIME_FIX_V1",
+    "applied_at": "2026-05-21T01:09:32.358251+00:00",
+    "file": "bot/data/llm/graduated_rules.json",
+    "description": "Fixed 2 malformed TOD rules that were added with wrong schema (id vs rule_id, no conditions dict, adjustment=0). Runtime engine was loading them as rule_id='?' adj=0 \u2014 completely inert. Reformatted to proper GraduatedRule schema: tod_evening_edge_v1 {hour_utc_min:18, hour_utc_max:24, adj:+5.0} and tod_afternoon_edge_v1 {hour_utc_min:12, hour_utc_max:18, adj:+5.0}. Verified: engine test shows correct BOOST+5.0 firing.",
+    "confidence": 96,
     "gate_percentage": 100,
     "status": "APPLIED",
-    "outcome_tracking": "PENDING_RESTART \u2014 bot offline"
+    "outcome_tracking": "PENDING_RESTART \u2014 verify first trade in 12-18 or 18-24 UTC window"
   },
   "new_findings_this_run": [
     {
-      "finding_id": "MORNING_WINDOW_T169M_3H_ALERT",
-      "detected_at": "2026-05-20T03:11:24+00:00",
+      "finding_id": "TOD_RUNTIME_BUG_FIXED",
+      "detected_at": "2026-05-21T01:09:32.358251+00:00",
       "severity": "CRITICAL",
-      "detail": "Morning window 06:00-12:00 UTC May 20 opens in 169 minutes (2.8h). Crossed 3H ALERT threshold. 9th consecutive window at risk. Cumulative alpha lost: ~$2,012-4,066 (9 windows x $56-113/window EV).",
-      "action": "RESTART BOT NOW. Deadline for full window capture: 05:30 UTC. Soft-start: 50% size, 3x max lev, ETH/BTC trending only.",
-      "requires_human_review": true
+      "detail": "tod_evening_edge_v1 and tod_afternoon_edge_v1 were in runtime engine in wrong format. Engine parsed them as rule_id='?' adj=0.0 \u2014 no boost would ever fire. Root cause: last run wrote documentation-format dict instead of GraduatedRule dataclass fields.",
+      "action": "FIXED \u2014 reformatted to proper schema. Verified via engine.evaluate_signal() test.",
+      "requires_human_review": false
+    },
+    {
+      "finding_id": "META_INVERSION_ALREADY_RESOLVED",
+      "detected_at": "2026-05-21T01:09:32.358251+00:00",
+      "severity": "LOW",
+      "detail": "Outstanding item META_LEARNING_IDEAS_INVERSION_BUG already resolved: all 4 inverted ideas in ideas.json marked invalidated on 2026-05-18. Removing from outstanding pending.",
+      "action": "CLOSED \u2014 outstanding item removed from pending list.",
+      "requires_human_review": false
     }
   ],
   "active_fixes": [
@@ -87,6 +95,13 @@
       "gate_pct": 100,
       "status": "ACTIVE",
       "type": "PROMPT_AMENDMENT",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_RUNTIME_FIX_V1",
+      "applied_at": "2026-05-21T01:09:32.358251+00:00",
+      "gate_pct": 100,
+      "status": "ACTIVE",
       "outcome_tracking": "PENDING_RESTART"
     }
   ],
@@ -186,7 +201,6 @@
     "LLM_REGIME_CAPTURE_GAP: add llm_regime write to trades.csv (~1h dev).",
     "STALE_SHADOW_FILE: Delete data/llm/graduated_rules.json (15 min dev).",
     "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). Enable post-5-trade soft-start.",
-    "META_LEARNING_IDEAS_INVERSION_BUG: 4/8 ideas inverted. Fix before applying any idea.",
     "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates. Fix accumulator to UPDATE not APPEND."
   ],
   "fixes_history": [
@@ -208,6 +222,16 @@
       "type": "NEW_AB_PROBE",
       "source": "perpetual_loop_subsystem1+3",
       "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_RUNTIME_FIX_V1",
+      "applied_at": "2026-05-21T01:09:32.358251+00:00",
+      "gate_pct": 100,
+      "status": "APPLIED",
+      "type": "SCHEMA_CORRECTION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "Reformatted 2 malformed TOD rules to GraduatedRule schema. Prior: id/description fields only. Now: rule_id, conditions, adjustment, evidence_ratio, etc.",
       "outcome_tracking": "PENDING_RESTART"
     }
   ]
