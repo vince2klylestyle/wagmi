@@ -201,6 +201,26 @@
       "active": false
     },
     {
+      "rule_id": "btc_trend_long_counter_v1",
+      "hypothesis_statement": "BTC BUY in TRENDING regime = 18% WR on 17 live trades. Original BTC+trend boost (rule_1777922205_0) was 0/3 correct and deactivated. This counter-rule completes the triple protection stack: (1) this -13pt penalty gate=20%, (2) Critic prompt auto-challenges all BTC BUY by default, (3) parent boost rule deactivated. Graduate: escalate gate to 50% at n>=10 obs with WR<=0.45.",
+      "action": "penalize",
+      "conditions": {
+        "symbol": "BTC",
+        "side": "BUY",
+        "regime": "trend"
+      },
+      "adjustment": -13.0,
+      "confidence": 0.92,
+      "evidence_ratio": 0.18,
+      "total_evidence": 17,
+      "created_at": 1779360684.0,
+      "last_applied": null,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "gate_percentage": 20
+    },
+    {
       "rule_id": "tod_evening_edge_v1",
       "hypothesis_statement": "Evening session 18:00-24:00 UTC yields 65% WR vs 10% night (spread 55%). n=27 live trades. Second-best TOD window after morning.",
       "action": "boost",

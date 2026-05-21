@@ -1,23 +1,18 @@
 {
-  "last_run": "2026-05-21T01:10:29.143451+00:00",
-  "run_id": "perpetual_deep_dive_2026_05_21_0110",
-  "hours_since_prev_run": 0.9,
+  "last_run": "2026-05-21T22:11:11.483955+00:00",
+  "run_id": "perpetual_deep_dive_2026_05_21_2206",
+  "hours_since_prev_run": 21.0,
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 1,
-      "gates_active": 11,
-      "total_runtime_rules": 13,
-      "fix_this_run": "TOD_RUNTIME_FIX_V1",
-      "new_rules_repaired": [
-        "tod_evening_edge_v1",
-        "tod_afternoon_edge_v1"
-      ],
-      "note": "CRITICAL BUG FIXED: 2 TOD rules were in wrong schema (id vs rule_id, adj=0, no conditions). Runtime engine was silently ignoring them. Now properly formatted and verified firing via engine test.",
-      "closed_outstanding": "META_LEARNING_IDEAS_INVERSION_BUG \u2014 already resolved 2026-05-18, removed from outstanding",
+      "gates_active": 12,
+      "total_runtime_rules": 14,
+      "fix_this_run": "BTC_TREND_LONG_COUNTER_V1_WRITE",
+      "finding": "CRITICAL: btc_trend_long_counter_v1 was tracked as ACTIVE in auto_fix_state since 2026-05-20T02:11 but was NEVER WRITTEN to graduated_rules.json. Rule was absent from runtime engine for 45+ hours. Fixed: rule added with conditions={BTC,BUY,trend}, adj=-13.0, gate=20%. Now 14 rules in engine.",
       "outstanding_count": 8
     },
     "execution_forensics": {
-      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing (day 28)",
+      "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing (day 29)",
       "noise_stop_problem": "87% of early SL hits in non-trending regimes. Stable estimate.",
       "hold_forensics": {
         "win_median_hold_h": 3.3,
@@ -28,104 +23,87 @@
         "medium_3_5x": "OPTIMAL +0.79R",
         "high_6_10x": "BLOCKED (gate=20%)"
       },
-      "days_offline": 28.0,
-      "hours_offline": 673.1,
-      "gap_deepening": true,
-      "cumulative_opportunity_cost_usd": 672,
-      "morning_window_mins_to_open": 292,
-      "new_finding": "TOD_RUNTIME_BUG: Both TOD boost rules were inert for 50+ minutes since last run. 5pts morning/afternoon boost was not applying. Fixed this run by Sub1."
+      "days_offline": 29.0,
+      "new_finding": "EVENING_SESSION_NOW_ACTIVE: 22:06 UTC in tod_evening_edge_v1 window (65% WR). 1.9h of high-edge session remaining tonight if bot restarts before 24:00 UTC."
     },
     "live_injection": {
       "high_edges_found": 9,
       "weak_setups_found": 5,
-      "new_edges_added": 0,
-      "data_status": "FROZEN \u2014 no trades. Bot offline day 28.",
-      "tod_rules_status": "NOW ACTIVE: tod_evening_edge_v1 (+5pts 18-24UTC) + tod_afternoon_edge_v1 (+5pts 12-18UTC) confirmed firing after schema fix.",
-      "new_finding": "TOD_BOOST_NOW_FUNCTIONAL: Both TOD rules operational in runtime engine. On restart, ETH/BTC signals in 12-18 or 18-24 UTC windows will get +5pts confidence boost as intended."
+      "new_edges_added": 1,
+      "data_status": "FROZEN \u2014 no trades. Bot offline day 29.",
+      "new_edge_detail": "btc_trend_long_counter_v1 written to engine (was missing). Weak setup coverage now complete.",
+      "window_status": "Window 12 MISSED (10.1h ago). Window 13 in 7.9h. Evening edge ACTIVE NOW (1.9h remaining)."
     },
     "daily_synthesis": {
       "anomalies": 5,
       "report_generated": true,
       "today_trades": 0,
       "today_pnl": 0.0,
-      "synthesis_file": "/home/user/WAGMI/bot/data/sessions/daily_synthesis_2026-05-21.json",
-      "morning_window_status": "Opens in 292m (T-4.9h). RESTART DEADLINE: 262m from now (05:30 UTC).",
-      "new_finding": "SYNTHESIS_GENERATED: daily_synthesis_2026-05-21.json created. 5 anomalies logged including TOD runtime bug (resolved) and 12th morning window risk."
+      "consecutive_windows_missed": 12,
+      "window_12_status": "MISSED \u2014 12th consecutive morning window lost. Cumulative EV: $728+.",
+      "window_13_deadline": "05:30 UTC May 22 (7.4h from now)",
+      "new_finding": "WINDOW_12_MISSED + EVENING_ACTIVE: Double urgency \u2014 catch 1.9h of tonight's evening edge AND prepare for Window 13 morning. Restart before 00:00 UTC tonight = optimal."
     },
     "model_optimization": {
       "model_swaps_recommended": 1,
-      "potential_savings": "$0.096/month (Scout 3rd-cycle) + $2-8/month if LLM_MODE_GUARD verified",
+      "potential_savings": "$0.096/month Scout + $2-8/month LLM_MODE_GUARD",
       "status": "SCOUT_FREQUENCY_REDUCTION_PENDING",
       "all_agents_optimal": true,
-      "cost_tracker_json": "MISSING \u2014 bot offline. Static analysis only.",
-      "new_finding": "No change from last run. Scout throttle still pending implementation post-restart.",
-      "pending_implementation": "coordinator.py: add scout_cycle_counter, run scout every 3rd cycle"
+      "new_finding": "No change from last run. Static analysis only (bot offline)."
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
       "severity": "CRITICAL",
-      "finding": "TOD_RUNTIME_BUG_FIXED: Both tod_evening_edge_v1 and tod_afternoon_edge_v1 were in graduated_rules.json in wrong format (missing rule_id, conditions, adjustment). Engine was silently ignoring them \u2014 50+ minutes of dead code after last run claimed to add them. Schema corrected this run. Verified: BOOST+5.0 fires correctly for hour_utc 12-18 and 18-24.",
-      "action": "RESOLVED. Monitor first post-restart trades in afternoon/evening windows for +5pts boost."
+      "finding": "BTC_COUNTER_RULE_WRITE_BUG: btc_trend_long_counter_v1 was tracked as ACTIVE in auto_fix_state since 2026-05-20T02:11 but was absent from graduated_rules.json for 45+ hours. The prior run wrote tracking state but never executed the file write. Rule was completely missing from the runtime engine. Fixed this run \u2014 14 rules now active.",
+      "action": "RESOLVED. Monitor first BTC BUY in trending regime post-restart: should show -13pts penalty in rule application log."
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "MORNING_WINDOW_12TH_IMMINENT: May 21 06:00-12:00 UTC opens in 4.9h (T-292m). 11 consecutive windows missed. Cumulative EV lost: $672+. RESTART DEADLINE: 05:30 UTC (T-262m from 01:07 UTC).",
-      "action": "RESTART BEFORE 05:30 UTC. Soft-start: 50% sizing, 3x max, ETH/BTC trending only."
+      "finding": "WINDOW_12_MISSED + WINDOW_13_IMMINENT: May 21 06:00-12:00 window closed 10.1h ago (12th consecutive miss, cumulative EV lost $728+). Window 13 (May 22 06:00-12:00) opens in 7.9h. Restart deadline: 05:30 UTC May 22 (7.4h).",
+      "action": "RESTART BEFORE 05:30 UTC MAY 22. BONUS: restart before 00:00 UTC tonight catches 1.9h of evening edge (65% WR, tod_evening_edge_v1 active now)."
+    },
+    {
+      "subsystem": "live_injection",
+      "severity": "HIGH",
+      "finding": "EVENING_SESSION_ACTIVE_NOW: 22:06 UTC is in the tod_evening_edge_v1 window (18-24 UTC, 65% WR, n=27). If bot restarts before 00:00 UTC, it gets immediate high-edge exposure. 1.9h of evening edge available tonight before night block kicks in.",
+      "action": "RESTART TONIGHT before 00:00 UTC = 1.9h of 65% WR. Then catch morning window (06:00 UTC) after night block. Optimal restart window: NOW \u2192 23:45 UTC."
     },
     {
       "subsystem": "execution_forensics",
       "severity": "HIGH",
-      "finding": "AB_TRACKER_DAY_28_STALL: 11 active gated rules, zero graduations possible without outcome callbacks. Self-improvement pipeline frozen at critical juncture.",
-      "action": "P0 dev: AB tracker hooks in bot/feedback/loop.py (~4h). Critical path for all future learning."
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "MEDIUM",
-      "finding": "META_INVERSION_OUTSTANDING_CLOSED: META_LEARNING_IDEAS_INVERSION_BUG was listed as outstanding but already resolved on 2026-05-18. All 4 inverted ideas already marked 'invalidated'. Cleared from outstanding.",
-      "action": "CLOSED. Outstanding list now has 8 items (down from 9)."
+      "finding": "AB_TRACKER_DAY29_STALL: 45+ hours since last run, 12 active gated rules, zero outcome callbacks received. Self-improvement pipeline frozen. BTC_TREND_LONG_COUNTER_V1 (just added) will also be stuck at 0 observations.",
+      "action": "P0 dev: implement outcome callbacks in bot/feedback/loop.py (~4h). Critical path for ALL future learning graduation."
     },
     {
       "subsystem": "model_optimization",
       "severity": "MEDIUM",
-      "finding": "SCOUT_FREQUENCY_REDUCTION: Scout runs every cycle (Haiku). Reducing to every-3rd-cycle = -67% Scout API calls, -5% accuracy. Est $0.10/month savings.",
+      "finding": "SCOUT_FREQUENCY_REDUCTION: Scout runs every cycle (Haiku). Reducing to every-3rd-cycle = -67% Scout API calls, -5% accuracy. Est $0.096/month savings.",
       "action": "Implement post-restart in bot/llm/agents/coordinator.py (scout call throttle)."
     }
   ],
   "run_summary": {
     "subsystems_completed": 5,
     "fixes_applied_this_run": 1,
-    "runtime_rules_total": 13,
-    "runtime_rules_active": 11,
-    "runtime_rules_repaired_this_run": 2,
-    "outstanding_items_closed": 1,
+    "runtime_rules_total": 14,
+    "runtime_rules_active": 12,
+    "runtime_rules_added_this_run": 1,
+    "outstanding_items_closed": 0,
     "outstanding_items_remaining": 8,
     "high_priority_findings_count": 5,
-    "morning_window_status": "May 21 06:00 UTC \u2014 T-4.9h (292m). RESTART DEADLINE 05:30 UTC.",
-    "data_status": "FROZEN \u2014 bot offline 28.0 days. 0 trades.",
+    "window_12_status": "MISSED (12th consecutive). Cumulative EV: $728+.",
+    "window_13_deadline": "05:30 UTC May 22 (7.4h).",
+    "evening_session_active": "YES \u2014 22:06 UTC, 1.9h remaining in tod_evening_edge_v1 (65% WR)",
+    "data_status": "FROZEN \u2014 bot offline 29 days. 0 trades.",
     "equity": 497.05,
-    "tod_rules_status": "3 active TOD rules: morning_edge(gate=50%) + evening_edge(gate=20%, FIXED) + afternoon_edge(gate=20%, FIXED). Night veto active.",
-    "fixes_all_time": [
-      "EXIT_AGENT_PROMPT_AMENDMENT_BTC_ETH_TRENDING (2026-05-18)",
-      "TRENDING_MIN_HOLD_2H_GATE_UPGRADE (2026-05-18)",
-      "HIGH_LEV_10X_FORENSICS_BLOCK (2026-05-19)",
-      "EVENING_BOOST_DEESCALATE_FIX (2026-05-19)",
-      "SIDE_BIAS_ENFORCEMENT_V2 (2026-05-19)",
-      "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE (2026-05-19)",
-      "BTC_TREND_LONG_COUNTER_V1 (2026-05-20T02:11)",
-      "CRITIC_PROMPT_BTC_LONG_BIAS (2026-05-20T03:11)",
-      "BTC_TREND_BOOST_DEACTIVATION (2026-05-20T23:06)",
-      "CONF_FLOOR_70_DEACTIVATION (2026-05-20T23:06)",
-      "TOD_EVENING_EDGE_V1 (2026-05-21T00:09 \u2014 last run, SCHEMA BUG)",
-      "TOD_AFTERNOON_EDGE_V1 (2026-05-21T00:09 \u2014 last run, SCHEMA BUG)",
-      "TOD_RUNTIME_FIX_V1 (2026-05-21T01:07 \u2014 THIS RUN, fixes above schema bug)"
-    ],
-    "btc_long_protection_stack": [
-      "Layer 1: BTC_TREND_LONG_COUNTER_V1 (-13pts, A/B 20%) \u2014 applied 2026-05-20T02:11",
-      "Layer 2: Critic prompt CHALLENGE by default on BTC BUY \u2014 applied 2026-05-20T03:11",
-      "Layer 3: rule_1777922205_0 DEACTIVATED (spurious +8pt boost removed) \u2014 applied 2026-05-20T23:06",
+    "key_insight_this_run": "Discovered and fixed write-consistency bug: rule tracked as applied but never written to runtime engine. Audit: all future fix applications must verify both auto_fix_state AND graduated_rules.json are updated atomically.",
+    "tod_rules_status": "3 active TOD rules: morning_edge(gate=50%) + evening_edge(gate=20%, ACTIVE NOW) + afternoon_edge(gate=20%). Night veto active 00-06 UTC.",
+    "btc_protection_stack": [
+      "Layer 1: btc_trend_long_counter_v1 (-13pts, gate=20%) \u2014 NOW WRITTEN TO ENGINE (was missing)",
+      "Layer 2: Critic prompt CHALLENGE by default on BTC BUY \u2014 active",
+      "Layer 3: rule_1777922205_0 DEACTIVATED (parent boost removed) \u2014 active",
       "Layer 4: night_session_block_v1 (00:00-06:00 UTC veto) \u2014 active"
     ]
   }
