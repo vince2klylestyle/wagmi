@@ -91,7 +91,8 @@ def call_agent(
            "--output-format", "json",
            "--model", model,
            "--max-budget-usd", str(max_budget_usd),
-           "--no-session-persistence"]
+           "--no-session-persistence",
+           "--dangerously-skip-permissions"]
 
     # Embed system prompt in stdin (avoids Windows 8191-char cmd-line limit)
     if system_prompt:
