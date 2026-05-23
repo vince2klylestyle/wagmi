@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-05-20T02:11:24.427606+00:00",
+  "last_updated": "2026-05-23T22:12:26.436796+00:00",
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -2342,10 +2342,10 @@
     },
     {
       "rule_id": "CRITIC_PROMPT_BTC_LONG_BIAS",
-      "source": "perpetual_deep_dive_2026_05_20_0311 — model_optimization + execution_forensics",
+      "source": "perpetual_deep_dive_2026_05_20_0311 \u2014 model_optimization + execution_forensics",
       "description": "BTC BUY directional bias added to Critic Agent prompt. 18% live WR on 17 trades unvetoed. Critic now defaults to CHALLENGE on any BTC BUY signal.",
       "problem": "BTC LONG = 18% WR on 17 live trades (net negative EV). Critic Agent was passing all BTC LONG signals without challenge. No directional bias check existed.",
-      "fix_applied": "PROMPT_AMENDMENT — prompts.py CRITIC_AGENT_PROMPT: added BTC BUY to STRATEGY TRUST (default CHALLENGE, require 3+ red flags), added BTC BUY signal to RED FLAGS list.",
+      "fix_applied": "PROMPT_AMENDMENT \u2014 prompts.py CRITIC_AGENT_PROMPT: added BTC BUY to STRATEGY TRUST (default CHALLENGE, require 3+ red flags), added BTC BUY signal to RED FLAGS list.",
       "status": "ACTIVE",
       "confidence": 78,
       "gate_percentage": 100,
@@ -2355,7 +2355,7 @@
       "applied_date": "2026-05-20T03:11:24+00:00",
       "action": "Monitor BTC LONG execution rate post-restart. Should drop from ~100% pass-through to <40%.",
       "expected_impact": "60-80% challenge rate on BTC LONG signals at Critic stage.",
-      "outcome_tracking": "PENDING_RESTART — bot offline",
+      "outcome_tracking": "PENDING_RESTART \u2014 bot offline",
       "code_change": "bot/llm/agents/prompts.py: CRITIC_AGENT_PROMPT STRATEGY TRUST + RED FLAGS sections amended"
     }
   ],
@@ -2923,20 +2923,6 @@
       "merged_at": "2026-05-03T21:08:36.791815Z"
     }
   ],
-  "run_log_2026_04_27_1900_hourly": {
-    "run_timestamp": "2026-04-27T19:05:10.303330+00:00",
-    "subsystems_run": 5,
-    "fixes_applied": 0,
-    "gates_active": 31,
-    "gates_stalled": 31,
-    "critical_finding": "Bot offline 4+ days \u2014 all learning loops frozen",
-    "high_priority_actions": [
-      "RESTART BOT (critical \u2014 4d offline, 31 gates stalled)",
-      "F1_sniper: user approval needed (verify 5x cap + $50/trade ceiling)",
-      "CONF_60_70_all_block: escalate gate from 20% \u2192 100% (85% conf, 123 trade confirmation)"
-    ],
-    "next_auto_fix_trigger": "No new rules to apply. Next run: escalation candidates if bot restarts."
-  },
   "rules_added_2026_04_29_perpetual_run": [
     {
       "rule_id": "AFTERNOON_SESSION_BLOCK",
@@ -2973,27 +2959,6 @@
       "expected_impact": "Unlocks slippage forensics: ability to quantify execution quality vs signal quality, potentially identifying $5-15/trade slippage component in losses"
     }
   ],
-  "run_log_2026_04_29_perpetual_run": {
-    "run_timestamp": "2026-04-29T00:00:00+00:00",
-    "subsystems_run": 5,
-    "fixes_applied": 1,
-    "gates_active": 45,
-    "gates_stalled": 44,
-    "new_rules_added": 2,
-    "critical_findings": [
-      "BOT_OFFLINE 122h (CRITICAL) \u2014 all 44 A/B gates stalled",
-      "AB_RESULT_TRACKER_CODE P0 unimplemented (CRITICAL)",
-      "SOL_SHORT rule conflict: full_block vs edge_promote note unresolved (HIGH)",
-      "idea_920b3e13 direction-reversed: converted afternoon boost \u2192 block (HIGH)"
-    ],
-    "high_priority_actions": [
-      "RESTART BOT with BOT_INACTIVE_ALERT checklist (verify HYPE 0.25x, SOL_SHORT block, conf<70 block)",
-      "Implement AB_RESULT_TRACKER_CODE in feedback/loop.py (P0 \u2014 3+ days overdue)",
-      "Human decision: keep SOL_SHORT_full_block or unsuspend SOL_SHORT_edge_promote",
-      "Add snapshot_entry to CSV logger for slippage tracking"
-    ],
-    "next_auto_fix_trigger": "Bot restart will unfreeze all 44 stalled gates. First 25+ trades will begin populating treatment_wr."
-  },
   "rules_added_2026_04_29_hourly_run2": [
     {
       "rule_id": "RESTART_SOFT_START_4LOSS",
@@ -3015,99 +2980,6 @@
       "supersedes": null
     }
   ],
-  "run_log_2026_04_29_hourly_run2": {
-    "run_timestamp": "2026-04-29T18:11:59.609910Z",
-    "subsystems_run": 5,
-    "fixes_applied": 1,
-    "gates_active": 35,
-    "gates_stalled": 34,
-    "new_rules_added": 1,
-    "note": "Bot offline 135h. No trades.csv for forensics/injection. A/B gates remain stalled."
-  },
-  "run_log_2026_04_30_perpetual_run": {
-    "run_timestamp": "2026-04-30T16:04:29.358769+00:00",
-    "subsystems_run": 5,
-    "fixes_applied": 10,
-    "gates_active": 39,
-    "gates_stalled": 39,
-    "escalations": [
-      {
-        "rule_id": "HYPE_LONG_hard_block",
-        "old_gate": 20,
-        "new_gate": 80,
-        "reason": "35 live trades @ 23% WR \u2014 definitive negative edge; escalate 20\u219280%"
-      },
-      {
-        "rule_id": "SOL_LONG_hard_block",
-        "old_gate": 20,
-        "new_gate": 80,
-        "reason": "34 live trades @ 24% WR \u2014 definitive negative edge; escalate 20\u219280%"
-      },
-      {
-        "rule_id": "ILLIQUID_regime_block",
-        "old_gate": 50,
-        "new_gate": 80,
-        "reason": "57 live trades @ 28.1% WR + 71.9% noise-stop rate \u2014 escalate 50\u219280%"
-      },
-      {
-        "rule_id": "EVENING_session_boost",
-        "old_gate": 20,
-        "new_gate": 50,
-        "reason": "27 live trades, evening 65% WR confirmed; escalate 20\u219250%"
-      },
-      {
-        "rule_id": "NOISE_STOP_WIDEN_illiquid",
-        "old_gate": 20,
-        "new_gate": 50,
-        "reason": "57 illiquid trades confirm noise stop hypothesis; escalate 20\u219250%"
-      },
-      {
-        "rule_id": "BB_solo_signal_boost",
-        "old_gate": 50,
-        "new_gate": 80,
-        "reason": "2172 shadow signals, conf=95 \u2014 escalate 50\u219280%"
-      },
-      {
-        "rule_id": "BB_MTQ_combo_block",
-        "old_gate": 50,
-        "new_gate": 80,
-        "reason": "2172 shadow signals, conf=92 \u2014 escalate 50\u219280%"
-      },
-      {
-        "rule_id": "HYPE_SELL_BB_block",
-        "old_gate": 50,
-        "new_gate": 80,
-        "reason": "2172 shadow signals, conf=92 \u2014 escalate 50\u219280%"
-      },
-      {
-        "rule_id": "TIGHT_TP_preference",
-        "old_gate": 50,
-        "new_gate": 80,
-        "reason": "2172 shadow signals, conf=90 \u2014 escalate 50\u219280%"
-      },
-      {
-        "rule_id": "SIZE_edge_boost",
-        "old_gate": 20,
-        "new_gate": 50,
-        "reason": "50 samples, conf=75 \u2014 large-position edge confirmed; escalate 20\u219250%"
-      }
-    ],
-    "critical_findings": [
-      "BOT_OFFLINE 163h (CRITICAL) \u2014 all A/B gates still stalled, no new live trades",
-      "HYPE_LONG + SOL_LONG blocks escalated to 80% gate (35/34 live trades confirmed)",
-      "ILLIQUID_regime_block escalated to 80% gate (57 trades, 71.9% noise stop rate)",
-      "SLIPPAGE_TRACKING_GAP: snapshot_entry still not implemented in CSV logger",
-      "10 gate escalations applied based on sample-count criteria"
-    ],
-    "high_priority_actions": [
-      "RESTART BOT \u2014 163h offline, all learning loops frozen, equity bleeding opportunity cost",
-      "IMPLEMENT snapshot_entry in CSV logger (unlocks slippage forensics)",
-      "F1_sniper: PENDING_HUMAN_REVIEW \u2014 user approval needed to re-enable",
-      "HIGH_CONF_CALIBRATION_DRIFT: PENDING_HUMAN_REVIEW \u2014 calibration drift needs human check",
-      "After restart: first 10 trades use RESTART_SOFT_START_4LOSS 0.5x sizing (4 consec losses at shutdown)"
-    ],
-    "next_auto_fix_trigger": "Bot restart will unfreeze 36 stalled gates. Next run: monitor treatment_wr vs baseline_wr on newly escalated gates."
-  },
   "rules_added_2026_05_01_hourly": [
     {
       "rule_id": "F8_log_string_fix",
@@ -3198,115 +3070,6 @@
       "merged_at": "2026-05-03T21:08:36.791821Z"
     }
   ],
-  "run_log_2026_05_01_1716": {
-    "run_timestamp": "2026-05-01T17:16:45.759906+00:00",
-    "run_type": "perpetual_improvement_deep_dive",
-    "subsystems_run": 5,
-    "fixes_applied": 3,
-    "gates_active": 48,
-    "escalations_applied": [
-      "NIGHT_session_pause: 20%\u2192100%",
-      "HYPE_LONG_hard_block: 80%\u2192100%",
-      "RANGING_regime_reduce: 20%\u219250%"
-    ],
-    "s2_forensics": "SKIPPED \u2014 trades.csv absent (bot offline 187h)",
-    "s3_injection": "3 high edges, 6 weak setups from 352 all-time trades + meta_learning",
-    "s4_synthesis": "5 anomalies; critical=BOT_OFFLINE_EXTENDED + 90.1% DD",
-    "s5_model_opt": "0 swaps recommended; $0.0062/decision pipeline cost; $1.86/month projected",
-    "high_priority": [
-      "RESTART BOT \u2014 187h offline, all A/B gates frozen",
-      "NIGHT_session_pause now 100% \u2014 full trading suspension 00-06 UTC",
-      "HYPE_LONG_hard_block now 100% \u2014 full block confirmed",
-      "ETH_SHORT+morning+trending = top priority setup on restart",
-      "snapshot_entry gap in CSV logger blocks slippage forensics"
-    ],
-    "note": "Bot offline since 2026-04-23. No trades.csv. All gate data from historical 352-trade set."
-  },
-  "run_log_2026_05_01_1842": {
-    "run_timestamp": "2026-05-01T18:42:15.000000+00:00",
-    "run_type": "perpetual_improvement_deep_dive_hourly",
-    "subsystems_run": 5,
-    "fixes_applied": 3,
-    "gates_active": 49,
-    "escalations_applied": [
-      "SOL_LONG_hard_block: 80%\u2192100%",
-      "NOISE_STOP_WIDEN_illiquid: 80%\u2192100%"
-    ],
-    "new_rules_added": [
-      "ETH_SHORT_protect_from_bias"
-    ],
-    "s2_forensics": "SKIPPED \u2014 trades.csv empty (bot offline 201h); historical illiquid noise-stop=71.9%",
-    "s3_injection": "high_edges=4, weak_setups=6 \u2014 top: ETH_SHORT 80% WR",
-    "s4_synthesis": "anomalies=5; CRITICAL=BOT_OFFLINE_201H + 90.1% DD",
-    "s5_model_opt": "0 swaps recommended; $0.0043/decision estimated; $1.29/month at 300 decisions",
-    "high_priority": [
-      "RESTART BOT \u2014 201h offline, 48 A/B gates frozen, opportunity cost critical",
-      "SOL_LONG_hard_block escalated to 100% (n=34, 24% WR definitive)",
-      "NOISE_STOP_WIDEN_illiquid escalated to 100% (n=57, 71.9% noise-stop confirmed)",
-      "ETH_SHORT_protect_from_bias added at gate=20% \u2014 guard 80% WR pattern",
-      "snapshot_entry missing from CSV logger \u2014 slippage forensics permanently blocked"
-    ]
-  },
-  "run_log_2026_05_02_1520": {
-    "run_timestamp": "2026-05-02T15:20:14.782645+00:00",
-    "run_type": "perpetual_improvement_deep_dive_hourly",
-    "subsystems_run": 5,
-    "fixes_applied": 2,
-    "new_rules_added": [
-      "ILLIQUID_HOLD_TIMEOUT_RULE",
-      "CONF_90PLUS_SIZE_EXPAND"
-    ],
-    "gates_active": 51,
-    "s1_conflict_note": {
-      "note_id": "SOL_SHORT_sim_vs_live_conflict",
-      "timestamp": "2026-05-02T15:20:14.782645+00:00",
-      "finding": "10d simulation shows SOL_SHORT 63.7% WR (n=179) CONTRADICTING live data 33% WR (n=30, -$154). SOL_SHORT_full_block remains at 100%. Do not escalate sim data over live data.",
-      "action": "HOLD \u2014 wait for live trades post-restart to validate"
-    },
-    "s2_forensics": "SKIPPED \u2014 trades.csv empty (bot offline 226h); snapshot_entry missing for slippage",
-    "s3_injection": "high_edges=2, weak_setups=0; SOL_SHORT 63.7% WR + BTC_LONG 63.9% in sim (live data contradicts)",
-    "s4_synthesis": "anomalies=1 (strategy_concentration); bot offline 226h; 0 live trades today",
-    "s5_model_opt": "0 swaps; $0.0248/cycle; $7.43/month at 300 cycles",
-    "high_priority": [
-      "BOT_OFFLINE 226h \u2014 restart needed, 45 A/B gates frozen",
-      "F1_sniper still PENDING safety review \u2014 highest profit lever",
-      "ILLIQUID_HOLD_TIMEOUT_RULE added (gate=20%) \u2014 codifies validated insight n=164 conf=0.87",
-      "SOL_SHORT sim/live conflict: do NOT unblock based on sim data"
-    ]
-  },
-  "run_log_2026_05_02_1703": {
-    "run_timestamp": "2026-05-02T17:03:48.564985+00:00",
-    "run_type": "perpetual_improvement_deep_dive_hourly",
-    "subsystems_run": 5,
-    "fixes_applied": 11,
-    "escalations_applied": [
-      "ETH_SHORT_BB_golden: 50%\u219280%",
-      "HIGH_VOL_regime_boost: 50%\u219280%",
-      "BTC_LEADS_ETH_corr: 50%\u219280%",
-      "NOISE_REGIME_FAST_EXIT: 50%\u219280%",
-      "BTC_directional_correction: 50%\u219280%",
-      "CONF_60_70_floor_raise: 50%\u219280%",
-      "HIGH_CONF_SHORT_edge: 20%\u219250%",
-      "BB_solo_trust: 20%\u219250%",
-      "BB_MTQ_antipattern: 20%\u219250%",
-      "ETH_SHORT_protect_from_bias: 20%\u219250%",
-      "ILLIQUID_HOLD_TIMEOUT_RULE: 20%\u219250%"
-    ],
-    "gates_active": 54,
-    "s1_auto_fix": "11 gate escalations; 54 total gates active",
-    "s2_forensics": "SKIPPED \u2014 trades.csv absent (bot offline ~240h since 2026-04-23)",
-    "s3_injection": "HISTORICAL: 3 high edges (ETH_SHORT 80%, BTC_BUY_BB 69%, BB_solo 68%), 3 weak setups (SOL_SELL_regime_trend 0%, HYPE_BUY_CS 38%, HYPE_SELL_BB 35%)",
-    "s4_synthesis": "BOT_OFFLINE_240H: equity=$497.05, peak=$508.06, DD=-2.2%; CONF_CALIBRATION_DRIFT: 90%+ conf only 56% WR (34pt gap); 45 A/B gates frozen waiting for live data",
-    "s5_model_opt": "cost_tracker.json absent \u2014 skipped; prior estimate $0.0043/decision, $1.29/month at 300 cycles",
-    "high_priority": [
-      "RESTART BOT \u2014 240h offline, 53 A/B gates frozen, opportunity cost accumulating",
-      "BB_solo_trust escalated 20%\u219250% (shadow n=2172, 67.6% WR confirmed)",
-      "NOISE_REGIME_FAST_EXIT escalated 50%\u219280% (n=164, 87% noise-stop in illiquid)",
-      "ETH_SHORT_BB_golden escalated 50%\u219280% (n=20, conf=95%) \u2014 golden setup at wide gate",
-      "CONF_60_70_floor_raise escalated 50%\u219280% (n=123, 46.3% WR worst bin)",
-      "F1_sniper PENDING_HUMAN_REVIEW \u2014 highest profit lever blocked, awaiting safety signoff"
-    ]
-  },
   "rules_added_2026_05_02_hourly": [
     {
       "rule_id": "SOL_HIGH_CONF_premium",
@@ -3363,73 +3126,6 @@
       "expected_impact": "39.5% WR = -$65.83/trade avg on HYPE_60-70. Blocking would eliminate worst loss bucket."
     }
   ],
-  "run_log_2026_05_02_1815": {
-    "run_timestamp": "2026-05-02T18:15:00.000000+00:00",
-    "run_type": "perpetual_improvement_deep_dive_hourly",
-    "subsystems_run": 5,
-    "fixes_applied": 10,
-    "gates_active": 57,
-    "escalations_applied": [
-      "CONF_70_HARD_FLOOR: 30%\u219250%",
-      "CONF_70_HARD_FLOOR: 30%\u219250%",
-      "HYPE_SHORT_PAYOFF_BLOCK: 20%\u219250%",
-      "BTC_SHORT_CONF70_80_BLOCK: 20%\u219250%",
-      "SOL_STOP_MIN_0.9PCT: 20%\u219250%",
-      "HYPE_EV_ESCALATE_0.25x: 20%\u219250%",
-      "F8_log_string_fix: 20%\u219250%"
-    ],
-    "new_rules_added": [
-      "SOL_HIGH_CONF_premium",
-      "BTC_HIGH_CONF_90plus",
-      "HYPE_LOW_CONF_block_v2"
-    ],
-    "s1_auto_fix": "7 escalations + 3 new rules; GATE_ESCALATIONS_2026_05_01 marked APPLIED",
-    "s2_forensics": "PARTIAL \u2014 trades.csv absent (bot offline ~243h); trades_10d proxy: avg_SL_slippage=0.377%, noise_stops=50% of SL hits high-conf; snapshot_entry gap still unresolved",
-    "s3_injection": "high_edges=4 (BTC_LONG 63.9%, SOL_SHORT 63.7%, SOL_80-90 73.5%, BTC_90+ 66.0%); weak_setups=1 (HYPE_60-70 39.5%); live_edge_data.json updated",
-    "s4_synthesis": "anomalies=1 (max_consec_losses=9 > threshold=5); WR_swing=6.5% (below 20% threshold); bot still offline ~243h; no live trades today",
-    "s5_model_opt": "SKIPPED \u2014 cost_tracker.json absent; prior estimate $0.0043/decision, $1.29/month at 300 decisions",
-    "high_priority": [
-      "RESTART BOT \u2014 243h offline, 57 A/B gates frozen, opportunity cost critical",
-      "BTC_SHORT_CONF70_80_BLOCK escalated 20%\u219250% (n=98, conf=90, definitive block)",
-      "SOL_STOP_MIN_0.9PCT escalated 20%\u219250% (n=301, tight stops confirmed risky on SOL)",
-      "SOL_HIGH_CONF_premium: NEW RULE \u2014 73.5% WR at SOL_80-90% bin; premium routing needed",
-      "HYPE_LOW_CONF_block_v2: NEW RULE \u2014 39.5% WR HYPE_60-70, avg -$65.83/trade; block these",
-      "snapshot_entry gap unresolved \u2014 slippage forensics blocked; implement in csv_logger.py"
-    ]
-  },
-  "run_log_2026_05_03_2012": {
-    "run_timestamp": "2026-05-03T20:12:47+00:00",
-    "run_id": "perpetual_deep_dive_2026_05_03_2012",
-    "run_type": "perpetual_improvement_deep_dive_hourly",
-    "subsystems_run": 5,
-    "fixes_applied": 12,
-    "orphans_merged": [
-      "EXIT_PROACTIVE_CLOSE_PRIORITY",
-      "BTC_SHORT_CONF70_80_BLOCK",
-      "SLIPPAGE_TRACKING_GAP",
-      "HYPE_RULE_NOT_WIRED",
-      "AB_RESULT_TRACKER_CODE",
-      "NIGHT_SESSION_ESCALATE",
-      "CONF_70_HARD_FLOOR",
-      "SOL_STOP_MIN_0.9PCT"
-    ],
-    "new_rules_added": [
-      "RULE_CONFLICT_SOL_SHORT",
-      "RULE_CONFLICT_LONG_BIAS",
-      "ORPHAN_MERGE_AUDIT_2026_05_03"
-    ],
-    "gate_escalations": [
-      "RESTART_SOFT_START_4LOSS: 20%\u219280%"
-    ],
-    "gates_active": 54,
-    "high_priority_findings": [
-      "AB tracking code is TODO stub \u2014 treatment_wr never computed for any rule",
-      "29 orphan rules in sub-buckets not in main rules list",
-      "RULE_CONFLICT_SOL_SHORT: 100% block + 20% probe deadlock",
-      "SLIPPAGE_TRACKING_GAP: no snapshot_entry in trades.csv",
-      "BTC_SHORT 70-79% conf = worst loss bucket (new orphan rule finding)"
-    ]
-  },
   "rules_added_2026_05_03_2012": [
     {
       "rule_id": "EXIT_PROACTIVE_CLOSE_PRIORITY",
@@ -3648,10 +3344,10 @@
     },
     {
       "rule_id": "CRITIC_PROMPT_BTC_LONG_BIAS",
-      "source": "perpetual_deep_dive_2026_05_20_0311 — model_optimization + execution_forensics",
+      "source": "perpetual_deep_dive_2026_05_20_0311 \u2014 model_optimization + execution_forensics",
       "description": "BTC BUY directional bias added to Critic Agent prompt. 18% live WR on 17 trades unvetoed. Critic now defaults to CHALLENGE on any BTC BUY signal.",
-      "problem": "BTC LONG = 18% WR on 17 live trades (net negative EV). Critic Agent has never vetoed a BTC LONG — no directional bias check existed. BTC+trend boost (rule_1777922205_0) was contaminating with 0/3 accuracy before counter added last run. Critic must now catch these upstream.",
-      "fix_applied": "PROMPT_AMENDMENT — prompts.py CRITIC_AGENT_PROMPT: added BTC BUY to STRATEGY TRUST (default CHALLENGE, require 3+ red flags), added BTC BUY signal to RED FLAGS list. Gate: no gate needed for prompt — applies to 100% of future Critic calls.",
+      "problem": "BTC LONG = 18% WR on 17 live trades (net negative EV). Critic Agent has never vetoed a BTC LONG \u2014 no directional bias check existed. BTC+trend boost (rule_1777922205_0) was contaminating with 0/3 accuracy before counter added last run. Critic must now catch these upstream.",
+      "fix_applied": "PROMPT_AMENDMENT \u2014 prompts.py CRITIC_AGENT_PROMPT: added BTC BUY to STRATEGY TRUST (default CHALLENGE, require 3+ red flags), added BTC BUY signal to RED FLAGS list. Gate: no gate needed for prompt \u2014 applies to 100% of future Critic calls.",
       "status": "APPLIED",
       "confidence": 78,
       "gate_percentage": 100,
@@ -3661,7 +3357,7 @@
       "applied_date": "2026-05-20",
       "action": "Monitor BTC LONG outcomes post-restart. If WR improves to >35% after n>=20 (Critic filtering working), mark as effective. If WR stays <25%, escalate to full veto.",
       "expected_impact": "Catching 60-80% of BTC LONG signals at Critic stage before execution. Prior: 100% pass-through. Estimated +$X/trade by blocking ~4-6 losing BTC LONG trades per 20-trade window.",
-      "outcome_tracking": "PENDING_RESTART — bot offline",
+      "outcome_tracking": "PENDING_RESTART \u2014 bot offline",
       "code_change": "bot/llm/agents/prompts.py: CRITIC_AGENT_PROMPT STRATEGY TRUST + RED FLAGS sections amended"
     }
   ],
@@ -3699,24 +3395,6 @@
     "HYPE_RULE_NOT_WIRED": "RESOLVED \u2014 graduated_rules.json created with 3 critical runtime rules",
     "action": "Created bot/data/llm/graduated_rules.json (was MISSING). Gate 1g in signal_pipeline.py now enforces HYPE BUY veto, SOL BUY veto, illiquid regime -15 confidence.",
     "resolved_at": "2026-05-04T17:02:18+00:00"
-  },
-  "run_log_2026_05_05_2207": {
-    "timestamp": "2026-05-05T22:07:41.153131+00:00",
-    "subsystem": "auto_fix + daily_synthesis",
-    "changes": [
-      "EXIT_PROACTIVE_CLOSE_PRIORITY: TRACKED_PENDING \u2192 RESOLVED",
-      "BTC_STOP_MIN_0.8PCT: gate escalated 50%\u219250%"
-    ],
-    "new_finding": "EXIT_PROACTIVE_CLOSE_PRIORITY falsely tracked as PENDING \u2014 now RESOLVED (prompts.py:985-994)",
-    "bot_status": "OFFLINE 287.8h (12.0d)",
-    "pending_code_change": "BTC_STOP_MIN_0.8PCT: signal_pipeline.py needs BTC-specific 0.8% minimum stop width gate (rules engine cannot enforce stop_width conditions)"
-  },
-  "run_log_2026_05_07_1812": {
-    "run": "perpetual_deep_dive_2026_05_07_1812",
-    "action": "archived CONF_60_70_all_block (treatment_wr=baseline_wr=0.463, no improvement, superseded by conf_floor_70_v1)",
-    "ab_rules_archived": 1,
-    "ab_rules_active": 98,
-    "ab_rules_total": 99
   },
   "run_log_2026_05_18_2304": {
     "run_at": "2026-05-18T23:04:47+00:00",

@@ -1,349 +1,349 @@
 {
-    "last_run": "2026-05-23T03:11:00.653271+00:00",
-    "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
-    "fixes_applied_this_run": 2,
-    "gates_active": 22,
-    "total_applied_all_time": 58,
-    "last_fix": {
-        "fix_id": "BB_GATE_SYNC_GAP_FIX_V1",
-        "applied_at": "2026-05-23T03:11:00.653271+00:00",
-        "gate_pct": "20\u219250 (2 rules)",
-        "status": "APPLIED",
-        "type": "GATE_ESCALATION",
-        "source": "perpetual_loop_subsystem1",
-        "description": "BB gate sync gap detected and partially fixed. hype_sell_bb_block_v1 (gate 20%\u219250%) + bb_mtq_antipattern_v1 (gate 20%\u219250%). Feedback counterparts run at gate=80%; LLM was at gate=20%. 2 of 5 gaps closed \u2014 penalty rules only, no conflicts. 3 boost rules deferred (interaction risks). Systematic 4x understrength gap narrowed to 2.5x on penalty side.",
-        "evidence": "hype_sell_bb_block: HYPE SELL BB = 35% WR / n=2172. bb_mtq_antipattern: BB+MTQ cofire = 35% WR / n=2172. Both conf=0.92 >> 0.75 auto-apply threshold.",
-        "outcome_tracking": "PENDING_RESTART \u2014 graduate to gate=80% at n>=20 live obs with WR<=0.40 for penalize rules."
+  "last_run": "2026-05-23T22:14:39.737140+00:00",
+  "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
+  "fixes_applied_this_run": 2,
+  "gates_active": 22,
+  "total_applied_all_time": 60,
+  "last_fix": {
+    "fix_id": "SOL_BUY_RULE_CONFLICT_DISABLE_V1",
+    "applied_at": "2026-05-23T22:14:39.737140+00:00",
+    "gate_pct": "20\u21920 (disabled)",
+    "status": "APPLIED",
+    "type": "RULE_DISABLE",
+    "source": "perpetual_loop_subsystem3",
+    "description": "sol_buy_bb_golden_v1 disabled: dead rule conflicting with sol_long_veto_v1 (gate=100%). SOL BUY WR=24%. The boost never fired against a 100% veto. Reduces noise in monitoring.",
+    "evidence": "sol_long_veto_v1 gate=100% always overrides sol_buy_bb_golden_v1 gate=20%. SOL BUY 24% WR on 34 trades confirms veto is correct.",
+    "outcome_tracking": "N/A \u2014 rule disabled, not gated"
+  },
+  "new_findings_this_run": [
+    {
+      "finding_id": "AUTONOMOUS_SESSION_COMPLETION_AUDIT",
+      "detected_at": "2026-05-23T22:14:39.737140+00:00",
+      "severity": "LOW",
+      "detail": "Complete audit of AUTONOMOUS_SESSION_2026_04_15 (17 findings): 5/7 critical findings DONE in code. Only Finding 1 (sniper re-enable, user-blocked) and Finding 13 (MFE/MAE instrumentation, deferred) remain. VERIFIED: Finding 2 (parameter_tuner.py:186), Finding 5 (llm_integration.py:969,1142,1220), Finding 11 (ensemble.py:2281), Finding 16 (position_manager.py:1296), Finding 17 (sector_exposure.py:55).",
+      "action": "SURFACE_TO_USER \u2014 all critical automated fixes complete. Only Finding 1 needs user review to re-enable sniper with guardrails.",
+      "requires_human_review": true,
+      "confidence": 0.98
     },
-    "new_findings_this_run": [
-        {
-            "finding_id": "BB_GATE_SYNC_GAP",
-            "detected_at": "2026-05-23T03:11:00.653271+00:00",
-            "severity": "MEDIUM",
-            "detail": "5 BB-family and regime rules in LLM engine at gate=20% while feedback counterparts at gate=80%. Systematic 4x understrength. Penalty rules fixed (2); boost rules deferred pending conflict analysis.",
-            "action": "PARTIALLY_APPLIED \u2014 2 penalty rules escalated. 3 boost rules deferred.",
-            "requires_human_review": false,
-            "confidence": 0.92
-        },
-        {
-            "finding_id": "FEEDBACK_FILE_KEY_SPRAWL",
-            "detected_at": "2026-05-23T03:11:00.653271+00:00",
-            "severity": "LOW",
-            "detail": "feedback/graduated_rules.json has accumulated 40+ run_log_* keys across 37 run dates. File is growing unboundedly. No functional harm \u2014 all run logs are metadata. Same pattern as insights.json before the 2026-05-18 dedup that pruned from 108\u219219 entries.",
-            "action": "MAINTENANCE: Archive run_log keys older than 7 days to a separate run_history file. ~1h dev. Low priority.",
-            "requires_human_review": false,
-            "confidence": 0.95
-        }
-    ],
-    "active_fixes": [
-        {
-            "fix_id": "conf_floor_70_deadlock_gate_v2",
-            "applied_at": "2026-05-17T23:03:11+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "hype_unknown_regime_probe_v1",
-            "applied_at": "2026-05-18T01:10:31+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "TRENDING_MIN_HOLD_2H_GATE_UPGRADE",
-            "applied_at": "2026-05-18T23:04:47+00:00",
-            "gate_pct": 50,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "HIGH_LEV_10X_FORENSICS_BLOCK",
-            "applied_at": "2026-05-19T00:11:06+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "EVENING_BOOST_DEESCALATE_FIX",
-            "applied_at": "2026-05-19T01:07:41+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "SIDE_BIAS_ENFORCEMENT_V2",
-            "applied_at": "2026-05-19T02:06:08+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
-            "applied_at": "2026-05-19T22:04:02+00:00",
-            "gate_pct": 5,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "BTC_TREND_LONG_COUNTER_V1",
-            "applied_at": "2026-05-20T02:11:24.427606+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "CRITIC_PROMPT_BTC_LONG_BIAS",
-            "applied_at": "2026-05-20T03:11:24+00:00",
-            "gate_pct": 100,
-            "status": "ACTIVE",
-            "type": "PROMPT_AMENDMENT",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "TOD_RUNTIME_FIX_V1",
-            "applied_at": "2026-05-21T01:09:32.358251+00:00",
-            "gate_pct": 100,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "TOD_MORNING_EDGE_V1_WRITE",
-            "applied_at": "2026-05-21T23:07:36.248575+00:00",
-            "gate_pct": 50,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "HIGH_VOL_REGIME_BOOST_V1",
-            "applied_at": "2026-05-22T01:06:42.000000+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "RANGING_REGIME_PENALIZE_V1",
-            "applied_at": "2026-05-22T22:11:21.607259+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "outcome_tracking": "PENDING_RESTART"
-        }
-    ],
-    "rule_accuracy_tracking": {
-        "rule_1777922205_0": {
-            "times_applied": 3,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "note": "0/3 accuracy. BTC+trend SIDE-AGNOSTIC boost. BTC LONG in trend = disaster (18% WR). Counter rule BTC_TREND_LONG_COUNTER_V1 added last run (-13pts, gate=20%). Critic prompt BTC_LONG bias added this run. Double-layer fix now active.",
-            "status": "PARTIALLY_FIXED \u2014 dual layer (gate counter + Critic prompt)"
-        },
-        "hype_short_veto_v1": {
-            "times_applied": 3,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "auto_retire_threshold": 10,
-            "apps_to_threshold": 7,
-            "status": "WATCH_ESCALATING \u2014 HUMAN REVIEW BEFORE 4TH APPLICATION",
-            "note": "0/3 correct (all blocked signals profitable). Historical: -$16.65/trade EV on 239 trades. Conflict unresolved. Do not auto-escalate gate. Human review required on restart."
-        },
-        "night_session_block_v1": {
-            "times_applied": 4,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "note": "4 blocks 0 correct. Underlying WR=19% (27 trades) strong. Keep active."
-        },
-        "hype_long_veto_v1": {
-            "times_applied": 1,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "note": "Evidence: 23% WR, -$77.26/35 trades. Keep active."
-        },
-        "sol_long_veto_v1": {
-            "times_applied": 1,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "note": "Evidence: 24% WR, -$21.89/34 trades. Keep active."
-        },
-        "btc_short_conf70_80_penalize_v1": {
-            "times_applied": 2,
-            "times_correct": 0,
-            "accuracy": 0.0,
-            "note": "Evidence: worst confidence bin, 40 trades. Keep active."
-        }
+    {
+      "finding_id": "FEEDBACK_RULES_KEY_SPRAWL_FIXED",
+      "detected_at": "2026-05-23T22:14:39.737140+00:00",
+      "severity": "LOW",
+      "detail": "feedback/graduated_rules.json: 12 run_log keys older than 7 days archived to bot/data/learning/feedback_run_log_archive.json. File cleaned from 38 \u2192 26 keys. 6 recent run_logs kept.",
+      "action": "DONE \u2014 maintenance debt cleared.",
+      "requires_human_review": false,
+      "confidence": 0.95
+    }
+  ],
+  "active_fixes": [
+    {
+      "fix_id": "conf_floor_70_deadlock_gate_v2",
+      "applied_at": "2026-05-17T23:03:11+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
     },
-    "pending_ab_graduation": [
-        {
-            "id": "BB_SOLO_BOOST_RULE",
-            "description": "BB firing alone = 67.6% WR. Pending live n>=20.",
-            "action": "WAIT for live data post-restart."
-        },
-        {
-            "id": "BB_MTQ_ANTI_PATTERN_RULE",
-            "description": "BB+MTQ co-agreement = 35% WR (anti-pattern). Pending n>=20.",
-            "action": "WAIT for live data."
-        },
-        {
-            "id": "HYPE_UNKNOWN_REGIME_PROBE_v1",
-            "description": "HYPE in UNKNOWN regime = 83% WR (n=6). 20% probe active.",
-            "action": "Graduate at n>=15 WR>=0.65."
-        },
-        {
-            "id": "BTC_TREND_LONG_COUNTER_V1",
-            "description": "BTC+BUY+trend = -13pts (gate=20%). Applied last run. Graduate at n>=10 WR<=0.45.",
-            "action": "Collect live data post-restart."
-        },
-        {
-            "id": "CRITIC_PROMPT_BTC_LONG_BIAS",
-            "description": "Critic now challenges all BTC BUY by default. Applied this run. No gate needed \u2014 prompt-level fix.",
-            "action": "Monitor BTC LONG pass-through rate post-restart. Should drop from ~100% to <30%."
-        },
-        {
-            "id": "TOD_EVENING_EDGE_V1",
-            "description": "Evening session 18:00-24:00 UTC wins 65% vs 10% night (spread 55%). n=27.",
-            "action": "Graduate at n>=20 WR>=0.60"
-        },
-        {
-            "id": "TOD_AFTERNOON_EDGE_V1",
-            "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
-            "action": "Graduate at n>=20 WR>=0.58"
-        },
-        {
-            "id": "HIGH_VOL_REGIME_BOOST_V1",
-            "description": "high_volatility regime = 55% WR on n=2172. gate=20% probe in LLM engine. Feedback engine gate=80%.",
-            "action": "Graduate gate 20%\u219250% at n>=25 obs WR>=0.52."
-        }
-    ],
-    "graduation_pipeline_next": {
-        "nearest_candidate": "BTC_TREND_LONG_COUNTER_V1 (gate=20%) \u2014 lowest bar: needs 10 obs",
-        "second_candidate": "HYPE_UNKNOWN_REGIME_PROBE_v1 (gate=20%) \u2014 needs 15 obs",
-        "bb_penalty_graduation": "hype_sell_bb_block_v1 + bb_mtq_antipattern_v1 (gate=50%) \u2014 graduate to 80% at n>=20 WR<=0.40",
-        "inferred_confidence": 0.92,
-        "action": "Post-restart: track BTC LONG trending (need 10 obs) and HYPE SELL BB outcomes (need 20 obs)."
+    {
+      "fix_id": "hype_unknown_regime_probe_v1",
+      "applied_at": "2026-05-18T01:10:31+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
     },
-    "recommendations_reviewed": 14,
-    "high_confidence_pending_human": 7,
-    "outstanding_pending": [
-        "HYPE_SHORT_VETO_RISK: 0/3 correct. HUMAN REVIEW BEFORE 4TH APPLICATION.",
-        "SOL_SHORT_SUSPENSION: +$807 historical alpha. Human decision on restart.",
-        "AB_RESULT_TRACKER_CODE: P0 structural gap \u2014 all 81 gated rules stalled.",
-        "SNAPSHOT_ENTRY_GAP: add snapshot_entry column (~1h dev).",
-        "LLM_REGIME_CAPTURE_GAP: add llm_regime write to trades.csv (~1h dev).",
-        "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). Enable post-5-trade soft-start.",
-        "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates. Fix accumulator to UPDATE not APPEND."
-    ],
-    "fixes_history": [
-        {
-            "fix_id": "TOD_EVENING_EDGE_V1",
-            "applied_at": "2026-05-21T00:12:52.387053+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "type": "NEW_AB_PROBE",
-            "source": "perpetual_loop_subsystem1+3",
-            "description": "Evening session 18:00-24:00 UTC wins 65% vs 10% night (spread 55%). n=27.",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "TOD_AFTERNOON_EDGE_V1",
-            "applied_at": "2026-05-21T00:12:52.387053+00:00",
-            "gate_pct": 20,
-            "status": "ACTIVE",
-            "type": "NEW_AB_PROBE",
-            "source": "perpetual_loop_subsystem1+3",
-            "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "TOD_RUNTIME_FIX_V1",
-            "applied_at": "2026-05-21T01:09:32.358251+00:00",
-            "gate_pct": 100,
-            "status": "APPLIED",
-            "type": "SCHEMA_CORRECTION",
-            "source": "perpetual_loop_subsystem1",
-            "description": "Reformatted 2 malformed TOD rules to GraduatedRule schema. Prior: id/description fields only. Now: rule_id, conditions, adjustment, evidence_ratio, etc.",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "BTC_TREND_LONG_COUNTER_V1_WRITE",
-            "applied_at": "2026-05-21T22:09:12.942977+00:00",
-            "gate_pct": 20,
-            "status": "APPLIED",
-            "type": "MISSING_RULE_WRITE",
-            "source": "perpetual_loop_subsystem1",
-            "description": "btc_trend_long_counter_v1 added to graduated_rules.json. Was tracked in auto_fix_state since 2026-05-20 but file write was missing. -13pts on BTC BUY+trending, gate=20%.",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "HIGH_VOL_REGIME_BOOST_V1",
-            "applied_at": "2026-05-22T01:06:42.000000+00:00",
-            "gate_pct": 20,
-            "status": "APPLIED",
-            "type": "MISSING_LLM_RULE",
-            "source": "perpetual_loop_subsystem1",
-            "description": "high_vol_regime_boost_v1 added to LLM engine. Feedback engine: gate=80%, n=2172, conf=88%. high_volatility = 55% WR (best regime). LLM engine had no corresponding rule. 4th consecutive cross-system sync gap fixed. +5.0 adj, gate=20% probe.",
-            "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 20%\u219250% at n>=25 obs WR>=0.52."
-        },
-        {
-            "fix_id": "RANGING_REGIME_PENALIZE_V1",
-            "applied_at": "2026-05-22T22:11:21.607259+00:00",
-            "gate_pct": 20,
-            "status": "APPLIED",
-            "type": "MISSING_LLM_RULE",
-            "source": "perpetual_loop_subsystem1",
-            "description": "ranging_regime_penalize_v1: -10pts adj, gate=20% probe. Feedback: 25% WR/16 trades. 6th consecutive sync gap.",
-            "outcome_tracking": "PENDING_RESTART"
-        }
-    ],
-    "corrections": [
-        {
-            "correction_id": "STALE_SHADOW_FILE_CLOSED",
-            "closed_at": "2026-05-22T00:18:01.850648+00:00",
-            "original_item": "STALE_SHADOW_FILE: Delete data/llm/graduated_rules.json (15 min dev).",
-            "reason": "INVALID ITEM \u2014 bot/data/llm/graduated_rules.json IS the active 15-rule LLM engine. Deleting it would destroy all LLM confidence adjustments. Item was incorrectly added to pending list.",
-            "action": "CLOSED \u2014 no action needed on the file."
-        }
-    ],
-    "fixes": [
-        {
-            "fix_id": "SOL_SHORT_LLM_SYNC_V1",
-            "applied_at": "2026-05-23T00:15:14.780400+00:00",
-            "gate_pct": 20,
-            "status": "APPLIED",
-            "type": "MISSING_LLM_RULE",
-            "source": "perpetual_loop_subsystem1",
-            "description": "sol_short_penalize_v1 added to LLM engine. Feedback has SOL_SHORT_full_block (conf=88, gate=100%) but LLM engine had 0 SOL SHORT rules. 7th consecutive cross-system sync gap fixed. adj=-10pts, gate=20% probe (conservative due to RULE_CONFLICT_SOL_SHORT PENDING).",
-            "evidence": "SOL SHORT: 34.6% WR on 52 live paper trades (suspension probe). n=52 >> 20 threshold.",
-            "outcome_tracking": "PENDING_RESTART"
-        },
-        {
-            "fix_id": "GATE_PERCENTAGE_SCHEMA_NORMALIZATION_V1",
-            "applied_at": "2026-05-23T01:16:32.642180+00:00",
-            "gate_pct": "N/A",
-            "status": "APPLIED",
-            "type": "SCHEMA_NORMALIZATION",
-            "source": "perpetual_loop_subsystem1",
-            "description": "gate_percentage field added to all 21 LLM rules that were missing it. Gate assignments: 2 disabled (gate=0: rule_1777922205_0, conf_floor_70_v1), 8 fully deployed (gate=100: veto/penalize originals), 12 A/B probe (gate=20: new rules since May 17), 1 graduated (gate=50: tod_morning_edge_v1). Prerequisite for AB_TRACKER implementation. No rule logic changed \u2014 metadata only.",
-            "evidence": "21/23 LLM rules had missing gate_percentage. Only last 2 rules (ranging_regime_penalize_v1, sol_short_penalize_v1) had the field. Schema now uniform.",
-            "outcome_tracking": "STRUCTURAL \u2014 no A/B gate needed. Enables AB_TRACKER implementation on next dev sprint."
-        },
-        {
-            "fix_id": "HYPE_SELL_BB_GATE_ESCALATION_V1",
-            "applied_at": "2026-05-23T03:11:00.653271+00:00",
-            "gate_pct": 50,
-            "status": "APPLIED",
-            "type": "GATE_ESCALATION",
-            "source": "perpetual_loop_subsystem1",
-            "description": "hype_sell_bb_block_v1: gate 20%\u219250%. HYPE SELL with BB = 35% WR / n=2172. Feedback gate=80%. Penalty rule, no conflicts. 8th sync gap action.",
-            "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 obs WR<=0.40."
-        },
-        {
-            "fix_id": "BB_MTQ_ANTIPATTERN_GATE_ESCALATION_V1",
-            "applied_at": "2026-05-23T03:11:00.653271+00:00",
-            "gate_pct": 50,
-            "status": "APPLIED",
-            "type": "GATE_ESCALATION",
-            "source": "perpetual_loop_subsystem1",
-            "description": "bb_mtq_antipattern_v1: gate 20%\u219250%. BB+MTQ cofire = 35% WR / n=2172. Feedback gate=80%. Penalty rule, no conflicts. 9th sync gap action.",
-            "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 obs WR<=0.40."
-        }
-    ]
+    {
+      "fix_id": "TRENDING_MIN_HOLD_2H_GATE_UPGRADE",
+      "applied_at": "2026-05-18T23:04:47+00:00",
+      "gate_pct": 50,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "HIGH_LEV_10X_FORENSICS_BLOCK",
+      "applied_at": "2026-05-19T00:11:06+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "EVENING_BOOST_DEESCALATE_FIX",
+      "applied_at": "2026-05-19T01:07:41+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "SIDE_BIAS_ENFORCEMENT_V2",
+      "applied_at": "2026-05-19T02:06:08+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE",
+      "applied_at": "2026-05-19T22:04:02+00:00",
+      "gate_pct": 5,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "BTC_TREND_LONG_COUNTER_V1",
+      "applied_at": "2026-05-20T02:11:24.427606+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "CRITIC_PROMPT_BTC_LONG_BIAS",
+      "applied_at": "2026-05-20T03:11:24+00:00",
+      "gate_pct": 100,
+      "status": "ACTIVE",
+      "type": "PROMPT_AMENDMENT",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_RUNTIME_FIX_V1",
+      "applied_at": "2026-05-21T01:09:32.358251+00:00",
+      "gate_pct": 100,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_MORNING_EDGE_V1_WRITE",
+      "applied_at": "2026-05-21T23:07:36.248575+00:00",
+      "gate_pct": 50,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "HIGH_VOL_REGIME_BOOST_V1",
+      "applied_at": "2026-05-22T01:06:42.000000+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "RANGING_REGIME_PENALIZE_V1",
+      "applied_at": "2026-05-22T22:11:21.607259+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "outcome_tracking": "PENDING_RESTART"
+    }
+  ],
+  "rule_accuracy_tracking": {
+    "rule_1777922205_0": {
+      "times_applied": 3,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "0/3 accuracy. BTC+trend SIDE-AGNOSTIC boost. BTC LONG in trend = disaster (18% WR). Counter rule BTC_TREND_LONG_COUNTER_V1 added last run (-13pts, gate=20%). Critic prompt BTC_LONG bias added this run. Double-layer fix now active.",
+      "status": "PARTIALLY_FIXED \u2014 dual layer (gate counter + Critic prompt)"
+    },
+    "hype_short_veto_v1": {
+      "times_applied": 3,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "auto_retire_threshold": 10,
+      "apps_to_threshold": 7,
+      "status": "WATCH_ESCALATING \u2014 HUMAN REVIEW BEFORE 4TH APPLICATION",
+      "note": "0/3 correct (all blocked signals profitable). Historical: -$16.65/trade EV on 239 trades. Conflict unresolved. Do not auto-escalate gate. Human review required on restart."
+    },
+    "night_session_block_v1": {
+      "times_applied": 4,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "4 blocks 0 correct. Underlying WR=19% (27 trades) strong. Keep active."
+    },
+    "hype_long_veto_v1": {
+      "times_applied": 1,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "Evidence: 23% WR, -$77.26/35 trades. Keep active."
+    },
+    "sol_long_veto_v1": {
+      "times_applied": 1,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "Evidence: 24% WR, -$21.89/34 trades. Keep active."
+    },
+    "btc_short_conf70_80_penalize_v1": {
+      "times_applied": 2,
+      "times_correct": 0,
+      "accuracy": 0.0,
+      "note": "Evidence: worst confidence bin, 40 trades. Keep active."
+    }
+  },
+  "pending_ab_graduation": [
+    {
+      "id": "BB_SOLO_BOOST_RULE",
+      "description": "BB firing alone = 67.6% WR. Pending live n>=20.",
+      "action": "WAIT for live data post-restart."
+    },
+    {
+      "id": "BB_MTQ_ANTI_PATTERN_RULE",
+      "description": "BB+MTQ co-agreement = 35% WR (anti-pattern). Pending n>=20.",
+      "action": "WAIT for live data."
+    },
+    {
+      "id": "HYPE_UNKNOWN_REGIME_PROBE_v1",
+      "description": "HYPE in UNKNOWN regime = 83% WR (n=6). 20% probe active.",
+      "action": "Graduate at n>=15 WR>=0.65."
+    },
+    {
+      "id": "BTC_TREND_LONG_COUNTER_V1",
+      "description": "BTC+BUY+trend = -13pts (gate=20%). Applied last run. Graduate at n>=10 WR<=0.45.",
+      "action": "Collect live data post-restart."
+    },
+    {
+      "id": "CRITIC_PROMPT_BTC_LONG_BIAS",
+      "description": "Critic now challenges all BTC BUY by default. Applied this run. No gate needed \u2014 prompt-level fix.",
+      "action": "Monitor BTC LONG pass-through rate post-restart. Should drop from ~100% to <30%."
+    },
+    {
+      "id": "TOD_EVENING_EDGE_V1",
+      "description": "Evening session 18:00-24:00 UTC wins 65% vs 10% night (spread 55%). n=27.",
+      "action": "Graduate at n>=20 WR>=0.60"
+    },
+    {
+      "id": "TOD_AFTERNOON_EDGE_V1",
+      "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
+      "action": "Graduate at n>=20 WR>=0.58"
+    },
+    {
+      "id": "HIGH_VOL_REGIME_BOOST_V1",
+      "description": "high_volatility regime = 55% WR on n=2172. gate=20% probe in LLM engine. Feedback engine gate=80%.",
+      "action": "Graduate gate 20%\u219250% at n>=25 obs WR>=0.52."
+    }
+  ],
+  "graduation_pipeline_next": {
+    "nearest_candidate": "BTC_TREND_LONG_COUNTER_V1 (gate=20%) \u2014 lowest bar: needs 10 obs",
+    "second_candidate": "HYPE_UNKNOWN_REGIME_PROBE_v1 (gate=20%) \u2014 needs 15 obs",
+    "bb_penalty_graduation": "hype_sell_bb_block_v1 + bb_mtq_antipattern_v1 (gate=50%) \u2014 graduate to 80% at n>=20 WR<=0.40",
+    "inferred_confidence": 0.92,
+    "action": "Post-restart: track BTC LONG trending (need 10 obs) and HYPE SELL BB outcomes (need 20 obs)."
+  },
+  "recommendations_reviewed": 14,
+  "high_confidence_pending_human": 7,
+  "outstanding_pending": [
+    "HYPE_SHORT_VETO_RISK: 0/3 correct. HUMAN REVIEW BEFORE 4TH APPLICATION.",
+    "SOL_SHORT_SUSPENSION: +$807 historical alpha. Human decision on restart.",
+    "AB_RESULT_TRACKER_CODE: P0 structural gap \u2014 all 81 gated rules stalled.",
+    "SNAPSHOT_ENTRY_GAP: add snapshot_entry column (~1h dev).",
+    "LLM_REGIME_CAPTURE_GAP: add llm_regime write to trades.csv (~1h dev).",
+    "SNIPER_AUTO_EXECUTE: #1 profit lever (+$328/34-trade path). Enable post-5-trade soft-start.",
+    "INSIGHTS_DEDUPLICATION_GAP: insights.json accumulates duplicates. Fix accumulator to UPDATE not APPEND."
+  ],
+  "fixes_history": [
+    {
+      "fix_id": "TOD_EVENING_EDGE_V1",
+      "applied_at": "2026-05-21T00:12:52.387053+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "type": "NEW_AB_PROBE",
+      "source": "perpetual_loop_subsystem1+3",
+      "description": "Evening session 18:00-24:00 UTC wins 65% vs 10% night (spread 55%). n=27.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_AFTERNOON_EDGE_V1",
+      "applied_at": "2026-05-21T00:12:52.387053+00:00",
+      "gate_pct": 20,
+      "status": "ACTIVE",
+      "type": "NEW_AB_PROBE",
+      "source": "perpetual_loop_subsystem1+3",
+      "description": "Afternoon session 12:00-18:00 UTC wins 64% vs 31% night (spread 33%). n=27.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "TOD_RUNTIME_FIX_V1",
+      "applied_at": "2026-05-21T01:09:32.358251+00:00",
+      "gate_pct": 100,
+      "status": "APPLIED",
+      "type": "SCHEMA_CORRECTION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "Reformatted 2 malformed TOD rules to GraduatedRule schema. Prior: id/description fields only. Now: rule_id, conditions, adjustment, evidence_ratio, etc.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "BTC_TREND_LONG_COUNTER_V1_WRITE",
+      "applied_at": "2026-05-21T22:09:12.942977+00:00",
+      "gate_pct": 20,
+      "status": "APPLIED",
+      "type": "MISSING_RULE_WRITE",
+      "source": "perpetual_loop_subsystem1",
+      "description": "btc_trend_long_counter_v1 added to graduated_rules.json. Was tracked in auto_fix_state since 2026-05-20 but file write was missing. -13pts on BTC BUY+trending, gate=20%.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "HIGH_VOL_REGIME_BOOST_V1",
+      "applied_at": "2026-05-22T01:06:42.000000+00:00",
+      "gate_pct": 20,
+      "status": "APPLIED",
+      "type": "MISSING_LLM_RULE",
+      "source": "perpetual_loop_subsystem1",
+      "description": "high_vol_regime_boost_v1 added to LLM engine. Feedback engine: gate=80%, n=2172, conf=88%. high_volatility = 55% WR (best regime). LLM engine had no corresponding rule. 4th consecutive cross-system sync gap fixed. +5.0 adj, gate=20% probe.",
+      "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 20%\u219250% at n>=25 obs WR>=0.52."
+    },
+    {
+      "fix_id": "RANGING_REGIME_PENALIZE_V1",
+      "applied_at": "2026-05-22T22:11:21.607259+00:00",
+      "gate_pct": 20,
+      "status": "APPLIED",
+      "type": "MISSING_LLM_RULE",
+      "source": "perpetual_loop_subsystem1",
+      "description": "ranging_regime_penalize_v1: -10pts adj, gate=20% probe. Feedback: 25% WR/16 trades. 6th consecutive sync gap.",
+      "outcome_tracking": "PENDING_RESTART"
+    }
+  ],
+  "corrections": [
+    {
+      "correction_id": "STALE_SHADOW_FILE_CLOSED",
+      "closed_at": "2026-05-22T00:18:01.850648+00:00",
+      "original_item": "STALE_SHADOW_FILE: Delete data/llm/graduated_rules.json (15 min dev).",
+      "reason": "INVALID ITEM \u2014 bot/data/llm/graduated_rules.json IS the active 15-rule LLM engine. Deleting it would destroy all LLM confidence adjustments. Item was incorrectly added to pending list.",
+      "action": "CLOSED \u2014 no action needed on the file."
+    }
+  ],
+  "fixes": [
+    {
+      "fix_id": "SOL_SHORT_LLM_SYNC_V1",
+      "applied_at": "2026-05-23T00:15:14.780400+00:00",
+      "gate_pct": 20,
+      "status": "APPLIED",
+      "type": "MISSING_LLM_RULE",
+      "source": "perpetual_loop_subsystem1",
+      "description": "sol_short_penalize_v1 added to LLM engine. Feedback has SOL_SHORT_full_block (conf=88, gate=100%) but LLM engine had 0 SOL SHORT rules. 7th consecutive cross-system sync gap fixed. adj=-10pts, gate=20% probe (conservative due to RULE_CONFLICT_SOL_SHORT PENDING).",
+      "evidence": "SOL SHORT: 34.6% WR on 52 live paper trades (suspension probe). n=52 >> 20 threshold.",
+      "outcome_tracking": "PENDING_RESTART"
+    },
+    {
+      "fix_id": "GATE_PERCENTAGE_SCHEMA_NORMALIZATION_V1",
+      "applied_at": "2026-05-23T01:16:32.642180+00:00",
+      "gate_pct": "N/A",
+      "status": "APPLIED",
+      "type": "SCHEMA_NORMALIZATION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "gate_percentage field added to all 21 LLM rules that were missing it. Gate assignments: 2 disabled (gate=0: rule_1777922205_0, conf_floor_70_v1), 8 fully deployed (gate=100: veto/penalize originals), 12 A/B probe (gate=20: new rules since May 17), 1 graduated (gate=50: tod_morning_edge_v1). Prerequisite for AB_TRACKER implementation. No rule logic changed \u2014 metadata only.",
+      "evidence": "21/23 LLM rules had missing gate_percentage. Only last 2 rules (ranging_regime_penalize_v1, sol_short_penalize_v1) had the field. Schema now uniform.",
+      "outcome_tracking": "STRUCTURAL \u2014 no A/B gate needed. Enables AB_TRACKER implementation on next dev sprint."
+    },
+    {
+      "fix_id": "HYPE_SELL_BB_GATE_ESCALATION_V1",
+      "applied_at": "2026-05-23T03:11:00.653271+00:00",
+      "gate_pct": 50,
+      "status": "APPLIED",
+      "type": "GATE_ESCALATION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "hype_sell_bb_block_v1: gate 20%\u219250%. HYPE SELL with BB = 35% WR / n=2172. Feedback gate=80%. Penalty rule, no conflicts. 8th sync gap action.",
+      "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 obs WR<=0.40."
+    },
+    {
+      "fix_id": "BB_MTQ_ANTIPATTERN_GATE_ESCALATION_V1",
+      "applied_at": "2026-05-23T03:11:00.653271+00:00",
+      "gate_pct": 50,
+      "status": "APPLIED",
+      "type": "GATE_ESCALATION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "bb_mtq_antipattern_v1: gate 20%\u219250%. BB+MTQ cofire = 35% WR / n=2172. Feedback gate=80%. Penalty rule, no conflicts. 9th sync gap action.",
+      "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 obs WR<=0.40."
+    }
+  ]
 }

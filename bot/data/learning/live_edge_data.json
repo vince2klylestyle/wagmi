@@ -1,126 +1,128 @@
 {
-    "last_run": "2026-05-23T03:09:09.690681+00:00",
-    "data_source": "Historical accumulated. Bot offline ~36 days. No new trade data.",
-    "high_edges_found": 9,
-    "weak_setups_found": 5,
-    "new_finding_this_run": {
-        "id": "BB_GATE_ESCALATION_COVERAGE_UPGRADE",
-        "detail": "hype_sell_bb_block_v1 and bb_mtq_antipattern_v1 escalated to gate=50% this run. Pre-restart coverage upgrade: HYPE SELL BB will be penalized on 50% of decisions (up from 20%). BB+MTQ anti-pattern will block 50% of decisions (up from 20%). 3 remaining BB-family rules still at gate=20% pending interaction review.",
-        "severity": "LOW",
-        "coverage_before": "2 penalty BB rules at gate=20%, 3 boost BB rules at gate=20%",
-        "coverage_after": "2 penalty BB rules at gate=50%, 3 boost BB rules still at gate=20%"
+  "last_run": "2026-05-23T22:12:55.537662+00:00",
+  "data_source": "Historical accumulated. Bot offline ~36 days. No new trade data.",
+  "high_edges_found": 9,
+  "weak_setups_found": 5,
+  "new_finding_this_run": {
+    "id": "SOL_BUY_RULE_CONFLICT_SURFACE",
+    "detail": "sol_buy_bb_golden_v1 (boost SOL BUY on BB, gate=20%) conflicts with sol_long_veto_v1 (veto SOL BUY, gate=100%). The veto wins at runtime but the boost rule wastes compute and creates false positives in monitoring. The boost rule should be disabled (gate=0).",
+    "severity": "LOW",
+    "action": "Disable sol_buy_bb_golden_v1 (set active=False, gate=0). SOL BUY WR=24%, veto is correct."
+  },
+  "window_status_2026_05_23": {
+    "window_15": "2026-05-23 06:00-12:00 UTC \u2014 MISSED (16th consecutive)",
+    "minutes_until_window_15": 171,
+    "restart_deadline_utc": "2026-05-23T05:30:00+00:00",
+    "minutes_to_restart_deadline": 141,
+    "consecutive_windows_missed": 16,
+    "status": "Window 15 MISSED. Window 16 in ~469 min. Restart deadline in ~439 min.",
+    "window_16": "2026-05-24 06:00-12:00 UTC \u2014 NEXT",
+    "minutes_until_window_16": 467,
+    "minutes_to_restart_deadline_window16": 437
+  },
+  "high_edges": [
+    {
+      "setup": "ETH_SHORT",
+      "wr": 0.8,
+      "trades": 5,
+      "source": "live",
+      "rule_coverage": "ETH_SHORT_BB_golden (gate=80% feedback, gate=20% LLM)"
     },
-    "window_status_2026_05_23": {
-        "window_15": "2026-05-23 06:00-12:00 UTC",
-        "minutes_until_window_15": 171,
-        "restart_deadline_utc": "2026-05-23T05:30:00+00:00",
-        "minutes_to_restart_deadline": 141,
-        "consecutive_windows_missed": 15,
-        "status": "Window 15 in 171 min. Restart deadline in 141 min. CRITICAL."
+    {
+      "setup": "BTC_TRENDING_REGIME_SHORT",
+      "wr": 0.8,
+      "trades": 5,
+      "source": "insight_journal",
+      "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%) + BTC_TREND_LONG_COUNTER_V1 (gate=20%)"
     },
-    "high_edges": [
-        {
-            "setup": "ETH_SHORT",
-            "wr": 0.8,
-            "trades": 5,
-            "source": "live",
-            "rule_coverage": "ETH_SHORT_BB_golden (gate=80% feedback, gate=20% LLM)"
-        },
-        {
-            "setup": "BTC_TRENDING_REGIME_SHORT",
-            "wr": 0.8,
-            "trades": 5,
-            "source": "insight_journal",
-            "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%) + BTC_TREND_LONG_COUNTER_V1 (gate=20%)"
-        },
-        {
-            "setup": "HYPE_UNKNOWN_REGIME",
-            "wr": 0.83,
-            "trades": 6,
-            "source": "insight_journal",
-            "rule_coverage": "HYPE_UNKNOWN_REGIME_PROBE (gate=20%)"
-        },
-        {
-            "setup": "ETH_TRENDING_REGIME",
-            "wr": 0.71,
-            "trades": 7,
-            "source": "insight_journal",
-            "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%)"
-        },
-        {
-            "setup": "BTC_SHORT_90plus_conf",
-            "wr": 0.67,
-            "trades": 43,
-            "source": "backtest",
-            "rule_coverage": "HIGH_CONF_SHORT_edge (gate=50%)"
-        },
-        {
-            "setup": "BB_solo_high_WR",
-            "wr": 0.676,
-            "trades": null,
-            "source": "A/B_pending",
-            "rule_coverage": "BB_solo_trust (gate=50%)"
-        },
-        {
-            "setup": "ETH_SHORT_BB_golden",
-            "wr": 0.7,
-            "trades": null,
-            "source": "A/B_pending",
-            "rule_coverage": "ETH_SHORT_BB_golden (gate=20% LLM, gate=80% feedback \u2014 deferred escalation)"
-        },
-        {
-            "setup": "BTC_BUY_BB_golden",
-            "wr": 0.69,
-            "trades": null,
-            "source": "A/B_pending",
-            "rule_coverage": "btc_buy_bb_golden_v1 (gate=20%) \u2014 no escalation: conflicts with BTC_LONG anti-bias"
-        },
-        {
-            "setup": "MORNING_WINDOW_15",
-            "wr": 0.74,
-            "trades": 7,
-            "source": "insight_journal_composite",
-            "rule_coverage": "tod_morning_edge_v1 (gate=50%) + TRENDING_EARLY_HOLD_GUARD",
-            "window_status": "Window 15 in 171 min (06:00 UTC May 23). Restart deadline in 141 min."
-        }
-    ],
-    "weak_setups": [
-        {
-            "setup": "BTC_LONG",
-            "wr": 0.18,
-            "trades": 17,
-            "rule": "BTC_LONG_reduce (gate=50%) + btc_trend_long_counter_v1 (gate=20%) + CRITIC_PROMPT_BTC_LONG_BIAS (100%)"
-        },
-        {
-            "setup": "SOL_LONG",
-            "wr": 0.24,
-            "trades": 34,
-            "rule": "sol_long_veto_v1 (gate=100%)"
-        },
-        {
-            "setup": "HYPE_LONG",
-            "wr": 0.23,
-            "trades": 35,
-            "rule": "hype_long_veto_v1 (gate=100%)"
-        },
-        {
-            "setup": "CONF_70_80_BIN",
-            "wr": 0.33,
-            "trades": 43,
-            "rule": "BTC_SHORT_CONF70_80_BLOCK (gate=50%)"
-        },
-        {
-            "setup": "HYPE_SELL_BB",
-            "wr": 0.35,
-            "trades": 2172,
-            "rule": "hype_sell_bb_block_v1 NOW gate=50% (escalated this run from 20%)"
-        },
-        {
-            "setup": "BB_MTQ_COFIRE",
-            "wr": 0.35,
-            "trades": 2172,
-            "rule": "bb_mtq_antipattern_v1 NOW gate=50% (escalated this run from 20%)"
-        }
-    ],
-    "ab_stall_impact": "0 of 9 high-edge setups have validated outcomes. times_correct=0 for all. AB_TRACKER code still needed."
+    {
+      "setup": "HYPE_UNKNOWN_REGIME",
+      "wr": 0.83,
+      "trades": 6,
+      "source": "insight_journal",
+      "rule_coverage": "HYPE_UNKNOWN_REGIME_PROBE (gate=20%)"
+    },
+    {
+      "setup": "ETH_TRENDING_REGIME",
+      "wr": 0.71,
+      "trades": 7,
+      "source": "insight_journal",
+      "rule_coverage": "TRENDING_EARLY_HOLD_GUARD (gate=80%)"
+    },
+    {
+      "setup": "BTC_SHORT_90plus_conf",
+      "wr": 0.67,
+      "trades": 43,
+      "source": "backtest",
+      "rule_coverage": "HIGH_CONF_SHORT_edge (gate=50%)"
+    },
+    {
+      "setup": "BB_solo_high_WR",
+      "wr": 0.676,
+      "trades": null,
+      "source": "A/B_pending",
+      "rule_coverage": "BB_solo_trust (gate=50%)"
+    },
+    {
+      "setup": "ETH_SHORT_BB_golden",
+      "wr": 0.7,
+      "trades": null,
+      "source": "A/B_pending",
+      "rule_coverage": "ETH_SHORT_BB_golden (gate=20% LLM, gate=80% feedback \u2014 deferred escalation)"
+    },
+    {
+      "setup": "BTC_BUY_BB_golden",
+      "wr": 0.69,
+      "trades": null,
+      "source": "A/B_pending",
+      "rule_coverage": "btc_buy_bb_golden_v1 (gate=20%) \u2014 no escalation: conflicts with BTC_LONG anti-bias"
+    },
+    {
+      "setup": "MORNING_WINDOW_15",
+      "wr": 0.74,
+      "trades": 7,
+      "source": "insight_journal_composite",
+      "rule_coverage": "tod_morning_edge_v1 (gate=50%) + TRENDING_EARLY_HOLD_GUARD",
+      "window_status": "Window 15 in 171 min (06:00 UTC May 23). Restart deadline in 141 min."
+    }
+  ],
+  "weak_setups": [
+    {
+      "setup": "BTC_LONG",
+      "wr": 0.18,
+      "trades": 17,
+      "rule": "BTC_LONG_reduce (gate=50%) + btc_trend_long_counter_v1 (gate=20%) + CRITIC_PROMPT_BTC_LONG_BIAS (100%)"
+    },
+    {
+      "setup": "SOL_LONG",
+      "wr": 0.24,
+      "trades": 34,
+      "rule": "sol_long_veto_v1 (gate=100%)"
+    },
+    {
+      "setup": "HYPE_LONG",
+      "wr": 0.23,
+      "trades": 35,
+      "rule": "hype_long_veto_v1 (gate=100%)"
+    },
+    {
+      "setup": "CONF_70_80_BIN",
+      "wr": 0.33,
+      "trades": 43,
+      "rule": "BTC_SHORT_CONF70_80_BLOCK (gate=50%)"
+    },
+    {
+      "setup": "HYPE_SELL_BB",
+      "wr": 0.35,
+      "trades": 2172,
+      "rule": "hype_sell_bb_block_v1 NOW gate=50% (escalated this run from 20%)"
+    },
+    {
+      "setup": "BB_MTQ_COFIRE",
+      "wr": 0.35,
+      "trades": 2172,
+      "rule": "bb_mtq_antipattern_v1 NOW gate=50% (escalated this run from 20%)"
+    }
+  ],
+  "ab_stall_impact": "0 of 9 high-edge setups have validated outcomes. times_correct=0 for all. AB_TRACKER code still needed."
 }
