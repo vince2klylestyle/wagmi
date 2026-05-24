@@ -1,7 +1,7 @@
 {
-  "last_run": "2026-05-24T05:00:00+00:00",
+  "last_run": "2026-05-24T23:04:33+00:00",
   "source_audit": "perpetual_deep_dive series (adaptive_risk_state analysis)",
-  "fixes_applied_this_run": 1,
+  "fixes_applied_this_run": 0,
   "gates_active": 21,
   "total_applied_all_time": 66,
   "last_fix": {
@@ -15,6 +15,42 @@
     "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u2192100% (full veto) at n>=20 post-restart WR<40%."
   },
   "new_findings_this_run": [
+    {
+      "finding_id": "TOD_AFTERNOON_CONFLICT_ESCALATION_V1",
+      "detected_at": "2026-05-24T23:04:33+00:00",
+      "severity": "MEDIUM",
+      "detail": "tod_afternoon_edge_v1 conflict unresolved for 4+ consecutive perpetual-loop runs. LLM rule: +5pts boost (hypothesis: 64% WR on 27 trades). Feedback rule: AFTERNOON_SESSION_BLOCK at gate=20% with -8pts penalty. Net in 20% cohort: -3pts; 80% cohort: -8pts feedback only. Conflict cannot be resolved without fresh live data. 4-run age is the longest unresolved conflict in the pipeline.",
+      "evidence": "Master state history: blocked in runs at 01:09, 03:11, 05:00 UTC May 24 (all flagged conflict). Now 23:04 UTC = 4th consecutive run with no resolution.",
+      "action": "HUMAN REVIEW — decide: (A) accept feedback (-8pts dominates, disable LLM boost), (B) accept LLM (+5pts dominates, disable feedback probe), (C) wait for post-restart live data to settle which signal is correct.",
+      "requires_human_review": true,
+      "confidence": 0.80,
+      "auto_fix_eligible": false,
+      "reason_blocked": "CONFLICT — opposing signals from LLM and feedback subsystems. Net effect is noise (-3pts), not signal."
+    },
+    {
+      "finding_id": "AB_TRACKER_SYSTEMIC_ZERO_V1",
+      "detected_at": "2026-05-24T23:04:33+00:00",
+      "severity": "HIGH",
+      "detail": "All 23 LLM rules show times_correct=0. This is confirmed systemic — not per-rule accuracy signals. AB_RESULT_TRACKER_CODE was APPLIED (feedback/graduated_rules.json status=APPLIED) but outcome callbacks are not updating times_correct in LLM engine. 21 active gates are stalled — graduation cannot be triggered automatically.",
+      "evidence": "Sampled all 23 LLM rules: hype_long_veto (1 applied, 0 correct), sol_long_veto (1/0), night_session_block (6/0), illiquid_penalize (1/0), hype_short_veto (3/0), btc_short_penalize (3/0), eth_trending_boost (2/0), tod_evening (2/0), tod_afternoon (2/0). ALL zero. Not a coincidence.",
+      "action": "P0 DEV — wire outcome callbacks from trade closure to LLM rules times_correct field. ~2h work. Without this, graduation of 21 gated rules requires manual review on every run.",
+      "requires_human_review": true,
+      "confidence": 0.99,
+      "auto_fix_eligible": false,
+      "reason_blocked": "DEV_REQUIRED — cannot auto-fix a missing code callback."
+    },
+    {
+      "finding_id": "WINDOW_16_MISSED_17TH_CONSECUTIVE",
+      "detected_at": "2026-05-24T23:04:33+00:00",
+      "severity": "HIGH",
+      "detail": "Window 16 (06:00-12:00 UTC May 24) confirmed CLOSED. 17th consecutive morning window missed. Current time 23:04 UTC — evening window (18:00-24:00 UTC) has 56 minutes remaining. Bot offline day 41.",
+      "evidence": "UTC clock: 23:04. Window 16 range was 06:00-12:00. tod_evening_edge_v1 active until 24:00 UTC (56 min remaining).",
+      "action": "RESTART NOW for last 56 min of evening window (65% WR). Next: Window 17 at 06:00 UTC May 25, restart deadline 05:30 UTC (6.4h away).",
+      "requires_human_review": false,
+      "confidence": 1.0,
+      "auto_fix_eligible": false,
+      "reason_blocked": "OPERATIONAL — bot restart is a human action."
+    },
     {
       "finding_id": "TRENDING_REGIME_LIVE_DEGRADATION_V1",
       "detected_at": "2026-05-24T05:00:00+00:00",

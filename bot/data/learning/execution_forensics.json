@@ -1,8 +1,8 @@
 {
-  "last_run": "2026-05-23T23:12:59.986813+00:00",
+  "last_run": "2026-05-24T23:04:33+00:00",
   "data_available": false,
-  "data_source": "Cached analysis (bot offline ~36 days, trades.csv missing). Gap: day 36.",
-  "avg_slippage": "UNKNOWN \u2014 snapshot_entry column still missing. Day 36 of measurement gap.",
+  "data_source": "Cached analysis (bot offline 41 days, trades.csv missing). Gap: day 41.",
+  "avg_slippage": "UNKNOWN \u2014 snapshot_entry column still missing. Day 41 of measurement gap.",
   "noise_stop_problem": "87% of early SL hits (<2h) in non-trending regimes (illiquid/ranging/unknown). Estimate stable \u2014 no new data.",
   "hold_time_forensics": {
     "win_median_hold_h": 3.3,
@@ -28,33 +28,33 @@
     "circuit_breaker_risk": "RESOLVED \u2014 risk.py:64 consecutive_losses=0 at __init__. Streak resets on restart automatically."
   },
   "structural_gaps": [
-    "snapshot_entry column missing (slippage unmeasurable \u2014 day 36+)",
+    "snapshot_entry column missing (slippage unmeasurable \u2014 day 41+)",
     "llm_regime column empty (regime rules unmeasurable)",
-    "AB result tracker code missing (all gated rules stalled \u2014 day 36+)",
+    "AB result tracker outcome callbacks not firing (all gated rules stalled \u2014 day 41+)",
     "btc_long_nontrend unprotected in ranging/illiquid/unknown (18% WR, n=17 \u2014 needs human review)",
-    "sol_short_penalize_v1 understrength (-10pts at gate=20% vs feedback full_block at gate=100%)"
+    "sol_short_penalize_v1 understrength (-10pts at gate=50% vs feedback full_block at gate=100%)"
   ],
-  "days_offline": 39,
-  "hours_offline": 937.1,
+  "days_offline": 41,
+  "hours_offline": 984.4,
   "gap_deepening": true,
-  "last_updated": "2026-05-24T01:08:52.206988+00:00",
+  "last_updated": "2026-05-24T23:04:33+00:00",
   "window_status": {
-    "windows_missed_consecutive": 16,
-    "last_missed": "Window 15 \u2014 2026-05-23 06:00-12:00 UTC",
-    "next_window": "Window 16 \u2014 2026-05-24 06:00-12:00 UTC",
-    "next_restart_deadline": "2026-05-24T05:30:00+00:00",
-    "minutes_to_restart_deadline": 263,
-    "minutes_to_window": 293,
-    "status": "HIGH \u2014 263 min (4.4h) to restart deadline. Window 16 in 293 min (4.9h).",
-    "current_tod": "01:06 UTC \u2014 NIGHT BLOCK ACTIVE (veto until 06:00 UTC)"
+    "windows_missed_consecutive": 17,
+    "last_missed": "Window 16 \u2014 2026-05-24 06:00-12:00 UTC (CONFIRMED CLOSED this run)",
+    "current_session": "EVENING_WINDOW_ACTIVE \u2014 tod_evening_edge_v1 active (18:00-24:00 UTC). 56 min remaining.",
+    "next_window": "Window 17 \u2014 2026-05-25 06:00-12:00 UTC",
+    "next_restart_deadline": "2026-05-25T05:30:00+00:00",
+    "hours_to_restart_deadline": 6.4,
+    "status": "HIGH \u2014 Evening window FINAL 56 min (65% WR). Night block fires at 00:00 UTC. Window 17 restart deadline 6.4h away.",
+    "current_tod": "23:04 UTC \u2014 EVENING SESSION (18-24 UTC, tod_evening_edge_v1 active, 56 min remaining)"
   },
   "post_restart_watch_list": [
-    "CRITICAL: Verify consecutive_loss_streak counter resets on restart (currently at 4, threshold=5)",
-    "btc_trend_long_counter_v1 (50%): Need 3 more BTC LONG trending trades \u2192 graduation to 100%",
-    "ranging_regime_penalize_v1 (50%): Need 4 more ranging trades \u2192 graduation to 100%",
-    "tod_evening_edge_v1 (50%): First evening session test post-graduation (18:00-24:00 UTC May 24)",
-    "eth_sell_bb_golden_v1 (50%): Track first 20 live ETH SELL+BB signals for graduation",
-    "hype_short_veto_v1: 0/3 correct. HUMAN REVIEW before 4th application."
+    "IMMEDIATE: Restart before 00:00 UTC for final 56 min of evening window (65% WR)",
+    "btc_trend_long_counter_v1 (gate=50%): Need 3 more BTC LONG trending trades \u2192 graduation to gate=100%",
+    "ranging_regime_penalize_v1 (gate=50%): Need 4 more ranging trades \u2192 graduation to gate=100%",
+    "tod_morning_edge_v1 (gate=50%): Window 17 is the test \u2014 15 obs needed for graduation",
+    "eth_sell_bb_golden_v1 (gate=50%): Track first 20 live ETH SELL+BB signals for graduation to gate=80%",
+    "hype_short_veto_v1: HUMAN REVIEW before 4th application \u2014 0/3 accuracy metric unreliable (AB tracker gap)"
   ],
   "hold_time_analysis_v2": {
     "win_median_hold_h": 3.3,
