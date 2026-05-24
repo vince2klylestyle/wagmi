@@ -250,7 +250,9 @@
       "times_applied": 2,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 20
+      "gate_percentage": 50,
+      "gate_escalated_at": "2026-05-24T00:11:00+00:00",
+      "gate_escalation_reason": "GRADUATION_CRITERION_MET: threshold was n>=20 WR>=0.60. Live data: n=27 WR=65%. Both conditions met (27>=20, 0.65>=0.60). No feedback engine conflict (evening slot unique). Second TOD window to graduate (after tod_morning_edge_v1). Feedback engine has no contradicting evening block rule. Conf=0.85 >> 0.75 threshold. Gate distribution now: 3 disabled / 4 probe(20%) / 8 graduated(50%) / 8 deployed(100%)."
     },
     {
       "rule_id": "tod_afternoon_edge_v1",

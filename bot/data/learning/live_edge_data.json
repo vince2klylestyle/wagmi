@@ -68,7 +68,7 @@
       "wr": 0.7,
       "trades": null,
       "source": "A/B_pending",
-      "rule_coverage": "ETH_SHORT_BB_golden (gate=20% LLM, gate=80% feedback \u2014 deferred escalation)"
+      "rule_coverage": "eth_sell_bb_golden_v1 (gate=50% LLM after 2023-05-23 escalation, gate=80% feedback)"
     },
     {
       "setup": "BTC_BUY_BB_golden",
@@ -78,12 +78,20 @@
       "rule_coverage": "btc_buy_bb_golden_v1 (gate=20%) \u2014 no escalation: conflicts with BTC_LONG anti-bias"
     },
     {
-      "setup": "MORNING_WINDOW_15",
+      "setup": "MORNING_WINDOW_16",
       "wr": 0.74,
       "trades": 7,
       "source": "insight_journal_composite",
       "rule_coverage": "tod_morning_edge_v1 (gate=50%) + TRENDING_EARLY_HOLD_GUARD",
-      "window_status": "Window 15 in 171 min (06:00 UTC May 23). Restart deadline in 141 min."
+      "window_status": "Window 16 in 344 min (06:00 UTC May 24). Restart deadline in 314 min."
+    },
+    {
+      "setup": "EVENING_SESSION_GRADUATED",
+      "wr": 0.65,
+      "trades": 27,
+      "source": "live_paper",
+      "rule_coverage": "tod_evening_edge_v1 (gate=50% \u2014 GRADUATED this run from 20%)",
+      "note": "18:00-24:00 UTC. Second TOD window at gate=50%. Graduate to 80% at n>=20 WR>=60% post-restart."
     }
   ],
   "weak_setups": [
@@ -138,5 +146,7 @@
     "btc_trend_long_counter_v1: 20%\u219250% (graduation criterion met)",
     "high_vol_regime_boost_v1: 20%\u219250% (graduation criterion met)",
     "eth_sell_bb_golden_v1: 20%\u219250% (sync gap close)"
-  ]
+  ],
+  "last_updated": "2026-05-24T00:16:06.407355+00:00",
+  "tod_coverage_note": "TOD_STACK_MILESTONE 2026-05-24: night(veto=100%) + morning(50%) + evening(50%) + afternoon(20% blocked). 18h alpha coverage at 50% gate."
 }

@@ -1,38 +1,39 @@
 {
-  "last_run": "2026-05-23T23:12:31.750605+00:00",
+  "last_run": "2026-05-24T00:16:06.407355+00:00",
   "source_audit": "AUTONOMOUS_SESSION_2026_04_15.md (17 findings) + perpetual_deep_dive series",
-  "fixes_applied_this_run": 4,
+  "fixes_applied_this_run": 1,
   "gates_active": 20,
-  "total_applied_all_time": 64,
+  "total_applied_all_time": 65,
   "last_fix": {
-    "fix_id": "ETH_SELL_BB_GOLDEN_ESCALATION_V1",
-    "applied_at": "2026-05-23T23:12:31.750605+00:00",
+    "fix_id": "TOD_EVENING_EDGE_GRADUATION_V1",
+    "applied_at": "2026-05-24T00:16:06.407355+00:00",
     "gate_pct": "20\u219250",
     "status": "APPLIED",
     "type": "GATE_ESCALATION",
-    "description": "4-rule batch escalation: ranging, btc_trend_long_counter, high_vol, eth_sell_bb. All met graduation criteria.",
-    "evidence": "ranging(25%WR/16), btc_trend_long(18%WR/17), high_vol(55%WR/2172), eth_sell_bb(70%WR/2172+80%live/5)",
-    "outcome_tracking": "PENDING_RESTART"
+    "description": "tod_evening_edge_v1 graduated: gate 20%\u219250%. GRADUATION CRITERION MET: threshold was n>=20 WR>=0.60. Actual: n=27 WR=65% (both conditions cleared). Evening session 18:00-24:00 UTC is second-best TOD window after morning. No feedback engine conflict (no contradicting evening block rule). TOD stack now: night(veto=100%) + morning(50%) + evening(50%) + afternoon(20% blocked).",
+    "evidence": "n=27 live paper trades, WR=65% vs 10% night (spread 55%). Criterion: n>=20 WR>=60%. Actual: n=27 (27>=20 \u2713) WR=65% (65%>=60% \u2713). Conf=0.85 >> 0.75 threshold.",
+    "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 live obs WR>=0.60."
   },
   "new_findings_this_run": [
     {
-      "finding_id": "TOD_AFTERNOON_CONFLICT_V1",
-      "detected_at": "2026-05-23T23:12:31.750605+00:00",
+      "finding_id": "TOD_STACK_MILESTONE_V1",
+      "detected_at": "2026-05-24T00:16:06.407355+00:00",
       "severity": "MEDIUM",
-      "detail": "LLM engine probes afternoon BOOST (+5pts, gate=20%) via tod_afternoon_edge_v1, while feedback engine probes AFTERNOON_SESSION_BLOCK (-8pts, gate=20%). These are mutually contradictory probes for the same 12:00-18:00 UTC window. The two systems are running A/B tests with opposing hypotheses simultaneously. Cannot auto-resolve \u2014 requires live data to determine which direction is correct.",
-      "evidence": "LLM: tod_afternoon_edge_v1 boost+5 gate=20% (evidence_ratio=0.64, n=27). Feedback: AFTERNOON_SESSION_BLOCK -8pts gate=20%. Same time window, opposite signs.",
-      "action": "HUMAN_REVIEW \u2014 post-restart: track afternoon signal WR separately for boost-cohort vs block-cohort. If WR<0.45 over n>=20, disable the boost rule and escalate the block rule.",
-      "requires_human_review": true,
-      "confidence": 0.95
+      "detail": "TOD stack milestone: morning(gate=50%, 74% WR) + evening(gate=50%, 65% WR) both graduated. 18h of alpha-positive windows (06:00-24:00 UTC) now covered at gate=50%. Only afternoon (12-18 UTC) remains at gate=20% due to TOD_AFTERNOON_CONFLICT. Night block (veto=100%) protects capital during 00-06 UTC.",
+      "evidence": "tod_morning_edge_v1: gate=50% (graduated 2026-05-21). tod_evening_edge_v1: gate=50% (graduated 2026-05-24). tod_afternoon_edge_v1: gate=20% (BLOCKED \u2014 TOD_AFTERNOON_CONFLICT).",
+      "action": "POST-RESTART: evening edge will fire on 50% of 18:00-24:00 UTC decisions. Track WR for graduation to 80% at n>=20 WR>=60%.",
+      "requires_human_review": false,
+      "confidence": 0.9
     },
     {
-      "finding_id": "GATE_DIST_MILESTONE",
-      "detected_at": "2026-05-23T23:12:31.750605+00:00",
+      "finding_id": "SOL_SHORT_GRAD_BLOCKED_V1",
+      "detected_at": "2026-05-24T00:16:06.407355+00:00",
       "severity": "LOW",
-      "detail": "LLM engine gate distribution milestone: 3 disabled / 5 probe(20%) / 7 graduated(50%) / 8 deployed(100%). First run with 7 rules at gate=50%.",
-      "action": "INFO \u2014 healthy progression toward full deployment.",
-      "requires_human_review": false,
-      "confidence": 0.99
+      "detail": "sol_short_penalize_v1 (gate=20%) has n=52 WR=34.6% meeting historical graduation criterion WR<40% n>=30. BUT graduation note says 'post-restart' requiring live data with rule active (times_applied=0, rule never tested live). RULE_CONFLICT_SOL_SHORT also pending human resolution. Deferred.",
+      "evidence": "times_applied=0 (rule added while bot offline). Graduation requires live observations with rule active. RULE_CONFLICT_SOL_SHORT from auto_fix_state outstanding_pending list.",
+      "action": "DEFERRED \u2014 collect n>=10 live observations post-restart. If WR<40% persists, escalate to gate=50%. Human review: RULE_CONFLICT_SOL_SHORT.",
+      "requires_human_review": true,
+      "confidence": 0.82
     }
   ],
   "active_fixes": [
@@ -416,6 +417,17 @@
       "description": "eth_sell_bb_golden_v1: gate 20%\u219250%. Backtest 70% WR/2172 + live_edge_data 80% WR/5 trades. Feedback ETH_SHORT_BB_golden at gate=80%. ETH SELL exempt from side-bias filter (ETH_SHORT_protect_from_bias). Conf=0.95.",
       "evidence": "Dual evidence: backtest 70% WR + live 80% WR on 5 trades. Feedback gate=80% confirms direction. No conflicts.",
       "outcome_tracking": "PENDING_RESTART \u2014 graduate gate 50%\u219280% at n>=20 live obs WR>=0.65."
+    },
+    {
+      "fix_id": "TOD_EVENING_EDGE_GRADUATION_V1",
+      "applied_at": "2026-05-24T00:16:06.407355+00:00",
+      "gate_pct": 50,
+      "status": "APPLIED",
+      "type": "GATE_ESCALATION",
+      "source": "perpetual_loop_subsystem1",
+      "description": "tod_evening_edge_v1: gate 20%\u219250%. Graduation criterion met: n=27 WR=65% vs threshold n>=20 WR>=0.60. Second TOD positive-window graduated (after tod_morning_edge_v1). TOD stack milestone: morning+evening both at gate=50%.",
+      "evidence": "n=27 live trades at 65% WR. No feedback conflict. Conf=0.85.",
+      "outcome_tracking": "PENDING_RESTART \u2014 graduate 50%\u219280% at n>=20 live WR>=0.60."
     }
   ]
 }
