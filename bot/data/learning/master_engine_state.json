@@ -1,63 +1,74 @@
 {
-    "last_run": "2026-05-25T03:04:55+00:00",
-    "run_number_today": 4,
+    "last_run": "2026-05-25T04:06:39.888026+00:00",
+    "run_number_today": 5,
     "today_date": "2026-05-25",
     "runs_today_utc": [
         "01:05",
         "02:07",
         "02:09",
-        "03:04"
+        "03:04",
+        "04:05"
     ],
-    "run_delta_minutes": 55,
+    "run_delta_minutes": 61,
     "data_changed_since_last_run": false,
     "subsystems": {
         "auto_fix": {
             "fixes_applied": 0,
             "gates_active": 21,
             "total_applied_all_time": 66,
-            "new_fix": "NONE — no autonomous_audit_*.md files found; no newly eligible rules; all 3 probe-gate rules remain blocked",
-            "blocked_escalations": [
-                "tod_afternoon_edge_v1",
-                "btc_buy_bb_golden_v1",
-                "hype_unknown_regime_probe_v1"
-            ],
-            "blocked_reasons": {
-                "tod_afternoon_edge_v1": "CONFLICT_7TH_CONSECUTIVE (NEW MILESTONE) — LLM +5pts vs feedback -8pts = -3pts net noise. 26h+ unresolved. 7th run BEYOND auto-disable threshold. Human action formally overdue. Recommend: set gate_percentage=0.",
-                "btc_buy_bb_golden_v1": "BLOCKED — BTC_LONG triple anti-bias stack (counter+Critic+parent disabled). No escalation until post-restart BTC LONG WR > 40%.",
-                "hype_unknown_regime_probe_v1": "NOT_READY — n=6 (needs 15). No new live data since restart (day 43+)."
+            "new_fix": "NONE \u2014 no autonomous_audit_*.md files; tod_afternoon_edge_v1 conf=0.85 BLOCKED (8th consecutive conflict run, requires human disable)",
+            "new_observation": {
+                "id": "SOL_SHORT_EXIT_TIMING_CONFLICT",
+                "detail": "insight_journal (ts=1779156542, conf=0.85): SOL_short 67% true-miss rate, avg $30.74/trade missed, total $614.80. Directional thesis often correct, exits too tight. MAY conflict with sol_short_penalize_v1 (gate=50%). Needs post-restart data to adjudicate.",
+                "action": "MONITOR \u2014 flag for human review after 10 post-restart SOL SHORT trades"
             },
+            "blocked_escalations": [
+                {
+                    "id": "tod_afternoon_edge_v1",
+                    "reason": "CONFLICT_8TH_CONSECUTIVE",
+                    "auto_eligible": false,
+                    "run_count": 8,
+                    "first_blocked_utc": "2026-05-24T01:09:00+00:00",
+                    "duration_hours": 26.9,
+                    "delta": "7th run \u2192 8th run. 2 runs BEYOND auto-disable threshold (6). Recommendation level: CRITICAL."
+                },
+                {
+                    "id": "btc_buy_bb_golden_v1",
+                    "reason": "BLOCKED_ANTI_BIAS_STACK",
+                    "auto_eligible": false,
+                    "detail": "Triple anti-bias stack active. No elevation until post-restart BTC LONG WR > 40%."
+                },
+                {
+                    "id": "hype_unknown_regime_probe_v1",
+                    "reason": "NOT_READY_n=6",
+                    "auto_eligible": false,
+                    "threshold": "n>=15",
+                    "note": "Bot offline day 43. No new data."
+                }
+            ],
             "rule_distribution": {
                 "0_disabled": 3,
                 "20_probe": 3,
                 "50_graduated": 9,
                 "100_deployed": 8
-            },
-            "tod_afternoon_conflict_status": {
-                "run_count": 7,
-                "first_blocked_utc": "2026-05-24T01:09:00+00:00",
-                "duration_hours": 26.0,
-                "recommendation": "HUMAN ACTION OVERDUE — 7th consecutive run. Auto-disable recommendation now formally overdue (threshold was 6 runs). Set gate_percentage=0 on tod_afternoon_edge_v1. Removes -3pts noise from 20% cohort. Feedback -8pts remains for 100% via feedback engine.",
-                "action_required": "HUMAN",
-                "auto_resolve_eligible": false,
-                "reason": "CONFLICT — opposing LLM/feedback signals. Cannot auto-resolve safely.",
-                "delta_vs_last_run": "6th run → 7th run milestone crossed"
             }
         },
         "execution_forensics": {
-            "avg_slippage": "UNKNOWN — snapshot_entry column missing (day 43+ gap)",
-            "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes (stable cached estimate)",
+            "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing (day 43+ gap)",
+            "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes (stable cached)",
             "data_available": false,
             "days_offline": 43,
-            "delta_vs_last_run": "Days offline: 42 → 43. No new slippage data.",
+            "delta_vs_last_run": "Deadline shrunk 59 min (145 min \u2192 84 min). Bot still offline.",
             "deadline_forensic": {
                 "window_17_restart_deadline_utc": "2026-05-25T05:30:00+00:00",
-                "minutes_to_deadline": 145,
+                "minutes_to_deadline": 84,
                 "night_block_ends_utc": "2026-05-25T06:00:00+00:00",
-                "minutes_of_safe_window_remaining": 175,
+                "minutes_of_safe_window_remaining": 114,
                 "consecutive_morning_misses": 17,
+                "potential_miss_if_no_restart": 18,
                 "cumulative_ev_loss_usd": 94.0,
-                "severity": "CRITICAL",
-                "delta_vs_last_run": "Deadline shrunk 56min (was 201min at 02:09, now 145min at 03:04)"
+                "severity": "CRITICAL \u2014 84 min window",
+                "delta_vs_last_run": "Deadline shrunk 59 min (03:04 \u2192 04:05 UTC). Now < 90 min threshold."
             },
             "leverage_calibration": {
                 "medium_3_5x": {
@@ -66,13 +77,13 @@
                 },
                 "high_6_10x": {
                     "avg_pnl": -4.62,
-                    "verdict": "BLOCKED (HIGH_LEV_10X_FORENSICS_BLOCK gate=20%)"
+                    "verdict": "BLOCKED (gate=20%)"
                 }
             },
             "hold_time": {
                 "win_median_hold_h": 3.3,
                 "loss_median_hold_h": 1.5,
-                "ratio": "2.2x — losses exit 2.2x faster than wins",
+                "ratio": "2.2x \u2014 losses exit 2.2x faster than wins",
                 "active_guard": "TRENDING_EARLY_HOLD_GUARD gate=80%"
             }
         },
@@ -80,13 +91,13 @@
             "high_edges_found": 9,
             "weak_setups_found": 6,
             "no_new_trades": true,
-            "data_source": "Cached (bot offline day 43+, last_updated: 2026-05-25T03:04:55+00:00)",
-            "delta_vs_last_run": "No change — no new trades or data",
+            "data_source": "Cached (bot offline day 43+)",
+            "delta_vs_last_run": "No change \u2014 no new trades. Window 17 opens in 114 min.",
             "window_17_prime": {
                 "opens_utc": "2026-05-25T06:00:00+00:00",
-                "minutes_until_open": 175,
+                "minutes_until_open": 114,
                 "restart_deadline_utc": "2026-05-25T05:30:00+00:00",
-                "minutes_to_restart_deadline": 145,
+                "minutes_to_restart_deadline": 84,
                 "primed_rules": [
                     "tod_morning_edge_v1 gate=50% (+5pts)",
                     "eth_sell_bb_golden_v1 gate=50% (+8pts)",
@@ -94,116 +105,92 @@
                     "hype_unknown_regime_probe_v1 gate=20% (+5pts limited)"
                 ],
                 "composite_wr": 0.74,
-                "severity": "CRITICAL — restart deadline 2h 25min away"
+                "severity": "CRITICAL \u2014 restart deadline 84 min, window 114 min"
             },
-            "top_edges": [
-                {
-                    "setup": "HYPE_UNKNOWN_REGIME",
-                    "wr": 0.83,
-                    "n": 6,
-                    "rule": "hype_unknown_regime_probe_v1 gate=20%"
-                },
-                {
-                    "setup": "ETH_SHORT_BB",
-                    "wr": 0.8,
-                    "n": 5,
-                    "rule": "eth_sell_bb_golden_v1 gate=50%"
-                },
-                {
-                    "setup": "BTC_TRENDING_SHORT",
-                    "wr": 0.8,
-                    "n": 5,
-                    "rule": "TRENDING_EARLY_HOLD_GUARD gate=80%"
-                },
-                {
-                    "setup": "MORNING_WINDOW_17",
-                    "wr": 0.74,
-                    "n": 7,
-                    "rule": "tod_morning_edge_v1 gate=50%"
-                },
-                {
-                    "setup": "ETH_TRENDING",
-                    "wr": 0.71,
-                    "n": 7,
-                    "rule": "eth_trending_regime_boost_v1 gate=100%"
-                }
-            ]
+            "new_insight_journal_finding": {
+                "setup": "SOL_SHORT_WIDER_STOPS",
+                "source": "insight_journal ts=1779156542",
+                "wr_potential": "directional WR potentially high (67% true-miss = thesis correct, exit wrong)",
+                "current_rule_conflict": "sol_short_penalize_v1 penalizes SOL SELL setup",
+                "recommendation": "MONITOR post-restart before adjudicating"
+            }
         },
         "daily_synthesis": {
             "today_date": "2026-05-25",
             "today_trades": 0,
             "today_pnl": 0.0,
             "eod_finalized": false,
-            "run_type": "RUN4_OF_DAY_NIGHT_BLOCK",
+            "run_type": "RUN5_OF_DAY_NIGHT_BLOCK",
             "anomalies_found": 4,
-            "report_generated": true,
-            "report_file": "bot/data/sessions/daily_synthesis_2026-05-25.json",
+            "report_generated": false,
+            "report_note": "Not EOD (04:05 UTC). Daily synthesis will generate at ~23:00 UTC.",
             "anomalies": [
                 {
-                    "type": "WINDOW_17_DEADLINE_145MIN",
+                    "type": "WINDOW_17_DEADLINE_84MIN",
                     "severity": "CRITICAL",
-                    "detail": "Restart deadline 05:30 UTC = 145 min away (2h 25min). 18th consecutive morning miss if skipped. Cumulative EV ~$94.",
-                    "recommendation": "RESTART NOW — night block provides 175 min safe warm-up window."
+                    "detail": "Restart deadline 05:30 UTC = 84 min away (< 90 min threshold crossed). 18th consecutive morning miss if skipped. Cumulative EV ~$94.",
+                    "recommendation": "RESTART NOW \u2014 114 min safe night block window remaining."
                 },
                 {
-                    "type": "TOD_AFTERNOON_CONFLICT_7TH_RUN_OVERDUE",
+                    "type": "TOD_AFTERNOON_CONFLICT_8TH_RUN_CRITICAL",
                     "severity": "HIGH",
-                    "detail": "tod_afternoon_edge_v1 blocked for 7th consecutive run — BEYOND threshold. Human action overdue.",
-                    "recommendation": "Set tod_afternoon_edge_v1 gate_percentage=0"
+                    "detail": "tod_afternoon_edge_v1 blocked for 8th consecutive run (26.9h, 2 runs BEYOND auto-disable threshold). LLM +5pts vs feedback -8pts = -3pts noise in 20% cohort.",
+                    "recommendation": "HUMAN CRITICAL: Set tod_afternoon_edge_v1 gate_percentage=0 in bot/data/llm/graduated_rules.json"
                 },
                 {
                     "type": "AB_TRACKER_CALLBACK_GAP_DAY43",
                     "severity": "HIGH",
-                    "detail": "All 23 LLM rules show times_correct=0. 9 graduated rules cannot auto-advance. Pipeline stalled day 43.",
-                    "recommendation": "P0 DEV: Wire trade-close event to LLM rules outcome callback (~2h)."
+                    "detail": "All 23 LLM rules show times_correct=0. 9 graduated rules stalled. AB pipeline dead.",
+                    "recommendation": "P0 DEV: Wire trade-close event \u2192 LLM engine outcome callback (~2h)."
                 },
                 {
-                    "type": "NIGHT_BLOCK_ACTIVE_175MIN",
+                    "type": "NIGHT_BLOCK_ACTIVE_114MIN",
                     "severity": "INFO",
-                    "detail": "Safe restart window active for 175 min more.",
-                    "recommendation": "Restart bot during this window."
+                    "detail": "Safe restart window active for 114 min more (night_session_block_v1 veto active until 06:00 UTC).",
+                    "recommendation": "Restart bot during this window to capture Window 17."
                 }
             ]
         },
         "model_optimization": {
-            "status": "SKIPPED — no cost_tracker.json. Bot offline day 43+.",
+            "status": "SKIPPED \u2014 no cost_tracker.json. Bot offline day 43+.",
             "model_swaps_recommended": 0,
             "potential_savings": "$0.00",
-            "note": "Will resume after bot restart accumulates 50+ LLM calls. Model assignments unchanged from configuration."
+            "note": "Will resume after bot restart accumulates 50+ LLM calls."
         }
     },
     "high_priority_findings": [
         {
-            "subsystem": "daily_synthesis",
+            "subsystem": "execution_forensics",
             "severity": "CRITICAL",
-            "finding": "WINDOW_17_DEADLINE: Restart deadline in 145min (05:30 UTC). Delta: shrunk 56 min since last run. Night block safe window = 175 min. Miss = 18th consecutive morning miss, ~$94 cumulative EV lost.",
-            "action": "RESTART BOT NOW — restart during night block (175 min safety window), bot warms up, Window 17 trades at 06:00 UTC"
+            "finding": "WINDOW_17_DEADLINE_84MIN: Restart deadline at 05:30 UTC in 84 min (threshold < 90 min CROSSED). Night block safe window = 114 min. Miss = 18th consecutive morning miss, ~$94 cumulative EV.",
+            "action": "RESTART BOT NOW \u2014 night block provides 114 min safe warm-up. Window 17 fires at 06:00 UTC with 74% composite WR."
         },
         {
             "subsystem": "auto_fix",
             "severity": "HIGH",
-            "finding": "TOD_AFTERNOON_CONFLICT_7TH_CONSECUTIVE: LLM +5pts vs feedback -8pts. 26h+ unresolved. Crossed 7-run threshold (auto-disable trigger was 6 runs). Human action now formally overdue.",
-            "action": "HUMAN: Set tod_afternoon_edge_v1 gate_percentage=0 in bot/data/llm/graduated_rules.json"
+            "finding": "TOD_AFTERNOON_CONFLICT_8TH_RUN: 8th consecutive blocked run (26.9h). 2 runs BEYOND auto-disable threshold (6). LLM +5pts vs feedback -8pts = -3pts noise in 20% cohort. Strongest recommendation level: DISABLE.",
+            "action": "HUMAN CRITICAL: Set tod_afternoon_edge_v1 gate_percentage=0 in bot/data/llm/graduated_rules.json"
         },
         {
             "subsystem": "daily_synthesis",
             "severity": "HIGH",
             "finding": "AB_TRACKER_STALLED_DAY43: All 23 LLM rule graduation callbacks missing. 9 rules at gate=50% cannot auto-advance. Manual audit required every run.",
-            "action": "P0 DEV: Wire trade-close event → LLM engine outcome callback (~2h). Unblocks entire graduation pipeline."
+            "action": "P0 DEV: Wire trade-close event \u2192 LLM engine outcome callback (~2h)."
         },
         {
             "subsystem": "live_injection",
             "severity": "MEDIUM",
-            "finding": "WINDOW_17_PRIME: 5 rules primed for morning window (tod_morning+eth_bb+eth_trending+hype_probe). Composite 74% WR. Opens in 175 min. Restart deadline 145 min.",
-            "action": "OPERATIONAL: Bot restart required to capture. Rules ready, no code changes needed."
+            "finding": "SOL_SHORT_EXIT_TIMING_INSIGHT: insight_journal (conf=0.85) shows 67% true-miss rate on SOL_short (directional correct, exits too tight). May conflict with sol_short_penalize_v1. Needs post-restart validation.",
+            "action": "MONITOR \u2014 after bot restart, track first 10 SOL SHORT trades vs sol_short_penalize_v1 before adjudicating."
         }
     ],
     "run_summary": {
         "new_data_since_last_run": false,
         "fixes_applied": 0,
-        "new_findings": 1,
-        "new_finding_1": "tod_afternoon_edge_v1 conflict crosses 7th consecutive run — formally BEYOND the auto-disable threshold (6 was the trigger). Human action now overdue. Strongest recommendation level reached.",
-        "key_delta": "Window 17 deadline: 201min → 145min (56 min consumed). Conflict run count: 6 → 7 (new milestone).",
-        "daily_synthesis_created": "bot/data/sessions/daily_synthesis_2026-05-25.json (first synthesis of the day)"
+        "new_findings": 2,
+        "new_finding_1": "tod_afternoon_edge_v1 crosses 8th consecutive run \u2014 2 runs BEYOND threshold. Escalation to CRITICAL.",
+        "new_finding_2": "insight_journal SOL_short exit timing conflict with sol_short_penalize_v1 identified for post-restart monitoring.",
+        "key_delta": "Window 17 deadline: 145 min \u2192 84 min (61 min consumed). Conflict run count: 7 \u2192 8 (CRITICAL milestone). Deadline now < 90 min threshold.",
+        "daily_synthesis_updated": "No new synthesis (EOD pending)"
     }
 }
