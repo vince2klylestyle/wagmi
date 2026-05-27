@@ -1,26 +1,35 @@
 {
-  "last_run": "2026-05-26T23:09:45+00:00",
-  "data_source": "Cached (bot offline day 47, last_updated: 2026-05-26T23:09:45+00:00)",
+  "last_run": "2026-05-27T00:12:20+00:00",
+  "data_source": "Cached (bot offline day 48, last_updated: 2026-05-27T00:12:20+00:00)",
   "high_edges_found": 9,
   "weak_setups_found": 6,
   "no_new_trades": true,
-  "delta_vs_last_run": "No new trades. Window 18 CONFIRMED MISSED. Evening window ACTIVE (50 min). Window 19 now approaching (T-6.34h deadline).",
+  "delta_vs_last_run": "Evening window CONFIRMED MISSED at 00:00 UTC (12 min ago). Night block now ACTIVE. Window 19 approaching (T-5.79h open / T-5.29h restart deadline).",
+  "current_session_state": {
+    "utc_time": "2026-05-27 00:12 UTC",
+    "active_tod_rule": "night_session_block_v1 gate=100% (-8pts or skip, 19% WR)",
+    "active_window": "NIGHT_BLOCK (00:00-06:00 UTC)",
+    "trading_expected": false,
+    "note": "Night block active. No profitable signals expected 00:00-06:00 UTC. Edge resumes at morning window open (06:00 UTC)."
+  },
   "evening_window_status": {
-    "status": "ACTIVE_FINAL_50MIN",
-    "window": "18:00-00:00 UTC May 26",
-    "remaining_minutes": 50.2,
-    "closes_at_utc": "2026-05-27T00:00:00+00:00",
-    "active_rule": "tod_evening_edge_v1 gate=100% (+5pts)",
+    "status": "CONFIRMED_MISSED",
+    "window": "18:00-00:00 UTC May 26/27",
+    "closed_at_utc": "2026-05-27T00:00:00+00:00",
+    "confirmed_at_utc": "2026-05-27T00:12:20+00:00",
+    "prev_status": "ACTIVE_FINAL_50MIN (last run 23:09 UTC)",
+    "rule": "tod_evening_edge_v1 gate=100% (+5pts)",
     "evening_wr": 0.65,
-    "note": "Last opportunity today. Bot offline — cannot capture."
+    "estimated_missed_ev_usd": 3.13,
+    "note": "Window closed 12 min ago. Bot offline — missed final 50 min (65% WR). Night block now active."
   },
   "window_19_status": {
     "status": "APPROACHING",
     "opens_at_utc": "2026-05-27T06:00:00+00:00",
     "restart_deadline_utc": "2026-05-27T05:30:00+00:00",
-    "hours_until_deadline": 6.34,
-    "hours_until_open": 6.84,
-    "consecutive_miss_count": 19,
+    "hours_until_deadline": 5.29,
+    "hours_until_open": 5.79,
+    "consecutive_morning_miss_count": 19,
     "severity": "CRITICAL",
     "primed_rules": [
       "tod_morning_edge_v1 / TOD_morning_edge gate=50% (+5pts)",
@@ -29,8 +38,8 @@
       "hype_unknown_regime_probe_v1 gate=20% (+5pts limited)"
     ],
     "composite_wr": 0.74,
-    "cumulative_ev_loss_usd": 100.0,
-    "note": "T-6.34h until restart deadline. 20th consecutive morning miss risk."
+    "cumulative_morning_ev_loss_usd": 100.0,
+    "note": "T-5.29h until restart deadline. 20th morning miss risk. Last chance for Window 19 is 05:30 UTC restart."
   },
   "top_edges": [
     {"setup": "HYPE_UNKNOWN_REGIME", "wr": 0.83, "n": 6, "rule": "HYPE_UNKNOWN_REGIME_PROBE gate=20%"},
@@ -41,10 +50,10 @@
     {"setup": "BB_SOLO_SIGNAL", "wr": 0.676, "n": 2172, "rule": "insight_journal — BB solo strongest pattern"},
     {"setup": "ETH_SELL_BB_GOLDEN", "wr": 0.70, "n": 10, "rule": "insight_journal validated"},
     {"setup": "BTC_BUY_BB_GOLDEN", "wr": 0.69, "n": 10, "rule": "insight_journal validated"},
-    {"setup": "EVENING_WINDOW", "wr": 0.65, "n": 8, "rule": "tod_evening_edge_v1 gate=100% — ACTIVE NOW (50 min)"}
+    {"setup": "EVENING_WINDOW", "wr": 0.65, "n": 8, "rule": "tod_evening_edge_v1 gate=100% — CLOSED (next: 18:00 UTC May 27)"}
   ],
   "worst_setups": [
-    {"setup": "NIGHT_00_06UTC", "wr": 0.19, "n": 27, "rule": "night_session_block_v1 gate=100% ACTIVE"},
+    {"setup": "NIGHT_00_06UTC", "wr": 0.19, "n": 27, "rule": "night_session_block_v1 gate=100% ACTIVE NOW"},
     {"setup": "HYPE_BUY", "wr": 0.23, "n": 35, "rule": "hype_long_veto_v1 gate=100% ACTIVE"},
     {"setup": "SOL_SHORT_TIGHT_STOPS", "wr": 0.18, "n": 11, "rule": "SOL_SHORT_full_block gate=100% ACTIVE"},
     {"setup": "ILLIQUID_REGIME", "wr": 0.22, "n": 9, "rule": "illiquid_regime_penalize_v1 gate=100% ACTIVE"},
