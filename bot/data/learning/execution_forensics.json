@@ -1,7 +1,7 @@
 {
-    "last_run": "2026-05-27T02:11:56+00:00",
+    "last_run": "2026-05-27T03:09:34+00:00",
     "data_available": false,
-    "data_source": "Cached (bot offline 48 days, trades.csv missing)",
+    "data_source": "Cached (bot offline 48.14 days, trades.csv missing)",
     "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing (day 48+)",
     "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes (stable cached estimate)",
     "hold_time_forensics": {
