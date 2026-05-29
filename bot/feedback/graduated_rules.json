@@ -667,10 +667,10 @@
       "problem": "SOL SHORT highest-PnL setup in 10d dataset (+$5807) but no dedicated confidence promotion rule",
       "fix_applied": "A/B gate at 20% \u2014 20% of SOL SHORT ensemble signals get +5pt confidence boost and 1.1x size multiplier",
       "action": "ensemble.py or signal_pipeline.py: if symbol==SOL and side==SHORT, apply +5pt confidence boost in A/B cohort",
-      "status": "SUSPENDED_LIVE_CONTRADICTION",
+      "status": "DISABLED_LIVE_CONTRADICTION",
       "suspension_reason": "Live paper trading (52 actual trades): SOL WR=34.6%, PnL=-$176.24, SL_rate=82.7%. Backtest claim 63.7% WR not validated in live conditions. Suspended 2026-04-25 hourly run.",
       "confidence": 90,
-      "gate_percentage": 20,
+      "gate_percentage": 0,
       "baseline_wr": 0.637,
       "treatment_wr": null,
       "sample_count": 179,
@@ -678,7 +678,9 @@
       "ab_cohort_start": "2026-04-25T15:30:00Z",
       "min_sample_to_graduate": 30,
       "expected_impact": "+$32.4/trade average; capturing more of the only reliably profitable setup",
-      "notes": " | 2026-04-28: 10d data shows SOL_SHORT = 63.7% WR, n=179, +$5807 PnL \u2014 contradiction may be resolved. Needs human review to unsuspend."
+      "notes": " | 2026-04-28: 10d data shows SOL_SHORT = 63.7% WR, n=179, +$5807 PnL \u2014 contradiction may be resolved. Needs human review to unsuspend.",
+      "gate_change_reason": "auto_fix_run28: Gate changed from 20->0. Rule was SUSPENDED but gate=20 left 20% A/B cohort eligible. SOL_SHORT_LIVE_CONTRADICTION (gate=100, conf=95) takes precedence. Reactivation criteria: 30+ live trades WR>55% in trending regime with stops>=1.0%.",
+      "gate_changed_at": "2026-05-29T03:09:21+00:00"
     },
     {
       "rule_id": "BTC_directional_correction",
@@ -815,15 +817,17 @@
       "description": "SOL_SHORT is the highest-WR combo in the dataset. Amplify with appropriate sizing.",
       "problem": "SOL_SHORT: 63.7% WR on 179 trades, $5807 PnL \u2014 the single highest-PnL combo. At 90%+ confidence: 71.4% WR. Yet SOL_LONG is only 53.3% WR. Directional asymmetry confirmed: SOL is a strong SHORT candidate.",
       "fix_applied": "A/B gate: boost SOL SHORT position size 1.3x when confidence >= 80%. 20% of SOL SHORT trades tested.",
-      "status": "SUSPENDED_LIVE_CONTRADICTION",
+      "status": "DISABLED_LIVE_CONTRADICTION",
       "suspension_reason": "Live paper trading 52 actual trades: SOL WR=34.6%, -$176.24. Backtest 63.7% WR not validated. Suspended 2026-04-25 hourly run.",
       "confidence": 76,
-      "gate_percentage": 20,
+      "gate_percentage": 0,
       "baseline_wr": 0.637,
       "treatment_wr": null,
       "applied_date": "2026-04-25",
       "verified": false,
-      "notes": "Consistent with SOL_SHORT_edge_promote rule already in rules (conf=90%, gate=20%). This extends to conf>=80 threshold and adds sizing boost specifically. Check for overlap/conflict with existing rule. | 2026-04-28: 10d data shows SOL_SHORT = 63.7% WR, n=179, +$5807 PnL \u2014 contradiction may be resolved. Needs human review to unsuspend."
+      "notes": "Consistent with SOL_SHORT_edge_promote rule already in rules (conf=90%, gate=20%). This extends to conf>=80 threshold and adds sizing boost specifically. Check for overlap/conflict with existing rule. | 2026-04-28: 10d data shows SOL_SHORT = 63.7% WR, n=179, +$5807 PnL \u2014 contradiction may be resolved. Needs human review to unsuspend.",
+      "gate_change_reason": "auto_fix_run28: Gate 20->0. SOL_SHORT_LIVE_CONTRADICTION (gate=100, conf=95) makes this promotion logically dead-code. Companion fix to SOL_SHORT_edge_promote.",
+      "gate_changed_at": "2026-05-29T03:09:21+00:00"
     },
     {
       "rule_id": "F1_sniper_pending_safety_review",
