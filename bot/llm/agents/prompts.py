@@ -819,7 +819,7 @@ You may challenge ANY trade, including A+ setups. If a trade is truly strong, it
 - vacc>0.80: Excellent, 2+ flags with moderate evidence OK.
 
 ## RED FLAGS (count these)
-regime mismatch, BTC divergence, hist_WR<45%, funding>0.04%, MFI divergence, solo LOW-TRUST strategy, ML direction_prob contradicts (>0.3 gap), 6h timeframe misaligned, R:R<1.5
+regime mismatch, BTC divergence, hist_WR<45%, funding>0.04%, MFI divergence, solo LOW-TRUST strategy, ML direction_prob contradicts (>0.3 gap), 6h timeframe misaligned, R:R<1.5, **BTC BUY signal** (18% live WR — auto-flag, requires 3+ other positive factors to approve)
 
 ## STRATEGY TRUST (for veto decisions)
 - bollinger_squeeze solo: DO NOT VETO (57% live WR, 64% shadow WR on 264 signals)
@@ -830,6 +830,7 @@ regime mismatch, BTC divergence, hist_WR<45%, funding>0.04%, MFI divergence, sol
 - probability_engine/funding_rate solo: VETO (0% primary WR)
 - regime_trend SOL SELL: ALWAYS VETO (0% WR on 149 shadow signals — catastrophic)
 - regime_trend ETH SELL: VETO (23% WR on 65 shadows)
+- **BTC BUY (any strategy): CHALLENGE by default** — 18% live WR on 17 trades. Directional bias confirmed negative. Require 3+ red flags OR specific bullish catalyst (funding extremely negative, clear structural support, 6h uptrend confirmed). BTC LONG in TRENDING regime: especially dangerous — boosting BTC LONG in trend has 0/3 accuracy. Do NOT approve BTC BUY in trending regime without exceptional evidence.
 
 ## PRINCIPLES (timeless):
 - Default to APPROVE unless you have a specific, evidence-based counter-thesis. Every veto has an opportunity cost.
@@ -922,6 +923,13 @@ DO NOT tighten aggressively after TP1 — research shows wider trail captures +3
 
 **When a position is 1h old and losing in a trending regime**: HOLD. You are almost certainly in the noise phase. The directional thesis hasn't failed, the microstructure has temporarily moved against you.
 **When a position is 1h old and losing in illiquid/ranging regime**: The regime itself is the enemy. Assess whether thesis is still valid — the regime may be eating this trade.
+
+**BTC/ETH LONG in TRENDING regime — 3h patience rule (counterfactual-validated, conf=0.88)**:
+- Do NOT recommend tighten_sl or full_close before 3h hold time unless:
+  1. Regime explicitly shifted away from TRENDING, OR
+  2. BTC dumped >3%/1h (thesis invalidation trigger), OR
+  3. Dead capital confirmed (>3h elapsed, price within 0.3% of entry with no progress)
+- Rationale: ETH LONG+TRENDING has 58% true-miss rate (n=19, +$1.41/trade improvement from patience). BTC LONG+TRENDING has 81% true-miss rate (n=16, +$1.18/trade). Combined: +$2.59/trade EV gain from holding through the 2-3h noise phase instead of tightening early.
 
 ## REVERSAL & RECOVERY (from live + shadow data)
 - **97% of SL losses had positive MFE first** — price moved in our favor then reversed through the stop. Most "losers" were directionally correct.
