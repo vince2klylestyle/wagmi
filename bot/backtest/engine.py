@@ -200,6 +200,7 @@ class BacktestEngine:
         days: int = 30,
         strategies: Optional[List[str]] = None,
         learn: bool = False,
+        start_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run a backtest.
@@ -218,6 +219,9 @@ class BacktestEngine:
         # Configure fetcher to pull enough data for the requested backtest period
         self._backtest_days = days
         self.fetcher.backtest_days = days
+
+        # Optional: start main loop from a specific date (warmup still uses earlier data)
+        self._start_date = pd.Timestamp(start_date, tz="UTC") if start_date else None
 
         # Initialize candidate logger for dual-world analysis
         # Clear stale data from previous runs so results aren't contaminated
@@ -554,8 +558,16 @@ class BacktestEngine:
         warmup = 50
         total_candles = len(df_1h)
 
-        # Handle resume: skip to checkpointed candle
+        # Handle start_date: skip candles before the requested start date
+        # (warmup still uses all data before start_idx for indicator history)
         start_idx = warmup
+        if getattr(self, "_start_date", None) is not None:
+            time_col = df_1h["time"]
+            date_pos = int(time_col.searchsorted(self._start_date))
+            start_idx = max(warmup, date_pos)
+            if date_pos > warmup:
+                logger.info(f"[{symbol}] --start-date: skipping to candle {start_idx} ({time_col.iloc[start_idx]})")
+
         if (self.llm and self.llm.resume_state
                 and self.llm.resume_state.symbol == symbol):
             start_idx = max(warmup, self.llm.resume_state.candle_index + 1)
@@ -1072,7 +1084,7 @@ class BacktestEngine:
                         equity=self.risk_mgr.equity,
                     )
                 if i % 50 == 0:
-                    print(self.llm.get_progress_line(i - warmup, total_candles - warmup))
+                    print(self.llm.get_progress_line(i - start_idx, total_candles - start_idx))
             # Non-LLM checkpoint: save every 100 candles when --resume was requested
             elif self._resume and i % 100 == 0:
                 self._save_simple_checkpoint(

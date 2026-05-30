@@ -124,7 +124,7 @@ def cmd_backtest(args):
     elif resume:
         print("  Resume: from last checkpoint (simple mode)")
 
-    report = engine.run(symbols, args.days, strategies, learn=learn)
+    report = engine.run(symbols, args.days, strategies, learn=learn, start_date=getattr(args, "start_date", "") or None)
 
     if report.get("error") == "preflight_failed":
         print("\nBACKTEST ABORTED: LLM preflight checks failed.")
@@ -435,6 +435,7 @@ Commands:
     sub_bt.add_argument("--fresh", action="store_true", help="Force re-fetch data from exchanges, ignoring disk cache")
     sub_bt.add_argument("--relaxed-cb", action="store_true", help="Use relaxed circuit breaker settings (15%%/30%%) instead of live (5%%/10%%)")
     sub_bt.add_argument("--sim-agents", action="store_true", help="Enable simulated LLM agents (rule-based, no API) to filter signals")
+    sub_bt.add_argument("--start-date", default="", help="Start main loop from this date (YYYY-MM-DD). Warmup still uses earlier data from --days window.")
 
     # Signals
     sub_sig = subparsers.add_parser("signals", help="One-shot signal check")
