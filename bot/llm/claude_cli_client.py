@@ -61,7 +61,7 @@ def call_agent(
     system_prompt: str = "",
     model: str = "haiku",
     json_schema: Optional[Dict[str, Any]] = None,
-    max_budget_usd: float = 0.10,
+    max_budget_usd: float = 1.00,  # 2026-05-30: was 0.10. Sonnet/Opus calls cost $0.10-0.30 each; sub pays anyway.
     timeout: int = 90,
     allow_tools: bool = False,
     cwd: Optional[str] = None,

@@ -495,13 +495,14 @@ class EnsembleStrategy:
                     f"applying graduated confidence floor"
                 )
         elif self._is_low_volume(symbol, data):
-            # Fallback to simple volume filter if no chop detector
-            logger.info(f"[{symbol}] Signal skipped: low volume (chop filter)")
+            # 2026-05-30: NEUTRALIZED — volume chop is now informational, not a gate.
+            # Pure data flows to LLM; LLM decides whether low volume warrants skipping.
+            logger.info(f"[{symbol}] Low volume detected (was chop-filtering; now informational only)")
             if self._missed_trade_tracker is not None:
                 self._missed_trade_tracker.record_ensemble_rejection(
-                    symbol=symbol, signals=signals, reason="low_volume_chop"
+                    symbol=symbol, signals=signals, reason="low_volume_chop_observed_not_blocked"
                 )
-            return None
+            # NO return — continue to signal construction
 
         # LLM-first mode: the EV gate inside _merge_signals becomes advisory.
         # Without this, consensus signals like BTC funding_rate BUY get
@@ -591,9 +592,19 @@ class EnsembleStrategy:
                 num_agree=_n_agree, confidence=result.confidence,
             )
             if _vetoed:
-                logger.info(f"[{symbol}] Signal VETOED by graduated rule: {_rule_summary}")
-                self._record_counterfactual(result, "graduated_rule_veto")
-                return None
+                # 2026-05-30: under LLM_FIRST_MODE, graduated-rule vetoes become informational.
+                # These rules carry stale verdicts (e.g. "HYPE BUY 23% WR" pre-rally).
+                # The LLM gets the rule summary as context and decides itself.
+                import os as _os
+                if _os.environ.get("LLM_FIRST_MODE", "false").lower() == "true":
+                    logger.info(f"[{symbol}] Graduated rule WOULD veto (LLM_FIRST_MODE override): {_rule_summary}")
+                    result.metadata["graduated_rule_veto_overridden"] = _rule_summary
+                    self._record_counterfactual(result, "graduated_rule_veto_overridden")
+                    # Continue — don't return None
+                else:
+                    logger.info(f"[{symbol}] Signal VETOED by graduated rule: {_rule_summary}")
+                    self._record_counterfactual(result, "graduated_rule_veto")
+                    return None
             if _adj_conf != result.confidence:
                 logger.info(f"[{symbol}] Graduated rules: {result.confidence:.0f}% → {_adj_conf:.0f}% ({_rule_summary})")
                 result.confidence = _adj_conf
@@ -2287,6 +2298,11 @@ class EnsembleStrategy:
         # 2026-04-15. Cutoff: n >= 40 samples for KEEP/BLOCK, 20 for NEUTRAL.
         # Table format: (symbol, side, strategy) -> deflation floor.
         _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
+        # 2026-05-30 architectural decision:
+        #   - BLOCKS (hard kill switches based on stale data) — REMOVED, they interfered with live regimes
+        #   - EDGES (positive-WR setups from 3,802 resolved trades, 2026-04-15) — KEPT, this is real alpha
+        # Phase 2 (later): convert EDGES from confidence-floor multiplier to metadata that flows to the LLM,
+        #   so the LLM sees "this setup had 100% WR on 135 samples" as context and decides itself.
         _SHADOW_EDGES = {
             # KEEP — strong positive edges (high WR + positive avg return)
             ("ETH", "BUY", "regime_trend"):          0.90,  # 100% WR on 135 samples
@@ -2297,15 +2313,7 @@ class EnsembleStrategy:
             ("BTC", "BUY", "regime_trend"):          0.65,  # 55.1% WR on 78 samples
             ("HYPE", "BUY", "regime_trend"):         0.72,  # 80.0% WR on 40 samples
         }
-        # BLOCK — statistically significant money losers. These are setups
-        # the bot should explicitly deflate toward zero, effectively killing
-        # the signal unless multiple OTHER strategies also agree.
-        _SHADOW_BLOCKS = {
-            ("SOL", "SELL", "regime_trend"),        # 0% WR on 149 samples (catastrophic)
-            ("SOL", "BUY", "regime_trend"),         # 75% WR trap: wins small, loses big (-0.48 sum)
-            ("HYPE", "BUY", "multi_tier_quality"),  # 36.8% WR on 95 samples
-            ("ETH", "SELL", "regime_trend"),        # 23.1% WR on 65 samples
-        }
+        _SHADOW_BLOCKS = set()  # Hardcoded blocks removed — see commit note above
 
         # Walk every agreeing strategy: find the best floor AND any block.
         _agreeing_strats = [s.strategy for s in signals]
@@ -2400,6 +2408,20 @@ class EnsembleStrategy:
             # Check adaptive EV calibrator for override
             _ev_override = False
             _ev_override_source = ""
+
+            # 2026-05-30 OVERDRIVE: when LLM_MODE >= 4, EV gate becomes informational only.
+            # LLM is the trader; mechanical EV math is a data point, not a hard block.
+            try:
+                import os as _os
+                if int(_os.getenv("LLM_MODE", "0")) >= 4:
+                    _ev_override = True
+                    _ev_override_source = "overdrive_llm_primary"
+                    logger.info(
+                        f"[ENSEMBLE] {symbol} {side} EV={ev_per_dollar:.4f} WP={win_prob:.2f} "
+                        f"R:R={rr_tp1:.2f} — informational only (LLM_MODE>=4, LLM decides)"
+                    )
+            except Exception:
+                pass
             if hasattr(self, '_ev_calibrator') and self._ev_calibrator is not None:
                 try:
                     if self._ev_calibrator.should_override(ev_per_dollar, n_agree):

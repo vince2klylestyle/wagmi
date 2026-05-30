@@ -122,7 +122,7 @@ def _call_llm_via_cli(
         user_prompt=json_guard + snapshot_json,
         system_prompt=full_system,
         model=cli_model,
-        max_budget_usd=0.10,
+        max_budget_usd=1.00,  # 2026-05-30: was 0.10, hit "Reached maximum budget" on every Sonnet/Opus call
         timeout=max(timeout, 90),
         allow_tools=False,
     )
