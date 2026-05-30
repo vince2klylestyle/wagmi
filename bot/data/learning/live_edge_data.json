@@ -1,146 +1,159 @@
 {
-  "last_run": "2026-05-30T01:09:06+00:00",
-  "run_number": 32,
-  "high_edges_found": 9,
-  "weak_setups_found": 6,
+  "last_run": "2026-05-30T03:12:45.475427+00:00",
+  "run_number": 34,
+  "high_edges_found": 8,
+  "weak_setups_found": 7,
   "no_new_trades": true,
-  "data_source": "Cached (no new trades — bot offline day 51.33)",
+  "data_source": "Graduated rules analysis + cached (bot offline day 53.13)",
   "current_session_state": {
-    "utc_time": "2026-05-30 01:09 UTC",
-    "active_tod_rule": "NIGHT (00:00-06:00 UTC). Night block ends in 4.85h (06:00 UTC).",
+    "utc_time": "2026-05-30 03:12 UTC",
+    "active_tod_rule": "NIGHT (00:00-06:00 UTC). Night block ends in 2.82h (06:00 UTC).",
     "trading_expected": false,
-    "hours_until_night_block_end": 4.85,
-    "w22_day": true,
-    "clock_correction": "Run 31 (05:09 UTC timestamp) showed 0.85h to night block end. Actual time 01:09 UTC = 4.85h to night block end."
+    "hours_until_night_block_end": 2.82,
+    "w22_day": true
   },
   "window_22_status": {
-    "status": "UPCOMING — T-4.85h to open. RESTART DEADLINE T-4.35h (05:30 UTC)",
+    "status": "CRITICAL \u2014 T-2.32h to restart deadline (05:30 UTC). T-2.82h to open.",
     "restart_deadline_utc": "2026-05-30T05:30:00+00:00",
     "opens_at_utc": "2026-05-30T06:00:00+00:00",
     "closes_at_utc": "2026-05-30T12:00:00+00:00",
-    "t_deadline_h": 4.35,
-    "t_open_h": 4.85,
-    "consecutive_morning_miss_count": 23,
-    "severity": "URGENT — 4h 21min to restart deadline. Plenty of time but act before 05:30 UTC.",
+    "t_deadline_h": 2.32,
+    "t_open_h": 2.82,
+    "consecutive_morning_miss_count": 24,
+    "severity": "CRITICAL \u2014 2h 19min to restart deadline. Bot must start before 05:30 UTC.",
     "primed_rules": [
-      "TOD_morning_edge gate=50% (+5pts)",
-      "ETH_SHORT_BB_golden gate=80% (+8pts)",
-      "eth_trending_regime_boost gate=100% (+8pts)",
-      "HYPE_UNKNOWN_REGIME_PROBE gate=20% (+5pts limited)"
+      "TOD_morning_edge gate=50% (+8pts, wr=74%)",
+      "eth_sell_bb_golden_v1 gate=50% (+10pts, wr=70%, n=2172)",
+      "btc_buy_bb_golden_v1 gate=20% (+10pts, wr=69%, n=2172)",
+      "eth_trending_regime_boost gate=100% (+8pts)"
     ],
     "composite_wr": 0.74,
     "ev_at_stake_usd": "$5.26-$8.40"
   },
   "top_edges": [
     {
-      "setup": "HYPE_UNKNOWN_REGIME",
+      "setup": "hype_unknown_regime_probe_v1",
       "wr": 0.83,
       "n": 6,
-      "status": "PROBE_ACTIVE gate=20%"
+      "gate": 20,
+      "conf": 0.75,
+      "status": "ACTIVE"
     },
     {
-      "setup": "ETH_SHORT_BB",
-      "wr": 0.80,
-      "n": 5,
-      "status": "A/B_ACTIVE gate=80% — W22 PRIMARY"
-    },
-    {
-      "setup": "BTC_TRENDING_SHORT",
-      "wr": 0.80,
-      "n": 5,
-      "status": "cached"
-    },
-    {
-      "setup": "MORNING_WINDOW_COMPOSITE",
+      "setup": "tod_morning_edge_v1",
       "wr": 0.74,
       "n": 7,
-      "status": "gate=50% primed — W22 TODAY"
+      "gate": 50,
+      "conf": 0.88,
+      "status": "ACTIVE"
     },
     {
-      "setup": "ETH_TRENDING",
+      "setup": "eth_trending_regime_boost_v1",
       "wr": 0.71,
       "n": 7,
-      "status": "gate=100% active"
+      "gate": 100,
+      "conf": 0.85,
+      "status": "ACTIVE"
     },
     {
-      "setup": "BB_SOLO_SIGNAL",
-      "wr": 0.676,
+      "setup": "eth_sell_bb_golden_v1",
+      "wr": 0.7,
       "n": 2172,
-      "status": "gate=80% — HIGHEST VOLUME EDGE"
+      "gate": 50,
+      "conf": 0.95,
+      "status": "ACTIVE"
     },
     {
-      "setup": "ETH_SELL_BB_GOLDEN",
-      "wr": 0.70,
-      "n": 10,
-      "status": "gate=80%"
-    },
-    {
-      "setup": "BTC_BUY_BB_GOLDEN",
+      "setup": "btc_buy_bb_golden_v1",
       "wr": 0.69,
-      "n": 15,
-      "status": "gate=80%"
+      "n": 2172,
+      "gate": 20,
+      "conf": 0.91,
+      "status": "ACTIVE"
     },
     {
-      "setup": "SOL_BUY_BB",
+      "setup": "btc_short_90plus_boost_v1",
       "wr": 0.67,
-      "n": 9,
-      "status": "gate=80%"
+      "n": 43,
+      "gate": 100,
+      "conf": 0.85,
+      "status": "ACTIVE"
+    },
+    {
+      "setup": "tod_evening_edge_v1",
+      "wr": 0.65,
+      "n": 27,
+      "gate": 50,
+      "conf": 0.85,
+      "status": "ACTIVE"
+    },
+    {
+      "setup": "tod_afternoon_edge_v1",
+      "wr": 0.64,
+      "n": 27,
+      "gate": 20,
+      "conf": 0.85,
+      "status": "ACTIVE"
     }
   ],
   "weak_setups": [
     {
-      "setup": "SOL_SHORT",
-      "wr": 0.35,
-      "n": 23,
-      "status": "DISABLED gate=0"
-    },
-    {
-      "setup": "HYPE_SELL_BB",
-      "wr": 0.35,
+      "setup": "btc_trend_long_counter_v1",
+      "wr": 0.18,
       "n": 17,
-      "status": "BLOCKED gate=80%"
+      "gate": 50,
+      "conf": 0.92,
+      "status": "ACTIVE"
     },
     {
-      "setup": "HIGH_LEV_6_10X",
-      "wr": 0.31,
-      "n": 51,
-      "status": "BLOCKED gate=20%"
+      "setup": "night_session_block_v1",
+      "wr": 0.19,
+      "n": 27,
+      "gate": 100,
+      "conf": 0.88,
+      "status": "ACTIVE"
     },
     {
-      "setup": "LONG_BIAS_all",
-      "wr": 0.30,
-      "n": 422,
-      "status": "FILTERED gate=80%"
+      "setup": "hype_long_veto_v1",
+      "wr": 0.23,
+      "n": 35,
+      "gate": 100,
+      "conf": 0.88,
+      "status": "ACTIVE"
     },
     {
-      "setup": "AFTERNOON_SESSION",
-      "wr": 0.29,
-      "n": 33,
-      "status": "DISABLED gate=0"
+      "setup": "sol_long_veto_v1",
+      "wr": 0.24,
+      "n": 34,
+      "gate": 100,
+      "conf": 0.85,
+      "status": "ACTIVE"
     },
     {
-      "setup": "EVENING_session",
-      "wr": 0.33,
-      "n": 28,
-      "status": "DEMOTION_CANDIDATE gate=20% (twr=null, meta_wr=33%)"
+      "setup": "btc_short_conf70_80_penalize_v1",
+      "wr": 0.25,
+      "n": 40,
+      "gate": 100,
+      "conf": 0.9,
+      "status": "ACTIVE"
+    },
+    {
+      "setup": "ranging_regime_penalize_v1",
+      "wr": 0.25,
+      "n": 16,
+      "gate": 50,
+      "conf": 0.76,
+      "status": "ACTIVE"
     }
   ],
-  "w22_injection_brief": {
-    "recommended_focus": [
-      "ETH_SHORT_BB",
-      "HYPE (unknown regime probe)",
-      "BB_SOLO in trending"
-    ],
-    "symbols_priority": ["ETH", "HYPE", "BTC"],
-    "avoid": [
-      "SOL (all directions)",
-      "HYPE_SHORT_BB",
-      "HIGH_LEV_6-10x",
-      "LONG bias",
-      "AFTERNOON+EVENING sessions"
-    ],
-    "leverage_policy": "3-6x OPTIMAL (SIZE_edge_boost 5-6x encouraged). Block >6x (HIGH_LEV_10X gate=20).",
-    "first_signal_expected": "06:00-07:00 UTC after regime classification runs"
-  },
-  "new_finding_run32": "Clock correction applied: W22 deadline T-4.35h (not 21 min). Leverage policy clarified: 5-6x is a promoted sweet spot, distinct from the >6x block."
+  "run34_new_insight": {
+    "finding": "BB_GOLDEN rules are highest-n edges in system",
+    "detail": "eth_sell_bb_golden_v1 and btc_buy_bb_golden_v1 have n=2172 each \u2014 far larger than any other rule. Combined, they represent definitive statistical edges (WR 69-70%) that are currently under-gated. These should be the FIRST rules escalated after AB tracker fix.",
+    "action_items": [
+      "Fix AB tracker (bot/feedback/loop.py, ~2h)",
+      "Escalate eth_sell_bb_golden gate=50\u219280",
+      "Escalate btc_buy_bb_golden gate=20\u219250",
+      "Monitor: 30 live trades minimum before confirming escalation"
+    ]
+  }
 }
