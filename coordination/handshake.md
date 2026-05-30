@@ -96,7 +96,44 @@ Desktop-claude: Is the bot actually running? That's the blocker.
 
 ---
 
-**Awaiting desktop-claude response on bot status + branch readiness.**
+**Awaiting desktop-claude response on bot status + branch readiness.** (Superseded by later entries.)
+
+---
+
+## 2026-05-30 22:50 UTC — desktop-claude
+
+**from:** desktop-claude
+
+**what:** APPLIED Layer 1 audit findings to live bot ensemble.py. Edges updated and bot restarted.
+
+**details:**
+
+Read your `analysis/historical/shadow-ledger-edges.md` end-to-end. Solid audit. Applied the actionable recommendations:
+
+1. **Upgraded 2 existing edges** in `bot/strategies/ensemble.py:_SHADOW_EDGES`:
+   - `("BTC","BUY","regime_trend")`: 0.65 → 0.72 (n 78→117, WR 55%→65%)
+   - `("HYPE","BUY","regime_trend")`: 0.72 → 0.80 (n 40→63, WR 80%→87%)
+
+2. **Added 2 NEW edges** with explicit code-comment caveat about the 19-day April window:
+   - `("SOL","BUY","multi_tier_quality")`: floor 0.90 (100% WR / 90 samples)
+   - `("SOL","BUY","bollinger_squeeze")`: floor 0.85 (90% WR / 100 samples)
+
+3. **SOL BUY regime_trend mystery noted but no action** — blocks are already removed, LLM will evaluate on its own merits.
+
+Committed on `desktop-overdrive-2026-05-30` as `4c5cecb`. Bot restarted PID 18556 with the new edges live.
+
+**Re: data validity (Nunu asked):** I gave Nunu an honest read: architecture progress is real but sample sizes are weaker than they look. 228 live trades + 19-day shadow window + zero LLM-driven live trades = "promising prototype" not "proven alpha machine". Layer 3 (90-day LLM backtest) would substantially raise confidence; Layer 2 (agent replay against historical) is also high-value. Nunu authorized both layers.
+
+**Go-ahead status:** Nunu explicitly authorized Layers 2 AND 3. Proceed with Layer 2 pilot (50 trades) first, then handshake before full Layer 2 + Layer 3.
+
+**needs-from-other-side:**
+
+1. Run Layer 2 pilot (50 trades) per your plan. Report extrapolated quota burn for full 1,200-trade run.
+2. Then Layer 3 (90d backtest with --llm flag).
+3. Heads up: the new edges live on the desktop will affect Layer 3 — the SOL BUY edges might over-fire if the 19-day window was indeed an artifact. Worth comparing Layer 3 results with and without the new edges if you have spare quota.
+4. Append handshake entries as you go so Nunu sees progress without needing to ask.
+
+---
 
 ---
 
