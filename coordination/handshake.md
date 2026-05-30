@@ -565,6 +565,77 @@ Layer 2 Pilot results file (`layer2-pilot-results.md`) will be pushed when Pilot
 
 ---
 
+## 2026-05-30 — laptop-claude: [READY-FOR-NUNU-REVIEW] — Pilot 3 done, synthesis below
+
+**from:** laptop-claude
+**status:** Pilot 3 complete + desktop journal read + handoff ready. PAUSED — no new pilot runs.
+**mode:** Credits preserved. Analysis-only until API credits fully online (tonight/tomorrow).
+
+### Pilot 3 Results (summary for Nunu)
+
+BTC April 23-28 backtest ran successfully. Exit code 0. Results pushed.
+
+| What happened | Detail |
+|---|---|
+| LLM pipeline confirmed firing | Regime+Trade agents executed SUCCESSFULLY on first April 27 crash signal |
+| Session limit hit | 429 "session limit" at candle ~48. ~45 failures total. Fallback=approve. |
+| Positions opened | 3 (LONG 78100 → +$170, LONG 79127 → -$612, SHORT 77596 → +$560) |
+| Net PnL | −$73.21 (fees killed it: 152% drag on gross) |
+| Regime labels | Correct: `consolidation` and `high_volatility` |
+| LLM real decisions | Only 1 (first LONG — Regime+Trade both succeeded before limit) |
+| Verdict | **Pipeline works. Session limit is the blocker. Wait for API credits.** |
+
+---
+
+### Cross-reference with desktop-claude's journal
+
+Read `analysis/desktop-session/journal-2026-05-30.md` from desktop branch. Key insights:
+
+**1. conf_floor_70_v1 rule was active during Pilot 3 — now disabled**
+This rule was penalizing signals with 60-70% confidence by **-20 points**. In Pilot 3, 11 signals
+were "other_rejected" — some of these were likely pushed below floor by this penalty.
+Desktop-claude disabled it. **Next backtest (with API) will see higher signal conversion** since
+these signals now reach the LLM without penalty.
+
+**2. Three other live-bot changes desktop-claude made today:**
+- `ENSEMBLE_CONFIDENCE_FLOOR`: 55 → 20 (LLM sees far more signals now)
+- `night_session_block_v1`: disabled (00-06 UTC trades no longer hard-vetoed)
+- `eth_trending_regime_boost_v1`: fixed condition `trend` → `trending_bull` (boost now fires)
+- Trade agent prompt: OVERDRIVE MODE preamble added (less hedging)
+
+**3. The 03:00 UTC losing LONG in Pilot 3 is the night_session_block_v1 gap in action**
+The LONG at $79,127.5 (entered 03:00 UTC, hit SL, -$612.29) was in the night session window.
+The rule SHOULD have blocked it, but session-limit fallback bypassed graduated rules. This is
+exactly the type of loss the rule was designed to prevent. With the rule now disabled by
+desktop-claude, next backtest won't have this protection either — but will have LLM deciding.
+
+**4. Trade agent always-skip is confirmed on live bot (7/7 skip decisions, avg conf 0.24)**
+Pilot 3 can't test this because session limit killed agent evals after the first signal.
+Layer 3 with real API is needed to verify if Trade agent skip pattern holds in backtest too.
+
+---
+
+### What's left before Layer 3
+
+1. API credits online (tonight/tomorrow per Nunu)
+2. Code fix: skip LLM when already in same-direction position (saves ~88% session quota)
+3. Code fix: count 429 errors as failures in LLM stats tracker
+4. Confirm graduated_rules fix (regime vocab: `trend` → normalize to `trending_bull/bear`)
+
+None of these need to happen RIGHT NOW. Pausing until Nunu returns.
+
+---
+
+### During Nunu's AFK time: ZERO quota burn
+
+No new backtests. No code changes. Just reading + synthesis.
+Existing analysis docs in `analysis/historical/` cover the full picture.
+
+**Next action for Nunu on return:** read this entry + decide if API credits are set in .env yet.
+If yes: Layer 3 can start immediately. If no: set `ANTHROPIC_API_KEY` in `bot/.env` first.
+
+---
+
 ## 2026-05-30 — laptop-claude: PILOT 3 COMPLETE — session limit hit, findings below
 
 **from:** laptop-claude
