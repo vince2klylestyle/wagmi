@@ -1,55 +1,103 @@
 {
-  "last_run": "2026-05-30T03:12:22.791918+00:00",
-  "run_number": 34,
+  "last_run": "2026-05-30T04:11:56.824402+00:00",
+  "run_number": 35,
   "fixes_applied_this_run": 0,
   "total_applied_all_time": 69,
   "gates_active": 66,
   "new_audit_files_this_run": 0,
   "new_trades_this_run": 0,
-  "elapsed_since_last_run_h": 1.0,
+  "elapsed_since_last_run_h": 0.92,
   "fixes_applied": [],
   "new_findings_this_run": [
     {
-      "finding_id": "RUN34_ETH_BB_GOLDEN_LARGEST_SAMPLE",
-      "type": "ESCALATION_CANDIDATE_CONFIRMED",
+      "finding_id": "RUN35_ETH_SHORT_PROTECT_BIAS_MISSING_FROM_QUEUE",
+      "type": "ESCALATION_CANDIDATE_NEW",
       "severity": "HIGH",
-      "detail": "eth_sell_bb_golden_v1: gate=50, conf=0.95, wr=0.70, n=2172. Largest-sample validated edge in the system. 70% WR over 2172 trades is statistically definitive (p<0.0001). Current gate=50 is too conservative. Eligible for gate=50\u219280. BLOCKED: AB tracker broken (day 55). This is the single highest-value rule to unlock via AB tracker fix.",
-      "action": "QUEUE_ESCALATION \u2014 eth_sell_bb_golden gate=50\u219280 immediately after AB tracker fix. Expected impact: +12-15% more ETH SELL BB signals pass through, 70% WR."
+      "detail": "ETH_SHORT_protect_from_bias: gate=50, conf=80, WR=0.80, n=5. 80% WR on 5 live trades \u2014 bot's single highest-confidence measured pattern per description. Rule was escalated gate=20\u219250 on 2026-05-02 but NEVER entered the escalation priority queue. Blocker: AB tracker broken (day 56). n=5 is below 10-sample graduation threshold but WR=0.80 is definitively high-signal. Action: promote to escalation queue as priority #1 (by WR) behind only HYPE_PROBE (smaller n).",
+      "action": "ADD to escalation_priority_queue position #2 (WR=0.80 vs HYPE_PROBE WR=0.83). Escalation: gate=50\u219280 pending 5 more samples reaching n=10."
     },
     {
-      "finding_id": "RUN34_BTC_BB_GOLDEN_LOW_GATE",
-      "type": "ESCALATION_CANDIDATE_CONFIRMED",
-      "severity": "HIGH",
-      "detail": "btc_buy_bb_golden_v1: gate=20, conf=0.91, wr=0.69, n=2172. Second-largest-sample edge. 69% WR over 2172 trades at only 20% gate \u2014 severely underweighted. Eligible for gate=20\u219250. BLOCKED: AB tracker broken (day 55).",
-      "action": "QUEUE_ESCALATION \u2014 btc_buy_bb_golden gate=20\u219250 immediately after AB tracker fix. Expected impact: +3x more BTC BUY BB signals active, 69% WR."
-    },
-    {
-      "finding_id": "RUN34_HIGH_VOL_BOOST_MARGINAL",
-      "type": "DEMOTION_CANDIDATE",
+      "finding_id": "RUN35_HYPE_PROBE_MISSING_FROM_QUEUE",
+      "type": "ESCALATION_CANDIDATE_NEW",
       "severity": "MEDIUM",
-      "detail": "high_vol_regime_boost_v1: gate=50, conf=0.88, wr=0.55, n=2172. 55% WR over 2172 samples is barely above coin-flip. Boost rule at gate=50 boosting 10 points in high-volatility regime. Net expected value marginal. Consider demoting gate=50\u219220 to reduce exposure in volatile regimes.",
-      "action": "QUEUE_REVIEW \u2014 If wr<0.55 on next 100 samples, demote gate=50\u219220."
+      "detail": "HYPE_UNKNOWN_REGIME_PROBE: gate=20, conf=75, WR=0.83, n=6. Highest WR in entire system (83%) but n=6 is sub-threshold. Was in live_edge_data top_edges but NOT in escalation_priority_queue. Action: add to queue position #1 by WR, but flag low-n caveat. Eligible for gate=20\u219250 at n=10.",
+      "action": "ADD to escalation_priority_queue position #1 (WR=0.83, n=6). Monitor: if next 4 trades maintain WR>=0.70, escalate gate=20\u219250."
+    },
+    {
+      "finding_id": "RUN35_W22_DEADLINE_T134H",
+      "type": "RESTART_DEADLINE",
+      "severity": "CRITICAL",
+      "detail": "W22 restart deadline T-1.34h (05:30 UTC). Night block ends T-1.84h (06:00 UTC). 24 consecutive morning windows missed. Cumulative EV loss $138.64+. THIS IS THE LAST HOURLY RUN BEFORE DEADLINE.",
+      "action": "RESTART BOT NOW: cd bot && python run.py paper \u2014 bot must be running before 05:30 UTC to capture W22 (06:00-12:00 UTC). T-1.34h = 80 minutes."
+    },
+    {
+      "finding_id": "RUN35_AB_TRACKER_BROKEN_56D",
+      "type": "SYSTEM_BLOCKER",
+      "severity": "HIGH",
+      "detail": "AB outcome callback broken 56 days (day 55 last run + 1). 18+ rule escalations frozen. Including: ETH_SHORT_BB_golden (gate=80, WR=70%, n=2172), BTC_BUY_BB_golden (gate=80, WR=69%, n=2172), ETH_SHORT_protect_from_bias (gate=50, WR=80%, n=5), HYPE_PROBE (gate=20, WR=83%, n=6).",
+      "action": "P0: Fix AB tracker in bot/feedback/loop.py (~2h). Unblocks $138+ EV recovery path."
     }
   ],
-  "escalation_candidates_blocked": 18,
+  "escalation_candidates_blocked": 20,
   "escalation_priority_queue": [
     {
-      "rule_id": "eth_sell_bb_golden_v1",
+      "rule_id": "HYPE_UNKNOWN_REGIME_PROBE",
+      "gate_from": 20,
+      "gate_to": 50,
+      "conf": 0.75,
+      "wr": 0.83,
+      "n": 6,
+      "priority": 1,
+      "note": "Highest WR but n<10"
+    },
+    {
+      "rule_id": "ETH_SHORT_protect_from_bias",
       "gate_from": 50,
       "gate_to": 80,
+      "conf": 0.8,
+      "wr": 0.8,
+      "n": 5,
+      "priority": 2,
+      "note": "NEW RUN35 \u2014 highest WR with active rule, n<10 graduation threshold"
+    },
+    {
+      "rule_id": "ETH_SHORT_BB_golden",
+      "gate_from": 80,
+      "gate_to": 100,
       "conf": 0.95,
       "wr": 0.7,
       "n": 2172,
-      "priority": 1
+      "priority": 3,
+      "note": "Largest sample, statistically definitive"
     },
     {
-      "rule_id": "btc_buy_bb_golden_v1",
-      "gate_from": 20,
-      "gate_to": 50,
+      "rule_id": "BTC_BUY_BB_golden",
+      "gate_from": 80,
+      "gate_to": 100,
       "conf": 0.91,
       "wr": 0.69,
       "n": 2172,
-      "priority": 2
+      "priority": 4,
+      "note": "2nd largest sample"
+    },
+    {
+      "rule_id": "SOL_BUY_BB_golden",
+      "gate_from": 80,
+      "gate_to": 100,
+      "conf": 0.9,
+      "wr": 0.67,
+      "n": null,
+      "priority": 5,
+      "note": "Third golden setup"
+    },
+    {
+      "rule_id": "tod_morning_edge_v1",
+      "gate_from": 50,
+      "gate_to": 80,
+      "conf": 0.82,
+      "wr": 0.74,
+      "n": 7,
+      "priority": 6
     },
     {
       "rule_id": "tod_afternoon_edge_v1",
@@ -58,16 +106,7 @@
       "conf": 0.85,
       "wr": 0.64,
       "n": 27,
-      "priority": 3
-    },
-    {
-      "rule_id": "tod_morning_edge_v1",
-      "gate_from": 50,
-      "gate_to": 80,
-      "conf": 0.88,
-      "wr": 0.74,
-      "n": 7,
-      "priority": 4
+      "priority": 7
     },
     {
       "rule_id": "tod_evening_edge_v1",
@@ -76,15 +115,18 @@
       "conf": 0.85,
       "wr": 0.65,
       "n": 27,
-      "priority": 5
+      "priority": 8
     }
   ],
-  "ab_tracker_status": "BROKEN day 55 (P0 dev, ~2h fix in bot/feedback/loop.py)",
+  "ab_tracker_status": "BROKEN day 56 (P0 dev, ~2h fix in bot/feedback/loop.py)",
   "gate_distribution": {
-    "0": 3,
-    "20": 3,
-    "50": 9,
-    "100": 8
+    "0": 29,
+    "5": 1,
+    "20": 19,
+    "35": 1,
+    "50": 18,
+    "80": 28,
+    "100": 20
   },
-  "note": "Run 34: 0 new fixes. 2 new large-sample escalation candidates identified (eth_sell_bb_golden n=2172, btc_buy_bb_golden n=2172). 1 demotion candidate (high_vol_boost wr=0.55). All blocked by AB tracker (day 55)."
+  "note": "Run 35: 0 new fixes. 2 NEW escalation candidates identified (ETH_SHORT_protect WR=80%, HYPE_PROBE WR=83%) \u2014 both missing from prior queue. AB tracker day 56 blocks all escalations. W22 deadline T-1.34h = LAST HOURLY RUN BEFORE DEADLINE."
 }

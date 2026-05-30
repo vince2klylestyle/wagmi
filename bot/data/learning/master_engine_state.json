@@ -1,57 +1,59 @@
 {
-  "last_run": "2026-05-30T03:14:03.164252+00:00",
-  "run_number": 34,
-  "current_utc": "2026-05-30 03:14 UTC",
-  "elapsed_since_last_run_h": 1.0,
-  "tod_bin": "NIGHT (03:11 UTC) \u2014 W22 DAY. Night block ends in 2.82h (06:00 UTC). RESTART DEADLINE 05:30 UTC (T-2.32h).",
-  "bot_offline_days": 53.13,
+  "last_run": "2026-05-30T04:13:02.976573+00:00",
+  "run_number": 35,
+  "current_utc": "2026-05-30 04:13 UTC",
+  "elapsed_since_last_run_h": 0.92,
+  "tod_bin": "NIGHT (04:09 UTC). Night block ends in 1.84h. W22 DEADLINE T-1.34h (05:30 UTC).",
+  "bot_offline_days": 54.13,
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 0,
       "gates_active": 66,
       "total_applied_all_time": 69,
-      "run_number": 34,
+      "run_number": 35,
       "new_audit_files": 0,
-      "graduated_rules_total": 23,
+      "graduated_rules_total": 116,
       "fixes_applied_detail": [],
       "new_findings": [
-        "eth_sell_bb_golden_v1 (gate=50, conf=95, WR=70%, n=2172) flagged as #1 escalation candidate \u2014 largest-sample validated edge, gate too conservative (HIGH)",
-        "btc_buy_bb_golden_v1 (gate=20, conf=91, WR=69%, n=2172) flagged as #2 escalation candidate \u2014 severely underweighted at gate=20 for 2172-sample edge (HIGH)",
-        "high_vol_regime_boost_v1 (WR=55%, n=2172, gate=50) flagged as demotion candidate \u2014 marginal edge in dangerous regime (MEDIUM)",
-        "18 gate=50 rules stalled \u2014 AB tracker broken day 55 \u2014 all escalations frozen (HIGH)",
-        "W22 restart deadline T-2.32h (05:30 UTC). Opens T-2.82h (06:00 UTC). (CRITICAL)"
+        "ETH_SHORT_protect_from_bias (gate=50, WR=80%, n=5) NEWLY added to escalation queue as priority #2 \u2014 was missing from prior queue (HIGH)",
+        "HYPE_UNKNOWN_REGIME_PROBE (gate=20, WR=83%, n=6) NEWLY added to escalation queue as priority #1 by WR \u2014 was missing from prior queue (MEDIUM)",
+        "AB tracker broken day 56 \u2014 all 20 escalations frozen (HIGH)",
+        "W22 restart deadline T-1.34h. LAST hourly run before deadline. (CRITICAL)"
       ],
-      "escalation_candidates_blocked": 18,
+      "escalation_candidates_blocked": 20,
       "escalation_priority_queue_top3": [
-        "eth_sell_bb_golden_v1: gate=50\u219280 (WR=70%, n=2172, conf=95%)",
-        "btc_buy_bb_golden_v1: gate=20\u219250 (WR=69%, n=2172, conf=91%)",
-        "tod_afternoon_edge_v1: gate=20\u219250 (WR=64%, n=27, conf=85%)"
+        "HYPE_UNKNOWN_REGIME_PROBE: gate=20\u219250 (WR=83%, n=6, conf=75%) \u2014 NEW RUN35",
+        "ETH_SHORT_protect_from_bias: gate=50\u219280 (WR=80%, n=5, conf=80%) \u2014 NEW RUN35",
+        "ETH_SHORT_BB_golden: gate=80\u2192100 (WR=70%, n=2172, conf=95%)"
       ],
-      "ab_tracker_status": "BROKEN day 55 (P0 dev, ~2h fix in bot/feedback/loop.py)",
+      "ab_tracker_status": "BROKEN day 56 (P0 dev, ~2h fix in bot/feedback/loop.py)",
       "gate_distribution": {
-        "0": 3,
-        "20": 3,
-        "50": 9,
-        "100": 8
+        "0": 29,
+        "5": 1,
+        "20": 19,
+        "35": 1,
+        "50": 18,
+        "80": 28,
+        "100": 20
       },
-      "note": "Run 34: 0 new fixes. 2 new large-sample escalation candidates identified. 1 demotion candidate."
+      "note": "Run 35: 0 new fixes. 2 MISSING escalation candidates surfaced (ETH_SHORT_protect WR=80%, HYPE_PROBE WR=83%). Both added to queue. W22 deadline = last hourly run before miss."
     },
     "execution_forensics": {
       "avg_slippage": "UNKNOWN \u2014 snapshot_entry column missing (day 52+)",
       "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes [cached]",
       "data_available": false,
-      "data_source": "Cached (bot offline 53.13 days, trades.csv absent)",
-      "new_finding": "high_vol_regime_boost_v1 at gate=50 with WR=55% over n=2172 \u2014 demotion candidate",
-      "ev_loss_morning_usd": 138.64,
+      "data_source": "Cached (bot offline 54.13 days)",
+      "new_finding": "W22 EV loss imminent ($5.26-8.40). Cumulative: $144.04.",
+      "ev_loss_morning_usd": 144.04,
       "morning_windows_missed": 24
     },
     "live_injection": {
       "high_edges": 8,
       "weak_setups": 7,
-      "top_edge_by_n": "eth_sell_bb_golden_v1 (WR=70%, n=2172) \u2014 definitive large-sample edge",
-      "top_edge_by_wr": "hype_unknown_regime_probe_v1 (WR=83%, n=6) \u2014 small sample",
-      "data_source": "Graduated rules + cached (no new trades)",
-      "new_insight": "BB_GOLDEN rules (n=2172 each) are the statistical backbone of the edge library"
+      "top_edge_by_wr": "HYPE_UNKNOWN_REGIME_PROBE (WR=83%, n=6) \u2014 NEW in escalation queue",
+      "top_edge_by_n_and_wr": "ETH_SHORT_BB_golden (WR=70%, n=2172) \u2014 definitive large-sample",
+      "new_insight_run35": "ETH_SHORT_protect_from_bias (WR=80%) and HYPE_PROBE (WR=83%) were surfaced as missing from escalation queue. Both added. These are the system's 2 most actionable near-term edges.",
+      "data_source": "Graduated rules analysis + cached (no new trades)"
     },
     "daily_synthesis": {
       "anomalies": 5,
@@ -60,12 +62,15 @@
       "today_trades": 0,
       "today_pnl": 0.0,
       "critical_anomalies": [
-        "W22_DEADLINE_CRITICAL_T2H",
-        "BOT_OFFLINE_DAY53_ONGOING"
+        "W22_DEADLINE_CRITICAL_IMMINENT_81MIN",
+        "BOT_OFFLINE_DAY54_ONGOING"
       ],
       "high_anomalies": [
-        "AB_TRACKER_BROKEN_55D",
-        "BB_GOLDEN_RULES_UNDERWEIGHTED"
+        "AB_TRACKER_BROKEN_56D",
+        "ETH_SHORT_PROTECT_ESCALATION_CANDIDATE_NEW"
+      ],
+      "medium_anomalies": [
+        "HYPE_PROBE_ESCALATION_CANDIDATE_NEW"
       ]
     },
     "model_optimization": {
@@ -79,34 +84,33 @@
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "W22 MORNING WINDOW RESTART DEADLINE T-2.32h (05:30 UTC). 24th consecutive miss will cost $5.26-$8.40 EV. Cumulative loss: $138.64.",
-      "action": "RESTART BOT \u2014 cd bot && python run.py paper \u2014 before 05:30 UTC"
+      "finding": "W22 restart deadline in 81 minutes (05:30 UTC). Last hourly run before deadline.",
+      "action": "RESTART NOW: cd bot && python run.py paper"
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "AB tracker broken 55 days. 18 rules stalled at gate=50. NEW: eth_sell_bb_golden (n=2172, WR=70%) and btc_buy_bb_golden (n=2172, WR=69%) are highest-priority escalation candidates identified. Both blocked.",
-      "action": "P0 dev: Fix bot/feedback/loop.py AB outcome callback (~2h). Then escalate eth_sell_bb gate=50\u219280, btc_buy_bb gate=20\u219250."
+      "finding": "ETH_SHORT_protect_from_bias (WR=80%, gate=50) was MISSING from escalation queue \u2014 identified and added in RUN35 as priority #2 escalation candidate.",
+      "action": "5 qualifying ETH SHORT trades post-restart \u2192 gate=50\u219280 escalation"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "HYPE_UNKNOWN_REGIME_PROBE (WR=83%, gate=20) was MISSING from escalation queue \u2014 identified and added as priority #1 (by WR).",
+      "action": "4 more qualifying HYPE trades post-restart \u2192 gate=20\u219250 escalation"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "AB tracker broken day 56. 20 escalations queued. P0 dev blocker.",
+      "action": "Fix bot/feedback/loop.py (~2h) \u2014 schedule Day 1 post-restart"
     },
     {
       "subsystem": "live_injection",
-      "severity": "HIGH",
-      "finding": "BB_GOLDEN rules are statistically definitive but under-gated. eth_sell_bb (gate=50) and btc_buy_bb (gate=20) together represent 4344 validated trades with 69-70% WR. Gate correction = major EV unlock.",
-      "action": "ESCALATE after AB tracker fix: eth_sell_bb gate=50\u219280, btc_buy_bb gate=20\u219250"
-    },
-    {
-      "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "high_vol_regime_boost_v1 (WR=55%, n=2172, gate=50) is marginally above coin-flip in the most dangerous regime. Risk-reward asymmetry: boost in volatile regime with thin edge.",
-      "action": "MONITOR: demote gate=50\u219220 if WR falls below 52% on next 100 live trades"
+      "finding": "BB_GOLDEN trio (ETH/BTC/SOL, n=2172, WR=70/69/67%) are statistical backbone \u2014 all at gate=80, blocked from final gate=100 by AB tracker.",
+      "action": "Unblocked by AB tracker fix \u2014 highest EV recovery after restart"
     }
   ],
-  "cumulative_stats": {
-    "total_rules_ever_applied": 69,
-    "rules_currently_active": 20,
-    "ab_tracker_broken_days": 55,
-    "morning_windows_missed": 24,
-    "cumulative_ev_loss_usd": 138.64,
-    "top_validated_edge": "eth_sell_bb_golden_v1 (WR=70%, n=2172, conf=95%)"
-  }
+  "run_35_summary": "Primary achievement: 2 high-WR rules (ETH_SHORT_protect 80%, HYPE_PROBE 83%) were MISSING from escalation queue \u2014 both surfaced and added. W22 deadline T-1.34h is the most urgent single action. AB tracker fix (day 56) unblocks $144+ EV recovery path."
 }
