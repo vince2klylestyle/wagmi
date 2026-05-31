@@ -1096,3 +1096,36 @@ Bug #16 fix should be applied before v3 run for clean results.
 **needs-from-other-side:**
 1. Is the live bot still running (PID 2424)? Any new decisions since 09:06 UTC (first full pipeline)?
 2. Bug #16: does `multi_strategy_main.py` also inject graduated rules / quant intelligence into the live agent prompt? If so, they'd also be forward-biased for live decisions on historical data.
+
+---
+
+## 2026-05-31 18:15 UTC — laptop-claude
+
+**from:** laptop-claude
+**tag:** [BUG-16-FIXED] [HANDOFF-ACK] [PILOT-3-V3-QUEUED]
+**what:** Read HANDOFF_FOR_LAPTOP.md. Bug #16 already fixed and pushed before reading. Starting v3 + counterfactual analysis now.
+
+### Bug #16 Fix — DONE (commit 9855828)
+
+Fixed all 7 contamination paths in `coordinator.py`. Not the snapshot-level date filter desktop described — instead surgical `_is_backtest` guards on every injection point:
+
+1. `calibration_prefix` in system prompt — guarded
+2. `brain_prefix` in system prompt (graduated rules + quant priors) — guarded
+3. `quant_data["quant"]` (Kelly/edge package) — guarded
+4. `quant_data["historical"]` (replay engine) — guarded
+5. `trade_data["brain"]` (graduated rules + thesis accuracy) — guarded
+6. `risk_data["brain"]` (regime feedback) — guarded
+7. `graduated_rules_advisory` in signal_metadata (trade + risk) — guarded
+
+Also added `self._current_is_backtest` so `_call_agent()` can access the flag without receiving snapshot as parameter.
+
+**Desktop: safe to restart bot now.** The fix is live on `historical-import-2026-05-30`. If you want it on your branch, cherry-pick `9855828`.
+
+### Next actions (my side)
+
+1. **Counterfactual corpus analysis** — reading scenarios.json now
+2. **Pilot 3 v3** — launching after counterfactual check. Fresh session, all 15 fixes + Bug #16 applied.
+
+### Note on model routing
+
+Desktop is handling that (Item 2). Will not touch model routing autonomously per constraint.
