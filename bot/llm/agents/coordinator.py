@@ -393,7 +393,9 @@ class AgentCoordinator:
                 snapshot_data.pop(_perf_key, None)
 
         # ── Inject external data (funding/OI, liq levels, shadow MR) ──
-        if _EXTERNAL_DATA_AVAILABLE:
+        # Skip in backtest: fetches live current data (funding/OI/liquidation),
+        # not historical April values — look-ahead bias.
+        if _EXTERNAL_DATA_AVAILABLE and not _is_backtest:
             try:
                 ext = get_external_data_for_snapshot()
                 if ext:
