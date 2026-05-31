@@ -1060,6 +1060,31 @@ class AgentPerformanceTracker:
             return d.get("recommendation", d.get("action", "hold"))
         elif role_val == "scout":
             return d.get("action", "monitor")
+        elif role_val == "quant":
+            # Quant emits: ev={direction, magnitude, confidence}, kelly_fraction,
+            # signal_quality.noise_probability — derive a meaningful decision label.
+            # Fixed 2026-05-31: previously fell through to catch-all returning "unknown".
+            ev = d.get("ev", {})
+            direction = ev.get("direction") if isinstance(ev, dict) else None
+            kelly = d.get("kelly_fraction")
+            sig_q = d.get("signal_quality", {})
+            noise = sig_q.get("noise_probability") if isinstance(sig_q, dict) else None
+            if direction:
+                label = direction
+                if kelly is not None:
+                    try: label += f",kelly={float(kelly):.2f}"
+                    except Exception: pass
+                if noise is not None:
+                    try: label += f",noise={float(noise):.2f}"
+                    except Exception: pass
+                return label
+            return "quant_no_direction"
+        elif role_val == "learning":
+            # Learning agent post-trade — emits lessons, not decisions.
+            lessons = d.get("lessons", [])
+            return f"lessons={len(lessons)}" if lessons else "no_lessons"
+        elif role_val == "overseer":
+            return d.get("verdict", d.get("recommendation", "monitor"))
         return str(d.get("action", d.get("a", "unknown")))
 
     @staticmethod
