@@ -380,6 +380,7 @@ class AgentCoordinator:
         # trades in the fallback era and should not colour data-collection backtests.
         _is_backtest = "backtest" in trigger_reason.lower()
         snapshot_data["_is_backtest"] = _is_backtest
+        self._current_is_backtest = _is_backtest  # accessible to _call_agent system-prompt builders
 
         # In backtest mode strip all live-performance data from the snapshot so
         # it can't bleed into any agent's context.  These stats were accumulated
@@ -2932,8 +2933,11 @@ class AgentCoordinator:
         )
 
         # Dynamic calibration injection for Trade, Critic, and Regime agents
+        # Skip in backtest: calibration ledger tracks live-trade agent accuracy and
+        # would penalise confidence based on post-backtest-window performance data.
         calibration_prefix = ""
-        if role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.REGIME):
+        _bt = getattr(self, '_current_is_backtest', False)
+        if not _bt and role in (AgentRole.TRADE, AgentRole.CRITIC, AgentRole.REGIME):
             try:
                 from llm.agents.calibration_ledger import get_calibration_ledger
                 ledger = get_calibration_ledger()
@@ -2943,8 +2947,10 @@ class AgentCoordinator:
                 pass
 
         # Agent brain context injection (beliefs, performance, calibration)
+        # Skip in backtest: brain context includes graduated rules and quant priors
+        # derived from live trading AFTER the backtest window — look-ahead bias.
         brain_prefix = ""
-        if _EXTENSIONS_AVAILABLE:
+        if _EXTENSIONS_AVAILABLE and not _bt:
             try:
                 current_regime = scratchpad.read_by_key("regime") or ""
                 brain_prefix = get_brain_context_for_agent(role.value, regime=current_regime)
@@ -3124,24 +3130,27 @@ class AgentCoordinator:
                 quant_data[key] = snapshot[key]
 
         # Real quant data backbone: Kelly, conditional edge, fat-tail, priors
-        try:
-            from llm.quant_data import get_quant_provider
-            qp = get_quant_provider()
-            regime = regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown"
-            n_agree = 0
-            setup_type = ""
-            if "m" in snapshot:
-                for mkt in (snapshot["m"] if isinstance(snapshot["m"], list) else []):
-                    sigs = mkt.get("sg", mkt.get("sigs", []))
-                    if sigs:
-                        n_agree = max(n_agree, len(sigs))
-                        if isinstance(sigs[0], dict):
-                            setup_type = sigs[0].get("st", "")
-            quant_package = qp.build_quant_package(regime=regime, num_agree=n_agree, setup_type=setup_type)
-            if quant_package:
-                quant_data["quant"] = quant_package
-        except Exception as e:
-            logger.debug(f"Quant data injection error: {e}")
+        # Skip in backtest: quant provider computes priors from live-trading history
+        # accumulated AFTER the backtest window — look-ahead bias.
+        if not snapshot.get("_is_backtest"):
+            try:
+                from llm.quant_data import get_quant_provider
+                qp = get_quant_provider()
+                regime = regime_out.data.get("rg", "unknown") if regime_out.ok else "unknown"
+                n_agree = 0
+                setup_type = ""
+                if "m" in snapshot:
+                    for mkt in (snapshot["m"] if isinstance(snapshot["m"], list) else []):
+                        sigs = mkt.get("sg", mkt.get("sigs", []))
+                        if sigs:
+                            n_agree = max(n_agree, len(sigs))
+                            if isinstance(sigs[0], dict):
+                                setup_type = sigs[0].get("st", "")
+                quant_package = qp.build_quant_package(regime=regime, num_agree=n_agree, setup_type=setup_type)
+                if quant_package:
+                    quant_data["quant"] = quant_package
+            except Exception as e:
+                logger.debug(f"Quant data injection error: {e}")
 
         # Per-agent calibration for Bayesian updating
         # Skip in backtest: same reasoning as agent_cal — stale live-trade accuracy
@@ -3158,21 +3167,23 @@ class AgentCoordinator:
                 pass
 
         # Historical patterns from replay engine
-        try:
-            from llm.replay_engine import get_historical_patterns
-            patterns = get_historical_patterns(max_decisions=100)
-            if patterns and "error" not in patterns:
-                # Only pass the most relevant stats
-                compact = {}
-                for k in ("regime_wr", "conf_low_wr", "conf_mid_wr", "conf_high_wr",
-                           "conf_low_n", "conf_mid_n", "conf_high_n",
-                           "max_win_streak", "max_loss_streak", "recent_outcomes"):
-                    if k in patterns:
-                        compact[k] = patterns[k]
-                if compact:
-                    quant_data["historical"] = compact
-        except Exception:
-            pass
+        # Skip in backtest: replay engine reads from live decisions.jsonl which
+        # post-dates the backtest window — look-ahead bias.
+        if not snapshot.get("_is_backtest"):
+            try:
+                from llm.replay_engine import get_historical_patterns
+                patterns = get_historical_patterns(max_decisions=100)
+                if patterns and "error" not in patterns:
+                    compact = {}
+                    for k in ("regime_wr", "conf_low_wr", "conf_mid_wr", "conf_high_wr",
+                               "conf_low_n", "conf_mid_n", "conf_high_n",
+                               "max_win_streak", "max_loss_streak", "recent_outcomes"):
+                        if k in patterns:
+                            compact[k] = patterns[k]
+                    if compact:
+                        quant_data["historical"] = compact
+            except Exception:
+                pass
 
         # Enriched context from technicals, feedback, telemetry, positions
         if snapshot.get("enriched_context"):
@@ -3436,22 +3447,23 @@ class AgentCoordinator:
             pass
 
         # ── Brain Intelligence Injection ──
-        # Inject thesis accuracy, calibration, counterfactual, regime feedback,
-        # and drawdown context from the brain upgrade modules.
-        try:
-            from llm.brain_wiring import get_brain_context_for_trade
-            regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
-            symbol = ""
-            signals = snapshot.get("signals", [])
-            if signals and isinstance(signals[0], dict):
-                symbol = signals[0].get("sym", "")
-            elif "m" in snapshot and snapshot["m"]:
-                symbol = snapshot["m"][0].get("s", snapshot["m"][0].get("sym", ""))
-            brain_ctx = get_brain_context_for_trade(symbol, regime)
-            if brain_ctx:
-                trade_data["brain"] = brain_ctx
-        except Exception as e:
-            logger.info(f"[MULTI-AGENT] Brain context injection error: {e}")
+        # Skip in backtest: brain context carries graduated rules and quant priors
+        # from live trading AFTER the backtest window — look-ahead bias (Bug #16).
+        if not snapshot.get("_is_backtest"):
+            try:
+                from llm.brain_wiring import get_brain_context_for_trade
+                regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
+                symbol = ""
+                signals = snapshot.get("signals", [])
+                if signals and isinstance(signals[0], dict):
+                    symbol = signals[0].get("sym", "")
+                elif "m" in snapshot and snapshot["m"]:
+                    symbol = snapshot["m"][0].get("s", snapshot["m"][0].get("sym", ""))
+                brain_ctx = get_brain_context_for_trade(symbol, regime)
+                if brain_ctx:
+                    trade_data["brain"] = brain_ctx
+            except Exception as e:
+                logger.info(f"[MULTI-AGENT] Brain context injection error: {e}")
 
         # Inject Scout Agent findings (rename from agent_outputs.scout to scout_preparation
         # so Trade Agent prompt can find it by the documented key name)
@@ -3519,7 +3531,7 @@ class AgentCoordinator:
                 "time_utc_hour": sm.get("time_utc_hour"),
                 "btc_trend": sm.get("btc_trend"),
             }
-            if sm.get("graduated_rules_advisory"):
+            if sm.get("graduated_rules_advisory") and not snapshot.get("_is_backtest"):
                 trade_data["graduated_rules_advisory"] = sm["graduated_rules_advisory"]
 
         return json.dumps(trade_data, separators=(",", ":"), default=str)
@@ -3601,14 +3613,16 @@ class AgentCoordinator:
                     pass
 
         # ── Brain Intelligence: regime feedback + graduated risk ──
-        try:
-            from llm.brain_wiring import get_brain_context_for_risk
-            regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
-            brain_risk = get_brain_context_for_risk(regime)
-            if brain_risk:
-                risk_data["brain"] = brain_risk
-        except Exception as e:
-            logger.info(f"[MULTI-AGENT] Brain risk context error: {e}")
+        # Skip in backtest: same look-ahead bias concern as trade brain injection.
+        if not snapshot.get("_is_backtest"):
+            try:
+                from llm.brain_wiring import get_brain_context_for_risk
+                regime = regime_out.data.get("rg", "unknown") if regime_out else "unknown"
+                brain_risk = get_brain_context_for_risk(regime)
+                if brain_risk:
+                    risk_data["brain"] = brain_risk
+            except Exception as e:
+                logger.info(f"[MULTI-AGENT] Brain risk context error: {e}")
 
         # External data: liq levels critical for risk sizing
         _ensure_field(risk_data, "ext_liq", snapshot)
@@ -3670,7 +3684,7 @@ class AgentCoordinator:
                 "btc_trend": sm.get("btc_trend"),
             }
             # Graduated rules advisory (what mechanical system would do)
-            if sm.get("graduated_rules_advisory"):
+            if sm.get("graduated_rules_advisory") and not snapshot.get("_is_backtest"):
                 risk_data["graduated_rules_advisory"] = sm["graduated_rules_advisory"]
 
         return json.dumps(risk_data, separators=(",", ":"), default=str)
