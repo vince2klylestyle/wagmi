@@ -374,15 +374,17 @@ class BacktestLLMIntegration:
         if not snapshot_data or not signal:
             return True
 
-        # Check signal confidence — solo signals below 55% almost always get
-        # quant_noise vetoed. Save the ~$0.007 API call.
+        # Check signal confidence — solo signals below floor almost always get vetoed.
+        # Threshold reads from ENSEMBLE_CONFIDENCE_FLOOR (default 55% if not set).
+        # In OVERDRIVE/paper-trading mode with floor=20, solo signals down to 20% pass through.
+        _solo_floor = float(os.getenv("ENSEMBLE_CONFIDENCE_FLOOR", "55")) / 100.0
         markets = snapshot_data.get("m", [])
         if markets:
             sigs = markets[0].get("sg", [])
             if sigs and len(sigs) == 1:
                 # Solo strategy signal — check confidence
                 sig_conf = sigs[0].get("c", 0)
-                if sig_conf < 0.55:
+                if sig_conf < _solo_floor:
                     return True
 
         return False
