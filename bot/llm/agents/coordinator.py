@@ -1503,9 +1503,11 @@ class AgentCoordinator:
                 if risk_pct <= 0:
                     risk_pct = 0.10 * sz_mult  # 10% base risk * sz multiplier
                 risk_dollars = equity * risk_pct
-                # qty = (dollars at risk / stop width in price) = units/contracts
-                # Then multiply by leverage: leveraged qty
-                position_qty = (risk_dollars / stop_width) * leverage
+                # qty = risk_$ / stop_width. Do NOT multiply by leverage.
+                # Leverage affects margin required, not qty for a given risk budget.
+                # Old bug: (risk_$ / stop_width) * leverage made actual dollar risk
+                # = risk_pct * leverage (e.g., 2.5% @ 3x = 7.5% real risk → 32x equity).
+                position_qty = risk_dollars / stop_width
 
         if position_qty <= 0:
             logger.warning(
