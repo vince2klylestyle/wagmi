@@ -575,6 +575,93 @@ def _build_system_layer(
 # Refreshes if file mtime changes.
 _skip_stats_cache = {"mtime": 0, "stats": {}, "symbol_stats": {}}
 
+# Cache graduated rules — refresh on mtime change.
+_graduated_rules_cache = {"mtime": 0, "rules": []}
+
+
+def _load_graduated_rules() -> List[Dict]:
+    """Read graduated_rules.json, return list of active rules."""
+    import os, json as _json
+    path = os.path.join("data", "llm", "graduated_rules.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        mtime = os.path.getmtime(path)
+        if mtime == _graduated_rules_cache["mtime"] and _graduated_rules_cache["rules"]:
+            return _graduated_rules_cache["rules"]
+        with open(path) as f:
+            data = _json.load(f)
+        rules = [r for r in data.get("rules", []) if r.get("active")]
+        _graduated_rules_cache["mtime"] = mtime
+        _graduated_rules_cache["rules"] = rules
+        return rules
+    except Exception:
+        return []
+
+
+def _evaluate_rule_match(rule: Dict, symbol: Optional[str], side: Optional[str],
+                         confidence: Optional[float], regime: Optional[str],
+                         hour_utc: Optional[int]) -> bool:
+    """Check if a graduated rule's conditions match the current signal context."""
+    cond = rule.get("conditions", {})
+    if "symbol" in cond and (symbol or "").upper() != cond["symbol"].upper():
+        return False
+    if "side" in cond and (side or "").upper() != cond["side"].upper():
+        return False
+    if "regime" in cond and (regime or "") != cond["regime"]:
+        return False
+    if "confidence_min" in cond and (confidence is None or confidence < cond["confidence_min"]):
+        return False
+    if "confidence_max" in cond and (confidence is None or confidence > cond["confidence_max"]):
+        return False
+    if "hour_utc_min" in cond and (hour_utc is None or hour_utc < cond["hour_utc_min"]):
+        return False
+    if "hour_utc_max" in cond and (hour_utc is None or hour_utc >= cond["hour_utc_max"]):
+        return False
+    return True
+
+
+def _build_graduated_rules_context(symbol: Optional[str], side: Optional[str],
+                                    confidence: Optional[float], regime: Optional[str],
+                                    hour_utc: Optional[int]) -> Dict[str, Any]:
+    """For the given signal context, surface which graduated rules match.
+
+    Wired 2026-05-30: agents must see what the rule system is doing so they can
+    corroborate or contradict. Includes both ACTIVE rules and rules that would
+    have matched but are disabled (so agents see what evidence Nunu has chosen
+    to override).
+    """
+    import os, json as _json
+    path = os.path.join("data", "llm", "graduated_rules.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+        all_rules = data.get("rules", [])
+        matching = []
+        for r in all_rules:
+            if not _evaluate_rule_match(r, symbol, side, confidence, regime, hour_utc):
+                continue
+            matching.append({
+                "rule": r.get("rule_id", "?"),
+                "active": r.get("active", True),
+                "action": r.get("action", "?"),  # boost / penalize / veto
+                "adj": r.get("adjustment", 0),
+                "ev_ratio": r.get("evidence_ratio"),  # historical WR
+                "n": r.get("total_evidence"),
+                "hypothesis": r.get("hypothesis_statement", "")[:120],
+            })
+        if not matching:
+            return {}
+        return {
+            "matching_rules": matching,
+            "count_active_matching": sum(1 for m in matching if m["active"]),
+            "count_disabled_matching": sum(1 for m in matching if not m["active"]),
+        }
+    except Exception:
+        return {}
+
 
 def _load_recent_skip_stats(symbol: Optional[str] = None) -> Dict[str, Any]:
     """Read counterfactual_pending.jsonl and surface skip patterns.
@@ -633,10 +720,15 @@ def _build_memory_layer(
     hypotheses: Optional[List[str]],
     trade_dna: Optional[Dict],
     symbol: Optional[str] = None,
+    side: Optional[str] = None,
+    confidence: Optional[float] = None,
+    regime: Optional[str] = None,
+    hour_utc: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Layer 5: Memory — lessons, hypotheses, trade DNA, live skip patterns.
+    """Layer 5: Memory — lessons, hypotheses, trade DNA, live skip patterns,
+    graduated-rule matches.
 
-    Token budget: ~100 tokens (plus ~30 if skip stats present).
+    Token budget: ~100 tokens (plus ~30 if skip stats present, ~60 if rules match).
     """
     mem: Dict[str, Any] = {}
 
@@ -658,6 +750,14 @@ def _build_memory_layer(
             "this_symbol_skips": skip_stats.get("this_symbol", {}).get("total", 0),
             "top_reasons": skip_stats.get("top_skip_reasons", {}),
         }
+
+    # GRADUATED RULES CONTEXT: which learned rules match this signal?
+    # Agents can now see "rule X says veto with 23% historical WR" or
+    # "rule Y says boost +8 with 71% WR." Surfaces both active and disabled
+    # so agents see when a rule has been overridden by ops decision.
+    rules_ctx = _build_graduated_rules_context(symbol, side, confidence, regime, hour_utc)
+    if rules_ctx:
+        mem["graduated_rules"] = rules_ctx
 
     if trade_dna:
         # Compact DNA summary
@@ -819,7 +919,26 @@ def build_comprehensive_snapshot(
 
     # -- LAYER 5: MEMORY --
     try:
-        snapshot["memory"] = _build_memory_layer(lessons, hypotheses, trade_dna, symbol=symbol)
+        # Extract signal context for rule-matching
+        _sig_conf = None
+        _sig_side = None
+        _sig_regime = None
+        try:
+            if ensemble_result and isinstance(ensemble_result, dict):
+                _sig_conf = ensemble_result.get("confidence")
+                _sig_side = ensemble_result.get("side")
+            elif ensemble_result is not None:
+                _sig_conf = getattr(ensemble_result, "confidence", None)
+                _sig_side = getattr(ensemble_result, "side", None)
+            if "market" in snapshot and isinstance(snapshot["market"], dict):
+                _sig_regime = snapshot["market"].get("regime")
+        except Exception:
+            pass
+        snapshot["memory"] = _build_memory_layer(
+            lessons, hypotheses, trade_dna,
+            symbol=symbol, side=_sig_side, confidence=_sig_conf,
+            regime=_sig_regime, hour_utc=current_utc_hour,
+        )
     except Exception as e:
         logger.warning(f"[SNAPSHOT] Memory layer error: {e}")
         snapshot["memory"] = {}
