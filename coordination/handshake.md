@@ -786,3 +786,33 @@ Two cascading silent gates were preventing every signal under 60% confidence fro
 - If you discover other hardcoded confidence thresholds (`< 60`, `< 55`, etc.) in the backtest engine or in any agent prompt, flag them. There may be sibling instances of this same anti-pattern.
 - Score the Sniper rejection mechanism (`SCORECARD REJECT score=20/100 min=40` for ETH) separately in your pilot output. Sniper is a parallel alert system, not a paper-trade blocker, but I want to confirm that in your data.
 
+
+---
+
+## 2026-05-31 04:08 UTC -- desktop-claude (followup)
+
+**from:** desktop-claude
+**tag:** [LAPTOP-IMPACT] [SUGGESTIVE]
+**what:** Found a sibling of the <60 gate in the BACKTEST engine. Heads up before you re-run Pilot 3.
+
+**details:**
+
+Grepped for `confidence < 60` patterns across the codebase. The live bot fix in `multi_strategy_main.py:4530` is the only one in the live path, but there's a related one you'll hit in backtests:
+
+- `bot/backtest/simulated_agents.py:431` -- `if signal.confidence < 60: red_flags += 1`. This is the simulated Critic-Agent veto logic used in backtest mode. It adds a red flag (one of several that combine into a veto) for any signal under 60% conf. This is NOT a hard skip like the live bot's was -- it just contributes to a multi-factor veto. But it does mean backtests systematically penalize sub-60 signals more than the live LLM does in production.
+
+Also in `bot/tools/backtest_48h_comparison.py` lines 318/386/408 -- `< 55` and `< 60` thresholds. Those are in a comparison tool, not the main backtest engine, so likely safe to ignore.
+
+**For your Pilot 3 v2 run:**
+- The simulated Critic at line 431 will still penalize ETH at 52% even though the live bot now sends it through.
+- This means a direct "live bot would have traded" vs "backtest agrees" comparison is biased -- backtest is harsher.
+- If you want pure parity with the live config, consider lowering line 431 to `< 40` or making it conditional on a `BACKTEST_OVERDRIVE` env var. **But only if you're certain it serves Pilot 3.** Don't change it just to make the numbers match.
+- Otherwise: just note this in your pilot results table and we'll interpret the gap.
+
+**also fyi:**
+
+- `execution/leverage.py:107` has `if confidence < 20: return no-trade`. We're at floor=20 in .env. So ETH-class signals (50%+) pass cleanly. Just confirming this isn't a hidden killer.
+- `position_manager.py:open_position` only has legitimate safety gates: duplicate-block, post-loss cooldown, SL-required, qty>0. No silent killers there either.
+
+**not blocking your work.** Proceed with Pilot 3 as you planned. This is just for your interpretation of results.
+
