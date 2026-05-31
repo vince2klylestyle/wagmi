@@ -964,8 +964,9 @@ class AgentCoordinator:
                         (_fb_bias == "bullish" and _fb_side == "SELL")
                         or (_fb_bias == "bearish" and _fb_side == "BUY")
                     )
-                    if _fb_conf < 0.40:
-                        logger.warning("[CRITIC-FALLBACK] Conf %.2f < 0.40 without Critic — skip", _fb_conf)
+                    _critic_fb_min = float(os.getenv("ENSEMBLE_CONFIDENCE_FLOOR", "40")) / 100.0
+                    if _fb_conf < _critic_fb_min:
+                        logger.warning("[CRITIC-FALLBACK] Conf %.2f < %.2f without Critic — skip", _fb_conf, _critic_fb_min)
                         trade_out = AgentOutput(role=AgentRole.TRADE, data={
                             "a": "skip", "c": _fb_conf, "side": _fb_side,
                             "n": f"critic_fallback: low conf ({_fb_conf:.2f}) without review",
