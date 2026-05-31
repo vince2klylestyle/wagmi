@@ -455,7 +455,9 @@ class AgentCoordinator:
             snapshot_data.pop(_ohlcv_key, None)
 
         # External data (funding, OI, liquidation) — formatted text
-        if _EXTERNAL_DATA_AVAILABLE:
+        # Skip in backtest: fetches live current rates (May 2026), not historical
+        # April data — injects present-day market state into past-window context.
+        if _EXTERNAL_DATA_AVAILABLE and not _is_backtest:
             try:
                 ext_text = format_external_data(["BTC", "ETH", "SOL", "HYPE"])
                 if ext_text:
@@ -475,7 +477,9 @@ class AgentCoordinator:
                 logger.debug("[MULTI-AGENT] Feedback state enrichment failed: %s", e)
 
         # Pipeline telemetry (recent gate decisions)
-        if _TELEMETRY_AVAILABLE:
+        # Pipeline telemetry: recent live gate decisions — skip in backtest to avoid
+        # injecting May 2026 signal rejections into the April 23-28 context window.
+        if _TELEMETRY_AVAILABLE and not _is_backtest:
             try:
                 tel_text = get_telemetry().format_for_llm(
                     symbol=_enrich_symbol, last_n=5
@@ -537,7 +541,9 @@ class AgentCoordinator:
                 logger.debug("[MULTI-AGENT] Agent performance enrichment failed: %s", e)
 
         # Background thinker journal (market observations, patterns, opportunities)
-        if _BACKGROUND_THINKER_AVAILABLE:
+        # Skip in backtest: journal contains observations about the live current market
+        # (May 2026), not the historical backtest window — look-ahead bias.
+        if _BACKGROUND_THINKER_AVAILABLE and not _is_backtest:
             try:
                 if self._background_thinker is None:
                     self._background_thinker = BackgroundThinker()
@@ -548,7 +554,9 @@ class AgentCoordinator:
                 logger.debug("[MULTI-AGENT] Background thinker enrichment failed: %s", e)
 
         # GAP 1: Execution quality / slippage metrics
-        if _HAS_EXEC_QUALITY:
+        # Skip in backtest: execution quality is computed from live trading fills that
+        # post-date the backtest window — look-ahead bias.
+        if _HAS_EXEC_QUALITY and not _is_backtest:
             try:
                 eq_summary = get_execution_quality_summary()
                 if eq_summary:
@@ -557,7 +565,8 @@ class AgentCoordinator:
                 logger.debug("[MULTI-AGENT] Execution quality enrichment failed: %s", e)
 
         # GAP 2: Reflection engine (move exhaustion, re-entry patterns, trade quality)
-        if _HAS_REFLECTION:
+        # Skip in backtest: reflection reads from closed live trades post-dating the window.
+        if _HAS_REFLECTION and not _is_backtest:
             try:
                 if not hasattr(self, '_reflection_engine') or self._reflection_engine is None:
                     self._reflection_engine = ReflectionEngine()
