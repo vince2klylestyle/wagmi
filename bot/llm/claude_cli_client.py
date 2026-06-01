@@ -124,17 +124,60 @@ def call_agent(
                         cmd[idx + 1] = str(max(float(cmd[idx + 1]), 0.50))
                         break
 
-        start = time.time()
-        try:
-            result = subprocess.run(
-                cmd, input=user_prompt, capture_output=True, text=True,
-                timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
+        # On Windows, claude.cmd spawns Node.js as a grandchild. If we use
+        # subprocess.run() and the timeout fires, killing cmd.exe leaves the
+        # Node grandchild holding the pipe handles open — communicate() then
+        # blocks forever. Fix: use Popen + CREATE_NEW_PROCESS_GROUP so we can
+        # kill the entire tree with taskkill on timeout.
+        _win = os.name == "nt"
+        _popen_kwargs: dict = dict(
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if _win:
+            _popen_kwargs["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
             )
+
+        start = time.time()
+        proc = None
+        try:
+            proc = subprocess.Popen(cmd, **_popen_kwargs)
+            stdout_data, stderr_data = proc.communicate(input=user_prompt, timeout=timeout)
             latency = time.time() - start
+
+            class _Result:
+                def __init__(self, rc, out, err):
+                    self.returncode, self.stdout, self.stderr = rc, out, err
+
+            result = _Result(proc.returncode, stdout_data, stderr_data)
         except subprocess.TimeoutExpired:
+            # Kill entire process tree to avoid grandchild pipe-handle leak
+            if proc is not None:
+                if _win:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                    )
+                else:
+                    proc.kill()
+                try:
+                    proc.communicate(timeout=5)
+                except Exception:
+                    pass
             return CliResponse(ok=False, error=f"timeout after {timeout}s",
                                latency_s=time.time() - start, model=model)
         except Exception as e:
+            if proc is not None:
+                try:
+                    proc.kill()
+                    proc.communicate(timeout=3)
+                except Exception:
+                    pass
             return CliResponse(ok=False, error=f"subprocess error: {e}",
                                latency_s=time.time() - start, model=model)
     finally:
