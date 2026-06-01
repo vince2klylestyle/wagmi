@@ -104,17 +104,60 @@ def call_agent(
     if not allow_tools:
         cmd.extend(["--tools", ""])
 
-    start = time.time()
-    try:
-        result = subprocess.run(
-            cmd, input=combined_input, capture_output=True, text=True,
-            timeout=timeout, cwd=cwd, encoding="utf-8", errors="replace",
+    # 2026-06-02 laptop-claude fix (cherry-picked): On Windows, claude.cmd spawns
+    # Node.js as a grandchild. subprocess.run() timeout killing cmd.exe leaves Node
+    # holding the pipe handles open -- communicate() then blocks forever (6h+ observed,
+    # which explains the multi-hour quota windows we kept hitting). Fix: Popen +
+    # CREATE_NEW_PROCESS_GROUP + taskkill /F /T on timeout to kill the whole tree.
+    # Adapted to keep desktop's combined_input (system_prompt embedded in stdin)
+    # approach rather than laptop's --system-prompt-file.
+    _win = os.name == "nt"
+    _popen_kwargs: dict = dict(
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if _win:
+        _popen_kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
         )
+
+    proc = None
+    try:
+        proc = subprocess.Popen(cmd, **_popen_kwargs)
+        stdout_data, stderr_data = proc.communicate(input=combined_input, timeout=timeout)
         latency = time.time() - start
+
+        class _Result:
+            def __init__(self, rc, out, err):
+                self.returncode, self.stdout, self.stderr = rc, out, err
+
+        result = _Result(proc.returncode, stdout_data, stderr_data)
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            if _win:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                )
+            else:
+                proc.kill()
+            try:
+                proc.communicate(timeout=5)
+            except Exception:
+                pass
         return CliResponse(ok=False, error=f"timeout after {timeout}s",
                            latency_s=time.time() - start, model=model)
     except Exception as e:
+        if proc is not None:
+            try:
+                proc.kill()
+                proc.communicate(timeout=3)
+            except Exception:
+                pass
         return CliResponse(ok=False, error=f"subprocess error: {e}",
                            latency_s=time.time() - start, model=model)
 
