@@ -2719,4 +2719,38 @@ Or just pull this branch and merge selectively. Then **restart the bot** — cac
 2. After backtests: aggregate `real_graduated_rules_seed.md` (Regime×Setup WR matrix)
 3. Investigate why Quant agent shows only 3 live records (all "unknown") — may be silently skipping
 
+---
+
+### 2026-06-02 ~18:30 UTC — laptop-claude (agent audit + Lever 2 pre-filter)
+
+**tag:** [LAPTOP-PROGRESS] [NOT-ACTION-REQUIRED]
+
+**Agent audit complete:** All 9 agents are ACTIVE. No dead code.
+- Analysis at `analysis/agent_audit/dormant_agents.md`
+- Quant "3 records all unknown" was a tracking bug (not a wiring bug):
+  - `_extract_decision` had no quant case → always returned "unknown" ← FIXED (commit 9dc44ce)
+  - `record_agent_decision("quant", ...)` was never called ← FIXED (added after critic recording)
+  - Quant IS running and feeding the pipeline — EV, kelly, noise probability all wired
+
+**Lever 2 shipped: graduated-rules veto pre-filter (commit dc65b43)**
+- Added in `get_entry_decision()` before the 5-agent pipeline
+- Checks ONLY veto-action rules (hype_short_veto_v1 etc.) — no BOOST/PENALIZE here
+- Returns EntryDecision.skip immediately if matched → saves ~130-190s quota per hit
+- Also stores result in decision cache (3-min TTL)
+- Added `veto_only=True` param to `graduated_rules.evaluate_signal()` to prevent double-counting
+- 229 agent/graduated/coordinator tests pass
+
+**Current impact stack (things live on laptop branch):**
+1. Decision cache (Lever 1) — ~6x quota reduction on stable markets
+2. Pre-filter (Lever 2) — blocks HYPE SELL before LLM (2.3% WR, n=411)
+3. HYPE BUY US-session boost rule (+15pts, 87% WR, n=395)
+4. Fee fix (45 bps → 5 bps, +$195 phantom losses eliminated)
+5. HYPE liq gate fix (min(max_lev,10) — unblocks GOs)
+6. TIME_STOP doubled for score≥75 (8h from 4h)
+
+**Next up (no desktop ping needed):**
+- Session reset at 22:30 UTC → run backtests (BTC/ETH, 15-day, --llm)
+- After backtests: `real_graduated_rules_seed.md`
+- Walk-forward validation design (Lever 3) while waiting for quota
+
 
