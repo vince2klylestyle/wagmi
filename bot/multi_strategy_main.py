@@ -2744,6 +2744,25 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Always inject OI history when available
         if symbol in self._oi_history and len(self._oi_history[symbol]) >= 2:
             _meta["oi_history"] = list(self._oi_history[symbol])
+        # Mark price + basis: fetch every 60 ticks (same cadence as OI)
+        if self._tick % 60 == 0 or symbol not in getattr(self, "_last_mark_price", {}):
+            if not hasattr(self, "_last_mark_price"):
+                self._last_mark_price: Dict[str, tuple] = {}
+            try:
+                _mark, _basis = self.fetcher.fetch_mark_price(symbol)
+                if _mark is not None:
+                    self._last_mark_price[symbol] = (_mark, _basis)
+                    _meta["mark_price"] = _mark
+                    if _basis is not None:
+                        _meta["basis_pct"] = round(_basis * 100, 4)  # as % e.g. 0.15
+            except Exception:
+                pass
+        else:
+            _cached = getattr(self, "_last_mark_price", {}).get(symbol)
+            if _cached:
+                _meta["mark_price"] = _cached[0]
+                if _cached[1] is not None:
+                    _meta["basis_pct"] = round(_cached[1] * 100, 4)
 
         # Inject BTC 1h data for lead_lag strategy on non-BTC symbols
         if symbol != "BTC":
@@ -6951,6 +6970,8 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "ohlcv_1h": data.get("1h"),
             "ohlcv_5m": data.get("5m"),
             "ohlcv_4h": data.get("4h"),
+            "mark_price": _meta.get("mark_price"),
+            "basis_pct": _meta.get("basis_pct"),
         }
 
         # Portfolio context

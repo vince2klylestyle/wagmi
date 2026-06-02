@@ -501,6 +501,24 @@ class AgentCoordinator:
         for _ohlcv_key in ["ohlcv_1h", "ohlcv_5m", "ohlcv_4h", "ohlcv_by_symbol_1h", "ohlcv_by_symbol_5m"]:
             snapshot_data.pop(_ohlcv_key, None)
 
+        # Mark price / basis — inject when available (live mode only)
+        # basis_pct = (oracle - mark) / mark: negative = longs overloaded (overheated),
+        # positive = shorts overloaded (capitulation/oversold)
+        if not _is_backtest:
+            _mark = snapshot_data.get("mark_price")
+            _basis = snapshot_data.get("basis_pct")
+            if _mark is not None:
+                _basis_str = ""
+                if _basis is not None:
+                    if _basis < -0.1:
+                        _interp = f"mark {abs(_basis):.3f}% above oracle — longs overloaded"
+                    elif _basis > 0.1:
+                        _interp = f"mark {abs(_basis):.3f}% below oracle — shorts overloaded"
+                    else:
+                        _interp = "mark near oracle — neutral"
+                    _basis_str = f" ({_interp})"
+                enriched_parts.append(f"Mark price: ${_mark:,.2f}{_basis_str}")
+
         # External data (funding, OI, liquidation) — formatted text
         # Skip in backtest: fetches live current rates (May 2026), not historical
         # April data — injects present-day market state into past-window context.

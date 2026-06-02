@@ -944,6 +944,38 @@ class DataFetcher:
                 continue
         return None
 
+    def fetch_mark_price(self, symbol_name: str) -> tuple:
+        """Fetch mark price and basis (mark - oracle) / oracle for a symbol.
+
+        Returns (mark_price, basis_pct) where basis_pct is a fraction e.g. 0.003 = +0.3%.
+        Positive basis = mark above oracle (market overheated).
+        Negative basis = mark below oracle (fear/deleveraging).
+        Returns (None, None) if not available.
+        """
+        if not self._ccxt_available:
+            return None, None
+
+        chain = self._symbol_exchanges.get(symbol_name, [])
+        for ex_name, pair in chain:
+            exchange = self._exchanges.get(ex_name)
+            if exchange is None:
+                continue
+            try:
+                self._ccxt_requests += 1
+                ticker = exchange.fetch_ticker(pair)
+                info = ticker.get("info", {})
+                mark = info.get("markPx") or info.get("mark_price") or info.get("markPrice")
+                oracle = info.get("oraclePx") or info.get("index_price") or info.get("indexPrice")
+                if mark is not None:
+                    mark = float(mark)
+                    basis = (float(oracle) - mark) / mark if oracle else None
+                    # Note: basis = (oracle - mark)/mark; negative basis means mark > oracle (longs pay)
+                    return mark, basis
+            except Exception as e:
+                logger.debug(f"[{symbol_name}] Mark price {ex_name}: {e}")
+                continue
+        return None, None
+
     def fetch_open_interest(self, symbol_name: str) -> Optional[float]:
         """Fetch current open interest for a symbol via CCXT.
 
