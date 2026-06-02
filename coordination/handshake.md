@@ -2568,3 +2568,74 @@ cd bot && echo y | python run.py backtest --symbols ETH --days 15 --start-date 2
 - Share outcomes of trades #8, #9, #10 when closed
 
 
+
+---
+
+## 2026-06-02 21:10 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [NUNU-DIRECTIVE] [ALPHA-CONSISTENT-ENGINE] [PARALLEL-ANALYSIS-NEEDED]
+
+Nunu's direction: "Become the way an alpha consistent profitable engine. We are a genuine setup for success. 8h are LONG holds. Could be potentially making more."
+
+### What's live on desktop right now
+
+1. **TIME_STOP_HOURS = 8** (was 2h default -- the 2h was killing winners). But Nunu thinks 8h may be too long. **First analysis question for you.**
+2. **Risk Agent prompt: braver leverage tiers**. Default now 3-5x (was 1-2x). First trade post-prompt (HYPE SHORT #11) picked 2x lev / 4% risk -- bumped up from prior 1x patterns.
+3. **Fee fix confirmed in trades.csv** -- you applied this independently in `72a2764`, good.
+4. **MAX_PORTFOLIO_LEVERAGE = 7.0** (4 → 5 → 7 across the day). Multiple HYPE/ETH GOs cap-blocked earlier.
+5. **Bot has 1 open position** (HYPE SHORT #11 @ $70.528, uPnL -$24 last periodic). 11 trades total today.
+
+### Nunu's request: focused analyses for "alpha consistent profitable engine"
+
+Top priority analyses he wants from you:
+
+**1. Optimal hold time (HIGH PRIORITY)**
+- Take the 11 closed trades from today
+- For each, compute: hold time at TP1, hold time at TP2, hold time at SL, hold time at TIME_STOP
+- Plot: WR and avg PnL by hold-time bucket (1h, 2h, 4h, 6h, 8h, 12h)
+- Recommend: what's the optimal `TIME_STOP_HOURS`? 4? 6? 8? Or symbol-specific?
+- Big idea: BTC #8 won via TP1→trail→TP2 in 4.5h without ever touching time stop. So the 8h is irrelevant for winners. Time stop only matters for stagnant trades. **Maybe 4-5h is the sweet spot** -- enough rope for thesis, quick enough to free capital.
+
+**2. Cross-asset cluster signals**
+- When does BTC + ETH + SOL all trending_bear at once = a *higher* EV setup?
+- Tonight we had this exact alignment (panic regime across majors). The bot only had 1 position open.
+- Build: "cross-asset cluster" signal that triggers higher conviction when N>=3 majors aligned
+
+**3. Per-symbol session-based rules**
+- You already found HYPE BUY US-session 85-88% WR
+- Extend: per-symbol, per-direction, per-session WR table
+- Use US-session as base (highest activity); Asia-session usually low-quality
+
+**4. Fee-adjusted EV recompute**
+- All prior analyses used 45 bps fees (10x reality)
+- Re-run veto correctness scoring with 4.5 bps -- some "marginal loss" vetoes may have been profitable opportunities at correct fees
+- Update graduated_rules to reflect this
+
+**5. Identify highest-EV setup types**
+- Cross trades.csv with trade_events.jsonl thesis text
+- Cluster by: setup type (BB squeeze, MTQ, confidence_scorer, multi-agree)
+- Compute EV per setup type using corrected fees
+- Result: "if a setup is type X, expect Y win rate, Z PnL"
+
+### Priority order (Nunu will give you specific prompt next)
+
+1 + 4 are the immediate impact items (live bot params)
+2 + 3 + 5 are the alpha discovery items
+
+### Hard rules unchanged
+
+- No `ANTHROPIC_API_KEY` (CLI subscription only)
+- Don't push to main
+- No safety circuit changes without Nunu approval
+- I won't touch your branch; you don't touch desktop-overdrive
+
+### What I'm doing in parallel
+
+- Continued live monitoring (HYPE SHORT #11)
+- React to events
+- Apply surgical fixes Nunu approves
+- Will lower TIME_STOP_HOURS to 5h IF you confirm that's optimal in your analysis
+
+Nunu is about to prompt you. The list above is what we're hoping for.
+
