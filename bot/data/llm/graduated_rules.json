@@ -91,7 +91,7 @@
     },
     {
       "rule_id": "hype_short_veto_v1",
-      "hypothesis_statement": "HYPE SELL is catastrophic negative EV: 2.3% WR (n=172, edge_analysis_raw.json US session) and -$16.65/trade on 239 live trades. EV=-3.57%/trade. Confirmed by time_edge_results.json: 2.3% WR (n=173) at 18 UTC. Re-enabled 2026-06-02: Phase 1 disable was over-broad — this rule was always correct. This is a permanent hard-block regardless of regime or session.",
+      "hypothesis_statement": "HYPE SELL is catastrophic negative EV: 2.3% WR (n=172, edge_analysis_raw.json US session) and -$16.65/trade on 239 live trades. EV=-3.57%/trade. Confirmed by time_edge_results.json: 2.3% WR (n=173) at 18 UTC. Re-enabled 2026-06-02: Phase 1 disable was over-broad \u00e2\u20ac\u201d this rule was always correct. This is a permanent hard-block regardless of regime or session.",
       "action": "veto",
       "conditions": {
         "symbol": "HYPE",
@@ -440,7 +440,7 @@
         "hour_utc_max": 22
       },
       "adjustment": 8.0,
-      "confidence": 0.90,
+      "confidence": 0.9,
       "evidence_ratio": 0.62,
       "total_evidence": 213,
       "created_at": 1748822400.0,
@@ -465,6 +465,26 @@
       "total_evidence": 246,
       "created_at": 1748822400.0,
       "last_applied": null,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "hype_buy_us_session_boost_v1",
+      "hypothesis_statement": "HYPE BUY during US session (14-22 UTC) has 85-88% WR (n=395, edge_analysis_raw + time_edge_results). Hour 18 UTC is peak. Time-of-day filter worth +30pp over all-hours. Strong positive EV.",
+      "action": "boost",
+      "conditions": {
+        "symbol": "HYPE",
+        "side": "BUY",
+        "hour_utc_min": 14,
+        "hour_utc_max": 22
+      },
+      "adjustment": 15.0,
+      "confidence": 0.87,
+      "evidence_ratio": 0.87,
+      "total_evidence": 395,
+      "created_at": 1780415177.9783213,
+      "last_applied": 0.0,
       "times_applied": 0,
       "times_correct": 0,
       "active": true

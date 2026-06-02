@@ -7076,6 +7076,33 @@
       "last_validated": 1780373157.5624044,
       "validation_count": 395,
       "invalidation_count": 0
+    },
+    {
+      "knowledge_type": "graduated_rule",
+      "content": "[EDGE] HYPE BUY during US session (14-22 UTC) has 85-88% WR (n=395). Time-of-day filter worth +30pp over all-hours baseline. Hour 18 UTC (US close + Asian open) is the peak. Strong positive EV at confidence_adj=+15pts.",
+      "confidence": 0.87,
+      "evidence_count": 395,
+      "evidence_ratio": 0.87,
+      "category": "strategy",
+      "tags": [
+        "symbol",
+        "side",
+        "hour_utc_min",
+        "hour_utc_max"
+      ],
+      "source": "hypothesis_graduation",
+      "rule_id": "hype_buy_us_session_boost_v1",
+      "action": "boost",
+      "conditions": {
+        "symbol": "HYPE",
+        "side": "BUY",
+        "hour_utc_min": 14,
+        "hour_utc_max": 22
+      },
+      "created_at": 1780415188.104773,
+      "last_validated": 1780415188.104773,
+      "validation_count": 395,
+      "invalidation_count": 0
     }
   ]
 }
