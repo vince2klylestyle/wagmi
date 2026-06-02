@@ -2291,3 +2291,66 @@ Open:
 - Fee-to-PnL ratio analysis (current bot is likely fee-disadvantaged on small positions)
 - Pilot 5/6 if you can spare the quota — rolling backtests as Nunu requested
 
+
+---
+
+## 2026-06-02 15:30 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [TWO-FIXES-LIVE] [REAL-PNL-RECOMPUTED] [PLAN-FOR-DAY]
+
+### Two surgical fixes shipped (commit `e02f265` on desktop-overdrive)
+
+**1. Fee fix (THE BIG ONE):**
+`trading_config.py` had `taker_fee_bps=45` (= 0.45%/side) but Hyperliquid's actual taker fee is `0.045% = 4.5 bps`. The prior author confused 0.045% with 45 bps -- a 10x decimal-point error. Set to 5 bps (conservative round-up). ETH SHORT #7 logged $29.28 fees on $4.9k notional; real fee on HL would be ~$2.93.
+
+**2. Risk Agent prompt: braver leverage in OVERDRIVE.**
+Shifted tiers up one bracket per Nunu's "agents should be braver, explore their edges":
+- Old default: 1-2x for low conviction (most trades)
+- New default: 3-5x standard / base case
+- High conviction now 6-10x (was 3-5x)
+- Max 11-20x (was 6-10x)
+- Risk Agent now explicitly told: "Do NOT default to 1-2x. Default is 3-5x."
+
+### Real realized PnL (with corrected fees)
+
+| # | Trade | Logged | **Real** |
+|---|---|---|---|
+| 1 | ETH SHORT | -$144.60 | -$67.60 |
+| 2 | BTC SHORT | +$128.63 | +$182.63 |
+| 3 | HYPE LONG | -$55.72 | -$45.48 |
+| 4 | BTC SHORT (TS) | +$77.28 | +$105.24 |
+| 5 | HYPE SHORT | -$8.02 | -$4.87 |
+| 6 | ETH SHORT | -$66.06 | -$42.17 |
+| 7 | ETH SHORT | -$14.15 | -$2.44 |
+| **Total** | **-$70 (logged)** | **+$125 (real)** |
+
+The bot was actually **net green by ~$125** on closed trades. ~$195 of phantom fees inflated apparent losses.
+
+### Plan for rest of day (both PCs)
+
+**Desktop (me):**
+- Monitor 3 open positions (BTC SHORT #8, HYPE LONG #9, ETH SHORT #10)
+- Watch how new "braver leverage" prompt affects sizing on next GO
+- React to events; small surgical fixes only
+
+**Laptop (you):**
+- Re-run trade outcome aggregation with corrected fees (the 10x was distorting your analyses too)
+- The seven closed trades become real edge data with proper fees
+- Update counterfactual scoring -- some "marginal loss" vetoes were actually profitable opportunities at correct fees
+- Stage rolling backtests Nunu requested (mix --raw and normal) -- the corrected fees should flip several "negative EV" outcomes positive
+- Push aggregated `real_pnl_by_exit_type.md` so we can decide whether to extend TIME_STOP hours (BTC #4 would have hit TP1 = ~$50 more)
+
+### Hard constraints unchanged
+
+- USE_CLI_LLM=true, no API key in .env
+- Push only to feature branches, not main
+- No safety circuit changes without explicit Nunu approval
+- Both PCs working in parallel until Nunu signals stop
+
+### needs-from-laptop
+
+- Acknowledge fee fix and re-run any prior fee-dependent analyses
+- Verify the +$125 real-PnL number against your raw decisions.jsonl data
+- Schedule first rolling backtest if quota allows
+
