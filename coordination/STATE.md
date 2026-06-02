@@ -2,17 +2,17 @@
 
 Both Claudes update this file on any material change. Nunu reads this to know where everything stands in 30 seconds.
 
-**Last updated:** 2026-05-30 — laptop-claude (Layer 2 pilot running, 4 critical bug fixes applied)
+**Last updated:** 2026-06-02 ~06:00 UTC — laptop-claude (overnight autonomous: Phase 2 complete, 5 commits)
 
 ---
 
 ## TL;DR for Nunu
 
-- **Bot is alive on the desktop** (PID 1864, 30s scans, multi-agent LLM pipeline running, ~73s per decision)
-- **LLM-driven architecture is live**: mechanical strategies feed data → LLM decides → bot executes
-- **Zero API spend**: every LLM call routes through Claude Code subscription via `claude -p` CLI
-- **No trades yet today**, by design — LLM is being patient; just smart-skipped a BTC consolidation
-- **Watchlist (LLM's pre-formed theses):** HYPE compression at $67.70 support → BUY on continuation; ETH funding-spike → mean rev on pullback
+- **Bot is alive on the desktop** (hit session limit overnight, recovers at 5:30pm CDT = 22:30 UTC)
+- **Overnight laptop work:** 5 commits — quant alpha rules corrected, SOL SHORT stat traced and fixed, record_outcome bug fixed
+- **Knowledge base updated:** agents now see HYPE BUY 88% WR, SOL SELL 62% WR US session, HYPE SELL hard-block, BTC LONG US session block
+- **Live paper WR before tonight's fixes:** 35.3% (17 matched trades) — should improve
+- **15-day LLM backtest:** run at 22:30 UTC today (first thing after session reset)
 - **Two computers, two Claudes, coordinating via this repo** (no OneDrive, no networking)
 - **Identity**: this project uses "Nunu" everywhere it's user-facing. The username "vince" only appears in OS-level file paths.
 
@@ -99,18 +99,20 @@ Most recent trade decision (skip with full reasoning):
 
 ## Open items
 
-- [x] **laptop-claude:** Pull `origin/historical-import-2026-05-30`, read `coordination/BRIEFING.md` v2, confirm via handshake.md
-- [x] **laptop-claude:** Halt any perpetual deep-dive / overnight commit cycles still running on the laptop
-- [x] **laptop-claude:** Run Part 2 historical analysis against `historical/old-bot-pre-2026-04-23/` data, push outputs to `analysis/historical/`
-- [ ] **laptop-claude:** Layer 2 pilot — `python run.py backtest --symbols BTC --days 7 --llm --budget 3.00 --raw` (IN PROGRESS — LLM calls confirmed firing)
-- [ ] **laptop-claude:** Layer 3 — 90-day full LLM backtest (pending Layer 2 completion)
-- [ ] **laptop-claude:** Push `analysis/historical/layer2-pilot-results.md` when pilot completes
-- [ ] **laptop-claude:** Append handshake with Layer 2 pilot results + 4 bug-fix tags
-- [ ] **desktop-claude:** Confirm 4 CLI client bug fixes applied (or merge from laptop branch)
-- [ ] **desktop-claude:** Monitor first trade firing, watch for any LLM-pipeline regressions
-- [ ] **both:** Once analysis is in, decide which doc's "gap" recommendations to actually adopt (decision_id linking, strategy versioning, log rotation)
+- [x] **laptop-claude:** Phase 1 quant synthesis (edge_analysis_raw, time_edge_results, strategy_fingerprints)
+- [x] **laptop-claude:** Fix subprocess hang on Windows (taskkill /F /T)
+- [x] **laptop-claude:** Fix CLI session limit preflight
+- [x] **laptop-claude:** Phase 2 graduated_rules corrections (4 rules: hype_short re-enabled, sol_short disabled, 2 new US-session rules)
+- [x] **laptop-claude:** insight_journal SOL SHORT hard-block corrected
+- [x] **laptop-claude:** record_outcome() hour_utc bug fixed
+- [x] **laptop-claude:** knowledge_base.json updated with quant alpha rules
+- [x] **laptop-claude:** SOL "n=42 WR=36%" stat traced and fixed at source
+- [ ] **desktop-claude:** Pull `historical-import-2026-05-30` — get Phase 2 rule changes + KB update
+- [ ] **desktop-claude:** Run 15-day LLM backtest at 22:30 UTC: `cd bot && echo y | python run.py backtest --symbols BTC --days 15 --start-date 2026-03-26 --llm --budget 5 --raw`
+- [ ] **desktop-claude:** Verify agents no longer cite "WR=36% n=42" after next pipeline cycles
+- [ ] **desktop-claude:** Monitor if `sol_sell_us_session_boost_v1` fires during 14-22 UTC windows
 - [ ] **Nunu:** When ready, merge both branches to main after review
-- [ ] **eventually:** Phase 2 cleanup — convert shadow EDGES from confidence-floor multiplier to LLM-context metadata
+- [ ] **both:** Track OVERDRIVE paper trade outcomes for feedback loop
 
 ## Recent laptop-claude bug fixes (2026-05-30)
 
