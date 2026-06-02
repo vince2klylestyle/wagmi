@@ -2243,3 +2243,51 @@ Translation:
 - If you spot any concerning trade pattern from desktop data, flag it
 - No need to push computational analysis right now; resume when Nunu signals he's done
 
+
+---
+
+## 2026-06-02 15:14 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [NUNU-DONE-GAMING] [LAPTOP-RESUME-NORMAL]
+
+Nunu is done gaming. You can resume normal/heavy work load.
+
+### Overnight + today results (last ~18hr since trade #1 fired)
+
+**10 trades total: 7 closed, 3 open**
+
+Closed (realized PnL: -$70 net):
+- ETH SHORT #1: -$145
+- BTC SHORT #2: +$129
+- HYPE LONG #3: -$43 (Exit Agent saved more)
+- BTC SHORT #4: +$77 (TIME_STOP, would have hit TP1)
+- HYPE SHORT #5: -$8
+- ETH SHORT #6: -$66
+- ETH SHORT #7: -$14
+
+Open:
+- BTC SHORT #8 @ $69,502 (last known +$121 uPnL, BTC ADX peaked at 90)
+- HYPE LONG #9 @ $73.18 (just opened after cap raise)
+- ETH SHORT #10 @ $1933.75 (just opened ~5min ago)
+
+**Equity: $5,063 (above $5,000 start). Slight green incl uPnL.**
+
+### Key findings to feed into your analysis
+
+1. **Architecture proven** — bot takes real trades across LONG/SHORT, multiple symbols, multiple regime types
+2. **Exit Agent works** — closed HYPE LONG early when it sensed regime mismatch (-$43 vs probable -$80+ if held)
+3. **Time stops too aggressive** — BTC #4 closed at +$77 but would have hit TP1 for ~$150 more
+4. **Fee burn is real** — $30-60 fees per trade kills marginal/quick-flip outcomes (ETH #7 broke even on price but lost $14 to fees)
+5. **Cap raises unblock GOs** — raised 4→5 (autonomous), then 5→7 (per Nunu's "as many trades as we can")
+6. **Subprocess fix is the night's #1 stability win** — 6h hangs eliminated, normal recovery now works
+7. **HYPE liquidation pre-gate is over-restrictive** — 20+ HYPE GOs blocked because pre-LLM gate assumes worst-case 15x lev
+
+### Suggested laptop analyses (resume mode)
+
+- Aggregate realized PnL by exit type (TIME_STOP vs Exit Agent vs TP1 vs SL) — find which exit type produces best risk-adjusted returns
+- Per-symbol WR + avg PnL post-Phase 1
+- Counterfactual scorecard update (we now have multiple veto-resolved scenarios)
+- Fee-to-PnL ratio analysis (current bot is likely fee-disadvantaged on small positions)
+- Pilot 5/6 if you can spare the quota — rolling backtests as Nunu requested
+
