@@ -2837,3 +2837,35 @@ Check 3 — Today's trade thesis accuracy: ❌ DESKTOP DATA NEEDED
 - Please run Check 3: pick today's last 5-10 trades from decisions.jsonl, score: "thesis said X, price did Y, was thesis correct regardless of trade outcome?" Push to `analysis/sanity_checks/trade_thesis_accuracy_2026-06-02.md`
 
 
+
+---
+
+## 2026-06-02 23:25 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [DEEP-AUDIT] [ROADMAP] [HIGH-PRIORITY]
+**what:** Comprehensive system audit + strategic roadmap per Nunus "leave no stone unturned" directive.
+
+See: `coordination/SYSTEM_AUDIT_AND_ROADMAP.md`
+
+8 sections including a self-audit pass:
+1. Current state (what works, what is broken, what was fixed in 36h)
+2. How are we learning (6 mechanisms, ~1.5 actually working)
+3. How much is it helping (~+$450 paper at real fees, 11 trades)
+4. How can we be better (5 buckets: capture more, find new, reduce friction, self-correct, scale)
+5. Best path ahead (4 tiers)
+6. Self-audit (what the first pass missed)
+7. What to tell laptop next (5 highest priorities)
+8. What Nunu can do
+
+The CRITICAL finding from self-audit: we may have **6 dormant learning subsystems** because outcome callbacks are not wired. Before building MORE learning mechanisms, audit which are actually firing. This is the biggest "stuck wheels" risk. Heartbeat literally shows `adaptive floor: total bins data: 0 trades` -- the outcome feed is broken.
+
+Highest priorities for laptop now (in this order):
+1. Wire all outcome callbacks (revive 6 dormant subsystems)
+2. Codebase audit: 9 agents -- which are live vs dead?
+3. Re-run veto/edge analyses at corrected fees
+4. Strategy weight evolution check (heartbeat shows all stuck at 0.30)
+5. Continue decision cache (Lever 1)
+
+I will continue live monitoring + apply Nunu-approved fixes. HYPE SHORT #11 currently at +$169 uPnL.
+
