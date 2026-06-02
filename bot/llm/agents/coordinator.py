@@ -848,7 +848,7 @@ class AgentCoordinator:
         # Skip Quant in Tier 2 (normal signals don't need statistical deep-dive)
         if _tier == 2 and os.getenv("AGENT_TIERED_ROUTING", "false").lower() == "true":
             _quant_enabled = False
-            logger.debug("[ROUTER] Tier 2: skipping Quant agent")
+            logger.info("[ROUTER] Tier 2: Quant agent skipped (tier-2 routing)")
         if _quant_enabled:
             quant_input = self._build_quant_input(snapshot_data, regime_out)
             quant_out = self._call_agent(
@@ -1178,6 +1178,8 @@ class AgentCoordinator:
                     record_agent_decision("risk", risk_out.data, regime=_regime)
                 if critic_out and critic_out.ok:
                     record_agent_decision("critic", critic_out.data, regime=_regime)
+                if quant_out and quant_out.ok:
+                    record_agent_decision("quant", quant_out.data, regime=_regime)
             except Exception as e:
                 logger.debug(f"[MULTI-AGENT] Brain recording error: {e}")
 
