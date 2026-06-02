@@ -648,7 +648,13 @@ class PositionManager:
             if hold_hours >= time_stop_hours:
                 # Assess position health before closing
                 _health = self._assess_position_health(pos, current_price, df_5m)
-                _max_extension = 4.0  # Maximum 4h extension (8h -> 12h absolute max)
+                # Very healthy positions (score≥75) get double extension (8h vs 4h).
+                # BTC SHORT #4 was closed at +$105 real PnL before hitting TP1 because
+                # 12h + 4h = 16h max wasn't enough for a trending_bear move. At 20h max,
+                # TP1 would have been reachable. Extension only applies if score ≥75 and
+                # MFE retention is high (position isn't giving back gains).
+                _health_score = _health.get("score", 0)
+                _max_extension = 8.0 if _health_score >= 75 else 4.0
                 _extension = _health.get("extension_hours", 0)
                 _extended_stop = time_stop_hours + min(_extension, _max_extension)
 
@@ -657,7 +663,7 @@ class PositionManager:
                     logger.info(
                         f"[{symbol}] TIME STOP: held {hold_hours:.1f}h >= {_extended_stop:.1f}h "
                         f"(base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
-                        f"reason={_reason} health={_health.get('score', 0):.0f}%"
+                        f"reason={_reason} health={_health_score:.0f}%"
                     )
                     event = self._close_position(pos, current_price, "TIME_STOP")
                     events.append(event)
@@ -667,7 +673,7 @@ class PositionManager:
                     if not hasattr(pos, '_extension_logged'):
                         logger.info(
                             f"[{symbol}] TIME STOP EXTENDED: {hold_hours:.1f}h held, "
-                            f"extending to {_extended_stop:.1f}h (health={_health.get('score', 0):.0f}% "
+                            f"extending to {_extended_stop:.1f}h (health={_health_score:.0f}% "
                             f"tp1_progress={_health.get('tp1_progress', 0):.0f}%)"
                         )
                         pos._extension_logged = True
