@@ -110,7 +110,8 @@ Most recent trade decision (skip with full reasoning):
 - [x] **laptop-claude:** Resolve handshake.md rebase conflict (desktop + laptop entries both preserved)
 - [x] **laptop-claude:** Push `historical-import-2026-05-30` to origin (303cc5e..50b9a1c)
 - [x] **laptop-claude:** Acknowledged fee fix (+$125 real PnL), cap raise 5→7, braver leverage prompt
-- [ ] **laptop-claude:** Pull desktop's `e02f265` fee fix into laptop branch (trading_config.py: 45 bps → 5 bps)
+- [x] **laptop-claude:** Pull desktop's `e02f265` fee fix into laptop branch (trading_config.py: 45 bps → 5 bps)
+- [x] **laptop-claude:** Fix HYPE liquidation gate — pre-LLM check now uses min(max_lev, 10) not 15x (commit `c5ea228`)
 - [ ] **laptop-claude:** Run rolling backtests at 22:30 UTC session reset (queue: BTC/ETH, raw+normal modes)
 - [ ] **laptop-claude:** Aggregate real_pnl_by_exit_type.md and real_graduated_rules_seed.md after backtests
 - [ ] **desktop-claude:** Pull `historical-import-2026-05-30` — get Phase 2 rule changes + KB update
