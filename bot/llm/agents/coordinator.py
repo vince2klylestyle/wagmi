@@ -483,8 +483,22 @@ class AgentCoordinator:
             except Exception as e:
                 logger.debug("[MULTI-AGENT] 5m technicals enrichment failed: %s", e)
 
+            # 4h intermediate-trend technicals (structural alignment context)
+            try:
+                _ohlcv_4h = snapshot_data.get("ohlcv_4h")
+                if _ohlcv_4h is not None:
+                    techs_4h = compute_all_technicals(_ohlcv_4h)
+                    if techs_4h:
+                        tech_text_4h = format_technicals_for_agent(
+                            techs_4h, _enrich_symbol, timeframe="4h"
+                        )
+                        if tech_text_4h:
+                            enriched_parts.append(tech_text_4h)
+            except Exception as e:
+                logger.debug("[MULTI-AGENT] 4h technicals enrichment failed: %s", e)
+
         # Strip raw OHLCV arrays after technicals computed — saves ~1800 tokens per call
-        for _ohlcv_key in ["ohlcv_1h", "ohlcv_5m", "ohlcv_by_symbol_1h", "ohlcv_by_symbol_5m"]:
+        for _ohlcv_key in ["ohlcv_1h", "ohlcv_5m", "ohlcv_4h", "ohlcv_by_symbol_1h", "ohlcv_by_symbol_5m"]:
             snapshot_data.pop(_ohlcv_key, None)
 
         # External data (funding, OI, liquidation) — formatted text

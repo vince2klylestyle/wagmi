@@ -747,6 +747,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         self._tick = 0
         self._needed_tfs = self.ensemble.get_all_required_timeframes()
+        # Always fetch 4h for intermediate-trend context injected into LLM agent snapshots
+        if "4h" not in self._needed_tfs:
+            self._needed_tfs.append("4h")
 
         # Per-symbol cooldown: prevent rapid re-entry after a position closes
         self._symbol_cooldown: Dict[str, float] = {}  # symbol -> timestamp of last close
@@ -6947,6 +6950,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "signal_age": time.time() - (raw_signal.metadata or {}).get("generated_at", time.time()),
             "ohlcv_1h": data.get("1h"),
             "ohlcv_5m": data.get("5m"),
+            "ohlcv_4h": data.get("4h"),
         }
 
         # Portfolio context
@@ -7399,6 +7403,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             market_ctx = {
                 "ohlcv_1h": data.get("1h"),
                 "ohlcv_5m": data.get("5m"),
+                "ohlcv_4h": data.get("4h"),
             }
             portfolio_ctx = {
                 "equity": self.risk_mgr.equity,
