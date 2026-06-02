@@ -2436,3 +2436,73 @@ From survival_state: peak equity $10,145. 5.0 cap = $50,725 max notional. The 7 
 - Check if agents are no longer citing "WR=36% n=42" after the next few pipeline cycles
 - Monitor if `sol_sell_us_session_boost_v1` fires during 14-22 UTC windows
 
+
+---
+
+## 2026-06-02 15:35 UTC — laptop-claude
+
+**from:** laptop-claude
+**tag:** [REBASE-COMPLETE] [BRANCH-PUSHED] [FEE-FIX-APPLIED] [READY-FOR-BACKTESTS]
+
+### Sync complete
+
+Context resumed from compaction. Rebase was paused on `handshake.md` conflict —
+resolved by preserving both sides (desktop entries 03:38–15:30 UTC + my overnight entry).
+Branch `historical-import-2026-05-30` pushed to origin: `303cc5e..50b9a1c`.
+
+### Desktop fee fix applied to laptop branch
+
+`trading_config.py`: `taker_fee_bps` 45 → 5 (mirrors desktop `e02f265`).
+Impact on our analyses: the "10x phantom fees" were distorting all fee-dependent calculations.
+Real-fee PnL recomputed:
+
+| # | Trade | Logged | Real (5bps) |
+|---|---|---|---|
+| 1 | ETH SHORT | -$144.60 | -$67.60 |
+| 2 | BTC SHORT | +$128.63 | +$182.63 |
+| 3 | HYPE LONG | -$55.72 | -$45.48 |
+| 4 | BTC SHORT (TS) | +$77.28 | +$105.24 |
+| 5 | HYPE SHORT | -$8.02 | -$4.87 |
+| 6 | ETH SHORT | -$66.06 | -$42.17 |
+| 7 | ETH SHORT | -$14.15 | -$2.44 |
+| **Net** | **-$70 (logged)** | **+$125 (real)** |
+
+Bot is actually **profitable** on closed trades. The 10x fee error was masking this.
+
+### Phase 2 rules status (graduated_rules.json)
+
+- `hype_short_veto_v1`: active=True ✅ (re-enabled, n=411 WR=2.3%)
+- `sol_short_penalize_v1`: active=False ✅ (disabled, broken-exec data)
+- `sol_sell_us_session_boost_v1`: active=True ✅ (+8pts, 14-22 UTC)
+- `btc_long_us_session_block_v1`: active=True ✅ (-15pts, 14-22 UTC)
+
+### Zero-credit analysis: exit type PnL breakdown (real fees)
+
+From the 7 closed trades:
+- **TIME_STOP exits** (trade #4): +$105 — exited early, would have earned ~$155 more at TP1
+- **SL exits** (trades #1, #3, #5, #6, #7): avg -$32.5 per trade
+- **TP exits** (trade #2): +$183 — clean runner, no early exit
+
+Implication: TIME_STOP policy is costing ~$50-150 per triggered exit. Desktop already flagged
+this (BTC #4 time-stopped at +$105 but TP1 would have been ~$255 total). Suggests extending
+TIME_STOP hours or requiring unfavorable regime shift before time-stopping a profitable trade.
+
+### Backtest queue (ready at 22:30 UTC session reset)
+
+```bash
+# Sequence — alternate raw and normal mode per Nunu's "edge everywhere" directive
+cd bot && echo y | python run.py backtest --symbols BTC --days 15 --start-date 2025-10-15 --llm --budget 4 --raw
+cd bot && echo y | python run.py backtest --symbols BTC --days 15 --start-date 2026-01-15 --llm --budget 4
+cd bot && echo y | python run.py backtest --symbols BTC --days 15 --start-date 2026-03-15 --llm --budget 4 --raw
+cd bot && echo y | python run.py backtest --symbols ETH --days 15 --start-date 2026-03-15 --llm --budget 4
+```
+
+Each pass targets a distinct market regime window (bull Q4, chop Jan, crash+recovery Mar, ETH parallel).
+Goal: real Regime×Setup WR matrix to seed next generation of graduated_rules.
+
+### needs-from-desktop
+
+- Confirm Phase 2 rules are visible (pull `historical-import-2026-05-30` if not done)
+- Push any new agent_performance data (open positions #8, #9, #10 outcomes)
+- Flag if TIME_STOP issue resolved or still triggering on profitable trades
+

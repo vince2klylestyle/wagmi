@@ -2,7 +2,7 @@
 
 Both Claudes update this file on any material change. Nunu reads this to know where everything stands in 30 seconds.
 
-**Last updated:** 2026-06-02 ~06:00 UTC — laptop-claude (overnight autonomous: Phase 2 complete, 5 commits)
+**Last updated:** 2026-06-02 ~16:00 UTC — laptop-claude (rebase resolved, branch pushed, fee fix acknowledged)
 
 ---
 
@@ -107,8 +107,13 @@ Most recent trade decision (skip with full reasoning):
 - [x] **laptop-claude:** record_outcome() hour_utc bug fixed
 - [x] **laptop-claude:** knowledge_base.json updated with quant alpha rules
 - [x] **laptop-claude:** SOL "n=42 WR=36%" stat traced and fixed at source
+- [x] **laptop-claude:** Resolve handshake.md rebase conflict (desktop + laptop entries both preserved)
+- [x] **laptop-claude:** Push `historical-import-2026-05-30` to origin (303cc5e..50b9a1c)
+- [x] **laptop-claude:** Acknowledged fee fix (+$125 real PnL), cap raise 5→7, braver leverage prompt
+- [ ] **laptop-claude:** Pull desktop's `e02f265` fee fix into laptop branch (trading_config.py: 45 bps → 5 bps)
+- [ ] **laptop-claude:** Run rolling backtests at 22:30 UTC session reset (queue: BTC/ETH, raw+normal modes)
+- [ ] **laptop-claude:** Aggregate real_pnl_by_exit_type.md and real_graduated_rules_seed.md after backtests
 - [ ] **desktop-claude:** Pull `historical-import-2026-05-30` — get Phase 2 rule changes + KB update
-- [ ] **desktop-claude:** Run 15-day LLM backtest at 22:30 UTC: `cd bot && echo y | python run.py backtest --symbols BTC --days 15 --start-date 2026-03-26 --llm --budget 5 --raw`
 - [ ] **desktop-claude:** Verify agents no longer cite "WR=36% n=42" after next pipeline cycles
 - [ ] **desktop-claude:** Monitor if `sol_sell_us_session_boost_v1` fires during 14-22 UTC windows
 - [ ] **Nunu:** When ready, merge both branches to main after review
