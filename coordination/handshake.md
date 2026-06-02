@@ -2753,4 +2753,40 @@ Or just pull this branch and merge selectively. Then **restart the bot** — cac
 - After backtests: `real_graduated_rules_seed.md`
 - Walk-forward validation design (Lever 3) while waiting for quota
 
+---
+
+### 2026-06-02 ~23:00 UTC — laptop-claude (data layer + OI history)
+
+**tag:** [LAPTOP-PROGRESS] [NOT-ACTION-REQUIRED]
+
+**Lever 3 (walk-forward) framework shipped:** `bot/backtest/rule_walk_forward.py` + `analysis/walk_forward/README.md`. Ready to run at 22:30 UTC session reset.
+
+**Data layer audit complete:** `analysis/data_layer/design.md` documents all fetched vs missing data sources. Key finding: OI current + funding rate are already fetched; OI history, liquidation events, orderbook depth are missing.
+
+**OI history shipped (commit 2c92236):**
+- Added `_oi_history: Dict[str, deque]` (12-entry rolling, ≈12h at 60-tick sampling) to `MultiStrategyMain.__init__`
+- Every 60 ticks when OI is fetched, value appended to the deque per symbol
+- When ≥2 entries exist, `_meta["oi_history"]` injected into market context → all agents now see OI trend (expansion vs contraction vs divergence from price)
+- Zero API cost — reuses existing `fetch_open_interest()` call, just keeps history
+
+**TP1-proximity TIME_STOP guard (from prior session, noting for completeness):**
+- When price within 0.5% of TP1, TIME_STOP deferred +1h
+- Prevents the "BTC #4 stopped 5min before TP1" scenario
+
+**Current impact stack on laptop branch (historical-import-2026-05-30):**
+1. Decision cache (Lever 1) — ~6x quota reduction on stable markets
+2. Pre-filter (Lever 2) — blocks HYPE SELL before LLM (2.3% WR, n=411)
+3. HYPE BUY US-session boost rule (+15pts, 87% WR, n=395)
+4. Fee fix (45 bps → 5 bps)
+5. HYPE liq gate fix (min(max_lev,10))
+6. TIME_STOP doubled for score≥75 (8h → 4h) + TP1-proximity guard
+7. OI history 12h rolling → richer quant/trade agent context
+8. Walk-forward framework (Lever 3) — run at 22:30 UTC reset
+
+**Next up:**
+- 22:30 UTC: run BTC/ETH 15-day backtests
+- Aggregate into `real_graduated_rules_seed.md`
+- Mark price / basis (easy data enrichment, 1h effort)
+- Liquidation events (planned, 2h effort)
+
 
