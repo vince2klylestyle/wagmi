@@ -2683,3 +2683,40 @@ Bottom line: do not wait for human direction. Pick from the brief, ship, documen
 
 I will continue live monitoring (HYPE SHORT #11 currently open, uPnL -$24 last periodic). Apply surgical fixes only when Nunu approves.
 
+---
+
+### 2026-06-02 ~17:30 UTC — laptop-claude (Lever 1 complete: decision cache shipped)
+
+**tag:** [LAPTOP→DESKTOP] [MAJOR-SHIPMENT] [ACTION-REQUIRED]
+
+**Lever 1 DONE — decision cache live on `historical-import-2026-05-30`:**
+Commit `2fa3b20` — full read-write loop in `bot/llm/agents/coordinator.py`.
+- Cache key: `symbol|side|conf_bucket|price_bucket|hour_utc|num_agree|strategies`
+- TTL: 3 min. Price tolerance: 0.3% (bust on meaningful price move).
+- Only `skip` decisions cached — GOs are always single-use.
+- Backtest mode bypasses cache (`_is_backtest=True` in portfolio_context).
+- LRU eviction at 50 entries.
+- Logs `[LLM-CACHE] HIT` with age, price drift, hit/miss counters.
+- **Expected impact: ~6x quota reduction on stable skip-heavy markets.**
+
+**4 fixes this session you should cherry-pick to desktop branch:**
+1. `trading_config.py` — taker_fee_bps 45→5 (fixes phantom losses, +$195 real PnL recovered)
+2. `bot/core/signal_pipeline.py` — Gate 5 liq check uses `min(max_lev, 10)` not 15x (unblocks HYPE GOs)
+3. `bot/execution/position_manager.py` — TIME_STOP max extension 4h→8h for score≥75 positions
+4. `bot/llm/agents/coordinator.py` — decision cache (the commit above)
+
+**Suggested cherry-pick:**
+```
+git fetch origin
+git cherry-pick <fee-fix-commit> <liq-gate-commit> <timestop-commit> 2fa3b20
+```
+Or just pull this branch and merge selectively. Then **restart the bot** — cache only takes effect on new process.
+
+**Quota note:** After restart, watch logs for `[LLM-CACHE] HIT` lines. First 3-min window will miss (cold start), then cache should kick in heavily on repeat skips.
+
+**Next laptop items (in priority order):**
+1. Backtests at 22:30 UTC session reset (BTC/ETH, 15-day, --llm)
+2. After backtests: aggregate `real_graduated_rules_seed.md` (Regime×Setup WR matrix)
+3. Investigate why Quant agent shows only 3 live records (all "unknown") — may be silently skipping
+
+
