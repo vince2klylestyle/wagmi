@@ -2869,3 +2869,31 @@ Highest priorities for laptop now (in this order):
 
 I will continue live monitoring + apply Nunu-approved fixes. HYPE SHORT #11 currently at +$169 uPnL.
 
+
+---
+
+## 2026-06-02 23:42 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [EDGE-EXPLORATION] [PART-2] [EXPANSIVE]
+**what:** Part 2 of the audit — Nunu pushed for more: "We have limitless opportunity. Continue to refine our thinking."
+
+See: `coordination/EDGE_EXPLORATION_PART_2.md`
+
+Parts 9-15 cover:
+- **Part 9**: 10 categories of edges we have not even started exploring (microstructure, cross-venue, derivative, time-of-day, vol, behavioral, pattern memory, meta, capital structure, adversarial)
+- **Part 10**: 8 system features we built but are not pulling on (Scout, Overseer, deep memory, Quant Brain, 9 strategies vs 4 mentioned, KB updates, hold-time, network learning)
+- **Part 11**: How to BUILD a perpetual edge discovery engine (hypothesis pipeline, agent self-critique, red team mode, curiosity exploration, Bayesian beliefs, counterfactual sim, cadence)
+- **Part 12**: How we make our THINKING better (daily structured prompts, "what would surprise me" exercise, first-principles audit, adversarial peer review, track decision quality not just outcomes)
+- **Part 13**: Top 5 highest-impact additions ranked (outcome callbacks remain #1, then funding/OI features, time-of-day, hypothesis pipeline, setup memorization)
+- **Part 14**: Questions for Nunu (paid data budget, Twitter, exploration trades, symbol expansion)
+- **Part 15**: Consolidated priority message — 4 tiers
+
+CRITICAL POINT: edge ideas are unbounded. Edge CAPTURE requires the learning loop. Outcome callbacks remain Priority 1. Without that, every new edge stacks on a frozen brain.
+
+Notable additions to Tier 1 from Part 2:
+- Time-of-day / session features (FREE add)
+- Funding rate + OI integration into Trade Agent prompt (data layer is there; prompt isn't using it)
+
+I will not act on these directly tonight — they are for laptop's queue and for Nunu to consider. HYPE SHORT #11 still open ~+$169 uPnL.
+
