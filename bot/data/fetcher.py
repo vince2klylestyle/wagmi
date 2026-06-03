@@ -367,7 +367,12 @@ class DataFetcher:
         return os.path.join(self._disk_cache_dir, f"{symbol}_{timeframe}_{d}d{end_tag}.csv")
 
     def _load_disk_cache(self, symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Load cached data from disk if available and not --fresh."""
+        """Load cached data from disk if available and not --fresh.
+
+        Validates that cached data overlaps the expected backtest window.
+        A cache file that covers the wrong era (e.g. May 2026 data for a
+        Jan 2026 backtest) is treated as a miss and triggers a fresh fetch.
+        """
         if not self.backtest_mode or self._fresh:
             return None
         path = self._disk_cache_path(symbol, timeframe)
@@ -377,6 +382,29 @@ class DataFetcher:
             df = pd.read_csv(path, parse_dates=["time"])
             if df.empty or len(df) < 5:
                 return None
+            # If backtest_end_date is set, verify the data actually covers that window.
+            # A file with the correct date-suffix but wrong contents (from a prior
+            # run using a different exchange fallback) would fail this check and be
+            # re-fetched with correct data.
+            if self.backtest_end_date:
+                try:
+                    import pandas as _pd
+                    end_ts = _pd.Timestamp(self.backtest_end_date, tz="UTC")
+                    # Allow data from up to (days+10) before backtest_end up to end+5d
+                    lookback_days = (self.backtest_days or 30) + 10
+                    window_start = end_ts - _pd.Timedelta(days=lookback_days)
+                    window_end = end_ts + _pd.Timedelta(days=5)
+                    cache_times = _pd.to_datetime(df["time"], utc=True)
+                    overlap = ((cache_times >= window_start) & (cache_times <= window_end)).sum()
+                    if overlap < 5:
+                        logger.warning(
+                            f"[CACHE] {symbol}/{timeframe} disk cache has wrong era "
+                            f"({cache_times.iloc[0].date()} to {cache_times.iloc[-1].date()} "
+                            f"vs expected window ending {end_ts.date()}). Treating as miss."
+                        )
+                        return None
+                except Exception:
+                    pass  # Skip validation on parse error; use cached data
             logger.info(f"[CACHE] Loaded {len(df)} candles for {symbol}/{timeframe} from disk cache")
             return df
         except Exception as e:
@@ -837,7 +865,7 @@ class DataFetcher:
                     try:
                         tf, df = fut.result()
                         if df is not None and not df.empty:
-                            self._set_cache(f"ohlcv:{symbol_name}:{tf}", df)
+                            self._set_cache(f"ohlcv:{symbol_name}:{tf}{_mtf_end_suffix}", df)
                             self._save_disk_cache(symbol_name, tf, df)
                             result[tf] = df
                         else:
