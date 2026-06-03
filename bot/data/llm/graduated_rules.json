@@ -488,6 +488,65 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": true
+    },
+    {
+      "rule_id": "regime_trend_consolidation_avoid_v1",
+      "hypothesis_statement": "regime_trend strategy fires 0% WR in consolidation regime (backtest 2025-11-06 to 2025-11-23). Standalone regime_trend = -$978 loss. Multi_tier_quality + confidence_scorer combo = 75% WR in same window.",
+      "action": "reduce",
+      "conditions": {
+        "strategy": "regime_trend",
+        "regime": "consolidation"
+      },
+      "adjustment": -15.0,
+      "confidence": 0.72,
+      "evidence_ratio": 0.0,
+      "total_evidence": 4,
+      "created_at": 1780499610.3382945,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "source": "backtest_2026-06-03",
+      "notes": "Confirmed across BTC Nov-2025 15d backtest. 4 positions total: 3 from MTQ+CS combos (75% WR), 1 from regime_trend solo (0% WR, -$978). Confidence 80-89% profitable, 90-100% losing."
+    },
+    {
+      "rule_id": "high_confidence_overfit_consolidation_v1",
+      "hypothesis_statement": "90-100% confidence signals lose in consolidation regime. Lower bins (80-89%) = +$552, higher bin (90-100%) = -$978. Overconfidence = already priced in or stale signal.",
+      "action": "skeptical_note",
+      "conditions": {
+        "confidence_min": 90,
+        "regime": "consolidation"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.65,
+      "evidence_ratio": 0.0,
+      "total_evidence": 4,
+      "created_at": 1780499610.3382957,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "source": "backtest_2026-06-03",
+      "notes": "In consolidation, the 90-100% confidence bucket was the LOSING bucket (-$978). Sweet spot is 80-89%. Critic should apply extra scrutiny to signals reporting >90% confidence in ranging/consolidation conditions."
+    },
+    {
+      "rule_id": "consolidation_hold_time_cap_v1",
+      "hypothesis_statement": "In consolidation regime, 2-6h holds = 100% WR (+$529), 6-12h holds = 50% WR (-$956). Cap hold time at 6h.",
+      "action": "advisory",
+      "conditions": {
+        "regime": "consolidation"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.7,
+      "evidence_ratio": 1.0,
+      "total_evidence": 4,
+      "created_at": 1780499610.3382964,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "source": "backtest_2026-06-03",
+      "notes": "BTC Nov-2025 consolidation: all wins came in 2-6h window. Positions held >6h degraded from +$529 to -$956 net. Exit Agent should recommend close at 6h if TP1 not hit in consolidation regime."
     }
   ]
 }
