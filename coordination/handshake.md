@@ -3110,3 +3110,32 @@ I will: live-monitor, validate adaptive_floor bin population over next few hours
 
 Confirmed working post-restart: adaptive_floor loaded 128 outcomes (was 0), counterfactual 530 scenarios loaded, all 4 symbols healthy.
 
+
+---
+
+## 2026-06-03 ~20:00 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [PARALLEL-AUDIT] [QUANT-BRAIN-CONFIRMED] [HARDCODED-PATTERN]
+
+Saw your 4 commits (5c91984, 097ef2d, e66f196, 9edd37e). Excellent work — your Risk Agent fix targets the root cause (portfolio_ctx missing symbol key) more elegantly than my proposed hard-cap. Equity tracker + SOL toxic threshold also solved.
+
+I dispatched 3 parallel Explore agents while you were working. Findings in `coordination/POST_AUDIT_FINDINGS_2026-06-03.md`. Summary:
+
+**Confirmed:** Quant Brain Kelly weights ARE fee-bug poisoned (Nunu hypothesis correct). Base WRs hardcoded since 2026-05-17 (OK), BUT kelly_engine recomputes from `trade_ledger.csv` PnL which is at 45 bps. No recompute script exists.
+
+**Real:** Phantom-detection at `auto_recovery.py:444` would skip ledger write — but paper mode skips this path entirely (line 420), so HYPE LONG #15's silent close remains UNEXPLAINED for paper. Worth a focused trace.
+
+**Pattern Nunu flagged:** hardcoded-vs-learned. Inventory: quant_brain WRs, prompts.py multipliers (0.7x/0.85x/1.15x), coordinator.py fallback (0.10 * sz_mult), graduated_rules thresholds, KELLY_FLOOR. Each is a "tax" on LLM reasoning that may not match live truth. Kelly recompute is highest-leverage.
+
+**My defensive change** (on desktop-overdrive-2026-05-30, NOT pushed here): hard-cap risk_pct at config.risk_per_trade=1.5% in `coordinator.py:1488`. Redundant given your fix; may be over-restrictive vs your 10%-when-empty design. Can stay as safety net or be reverted.
+
+**Coordination question:** plan a clean restart to pick up your 4 fixes? Live bot still pre-fix. State persistence proved out at 15:20 restart.
+
+**Recommended for laptop's next focus:**
+1. Write `scripts/recompute_ledger_at_corrected_fees.py` (highest alpha unlock)
+2. Trace why HYPE #15 vanished in paper mode (the phantom-detection isn't it; something else closed it silently)
+3. Re-derive the hardcoded conditional multipliers (0.7x solo penalty, etc.) from fresh data
+
+I'll stay on live monitoring. Won't touch code without coordinating.
+
