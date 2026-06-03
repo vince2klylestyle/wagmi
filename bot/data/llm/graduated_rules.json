@@ -122,8 +122,8 @@
       "evidence_ratio": 0.25,
       "total_evidence": 40,
       "created_at": 1746382701.0,
-      "last_applied": 1780348408.9727871,
-      "times_applied": 440,
+      "last_applied": 1780501371.2853794,
+      "times_applied": 445,
       "times_correct": 0,
       "active": true
     },
@@ -327,8 +327,8 @@
       "evidence_ratio": 0.69,
       "total_evidence": 2172,
       "created_at": 1779419602.7878811,
-      "last_applied": 1780348418.972096,
-      "times_applied": 127,
+      "last_applied": 1780501555.182068,
+      "times_applied": 128,
       "times_correct": 0,
       "active": true
     },
@@ -389,8 +389,8 @@
       "evidence_ratio": 0.35,
       "total_evidence": 2172,
       "created_at": 1779419602.7878811,
-      "last_applied": 1780348323.2694592,
-      "times_applied": 78,
+      "last_applied": 1780501371.285391,
+      "times_applied": 80,
       "times_correct": 0,
       "active": true
     },
@@ -406,8 +406,8 @@
       "evidence_ratio": 0.25,
       "total_evidence": 16,
       "created_at": 1779487857.5699627,
-      "last_applied": 1780348173.675499,
-      "times_applied": 2,
+      "last_applied": 1780500801.0271688,
+      "times_applied": 3,
       "times_correct": 0,
       "active": true
     },
@@ -505,9 +505,7 @@
       "last_applied": 0.0,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
-      "source": "backtest_2026-06-03",
-      "notes": "Confirmed across BTC Nov-2025 15d backtest. 4 positions total: 3 from MTQ+CS combos (75% WR), 1 from regime_trend solo (0% WR, -$978). Confidence 80-89% profitable, 90-100% losing."
+      "active": true
     },
     {
       "rule_id": "high_confidence_overfit_consolidation_v1",
@@ -525,9 +523,7 @@
       "last_applied": 0.0,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
-      "source": "backtest_2026-06-03",
-      "notes": "In consolidation, the 90-100% confidence bucket was the LOSING bucket (-$978). Sweet spot is 80-89%. Critic should apply extra scrutiny to signals reporting >90% confidence in ranging/consolidation conditions."
+      "active": true
     },
     {
       "rule_id": "consolidation_hold_time_cap_v1",
@@ -541,12 +537,48 @@
       "evidence_ratio": 1.0,
       "total_evidence": 4,
       "created_at": 1780499610.3382964,
+      "last_applied": 1780500801.027183,
+      "times_applied": 1,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "trending_bear_hold_time_extend_v1",
+      "hypothesis_statement": "In trending_bear regime, 12-24h holds = 100% WR (+$856), <12h = 0% WR. Crash window rewards patience. Do NOT apply consolidation 6h hold cap in trending_bear.",
+      "action": "advisory",
+      "conditions": {
+        "regime": "trending_bear"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.68,
+      "evidence_ratio": 1.0,
+      "total_evidence": 4,
+      "created_at": 1780501572.5959523,
       "last_applied": 0.0,
       "times_applied": 0,
       "times_correct": 0,
       "active": true,
-      "source": "backtest_2026-06-03",
-      "notes": "BTC Nov-2025 consolidation: all wins came in 2-6h window. Positions held >6h degraded from +$529 to -$956 net. Exit Agent should recommend close at 6h if TP1 not hit in consolidation regime."
+      "source": "backtest_2026-06-03_corrected",
+      "notes": "BTC Mar-2026 crash window (corrected 6h data): 3 trades held 12-24h = 100% WR +$856. 2 trades held <12h = 0% WR -$1,663. Hold time regime-dependence is real and opposite to consolidation."
+    },
+    {
+      "rule_id": "high_confidence_overfit_universal_v1",
+      "hypothesis_statement": "90-100% confidence signals lose in BOTH consolidation AND trending_bear. Nov-2025: -$832 (0% WR). Mar-2026: -$832 (0% WR). Sweet spot is 60-89%. Universal across regimes.",
+      "action": "skeptical_note",
+      "conditions": {
+        "confidence_min": 90
+      },
+      "adjustment": 0.0,
+      "confidence": 0.78,
+      "evidence_ratio": 0.0,
+      "total_evidence": 8,
+      "created_at": 1780501572.5959523,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "source": "backtest_2026-06-03_corrected",
+      "notes": "Confirmed in 2 independent regimes: consolidation Nov-2025 and trending_bear Mar-2026. Both show 90-100% conf as 0% WR losing bucket. Confidence 60-69% = 100% WR in trending_bear. Confidence 80-89% = 67% WR in consolidation. Apply Critic skepticism to any signal with conf>90 regardless of regime."
     }
   ]
 }
