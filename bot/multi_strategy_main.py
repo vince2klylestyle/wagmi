@@ -6817,17 +6817,21 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         strats = meta.get("strategies_agree", [signal_result.strategy])
         sym = signal_result.symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").split("/")[0]
         side = signal_result.side
+        rg = (getattr(trade_prof, "regime", "") or meta.get("regime", "")).split("_")[0][:8]
         has_bb = "bollinger_squeeze" in strats
         has_mtq = "multi_tier_quality" in strats
         if has_bb and has_mtq:
-            return f"{sym}_{side}_BB+MTQ"
+            strat_tag = "BB+MTQ"
         elif has_bb:
-            return f"{sym}_{side}_BB"
+            strat_tag = "BB"
         elif len(strats) >= 2:
-            return f"{sym}_{side}_{len(strats)}-agree"
+            strat_tag = f"{len(strats)}agree"
         elif strats:
-            return f"{sym}_{side}_{strats[0]}"
-        return f"{sym}_{side}_unknown"
+            strat_tag = strats[0][:12]
+        else:
+            strat_tag = "unknown"
+        regime_tag = f"_{rg}" if rg else ""
+        return f"{sym}_{side}_{strat_tag}{regime_tag}"
 
     # ══════════════════════════════════════════════════════════════════
     # ── LLM-FIRST ARCHITECTURE: Signal → Safety → LLM → Execute ──
