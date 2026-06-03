@@ -181,20 +181,15 @@ class QuantBrainDecision:
 
 # ── Constants ────────────────────────────────────────────────────────────
 
-# Setup-specific win probability priors (from counterfactual analysis)
-_SETUP_WIN_PROBS: Dict[str, float] = {
-    "HYPE_BUY": 0.52,    # Edge WEAKENING: 64%→40% over 500h. Current rolling WR ~40-52%.
-                          # Best at High Vol (ATR% 1.40-1.69%): PF=3.51, WR=73.9%.
-                          # NEGATIVE EV at Extreme Vol (ATR%>1.90%): PF=0.65. Gate this.
-    "SOL_SELL": 0.55,     # Edge STRENGTHENING (+33pp, 35%->68% WR over 500h study).
-                          # Best at Normal Vol (ATR% 0.80-0.98%): PF=1.75, WR=61.5%.
-    "BTC_SELL": 0.55,     # Confirmed negative EV overall. Only marginal at 90%+ confidence.
-    "BTC_BUY": 0.56,      # 56% WR, PF 1.40 over 30 days. Not yet proven in live.
-    "SOL_BUY": 0.45,      # No validated edge. Discovery only.
-    "HYPE_SELL": 0.35,    # Historical 7% but collecting fresh data
-}
+# 2026-06-03: Hardcoded setup-specific WR priors REMOVED per Nunu directive.
+# These were computed pre-fee-fix (45 bps vs real 4.5 bps) and based on stale
+# "500h study" data. Treating them as truth fed false confidence into Quant Brain
+# decisions, polluting LLM reasoning with fabricated certainties. All setups now
+# fall through to the neutral _DEFAULT_WIN_PROB. When kelly_engine recomputes
+# from corrected-fee trade_ledger, real priors can be reintroduced from data.
+_SETUP_WIN_PROBS: Dict[str, float] = {}
 
-_DEFAULT_WIN_PROB = 0.45
+_DEFAULT_WIN_PROB = 0.50  # Neutral coin-flip — no fabricated edge
 
 # RSI-based win probability adjustments
 _RSI_WP_ADJUSTMENTS: Dict[str, Tuple[float, float]] = {

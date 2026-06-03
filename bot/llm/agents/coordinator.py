@@ -1475,9 +1475,34 @@ class AgentCoordinator:
             stop_width = abs(entry_price - sl_price)
             if stop_width > 0:
                 # risk_pct is fraction of equity to risk per trade
-                # If Risk Agent didn't return risk_pct, derive from sz_mult
+                # If Risk Agent didn't return risk_pct, fall back to configured value
+                # (2026-06-03: was 0.10 * sz_mult = up to 20%, hardcoded baseline. Per
+                # Nunu directive, default to configured risk_per_trade so missing-output
+                # cases respect user intent instead of a fabricated 10% baseline.)
                 if risk_pct <= 0:
-                    risk_pct = 0.10 * sz_mult  # 10% base risk * sz multiplier
+                    try:
+                        from trading_config import TradingConfig as _TC
+                        risk_pct = float(getattr(_TC(), "risk_per_trade", 0.015)) * sz_mult
+                    except Exception:
+                        risk_pct = 0.015 * sz_mult
+                # 2026-06-03 fix: Risk Agent + fallback both ignored config.risk_per_trade.
+                # Tonight saw GO attempts at 8%, 6%, 4%, 696% notional vs configured 1.5%
+                # — all rejected by portfolio cap / OpsGuard, burning Sonnet quota and
+                # missing high-conviction BTC SHORT alpha. Cap to configured value so
+                # the agent's intent is respected for direction/conviction but the
+                # account's risk budget is the user's, not the LLM's.
+                try:
+                    from trading_config import TradingConfig
+                    _cfg = TradingConfig()
+                    _max_risk_pct = float(getattr(_cfg, "risk_per_trade", 0.015))
+                except Exception:
+                    _max_risk_pct = 0.015
+                if risk_pct > _max_risk_pct:
+                    logger.info(
+                        f"[LLM-FIRST] Risk Agent over-sized risk_pct={risk_pct:.3f} "
+                        f"capped at config {_max_risk_pct:.3f}"
+                    )
+                    risk_pct = _max_risk_pct
                 risk_dollars = equity * risk_pct
                 # 2026-05-31 fix (Nunu directive): qty = risk_$ / stop_width.
                 # Was `* leverage`, which made actual dollar risk = risk_pct * leverage

@@ -1224,25 +1224,20 @@ OUTPUT (JSON only):
 }
 ```
 
-## CONDITIONAL EDGE CALCULATION (compute, don't look up)
+## CONDITIONAL EDGE CALCULATION (reason from current data, no hardcoded multipliers)
 1. Base WR from enriched data (current rolling WR for this symbol+side)
-2. Regime adjustment: trending WR / overall WR (multiply)
-3. Confluence boost:
-   - BB solo -> 1.3x (67.6% WR in shadow data, highest edge)
-   - 2-agree with BB -> 1.1x (strong consensus)
-   - 3+ agree -> 1.2x (rare but highest conviction when it fires)
-   - Solo non-BB -> 0.7x (weak edge, needs strong thesis)
-4. Time adjustment: prime hours (18-06 UTC) -> 1.15x. Dead hours (06-18 UTC) -> 0.85x
-5. Result = conditional WR for Kelly and EV calculation
+2. Reason about regime adjustment from current data (do not apply hardcoded multipliers)
+3. Reason about confluence quality from current data — number of strategies agreeing, their independence, and recent performance — without applying hardcoded boost ratios
+4. Reason about time-of-day effect from current volume/volatility, not hardcoded session multipliers
+5. Result = your judgment on conditional WR for Kelly and EV calculation
 
-If the enriched data shows WR has decayed >15pp from the historical edge map,
-flag signal_quality as "decaying_edge" and reduce EV accordingly.
+If enriched data shows WR has decayed substantially from historical, flag
+signal_quality as "decaying_edge". If no live WR data exists, say so explicitly.
 
-## HARD VETOES (check CURRENT EDGES for live data; these are structural)
-- Check CURRENT EDGES for any setup marked TOXIC. Set noise_probability=1.0, confidence_adjustment=-1.0.
-- SOL RSI<10 BUY: noise_probability=0.95 (extreme oversold continues down, not bounces)
-- BTC RSI<20 BUY: noise_probability=0.90 (oversold BTC has negative returns structurally)
-- BTC RSI<20 + HYPE alpha>0.5%: exception — cross-asset combo signal (small n, powerful)
+## STRUCTURAL VETOES (reason, do not look up hardcoded thresholds)
+- TOXIC setup marking in CURRENT EDGES: respect if present, otherwise reason from data.
+- Reason about RSI extremes from current chart context. Do not apply hardcoded RSI thresholds (e.g. "<10", "<20") as auto-vetoes — they encode stale assumptions.
+- Cross-asset signals: reason from BTC/ETH/SOL/HYPE correlations as shown in enriched data.
 
 ## NOISE PROBABILITY SCALE
 0.0 = pristine signal, 0.3 = minor concerns, 0.6 = likely noise, 0.9 = almost certainly noise
