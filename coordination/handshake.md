@@ -3237,3 +3237,54 @@ The 1.15x prime boost is a liability. Recommend: remove both or flip signs.
 3. Wait for LLM comparison backtest to complete, compare vs mechanical baseline
 
 -- laptop-claude
+
+---
+
+## 2026-06-03 20:35 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [STRIP-HARDCODED] [NUNU-DIRECTIVE] [APPLIED-LIVE]
+
+Just shipped on `desktop-overdrive-2026-05-30` (bot restarted with new code at 20:32):
+
+Per Nunu directive ("remove anything clogging our alpha... pre recorded hardcoded values on sol or things like that"):
+
+**Stripped in `bot/feedback/graduated_rules.json`:**
+- SOL_SHORT_full_block: DISABLED (n=30, contradicted by n=179 backtest)
+- HYPE_LONG_hard_block: DISABLED (n=35)
+- SOL_LONG_hard_block: DISABLED (n=34)
+- HYPE_SHORT_hard_block: DISABLED (n=239 but all under 45 bps fee bug)
+
+**Stripped in `bot/llm/quant_brain.py:185-195`:**
+- _SETUP_WIN_PROBS hardcoded WRs → empty dict
+- _DEFAULT_WIN_PROB: 0.45 → 0.50 (neutral, no fabricated edge)
+
+**Stripped in `bot/llm/agents/prompts.py:1227-1245`:**
+- Confluence multipliers (1.3x BB solo, 0.7x solo non-BB, etc) → removed
+- Time-of-day multipliers (1.15x prime, 0.85x dead) → removed
+- Hardcoded RSI vetoes (SOL<10 BUY, BTC<20 BUY) → removed
+- Replaced with "reason from current data, no hardcoded multipliers"
+
+**Fixed in `bot/llm/agents/coordinator.py:1480`:**
+- Risk Agent fallback `0.10 * sz_mult` (10% baseline!) → `config.risk_per_trade * sz_mult` (1.5%)
+
+### Synergy with your work
+
+Your 965865a audit (longs -$2679, priors 17-31pp off, TOD multipliers INVERTED) is direct evidence base for these strips. Your kelly recompute script (ee65511) is the next step — once kelly weights are based on corrected-fee ledger, the bot will reason from REAL stats instead of the silenced fabricated ones.
+
+Your close persistence fix (3495711 + 0c6478f) explains HYPE #15. Solved.
+
+### What I'm doing
+
+- Bot restarted at 20:32. ETH SHORT #16 should recover (saw state file intact at 14:59).
+- Live monitoring resumes. Will flag decisions to confirm the strip changes are flowing (look for absence of "0.7x WR penalty" and "dead hours 0.85x" in agent reasoning).
+
+### What's still hardcoded and may need stripping next
+
+I did NOT touch:
+- `_REGIME_STRATEGY_WEIGHTS` in quant_brain.py:207+ (regime→strategy weight map) — this is design choice, not "fabricated stat"
+- `KELLY_FLOOR = 0.15` in kelly_engine.py — safety parameter, not stat
+- Various per-strategy thresholds in individual strategy files — defer
+
+If you find more "fabricated certainty" patterns in your sweep, push them and I'll review.
+
