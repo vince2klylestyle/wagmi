@@ -2976,6 +2976,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     context=pre_close,
                 )
 
+        # force_close() calls below return TradeEvents that bypass the normal events loop.
+        # Collect them here and inject after update_price() so equity/ledger/kelly stay in sync.
+        _force_close_events: list = []
+
         # Liquidation distance monitoring: check every tick for leveraged positions
         if symbol in open_pos and open_pos[symbol].leverage > 1.0:
             _liq_pos = open_pos[symbol]
@@ -3001,7 +3005,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         symbol, _close_side, _fc_pos.qty, current_price, "LIQUIDATION_PROXIMITY"
                     )
                     if _liq_close and getattr(_liq_close, "filled", False):
-                        self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
+                        _fc = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
+                        if _fc:
+                            _fc.metadata["_exchange_submitted"] = True
+                            _force_close_events.append(_fc)
                     else:
                         logger.critical(
                             f"[{trace_id}][{symbol}] LIQUIDATION CLOSE FAILED — position still open on exchange. "
@@ -3047,7 +3054,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             symbol, _close_side, _fc_pos.qty, current_price, "FUNDING_AVOIDANCE"
                         )
                         if _fund_close and getattr(_fund_close, "filled", False):
-                            self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                            _fc = self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                            if _fc:
+                                _fc.metadata["_exchange_submitted"] = True
+                                _force_close_events.append(_fc)
                         else:
                             logger.critical(
                                 f"[{trace_id}][{symbol}] FUNDING CLOSE FAILED — position still open. "
@@ -3077,14 +3087,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 )
                 if _mfe_rec.action == "TAKE_PROFIT":
                     logger.info(f"[{symbol}] MFE EXIT: TAKE_PROFIT — {_mfe_rec.reason}")
-                    self.pos_mgr.force_close(symbol, current_price, "MFE_TAKE_PROFIT")
+                    _fc = self.pos_mgr.force_close(symbol, current_price, "MFE_TAKE_PROFIT")
                     close_side = "SELL" if _mfe_pos.side == "LONG" else "BUY"
                     self.order_executor.close_position(symbol, close_side, _mfe_pos.qty, current_price, "MFE_TAKE_PROFIT")
+                    if _fc:
+                        _fc.metadata["_exchange_submitted"] = True
+                        _force_close_events.append(_fc)
                 elif _mfe_rec.action == "EXIT_NOW":
                     logger.info(f"[{symbol}] MFE EXIT: EXIT_NOW — {_mfe_rec.reason}")
-                    self.pos_mgr.force_close(symbol, current_price, "MFE_EXIT_NOW")
+                    _fc = self.pos_mgr.force_close(symbol, current_price, "MFE_EXIT_NOW")
                     close_side = "SELL" if _mfe_pos.side == "LONG" else "BUY"
                     self.order_executor.close_position(symbol, close_side, _mfe_pos.qty, current_price, "MFE_EXIT_NOW")
+                    if _fc:
+                        _fc.metadata["_exchange_submitted"] = True
+                        _force_close_events.append(_fc)
                 elif _mfe_rec.action == "TIGHTEN_STOP":
                     # Move SL closer to lock in gains
                     if _mfe_pos.side == "LONG":
@@ -3102,14 +3118,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
-        events = self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m)
+        events = list(self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m))
+        if _force_close_events:
+            events.extend(_force_close_events)
         for event in events:
             # Submit close order to exchange for full/partial closes
             _close_actions = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                               "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
                               "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
                               "TIME_STOP", "TP1_FULL")
-            if event.action in _close_actions and event.qty > 0:
+            if event.action in _close_actions and event.qty > 0 and not event.metadata.get("_exchange_submitted"):
                 # Determine close side (opposite of position side)
                 close_side = "SELL" if event.side == "LONG" else "BUY"
                 close_result = self.order_executor.close_position(
@@ -3145,10 +3163,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
             # Full close actions (for ML, weight tracking, cooldown)
             # TIME_STOP/TP1_FULL/HOLD_LIMIT previously missing → trades silently dropped from trade_ledger
+            # MFE_TAKE_PROFIT/MFE_EXIT_NOW: force-close path, injected via _force_close_events
             _FULL_CLOSE = ("SL", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                            "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
                            "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
-                           "TIME_STOP", "TP1_FULL", "HOLD_LIMIT")
+                           "TIME_STOP", "TP1_FULL", "HOLD_LIMIT",
+                           "MFE_TAKE_PROFIT", "MFE_EXIT_NOW")
 
             # Record outcome for strategy weight tracking (only on full close, use total PnL)
             if event.action in _FULL_CLOSE and event.strategy:
