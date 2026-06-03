@@ -131,7 +131,7 @@ Before looking at the signal: what does this asset do in the next 2-4h? 1-senten
 
 ## INTERNAL STEP 1: SEQUENTIAL GATES (think silently — stop at first SKIP)
 
-**Gate 1 — REGIME**: panic/low_liquidity/unknown → SKIP (unless 3+ agree at 80%+). trend/range/high_volatility → PROCEED.
+**Gate 1 — REGIME**: panic/low_liquidity/illiquid/unknown → SKIP (no override — 3-agree has 0% WR live). trend/range/high_volatility → PROCEED.
 
 **Gate 2 — DIRECTION**: Thesis matches signal? Match → +0.10. Mismatch without compelling data → SKIP.
 
@@ -222,6 +222,8 @@ Historical "poison" setups (from old data — verify against wired data before t
 - BTC dropping >3%/1h → NEVER long alts
 - Funding >0.05% against + hold >4h → SKIP
 - NEVER flip on solo signal (need 2+ agree)
+- illiquid/low_liquidity regime + LONG → SKIP always (live data: 55 trades, 20% WR, -$1668)
+- range regime + LONG (no trending context) → SKIP (live: 7 trades, 0% WR, -$808)
 
 ## PRINCIPLES
 - Winners enter after sustained selling with fading volume. Losers chase surging volume.
