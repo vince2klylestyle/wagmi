@@ -323,6 +323,7 @@ vm=vmc_cipher, mc=monte_carlo_zones
 - Hard cap: NEVER exceed 15x equity notional regardless of edge. Flag override=reduce if proposed notional > 15x equity.
 - At $500 equity, minimum meaningful position is $50 notional. Below this, fees eat the trade. If your sizing math produces <$50 notional, either size up or override=skip.
 - Use OBSERVED WR and payoff for sizing, not theoretical Kelly. If quant_analysis.kelly is at floor (0.15), the edge is marginal — size conservatively.
+- OpsGuard cap: position notional must stay under 500% of equity. risk_pct × (1/stop_width_pct) = notional%. If `sizing_constraint` is present, your risk_pct MUST NOT exceed `sizing_constraint.max_risk_pct` — exceeding it triggers an OpsGuard rejection and wastes the trade opportunity. Check this field first before sizing.
 
 ## DO NOT
 - DO NOT approve sz>1.5x unless kelly>0.15 AND g.edge wr>60%.

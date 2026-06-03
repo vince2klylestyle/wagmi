@@ -6988,11 +6988,25 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         }
 
         # Portfolio context
+        _equity = self.risk_mgr.equity
+        # Include "symbol" key in each position dict so _parse() in
+        # portfolio_intelligence.py can identify the symbol when iterating values.
+        # Without it, _parse silently drops all positions → Risk Agent sees "0 positions"
+        # → sizes freely → OpsGuard rejects at 500% notional cap.
+        _open_positions_ctx = {
+            s: {"symbol": s, "side": p.side, "entry": float(p.entry),
+                "qty": float(p.qty), "leverage": getattr(p, "leverage", 1.0)}
+            for s, p in open_pos.items()
+        }
+        # Pre-compute total notional deployed so Risk Agent has explicit budget info
+        _total_notional = sum(
+            v["entry"] * v["qty"] for v in _open_positions_ctx.values()
+        )
+        _notional_cap = _equity * 5.0  # OpsGuard MAX_SINGLE_POSITION_PCT = 5.0
+        _remaining_notional = max(0.0, _notional_cap - _total_notional)
         portfolio_ctx = {
-            "equity": self.risk_mgr.equity,
-            "open_positions": {s: {"side": p.side, "entry": p.entry, "qty": p.qty,
-                                   "leverage": p.leverage}
-                              for s, p in open_pos.items()},
+            "equity": _equity,
+            "open_positions": _open_positions_ctx,
             "open_positions_count": len(open_pos),
             "daily_pnl": getattr(self.risk_mgr, 'daily_pnl', 0.0),
             "circuit_breaker_proximity": getattr(
@@ -7001,6 +7015,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "consecutive_losses": getattr(
                 self.risk_mgr.circuit_breaker, 'consecutive_losses', 0
             ) if hasattr(self.risk_mgr, 'circuit_breaker') else 0,
+            "total_notional": round(_total_notional, 2),
+            "total_notional_pct": round(_total_notional / _equity * 100, 1) if _equity > 0 else 0.0,
+            "notional_cap_pct": 500.0,
+            "remaining_notional_pct": round(_remaining_notional / _equity * 100, 1) if _equity > 0 else 500.0,
         }
 
         # Enrich signal context with edge data and behavioral patterns
@@ -7441,8 +7459,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             }
             portfolio_ctx = {
                 "equity": self.risk_mgr.equity,
-                "open_positions": {s: {"side": p.side, "entry": p.entry}
-                                  for s, p in open_pos.items()},
+                "open_positions": {
+                    s: {"symbol": s, "side": p.side, "entry": float(p.entry),
+                        "qty": float(getattr(p, "qty", 0)),
+                        "leverage": getattr(p, "leverage", 1.0)}
+                    for s, p in open_pos.items()
+                },
                 "open_positions_count": len(open_pos),
             }
 

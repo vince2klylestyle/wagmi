@@ -1879,6 +1879,9 @@ class AgentCoordinator:
             "open_count": portfolio_ctx.get("open_positions_count", 0),
             "setup_mfe": _edge_data,
             "historical_edge": _edge_data,
+            # Portfolio utilization so Risk Agent sees remaining OpsGuard capacity
+            "notional_deployed_pct": portfolio_ctx.get("total_notional_pct", 0),
+            "notional_remaining_pct": portfolio_ctx.get("remaining_notional_pct", 500),
         }
 
         # Positions
@@ -3945,6 +3948,32 @@ class AgentCoordinator:
             # Graduated rules advisory (what mechanical system would do)
             if sm.get("graduated_rules_advisory") and not snapshot.get("_is_backtest"):
                 risk_data["graduated_rules_advisory"] = sm["graduated_rules_advisory"]
+
+        # ── Sizing constraint: pre-compute max_risk_pct so Risk Agent stays under OpsGuard cap ──
+        # risk_pct / stop_width_pct = position notional / equity. OpsGuard cap = 500% notional.
+        # Without this, Risk Agent sizes blind to remaining capacity and OpsGuard rejects the trade.
+        try:
+            _port_state = snapshot.get("_portfolio_state", {}) or {}
+            _exposure_pct = float(_port_state.get("total_exposure_pct", 0) or 0)
+            _remaining_pct = max(0.0, 500.0 - _exposure_pct)  # OpsGuard MAX_SINGLE_POSITION_PCT
+            _sm = snapshot.get("signal_metadata", {}) or {}
+            _sw_pct = float(_sm.get("stop_width_pct", 0) or 0)
+            if _sw_pct > 0:
+                # max_risk_pct such that resulting notional <= remaining capacity
+                _max_risk_pct = (_remaining_pct / 100.0) * (_sw_pct / 100.0)
+                risk_data["sizing_constraint"] = {
+                    "current_notional_pct": round(_exposure_pct, 1),
+                    "remaining_capacity_pct": round(_remaining_pct, 1),
+                    "stop_width_pct": round(_sw_pct, 3),
+                    "max_risk_pct": round(_max_risk_pct, 4),
+                    "note": (
+                        f"risk_pct ceiling={_max_risk_pct:.3f} "
+                        f"(stop={_sw_pct:.2f}%, {_exposure_pct:.0f}% notional already deployed, "
+                        f"{_remaining_pct:.0f}% cap remaining)"
+                    ),
+                }
+        except Exception:
+            pass
 
         return json.dumps(risk_data, separators=(",", ":"), default=str)
 
