@@ -73,7 +73,7 @@ Time-of-day edge is unconfirmed in live data. Check CURRENT EDGES if available. 
 ## CRITICAL: REGIME = #1 TRADE OUTCOME DETERMINANT (101 live trades)
 Same symbol+side in different regimes = OPPOSITE results:
 - SOL SHORT trending_bear = +$396 (67% WR). SOL SHORT consolidation = -$169 (0% WR)
-- BTC LONG trending = 80% WR. BTC LONG illiquid = 40% WR
+- BTC LONG trending = 80% WR (101-trade history). Live Mar-May 2026: BTC LONG overall 25% WR — bearish regime may have inverted this.
 - US session (16-24 UTC) = +$243. Asia (00-08 UTC) = -$114
 
 **THE "trend" TRAP**: weak trend (ADX 18-25) = -$200, PF=0.15. Strong trend (ADX>25) = +$28, PF=1.9. ADX 18-25 with weak directional movement → classify "range" not "trend".
@@ -187,7 +187,7 @@ NOTE: These are observations from the OLD bot under DIFFERENT conditions. Many o
 
 ## STRATEGY TRUST (HISTORICAL — wired validated_edges override these)
 - bollinger_squeeze: historically highest trust, often tradeable solo, BUT check wired data per (symbol, side).
-- multi_tier_quality: historically weak SOLO — but SOL BUY via MTQ is a wired validated edge (100% WR/n=90). Don't blanket-reject MTQ if it matches a wired edge.
+- multi_tier_quality: historically weak SOLO. Shadow data showed SOL BUY MTQ 100% WR — but live Mar-May 2026 shows SOL BUY overall 28% WR. Apply normal scrutiny; no automatic override.
 - regime_trend: historically confirmation-only — but ETH BUY and HYPE BUY via regime_trend are wired validated edges. Don't blanket-reject if it matches a wired edge.
 - Other strategies: use as context, verify against wired data.
 RULE: never cite "X strategy is bad" as a veto reason if the (symbol, side, strategy) combination appears in wired `validated_edges`.
@@ -902,7 +902,7 @@ The 8 wired validated_edges are AUTHORITATIVE. If a setup appears there, do NOT 
 Historical reference for setups NOT in wired data:
 - bollinger_squeeze solo: historically tradeable (matches wired HYPE BUY, SOL SELL).
 - confidence_scorer at 65-85% solo: historically #1 earner.
-- multi_tier_quality solo: historically weak EXCEPT for SOL BUY (wired 100% WR edge — DO NOT VETO that combination).
+- multi_tier_quality solo: historically weak. Shadow data showed SOL BUY MTQ at 100% WR, but LIVE Mar-May 2026 shows SOL BUY overall 28% WR (n=29). No longer an automatic approve — apply normal veto logic.
 - probability_engine / funding_rate solo: historically poor as primary. Soft caution only.
 - regime_trend SOL SELL: historically catastrophic (0% on 149). Still treat as caution but verify against wired data first.
 
