@@ -23,10 +23,24 @@ _MEMORY_PATH = os.path.join(_DATA_DIR, "llm_memory.json")
 _JOURNAL_PATH = os.path.join(_DATA_DIR, "deep_memory", "insight_journal.json")
 
 # ---------------------------------------------------------------------------
-# 18 findings from 2,172-signal analysis (bot/backtest/DEEP_SIGNAL_ANALYSIS.md)
+# 2026-06-05: FINDINGS list NEUTRALIZED per Nunu directive.
+# The 18 hardcoded "2,172-signal analysis" findings were computed under the
+# 10x fee bug (taker_fee_bps=45 vs real 4.5 bps). Their WR/PnL claims
+# (BB solo 67.6%, ETH_SELL_BB 70%, etc) were polluting insight_journal.json
+# and llm_memory.json which feed directly into agent prompts via
+# prompt_enricher.py. When kelly_engine recomputes from corrected-fee
+# trade_ledger, real findings can be re-derived from data.
+#
+# Original FINDINGS preserved in git history (this commit's parent).
 # ---------------------------------------------------------------------------
 
 FINDINGS: List[Dict[str, Any]] = [
+    # Empty list — no fabricated seed insights. Live trade outcomes will
+    # populate deep_memory + insight_journal organically via the closing flow.
+]
+
+# Keep the original list shape below as a reference, but never used.
+_LEGACY_FINDINGS_DO_NOT_USE: List[Dict[str, Any]] = [
     {
         "text": "BB is only profitable strategy: 57% WR, +0.15%/trade. All others negative EV.",
         "symbol": "MARKET",

@@ -36,32 +36,36 @@ REGIME_VOCABULARY = {
     "unknown": "Conflicting signals, insufficient data",
 }
 
-# Extended regime metadata with LIVE performance (from 105 actual trades)
+# 2026-06-05: STRIPPED per Nunu directive — hardcoded WR/PnL from fee-bug-era
+# "105 actual trades" was injecting fabricated certainty into every agent prompt.
+# Replaced with neutral 0.50 WR and no PnL claims. When kelly_engine recomputes
+# from corrected-fee ledger, real per-regime stats can be re-derived from data.
 REGIME_METADATA = {
-    "trending_bear": {"avg_win_rate": 0.75, "avg_duration_h": (4, 12), "edge": "THE GOLDEN REGIME: +$406 on 8 trades, $50.69/trade, PF=18.4. SHORT setups dominate.", "live_pnl": 405.55, "live_n": 8},
-    "trending": {"avg_win_rate": 0.57, "avg_duration_h": (4, 12), "edge": "Profitable: +$28 on 14 trades, PF=1.9. Both long and short work.", "live_pnl": 27.91, "live_n": 14},
-    "trending_bull": {"avg_win_rate": 0.67, "avg_duration_h": (4, 12), "edge": "Good: +$45 on 6 trades, $7.58/trade, PF=4546. LONG setups.", "live_pnl": 45.45, "live_n": 6},
-    "high_volatility": {"avg_win_rate": 0.50, "avg_duration_h": (1, 4), "edge": "Good: +$23 on 2 trades, PF=8.7. Small sample but promising.", "live_pnl": 22.79, "live_n": 2},
-    "illiquid": {"avg_win_rate": 0.33, "avg_duration_h": (2, 8), "edge": "Breakeven: +$0.08 on 36 trades. High volume, low WR. Be selective.", "live_pnl": 0.08, "live_n": 36},
-    "range": {"avg_win_rate": 0.14, "avg_duration_h": (2, 6), "edge": "LOSING: -$33 on 7 trades, PF=0.3. Most stopped in noise.", "live_pnl": -33.13, "live_n": 7},
-    "ranging": {"avg_win_rate": 0.19, "avg_duration_h": (2, 6), "edge": "LOSING: -$35 on 16 trades, PF=0.08. Same as range — avoid.", "live_pnl": -35.37, "live_n": 16},
-    "trend": {"avg_win_rate": 0.18, "avg_duration_h": (2, 8), "edge": "TRAP: -$200 on 11 trades, PF=0.15. WEAK trend (ADX 18-25), NOT real trending. Treat as range.", "live_pnl": -199.65, "live_n": 11},
-    "consolidation": {"avg_win_rate": 0.00, "avg_duration_h": (2, 8), "edge": "DISASTER: -$169 on 4 trades, 0% WR, PF=0. NEVER trade here.", "live_pnl": -169.18, "live_n": 4},
-    "panic": {"avg_win_rate": 0.45, "avg_duration_h": (1, 4), "edge": "No live data yet. Theory: high variance, reversals.", "live_pnl": 0, "live_n": 0},
-    "low_liquidity": {"avg_win_rate": 0.22, "avg_duration_h": (0, 0), "edge": "NO EDGE — always skip.", "live_pnl": 0, "live_n": 0},
-    "news_dislocation": {"avg_win_rate": 0.40, "avg_duration_h": (0.5, 2), "edge": "Unpredictable — wait.", "live_pnl": 0, "live_n": 0},
-    "unknown": {"avg_win_rate": 0.00, "avg_duration_h": (0, 0), "edge": "NO EDGE: -$6 on 1 trade. Skip.", "live_pnl": -6.04, "live_n": 1},
+    "trending_bear":    {"avg_win_rate": 0.50, "avg_duration_h": (4, 12), "edge": "Trending bear: directional context for SHORTs. Reason from current 1h/4h/6h alignment.", "live_pnl": None, "live_n": 0},
+    "trending":         {"avg_win_rate": 0.50, "avg_duration_h": (4, 12), "edge": "Trending: directional momentum. Reason from current price action.", "live_pnl": None, "live_n": 0},
+    "trending_bull":    {"avg_win_rate": 0.50, "avg_duration_h": (4, 12), "edge": "Trending bull: directional context for LONGs. Reason from current alignment.", "live_pnl": None, "live_n": 0},
+    "high_volatility":  {"avg_win_rate": 0.50, "avg_duration_h": (1, 4), "edge": "High vol: wider moves both directions. Reason from current setup quality.", "live_pnl": None, "live_n": 0},
+    "illiquid":         {"avg_win_rate": 0.50, "avg_duration_h": (2, 8), "edge": "Illiquid: wider spreads, slippage risk. Be selective.", "live_pnl": None, "live_n": 0},
+    "range":            {"avg_win_rate": 0.50, "avg_duration_h": (2, 6), "edge": "Range: mean-reverting. Reason from level structure.", "live_pnl": None, "live_n": 0},
+    "ranging":          {"avg_win_rate": 0.50, "avg_duration_h": (2, 6), "edge": "Ranging: same as range.", "live_pnl": None, "live_n": 0},
+    "trend":            {"avg_win_rate": 0.50, "avg_duration_h": (2, 8), "edge": "Weak trend: lower ADX, less reliable than strong trend.", "live_pnl": None, "live_n": 0},
+    "consolidation":    {"avg_win_rate": 0.50, "avg_duration_h": (2, 8), "edge": "Consolidation: no directional edge.", "live_pnl": None, "live_n": 0},
+    "panic":            {"avg_win_rate": 0.50, "avg_duration_h": (1, 4), "edge": "Panic: high variance, reversals possible.", "live_pnl": None, "live_n": 0},
+    "low_liquidity":    {"avg_win_rate": 0.50, "avg_duration_h": (0, 0), "edge": "Low liquidity: be cautious about slippage.", "live_pnl": None, "live_n": 0},
+    "news_dislocation": {"avg_win_rate": 0.50, "avg_duration_h": (0.5, 2), "edge": "News dislocation: unpredictable.", "live_pnl": None, "live_n": 0},
+    "unknown":          {"avg_win_rate": 0.50, "avg_duration_h": (0, 0), "edge": "Unknown regime: insufficient data.", "live_pnl": None, "live_n": 0},
 }
 
-# High-edge setup types with historical performance
+# 2026-06-05: STRIPPED hardcoded setup historical_wr (was 0.52-0.72 fabricated).
+# Confidence_boost values kept as they reflect design intent (multi-strategy = more conviction).
 SETUP_TYPES = {
-    "trend_at_zone": {"confidence_boost": 0.15, "historical_wr": 0.72, "sample_size": 45},
-    "zone_validated": {"confidence_boost": 0.10, "historical_wr": 0.68, "sample_size": 32},
-    "convergent_confluence": {"confidence_boost": 0.12, "historical_wr": 0.70, "sample_size": 52},
-    "timeframe_confirmed": {"confidence_boost": 0.08, "historical_wr": 0.65, "sample_size": 28},
-    "lead_lag_catch": {"confidence_boost": 0.09, "historical_wr": 0.63, "sample_size": 35},
-    "post_cascade_reversal": {"confidence_boost": 0.14, "historical_wr": 0.71, "sample_size": 22},
-    "solo_high_conviction": {"confidence_boost": 0.0, "historical_wr": 0.52, "sample_size": 18},
+    "trend_at_zone": {"confidence_boost": 0.15, "historical_wr": None, "sample_size": 0},
+    "zone_validated": {"confidence_boost": 0.10, "historical_wr": None, "sample_size": 0},
+    "convergent_confluence": {"confidence_boost": 0.12, "historical_wr": None, "sample_size": 0},
+    "timeframe_confirmed": {"confidence_boost": 0.08, "historical_wr": None, "sample_size": 0},
+    "lead_lag_catch": {"confidence_boost": 0.09, "historical_wr": None, "sample_size": 0},
+    "post_cascade_reversal": {"confidence_boost": 0.14, "historical_wr": None, "sample_size": 0},
+    "solo_high_conviction": {"confidence_boost": 0.0, "historical_wr": None, "sample_size": 0},
 }
 
 # Funding impact reference (8h rate → impact assessment)
@@ -102,68 +106,71 @@ MARKET_AXIOMS = [
     "Cross-market divergence (BTC up, target down) → strong caution signal",
     "Hold time > 4h with funding > 0.03% → funding drag destroys edge",
     "Near-zero stop width → infinite leverage risk, must reject",
-    # Multi-timeframe alignment (alpha research 2026-03-24):
-    "NEVER go LONG when 6h trend is bearish (6h EMA20) — 34% WR, these are bear market rally traps",
-    "NEVER go SHORT when 6h trend is bullish — same logic, fighting the current",
-    "1h=bear + 6h=bull → mean-reversion bounce, 68% go up. Best setup for LONG.",
-    # Per-asset awareness:
-    "HYPE is MEAN-REVERTING at 2-6h (negative autocorrelation). Do NOT trend-follow HYPE. Fade moves.",
-    "BTC trends on 6h/daily but is noise on 1h. Trust higher TF for BTC direction.",
-    # Session awareness:
-    "European session 10-12 UTC has 10-12% WR — toxic hours. Reduce confidence 15%.",
+    # Multi-timeframe alignment (structural, not stat-based):
+    "Strongly prefer LONG signals when 6h trend is bullish, SHORT signals when 6h trend is bearish. Fighting higher-TF trend is low-edge.",
+    "Counter-trend setups (1h vs 6h) may produce mean-reversion bounces. Reason from confluence quality, not historical stats.",
+    # Per-asset structural observations:
+    "HYPE shows negative autocorrelation at 2-6h timeframes (mean-reverting tendency). Consider fading extended moves rather than trend-following.",
+    "BTC trends cleanly on 6h/daily timeframes but exhibits noise on 1h. Trust higher TF for BTC directional bias.",
+    # Session awareness: REASON from current volume + spreads, not hardcoded WR-by-hour stats.
+    # (2026-06-05: stripped 'European session 10-12 UTC = 10-12% WR' — was fabricated.)
 ]
 
 
 # ── Per-Asset Chart DNA ────────────────────────────────────────
 # Statistical properties of each asset that should inform trading decisions.
-# Based on 90d autocorrelation analysis (2026-03-24).
+# 2026-06-05: STRIPPED hardcoded edge/avoid/live_stats per Nunu directive.
+# Was injecting fabricated per-symbol stats (WR/PnL/best-strategy claims) from
+# 90d autocorrelation analysis on stale fee-bug-era trades. Kept structural
+# autocorrelation/volatility/big-move stats since those are math properties of
+# the price series, not subject to fee miscounting.
 ASSET_DNA = {
     "BTC": {
-        "personality": "trending on 6h/daily, noise on 1h. Cleanest instrument overall.",
-        "hourly_vol": 0.54,  # % per candle
-        "autocorrelation_2h": 0.007,  # noise
-        "autocorrelation_6h": 0.004,  # noise
-        "big_move_pct": 6.8,  # % of candles with >1% move
-        "edge": "BTC at 5-7x lev = sweet spot. BTC SHORT = +$55 live. BTC BUY shadow: 55% WR on 78 signals. BTC_BUY_BB = 69% WR.",
-        "avoid": "BTC at 7x+ leverage (-$302 on 29 trades). BTC solo in illiquid. Asia session shorts.",
-        "live_stats": "21 trades, 38% WR, +$31 net, PF=1.41. Normal MAE 0.37% — stops must be wider.",
-        "best_strategies": ["confidence_scorer", "bollinger_squeeze"],
+        "personality": "Trending on 6h/daily, noise on 1h. Cleanest instrument overall.",
+        "hourly_vol": 0.54,
+        "autocorrelation_2h": 0.007,
+        "autocorrelation_6h": 0.004,
+        "big_move_pct": 6.8,
+        "edge": None,
+        "avoid": None,
+        "live_stats": None,
+        "best_strategies": [],
         "worst_strategies": [],
     },
     "SOL": {
-        "personality": "high-beta BTC follower. SOL SHORT in trending_bear = the golden setup. Sniper system's primary target.",
+        "personality": "High-beta BTC follower. Tends to amplify BTC moves.",
         "hourly_vol": 0.77,
         "autocorrelation_2h": 0.009,
         "autocorrelation_6h": 0.010,
         "big_move_pct": 13.6,
-        "edge": "SOL SHORT trending_bear = +$396 live. SOL SELL via BB/MTQ = 72% WR on 68 shadows. SOL SHORT = +$40 live on 26 trades.",
-        "avoid": "regime_trend SOL SELL = 0% WR on 149 shadows, -1.47% avg — NEVER TRADE THIS. SOL in consolidation/ranging. SOL at 7x+.",
-        "live_stats": "41 trades, 37% WR, +$25 net. W15: 55% WR, +$137! Sniper SOL SHORT: 23 trades +$48. MAE 0.47%.",
-        "best_strategies": ["confidence_scorer", "sniper_premium"],
-        "worst_strategies": ["regime_trend"],  # 0% WR on 177 shadow signals
+        "edge": None,
+        "avoid": None,
+        "live_stats": None,
+        "best_strategies": [],
+        "worst_strategies": [],
     },
     "HYPE": {
-        "personality": "Volatile. WORST SYMBOL: -$36, 24% WR, PF=0.5. Only works in trending regimes.",
-        "hourly_vol": 1.11,  # 2x BTC
+        "personality": "Volatile, negative autocorrelation (mean-reverting tendency at 2-6h).",
+        "hourly_vol": 1.11,
         "autocorrelation_2h": -0.044,
         "autocorrelation_6h": -0.025,
         "big_move_pct": 28.7,
-        "edge": "bollinger_squeeze HYPE BUY = 61% WR on 196 shadows, +0.50% avg — BB is the ONLY edge on HYPE. HYPE BUY regime_trend = 80% WR on 40 shadows.",
-        "avoid": "HYPE in illiquid/ranging/consolidation. confidence_scorer HYPE = 21% WR live. HYPE LONG overall = -$34 live.",
-        "live_stats": "29 trades, 24% WR, -$36 net, PF=0.5. LOSING SYMBOL. 5x leverage ceiling.",
-        "best_strategies": ["bollinger_squeeze", "multi_tier_quality"],
-        "worst_strategies": ["confidence_scorer"],  # 21% WR on HYPE
+        "edge": None,
+        "avoid": None,
+        "live_stats": None,
+        "best_strategies": [],
+        "worst_strategies": [],
     },
     "ETH": {
-        "personality": "Follows BTC but quieter. ETH SHORT in trending regimes is clean.",
+        "personality": "Follows BTC, quieter price action.",
         "hourly_vol": 0.68,
         "autocorrelation_2h": 0.005,
         "autocorrelation_6h": 0.008,
         "big_move_pct": 9.2,
-        "edge": "regime_trend ETH BUY = 100% WR on 135 shadow signals (+0.78% avg) — BEST SETUP IN SYSTEM. ETH_SELL_BB = 70% live WR. ETH LONG = +$32 live.",
-        "avoid": "regime_trend ETH SELL = 23% WR on 65 shadows — LOSING. ETH LONG in ranging (25% WR).",
-        "live_stats": "14 trades, 50% WR, +$39 net, PF=3.98. BEST per-trade PnL ($2.77). Strong W15: +$37.",
-        "best_strategies": ["confidence_scorer", "bollinger_squeeze"],
+        "edge": None,
+        "avoid": None,
+        "live_stats": None,
+        "best_strategies": [],
         "worst_strategies": [],
     },
 }

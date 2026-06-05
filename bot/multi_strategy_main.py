@@ -1726,10 +1726,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # to produce actionable signals first (lead-lag targets, volatile, open positions)
         eval_order = self._prioritize_symbols(DEFAULT_SYMBOLS)
 
-        # Update ensemble confidence floor from adaptive floor (dynamic gating)
+        # Update ensemble confidence floor from adaptive floor (dynamic gating).
+        # OVERDRIVE/LLM_FIRST_MODE: cap adaptive floor at the configured value -- the
+        # adaptive module hardcodes ABSOLUTE_MIN_FLOOR=50 in feedback/adaptive_confidence.py,
+        # which silently overrode ENSEMBLE_CONFIDENCE_FLOOR=20 every scan, gating off
+        # signals like ETH BUY conf=52% that LLM said GO on. Adaptive can lower the floor
+        # in LLM-first mode but cannot raise it above the user's configured baseline.
         try:
             if self.confidence_floor and hasattr(self.ensemble, 'confidence_floor'):
                 new_floor = self.confidence_floor.current_floor
+                llm_first = os.getenv("LLM_FIRST_MODE", "false").lower() == "true"
+                if llm_first:
+                    new_floor = min(new_floor, self.config.ensemble_confidence_floor)
                 self.ensemble.confidence_floor = new_floor
                 # Log if floor changed significantly
                 if abs(new_floor - self.config.ensemble_confidence_floor) > 2.0:
@@ -4580,11 +4588,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _llm_first = getattr(self.config, 'llm_first_mode', False)
         _llm_dual_track = getattr(self.config, 'llm_first_dual_track', False)
 
-        # Cost gate: skip LLM entirely for low-confidence signals (not worth the cost)
+        # Cost gate: skip LLM entirely for low-confidence signals (not worth the cost).
+        # OVERDRIVE: use the user's configured ensemble floor as the LLM gate -- the
+        # hardcoded 60% threshold was routing ETH BUY conf=52% to the mechanical path
+        # (where the EV gate then killed it) instead of letting the LLM trade-first
+        # pipeline decide. Falls back to 60 for safety if user didn't lower the floor.
         _sig_conf = signal_result.confidence if hasattr(signal_result, 'confidence') else 0
-        if _sig_conf < 60:
+        _llm_first_min = min(60.0, float(self.config.ensemble_confidence_floor))
+        if _sig_conf < _llm_first_min:
             logger.info(
-                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_sig_conf:.0f}% < 60% threshold"
+                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_sig_conf:.0f}% < {_llm_first_min:.0f}% threshold"
             )
             # Fall through to mechanical path (no LLM cost incurred)
             _llm_first = False
@@ -7352,11 +7365,25 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         }
 
         # ── Execute trade ──
+        # 2026-06-01 fix: TradeProfile requires entry_reasons/confidence/volatility_band/
+        # timeframe_bias (all positional, no defaults). Previous code only passed 3 of 7
+        # required args, crashing every LLM-first GO at trade entry and falling back to
+        # mechanical path. The first ETH GO at 14:48 UTC hit this. Now populated from
+        # raw_signal + entry_decision context.
         from execution.position_manager import TradeProfile
+        _vol_band = "high" if _regime == "high_volatility" else ("low" if _regime == "consolidation" else "medium")
+        _tf_bias = "short" if _regime in ("range", "consolidation") else "medium"
+        _strategies = (raw_signal.metadata or {}).get("strategies_agree", [raw_signal.strategy or "ensemble"])
+        if isinstance(_strategies, str):
+            _strategies = [_strategies]
         trade_prof = TradeProfile(
             entry_type="LLM_FIRST",
+            entry_reasons=list(_strategies),
             primary_driver=raw_signal.strategy or "ensemble",
+            confidence=float(entry_decision.confidence * 100.0),  # scale 0-1 -> 0-100
             regime=_regime,
+            volatility_band=_vol_band,
+            timeframe_bias=_tf_bias,
         )
 
         # Build fake LeverageDecision for compatibility
