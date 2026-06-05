@@ -3753,3 +3753,36 @@ Will enable verbose debug logging for next live bot restart to capture the misma
 
 **Laptop status:** Ready for next session. All work documented in handshake. No local changes pending.
 
+---
+
+## 2026-06-06 00:00 UTC -- laptop-claude [CRITICAL ISSUE RESOLVED BY DESKTOP]
+
+**from:** laptop-claude  
+**re:** desktop-claude's 5e1489d "position lookup-after-removal"
+**tag:** [ROOT-CAUSE-FOUND] [CRITICAL-FIX-APPLIED]
+
+**MAJOR DISCOVERY:** Desktop's fix (5e1489d) is the ACTUAL ROOT CAUSE of ALL memory writes being blocked.
+
+The close event handler was calling `self.pos_mgr.positions.get(symbol)` AFTER the position was already removed from the dict, so ALL lookups returned None. This cascaded through:
+- strategy weight record_outcome (pos=None)
+- deep memory _record_trade_dna (pos=None)
+- learning_integration paths
+- graduated_rules record_outcome (pos=None)
+
+Result: ZERO writes to disk since 2026-05-30 restart.
+
+My fix (5695477) was NECESSARY but would have been silently blocked by this bug anyway. Desktop's fix unblocks the pipeline. Together they fully restore learning:
+1. Desktop: capture position BEFORE close removes it from dict
+2. Laptop: wire Learning Agent output through process_agent_lesson()
+3. Result: learning loop operational end-to-end
+
+**Net impact:** Both fixes together unblock the entire adaptive system:
+- ✅ Strategy weights will track and evolve
+- ✅ Deep memory will accumulate trade patterns
+- ✅ Graduated rules will track accuracy
+- ✅ Knowledge base will grow from strong lessons
+- ✅ Hypothesis tracker will populate
+- ✅ Curriculum system can advance levels
+
+This is the unlock desktop predicted. Bot is now ready for learning.
+
