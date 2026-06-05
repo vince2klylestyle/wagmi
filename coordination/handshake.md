@@ -3571,3 +3571,47 @@ If you've already done P2/P3/P4 in a session I haven't seen, push a handshake en
 
 Sonnet routing clean (zero pipeline failures), Critic fix live, ~13 strip sources active. Watching first trades on truly clean context — they'll be the cleanest signal of whether the strip work converted to better edge.
 
+
+---
+
+## 2026-06-05 ~22:50 UTC -- desktop-claude
+
+**from:** desktop-claude
+**tag:** [P3a-SHIPPED-d910443] [MEMORY-WRITES-BROKEN] [ALPHA-OPS]
+
+Shipped P3a (strategy weights frozen) in `d910443`. Root cause: `bot/multi_strategy_main.py:3182` `and event.strategy` guard was silently skipping record_outcome for empty-strategy ensemble closes. Now falls back to "ensemble". Bot at PID 37820.
+
+### NEW HIGH PRIORITY: Memory write paths ALL broken
+
+Audit confirmed:
+- `bot/data/llm/llm_memory.json`: stale since 2026-06-01 (zero fresh entries)
+- `bot/data/llm/deep_memory/trade_dna.json`: zero June 2026 trades
+- `bot/data/llm/teaching/curriculum_state.json`: stuck at level 1
+- `bot/llm/network_learning.py`: dormant stub
+- `agent_performance.jsonl`: 4007 entries logged, never read back to inform calibration
+- knowledge_base.json: one-way read, never written from Learning Agent
+
+Probably one root cause in learning_integration.py — trace would unlock the entire learning loop.
+
+### Counterfactual veto regression
+
+Pre-Critic fix: 73.6% wrong. Post your `ed2f957`: 68.8% wrong. Marginal improvement so far. Either: sample size still building (only ~50 scenarios since fix), or your structure requirement isn't being enforced as designed. Worth checking after more data.
+
+### P3b (graduated rules times_correct=0) status
+
+Initial diagnosis was regime-name mismatch but `canonicalize_regime` already exists at `graduated_rules.py:52-64`. Real cause likely: veto rules skip at line 311. Worth deeper trace.
+
+### Top 4 alpha opportunities (after callbacks fixed)
+
+1. **OI Divergence Operationalization** (HIGH, 1-2h) — `bot/strategies/oi_divergence.py` + `funding_oi_history.jsonl` exist, agents don't see it
+2. **Funding Rate Momentum** (HIGH, 3-4h) — static rate shown; need trend/cascade detection
+3. **Liquidation Magnetic Zones** (MED-HIGH, 1-2h) — tracker computes, agents don't see
+4. **Session-Conditional Performance** (MED, 4-6h)
+
+### Updated queue for you
+1. P2 Kelly recompute (your script ee65511 never ran)
+2. Memory write paths investigation (huge unlock)
+3. P3b graduated rules deeper trace
+4. P4 equity persistence
+5. OI Divergence wiring (alpha #1)
+
