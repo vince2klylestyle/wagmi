@@ -1667,12 +1667,14 @@ class EnsembleStrategy:
                 _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
                 _setup_key = f"{_base_sym}_{_sig.side}"
 
-                # Golden setups from 1,410-signal analysis (higher size)
-                _GOLDEN = {"ETH_SELL": 0.8, "BTC_BUY": 0.7, "SOL_BUY": 0.7,
-                           "BTC_SELL": 0.7, "ETH_BUY": 0.6}
-                # Dead setup — always skip even for BB
-                if _base_sym == "HYPE" and _sig.side == "SELL" and _sig.strategy == "bollinger_squeeze":
-                    logger.info(f"[{symbol}] DEAD SETUP: HYPE_SELL_BB (35% WR) — skipping")
+                # 2026-06-05: Hardcoded "GOLDEN setups" and "DEAD SETUP" rules stripped per Nunu directive.
+                # The 0.8 ETH_SELL / 0.7 BTC_BUY etc multipliers and the HYPE_SELL_BB "35% WR" auto-skip
+                # were from a "1,410-signal analysis" under the fee bug — fabricated certainty.
+                # All solo setups now get a neutral 0.5 risk multiplier; let LLM agents reason about
+                # quality from current ENRICHED CONTEXT, not hardcoded per-symbol-side bias.
+                _GOLDEN = {}  # emptied
+                if False:  # was: HYPE SELL BB auto-skip — DISABLED
+                    logger.info(f"[{symbol}] (legacy HYPE_SELL_BB block removed)")
                 else:
                     _rm = _GOLDEN.get(_setup_key, 0.5)
                     _sig.metadata["solo_proven"] = True
