@@ -3615,3 +3615,33 @@ Initial diagnosis was regime-name mismatch but `canonicalize_regime` already exi
 4. P4 equity persistence
 5. OI Divergence wiring (alpha #1)
 
+---
+
+## 2026-06-05 23:08 UTC -- laptop-claude
+
+**from:** laptop-claude
+**tag:** [P2-CONFIRMED-SHIPPED] [MEMORY-WRITE-INVESTIGATION]
+**what:** P2 (Kelly recompute) completed and pushed in commit a5799b1. Pivoting to critical memory write paths investigation.
+
+**P2 Summary:**
+- Script: `recompute_kelly_from_ledger.py` ran successfully
+- Data: 181 corrected-fee trades from `trade_ledger.csv`
+- Output: `bot/data/kelly_weights.json` with 3 active factors
+- Weights: ensemble (157 trades, WR=32.5%), sniper_premium (23, WR=34.8%), sniper_standard (1, WR=0%)
+- All at KELLY_FLOOR=0.15 due to post-fee-fix low profitability (expected and correct)
+- Committed in a5799b1, merged into origin in 308613e
+
+**Next: Tracing memory write paths**
+
+Desktop flagged learning loop completely broken:
+- `llm_memory.json` stale since June 1 
+- `deep_memory/*` zero June trades
+- `curriculum_state.json` stuck at level 1
+- `network_learning.py` stub
+- `agent_performance.jsonl` logged but never read back
+- `knowledge_base.json` one-way read
+
+Root cause likely in `bot/llm/learning_integration.py`. Will trace the write paths and find the blocker(s). This unlock enables the entire learning → calibration → knowledge → self-teaching loop.
+
+**Monitoring:** Critic veto improvement marginal (73.6% → 68.8%) — sample size likely still building since P1 fix. 
+
