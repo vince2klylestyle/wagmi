@@ -39,18 +39,36 @@ class CliResponse:
 
 
 def _claude_path() -> Optional[str]:
-    """Locate the claude CLI binary."""
-    path = shutil.which("claude")
-    if path:
-        return path
-    candidates = [
-        os.path.expanduser("~/AppData/Roaming/npm/claude"),
-        os.path.expanduser("~/AppData/Roaming/npm/claude.cmd"),
-        "/usr/local/bin/claude",
-    ]
+    """Locate the claude CLI binary.
+
+    On Windows, prefer .cmd file over shell script wrapper (which requires bash).
+    """
+    import platform
+
+    # Windows: prioritize .cmd file (executable directly via cmd.exe)
+    if platform.system() == "Windows":
+        candidates = [
+            os.path.expanduser("~/AppData/Roaming/npm/claude.cmd"),
+            os.path.expanduser("~/AppData/Roaming/npm/claude.ps1"),
+            os.path.expanduser("~/AppData/Roaming/npm/claude"),
+        ]
+    else:
+        candidates = [
+            os.path.expanduser("~/AppData/Roaming/npm/claude"),
+            "/usr/local/bin/claude",
+            os.path.expanduser("~/AppData/Roaming/npm/claude.cmd"),
+        ]
+
+    # Check explicit candidates first
     for c in candidates:
         if os.path.exists(c):
             return c
+
+    # Fall back to PATH search
+    path = shutil.which("claude")
+    if path and path.endswith((".cmd", ".exe")):
+        return path
+
     return None
 
 
