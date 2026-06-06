@@ -243,10 +243,11 @@ class MultiTierQualityStrategy(BaseStrategy):
             if _avg_atr > 0 and _cur_atr < _avg_atr * _squeeze_ratio:
                 return None  # Volatility squeeze — skip
 
-        # RSI momentum filter: block signals in exhaustion zones.
-        # Data shows RSI 35-65 is the sweet spot for HYPE_BUY (62-64% WR).
-        # RSI <25 = oversold panic (50% WR, not better than coin flip).
-        # RSI >75 = overbought (reversal risk too high for fresh entries).
+        # RSI momentum filter: block signals in extreme exhaustion zones.
+        # RSI <22 = oversold panic (avoid shorting into capitulation).
+        # RSI >78 = overbought (reversal risk too high for fresh entries).
+        # (2026-06-06: stripped stale "HYPE_BUY 62-64% WR sweet spot" claim from
+        # 500h study — was fee-bug-era data; current WR not validated.)
         _rsi = self._compute_rsi(df_1h)
 
         # Determine side from 1h EMA crossover
