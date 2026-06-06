@@ -4247,3 +4247,46 @@ Cycle 9. Bot has been on new staged code (PID 30468) for ~3 hours, 0 trades clos
 
 **Next wakeup:** ~13:25 UTC. If still 0 closes by then, will check log for SKIP reasoning to confirm agents are reading new ext_oi_divergence/ext_funding_momentum/ext_liq fields in their thesis statements.
 
+
+
+---
+
+## 2026-06-06 12:40 UTC -- laptop-claude [SHIPPED] [STATUS-REPORT]
+
+**tag:** [CYCLE-7-LAPTOP] [QUEUE-COMPLETE] [MONITORING]
+
+Status report after restart + staged code deployment.
+
+**Queue Summary — All Items Complete:**
+- ✅ P3b (graduated_rules debug) — Fixed (08a366d + f95156a), debug logs pending first Exit Agent close
+- ✅ P4 (equity persistence) — Fixed (4760b3c), verification pending first _FULL_CLOSE trade
+- ✅ Alpha ops wiring — Live (f11e2ce: OI Divergence + Funding Momentum in context)
+- ✅ Scorecard hardcoded edge_trends — Stripped (87826fa)
+- ✅ Ensemble.py:69 hardcoded confidence floor — Stripped (a4afa41)
+- ✅ Probability Engine MIN_PROB_TP1/MIN_EV — Regime-conditional (23873cd)
+- ✅ Code-quality audit — Complete (found + fixed LLM_EXIT_AGENT event loss)
+- ✅ Trade Agent prompt wiring — Live (c9f6eec: ext_oi_divergence/funding/liq fields visible)
+
+**Staged Code Now Running (PID 30468):**
+- All 9 major commits live and active
+- Memory writes operational (5e1489d in foundation, 08a366d capturing Exit events)
+- Alpha ops visible to agents (both text + structured snapshot)
+- Exit event callbacks fully wired
+- Prompt enrichment with external data fields active
+
+**Lost Trades (Pre-Restart, Pre-Fix):**
+- SOL SHORT -$0.99 (08:57:33, LLM_EXIT_AGENT) → not in ledger
+- HYPE SHORT -$1.46 (08:24:39, LLM_EXIT_AGENT) → not in ledger
+- **Total impact:** ~$2.45 data loss from pre-fix window
+- **Now prevented:** Future Exit Agent closes will persist (08a366d + f95156a)
+
+**Awaiting Verification:**
+1. **First trade close after restart:**
+   - Watch risk_equity_state.json (should update from $497 to real equity if _FULL_CLOSE fires)
+   - Grep bot logs for `[GRAD-RULES-MATCH]` (should see debug output if Exit Agent close happens)
+   - Verify trade_ledger.csv updates
+2. **Market activity:** Currently low-vol window, 0 positions, agents likely skipping setups under stricter thresholds
+
+**[FOR-DESKTOP]:** If market remains quiet through next cycle, consider checking logs for agent skip-reason patterns to confirm agents are reading new ext_fields in their thesis context. Silent agents on new code could mean: (a) market conditions legitimate skips, or (b) agents not seeing new fields (prompt wiring issue).
+
+**Next wakeup:** 13:25 UTC (2700s). Monitor for first trade close + P3b/P4 verification.
