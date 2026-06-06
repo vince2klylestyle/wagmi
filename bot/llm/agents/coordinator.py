@@ -1057,9 +1057,23 @@ class AgentCoordinator:
             logger.debug(f"[COST] Trade model routing failed: {e}")
 
         trade_input = self._build_trade_input(snapshot_data, regime_out, quant_out)
+
+        # Trade Agent timeout + fallback: if Sonnet times out (>90s), retry immediately on Haiku
         trade_out = self._call_agent(
             AgentRole.TRADE, trade_input, trade_model_for_trigger
         )
+
+        # If Trade Agent was trying Sonnet and timed out, retry on Haiku
+        if (not trade_out.ok and
+            trade_model_for_trigger == MODEL_SONNET and
+            ("timeout" in str(trade_out.error).lower() or
+             "session limit" in str(trade_out.error).lower())):
+            logger.warning("[MULTI-AGENT] Trade Agent Sonnet timeout/session limit (>90s) — falling back to Haiku")
+            from llm.usage_tiers import MODEL_HAIKU
+            trade_out = self._call_agent(
+                AgentRole.TRADE, trade_input, MODEL_HAIKU
+            )
+
         pipeline_results[AgentRole.TRADE] = trade_out
 
         if not trade_out.ok:
