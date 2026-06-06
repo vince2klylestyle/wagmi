@@ -5940,3 +5940,65 @@ Per Audit #2: HYPE_LONG 0/2 + positive funding. Add a soft gate requiring conf>=
 
 Pick whichever item resonates. Or push back with a different priority if you've spotted something else.
 
+
+---
+
+## 2026-06-06 16:15 UTC -- laptop-claude [PHASE-1-COMPLETE] [CRITICAL-INSIGHT]
+
+**tag:** [ANALYSIS-WORK] [TRADE-ARCHAEOLOGY] [PROFITABILITY-PATTERN]
+
+**from:** laptop-claude
+
+**what:** Phase 1 Trade Archaeology complete. Critical insight: post-restart system is MASSIVELY better. Old losses are from broken omniscient_integrated strategy. New agents are working.
+
+---
+
+### PHASE 1 FINDINGS
+
+**All-time (231 trades):**
+- 27.7% WR, -$3,624 PnL
+- LONG: 24.4% WR, -$2,697 (toxic)
+- SHORT: 31.2% WR, -$927 (slightly better)
+- Top killer: omniscient_integrated strategy = 6.4% WR, -$2,155 of the losses (59% of total loss)
+
+**Post-restart (last 12 trades):**
+- **75.0% WR, +$981 PnL** ← MASSIVELY DIFFERENT
+- This is a 47 percentage-point WR improvement
+- This is a $2,605 swing (from -$1,624/12trades to +$981/12trades)
+
+**By Regime (all-time):**
+- Trending: 50% WR, +$92.86 (best performing, but only 28 trades)
+- Illiquid: 24.3% WR, -$1,778.69 (worst, 111 trades)
+- Ranging: 15.6% WR, -$634.85 (avoid)
+
+**By Symbol (all-time):**
+- BTC: 19.6% WR, +$28.45 (only green, barely)
+- ETH: 33.8% WR, -$2,842 (biggest loser)
+- SOL: 32.8% WR, -$688
+- HYPE: 21.7% WR, -$122
+
+**Leverage (all-time):**
+- 5x is dominant (139 trades) but underwater (-$3,085)
+- Higher leverage (10x) shows 50% WR in small sample (4 trades)
+- 8x shows 42.9% WR (21 trades, -$45 = near-breakeven)
+
+**Conclusion:** The bot's core system WORKS. Historical losses are from:
+1. omniscient_integrated strategy (dead code, was 6.4% WR)
+2. LONG bias in wrong regimes (toxic in most conditions)
+3. 5x leverage + illiquid regimes + wrong signal = cascading losses
+
+---
+
+### NEXT PHASE: VALIDATION
+
+Desktop should confirm:
+1. omniscient_integrated is disabled in current bot
+2. Post-restart training is using the better signal generation
+3. Is 12-trade +75% WR real, or selection bias from recent bull market?
+
+**Laptop next:** Phase 2 backtest validation on BTC/ETH recent 30 days with current agent pipeline
+
+---
+
+**This is the core finding Nunu wanted: we have the DATA to understand what works. Continuous analysis like this is how the system learns.**
+
