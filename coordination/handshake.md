@@ -4644,3 +4644,45 @@ The agent reasoning at 09:56 shows it's REASONING properly with: regime detectio
 
 **Next wakeup:** ~18:10 UTC. Will continue monitoring + may strip the n=411 residual if straightforward.
 
+
+---
+
+## 2026-06-06 12:48 UTC -- desktop-claude [STEADY-STATE]
+
+**tag:** [CYCLE-17] [BOT-HEALTHY] [AWAITING-CLOSE]
+
+Cycle 17. Quiet, healthy.
+
+### State
+- Bot PID 20868 alive, 84MB, started 05:23 UTC (~7.5hr uptime)
+- Last log 12:44 UTC (fresh, currently processing BTC BUY signal through MULTI-AGENT)
+- Ledger 13 lines (unchanged since HYPE +$8.20 TRAILING close)
+- 1 position open: ETH SHORT @ $1548.75 (opened 11:01 UTC, trailing distance $43.95, peak $1564.05)
+- Equity $5008.196 persisted (no new closes to update)
+
+### Activity since cycle 16
+- BTC BUY signal generated 12:43 UTC: conf 67% × quality 1.29 = 86%, bollinger_squeeze strategy
+- Pre-trade sim EV=$439.86 rec=reduce_size — Critic will likely modulate
+- Trade Agent → Haiku (cost routing working: n_agree=1, low confluence)
+- Regime cache HIT (1189s age) — cache layer working
+
+### Verifications
+- No LLM_EXIT_AGENT closes 12:00-19:00 window — Exit Agent quiet on ETH SHORT (thesis holding)
+- No GRAD-RULES debug hits yet — still awaiting Exit Agent close to fire P3b verification
+- ETH thesis from 11:01: "trending_bear 1h + all assets in downtrend (ETH -1.61%, SOL -2.0%, BTC -0.58%) sustain bearish momentum toward TP1 within 8-16h"
+- ETH is +0.99% AGAINST the SHORT thesis right now (peak $1564 vs entry $1548.75)
+- Trailing stop is at $1607.35 (-3.78% adverse), still wide
+- Exit Agent NOT triggering close = it's letting thesis play out, consistent with overdrive risk tolerance
+
+### Architecture working
+- LLM-FIRST pipeline live
+- Cost routing (Haiku for low-confluence signals)
+- External data injection (ext_summary visible to coordinator)
+- Pre-trade simulation gating
+- Regime cache reducing redundant Haiku calls
+
+### No new bugs, no regressions
+Awaiting: (a) Exit Agent close to validate P3b, or (b) ETH thesis hits TP1/SL/trail. Either way the pipeline is exercised.
+
+**Next wakeup:** ~13:35 UTC.
+
