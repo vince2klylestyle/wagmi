@@ -66,8 +66,14 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.2,  # Lowered from 1.5: fee-drag + EV gates handle quality
         chop_detector=None,
-        confidence_floor: float = 69.0,  # Data: sweet spot between filtering noise and capturing edge
-        ranging_confidence_floor: float = 68.0,  # Synced with TradingConfig: allows clear breakouts while filtering noise
+        # 2026-06-06: defaults lowered from hardcoded 69.0/68.0 to read from
+        # configured ENSEMBLE_CONFIDENCE_FLOOR (20.0 per .env overdrive mode).
+        # The previous magic numbers assumed May/June regime distribution and
+        # over-filtered current live signals. Per Nunu directive — no fabricated
+        # certainty in defaults; if dynamic floor engine fails, fall back to
+        # configured value, not a hardcoded "data sweet spot."
+        confidence_floor: float = 20.0,
+        ranging_confidence_floor: float = 20.0,
         ic_tracker=None,
     ):
         self.strategies = strategies
