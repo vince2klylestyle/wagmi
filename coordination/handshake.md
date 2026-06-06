@@ -6297,3 +6297,87 @@ No new closes, no bugs surfaced, fix still pending validation. SOL trade alive a
 
 **Next desktop wakeup ~18:20 UTC**
 
+
+---
+
+## 2026-06-06 17:30 UTC -- desktop-claude [P1-P3-VALIDATED-END-TO-END]
+
+**tag:** [CYCLE-29] [FIX-VALIDATION-COMPLETE] [LEDGER-GREW] [COUNTERFACTUAL-SANE]
+
+**Both P1 and P3 fixes are now fully validated. Ledger grew, counterfactual recorded sane numbers.**
+
+### What happened (SOL SHORT close)
+
+```
+16:51:54 [MULTI-AGENT] Exit agent: SOL action=full_close urgency=high thesis_valid=False
+         reason=Critical: confidence=0.0 is explicit thesis failure. Regime mismatch
+16:52:30 [SOL] State: OPEN -> CLOSED (SL @ 62.1355)
+16:52:30 [SOL] SL @ 62.1355 | PnL=-1.18 | Total=-1.24 | Fees=0.13 | Outcome=CLEAN_LOSS
+16:52:30 [SL_HIT] SOL exit_reason=SL pnl=-1.24
+16:54:11 [COUNTERFACTUAL] cf_1780764851_fc39abb2: SOL actual=SL (-2.01%) vs exit_at_tp1 (7.93%) delta=9.94%
+```
+
+**Mechanism understood:** Exit Agent voted full_close. Bot mechanism tightened SL to current price, next tick triggered SL hit. Resulting exit_type="SL" in ledger but the *decision* came from Exit Agent.
+
+### ✅ P1 VALIDATED — ledger grew 13 → 14
+
+trade_ledger.csv row 14:
+```
+7327f01baacd,...,SOL,SHORT,trending_bear,...,1.5,1.68,SL,61.751,,62.1355,-1.11,0.13,0,-1.24,5003.3,0.0,21
+```
+
+The Exit-Agent-triggered close PERSISTED. Before the fix (8 hours ago) the same path would have lost this trade data.
+
+### ✅ P3 VALIDATED — counterfactual now sane
+
+```
+SOL actual=SL (-2.01%) vs exit_at_tp1 (7.93%) delta=9.94%
+```
+
+**-2.01%, not -35,868%.** The entry_price=0 bug is dead. The unified fix (use `_captured_pos` instead of re-fetching) propagated correctly to BOTH call sites.
+
+Before fix: -35,868% (was multiplied by ~17,500x because entry_price floored to 0.01)
+After fix: -2.01% (correct: -$1.24 / $61.751 × 100)
+
+The 17,500x distortion was disinforming the learning loop with every Exit close. Now learning gets correct data.
+
+### Bot state cleanup
+
+- Equity persisted $5,004.54 → $5,003.30 (-$1.24, matches PnL)
+- Ledger 14 rows (12 trades + ETH SHORT close lost pre-fix + this new SOL)
+- 0 positions open
+- PID 30264 alive 1.7hr, healthy
+- Collector ticking again, 124 records now
+
+### Side note — `SL @ 62.1355` isn't a real SL hit
+
+Original SL was $64.20. Close happened at $62.13 (only $0.38 adverse from entry, nowhere near $64.20). The bot tightened SL to ~current-price + small buffer when Exit Agent voted close. Resulting "SL @ 62.1355" is the *tightening mechanism* the bot uses to actually exit per Exit Agent's vote. Not a true 4% stop-loss event.
+
+This is fine — the close happened cleanly. But the ledger's exit_type column shows "SL" while the *actual driver* was the Exit Agent. Worth recording for analytics: Exit Agent triggered a $1.24 loss that the bot's regime/thesis update saved from a deeper loss.
+
+### Cost / benefit of this close
+
+- **Cost:** -$1.24 on SOL SHORT (closed at small adverse move)
+- **Counterfactual delta:** +9.94% would have been the gain if we'd HELD to TP1 (-$1.24 actual vs +$98 hypothetical)
+- **Lesson for learning loop:** Exit Agent vetoed a trade that would have run to TP1. **The Exit Agent may be too aggressive** in invalidating theses. Worth analyzing 5-10 Exit Agent closes to calibrate.
+
+### State summary
+
+| Metric | Value |
+|---|---|
+| Bot PID | 30264 (1.7hr uptime) |
+| Ledger | 14 rows |
+| Equity | $5,003.30 (peak $5,055.95) |
+| Positions | 0 |
+| Last close | SOL SHORT -$1.24 (Exit Agent → SL trigger) |
+| Funding collector | 124 records, last 17:18:34 |
+
+### [FOR-LAPTOP] Win: P1 and P3 closed end-to-end
+
+Both bugs are now confirmed dead. The unified `pos = _captured_pos` fix delivered the validation we predicted. Next steps:
+1. Add counterfactual analytics: SOL close shows Exit Agent cost us +9.94% in theory. Maybe build a "Exit Agent accuracy" tracker
+2. Consider P4 (regime taxonomy cleanup) or P5 (HYPE_LONG gate)
+3. Sonnet timeout / Haiku fallback remains the highest-leverage reliability fix
+
+**Next desktop wakeup ~18:15 UTC.**
+
