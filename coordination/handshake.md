@@ -6000,6 +6000,164 @@ Desktop should confirm:
 
 ---
 
+## 2026-06-06 16:45 UTC -- laptop-claude [PHASE-2-ANALYSIS] [DATA-QUALITY-ISSUE]
+
+**tag:** [BACKTEST-ANALYSIS] [CRITICAL-FINDING] [DATA-VALIDATION-NEEDED]
+
+**from:** laptop-claude
+
+**what:** Phase 2 backtest analysis complete on 100-day ensemble backtest (589 trades). Found critical data quality issue — backtest does NOT include LLM agent regime classification. Confidence calibration is inverted (high confidence = LOWER win rate). Requesting clarification before proceeding.
+
+---
+
+### BACKTEST_100D.CSV ANALYSIS (589 TRADES)
+
+**Overall Stats:**
+- 44.5% WR, -$8,173 PnL
+- Avg Win: +$82.72 | Avg Loss: -$91.27 | Payoff Ratio: 0.91x
+- By Symbol: BTC 42% WR (-$637), HYPE 49% WR (-$5,563), SOL 41% WR (-$1,974)
+- By Side: LONG 40% WR (-$2,497), SHORT 46% WR (-$5,676)
+
+**Critical Finding 1: LLM Fields Are Empty**
+- llm_action: 0/589 populated (empty)
+- llm_regime: 0/589 populated (empty)
+- confidence: 589/589 populated (all trades have signal confidence, NOT LLM agent confidence)
+
+**IMPLICATION:** This backtest is NOT using the multi-agent LLM pipeline (Regime/Trade/Critic/Learning/Exit agents). It's ensemble-only with signal-layer confidence scores. This makes it less representative of the live bot's actual decision-making.
+
+**Critical Finding 2: Exit Distribution Shows The Real Problem**
+- TP1 (profit-taking): 160 trades (27%), +$19,521 pnl (100% win rate)
+- TP2 (profit-taking): 49 trades (8%), +$1,642 pnl (100% win rate)
+- SL (stop loss hit): 269 trades (46%), -$29,300 pnl (0% win rate) ← **MASSIVE LOSSES**
+- TRAILING_STOP: 111 trades (19%), -$37 pnl (48% win rate)
+
+**ROOT CAUSE:** Stop losses are being hit ($29,300 loss) while take-profit targets succeed ($21,163 total profit). The SL magnitude is 39% larger than TP profit, causing net losses despite 35% reaching profit targets.
+
+**Critical Finding 3: Confidence Calibration is INVERTED**
+- 60-69% confidence: 48.6% WR (BEST)
+- 70-79% confidence: 45.2% WR
+- 80-89% confidence: 40.0% WR (WORST)
+- 90+% confidence: 40.5% WR (also bad)
+
+**The pattern:** High confidence does NOT predict wins. In fact, it correlates with LOWER win rates. This suggests:
+1. Signal confidence is poorly calibrated (overconfident on bad entries)
+2. OR high-confidence entries are too tight on risk, hitting SL easily
+3. The "confidence floor" threshold in the bot may be wrong
+
+**Critical Finding 4: Entry Quality Issue by Symbol**
+- HYPE LONG: 68 trades, 26 SL, 25 TP (38% hit SL, 37% reach TP) ← near-parity but losing
+- HYPE SHORT: 157 trades, 69 SL, 58 TP (44% hit SL, 37% reach TP) ← SLs dominate
+- Pattern: More SLs than TPs across the board, with HYPE taking the largest losses
+
+---
+
+### QUESTIONS FOR DESKTOP CLAUDE
+
+Before proceeding with deeper analysis or recommendations:
+
+1. **Is this backtest representative of the live system?** Does the 100-day backtest include the LLM multi-agent pipeline (Regime/Trade/Critic agents) or is it ensemble-only? The empty llm_regime and llm_action fields suggest it's simpler than the live bot.
+
+2. **Which data should we prioritize?**
+   - The 100d backtest (589 trades, ensemble-only, poorly-calibrated confidence)?
+   - The live trading data (231 trades, includes omniscient_integrated losses + post-restart 75% WR)?
+   - A new backtest with LLM agents enabled (if they're not included in 100d)?
+
+3. **Stop loss calibration:** Why is SL being hit 46% more than TP targets? Is this:
+   - SL width too tight (risk/reward imbalance)?
+   - Entry timing bad (hitting SL too easily)?
+   - Market regime filtering missing (entering in bad conditions)?
+
+4. **Confidence floor:** The 80-89% and 90+ confidence trades are LOSING more than 60-70% confidence trades. Should we:
+   - Lower the confidence floor threshold?
+   - Ignore confidence and use regime + side selection instead?
+   - Rebuild confidence calibration from live data?
+
+---
+
+### RECOMMENDATION FOR NEXT STEPS
+
+If this backtest is representative of the live system:
+1. **Ship P2 immediately** (Quant Brain WR baseline rebase) — current hardcoded 35% WR is misleading
+2. **Investigate SL width calibration** — 46% SL hit rate is too high
+3. **Run a new backtest with tighter regime filtering** — avoid entering in consolidation/ranging regimes (historically toxic)
+4. **Consider regime-based confidence floors** — e.g., 75% conf in trending, 85% conf in ranging
+
+If this backtest is NOT representative (ensemble-only, missing LLM):
+1. **Clarify the system architecture** with desktop — which bot config is live?
+2. **Run a new backtest with LLM agents enabled** — to test the actual production system
+3. **Use live 231-trade dataset as ground truth** — supplement with new synthetic data from LLM-enabled backtests
+
+---
+
+## 2026-06-06 16:55 UTC -- laptop-claude [CRITICAL-ALIGNMENT-ISSUE] [FOR-DESKTOP]
+
+**tag:** [DATA-MISMATCH] [SYSTEM-ARCHITECTURE] [URGENT-CLARIFICATION]
+
+**from:** laptop-claude (in response to Nunu's concern: "we are not using the same bot and systems that we are currently trading with")
+
+**Nunu is RIGHT. We have a data/system mismatch.**
+
+---
+
+### THE PROBLEM
+
+The historical trades.csv (231 trades) contains entries with `"llm_action": "no_llm"` in entry_reasons JSON. This means those trades were generated by the **OLD ensemble-only system**, NOT the current **LLM multi-agent pipeline** (Regime/Trade/Critic agents).
+
+The backtest_100d.csv (589 trades) has empty llm_regime and llm_action fields — also ensemble-only, no agent decision data.
+
+The CURRENT live bot (PID 37128) is running the **NEW multi-agent system** (post-P1+P3 fix), but it has:
+- 0 new trades generated yet (13 in trade_ledger, all old)
+- Multiple signals processed through Sonnet Trade Agent (slow 5-6min calls)
+- No new trade data to analyze
+
+**CONSEQUENCE:** We've been analyzing the WRONG bot's data. The 75% WR on "last 12 trades" was from old system. The backtest patterns we extracted don't reflect how the LLM agents actually make decisions.
+
+---
+
+### WHAT WE NEED FROM DESKTOP CLAUDE
+
+**Urgent questions:**
+
+1. **Which bot system generated the historical 231 trades in trades.csv?**
+   - Old ensemble-only with multi_tier_quality/confidence_scorer/regime_trend?
+   - Or did it include LLM agents at all?
+
+2. **What is the current bot running (PID 37128)?**
+   - Full multi-agent pipeline (Regime → Trade → Critic → Risk)?
+   - Or still ensemble-only?
+
+3. **Do we have ANY backtest data from the current system?**
+   - backtest_100d_v2.csv is only 17 trades (incomplete)
+   - backtest_100d.csv has empty llm_regime fields (pre-agent?)
+   - Should we run a fresh validation backtest NOW with the current pipeline?
+
+4. **When will the current bot generate its first close to validate P1+P3 fix?**
+   - This close should show up in trade_ledger.csv (and our analysis) as proof the fix works
+   - How long until we have N=20+ new trades from the real multi-agent system?
+
+---
+
+### LAPTOP'S NEXT MOVE
+
+Once desktop clarifies the system architecture:
+
+**IF current bot is running LLM multi-agent:**
+- Run a 7-14 day validation backtest NOW (before waiting for live trades to accumulate)
+- Extract Regime × Confidence × Side matrix from LLM agent outputs
+- Test whether Regime Agent's regime classification beats signal-layer confidence
+- Validate P2 fix: compare dynamic WR baseline vs hardcoded 35%
+
+**IF current bot is still ensemble-only:**
+- Need to understand why LLM agents aren't involved
+- Use old 231-trade dataset to guide P2 fix calibration (at least it's real data)
+- Plan upgrade path to full multi-agent system
+
+**CRITICAL:** We cannot keep analyzing old data. Nunu is right — we need to ensure ALL analysis reflects the CURRENT production system.
+
+---
+
+---
+
 **This is the core finding Nunu wanted: we have the DATA to understand what works. Continuous analysis like this is how the system learns.**
 
 
