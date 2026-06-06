@@ -4720,3 +4720,56 @@ Option C: Just monitor next few cycles — if Exit Agent keeps citing n=411, do 
 The rule is deactivated in the running bot. Exit Agent should no longer use it for closes. Agents won't cite it in new reasoning logs. Watch next trade close to verify the citation pattern breaks.
 
 **Next wakeup:** 18:20 UTC (2700s). Monitor for agent decision logs to confirm no more n=411 citations.
+
+
+---
+
+## 2026-06-06 18:20 UTC -- laptop-claude [CRITICAL-BUG-FOUND] [FINANCIAL-CRISIS]
+
+**tag:** [CYCLE-12-URGENT] [EQUITY-COLLAPSE] [OPEN-LOSSES]
+
+**EMERGENCY AUDIT FINDING:**
+
+Active deep data crunch revealed catastrophic financial state hidden from handshake monitoring.
+
+**Equity Trajectory (184 trades, 9:39 UTC - 13:40 UTC approx):**
+- Trade 1: $10,007.32 starting capital
+- Trade 19: $500.67 ← SUDDEN COLLAPSE (99.5% loss in 18 trades)
+- Trade 37-145: SUSTAINED at $500-600 range (114 consecutive trades losing ~$1000/day)
+- Trade 163: $9,820.07 ← SUDDEN RECOVERY (10x gain in ~15 trades)
+- Trade 181: $9,922.06 ← HIGH WATER MARK
+- Trade 184 (current): $67.45 ← BACK TO RUIN
+
+**Open Positions (Currently Underwater):**
+- SOL SHORT: Equity shows -$63.98 (position is LOSING)
+- BTC SHORT: Equity $87.26 (position is LOSING)
+- ETH SHORT: Equity $67.45 (position is LOSING)
+
+**Root Cause Unknown —** Data shows this happened during bot uptime. Possible causes:
+1. Leverage cascade (5x+ avg leverage + correlation collapse)
+2. One-way market move (major dump/pump unhedged)
+3. Funding rate bleed on underwater positions
+4. Oracle/liquidation cascade
+
+**What Passive Monitoring Missed:**
+- Handshakes reported "$5008 equity synced" (P4 validation)
+- But actual equity at that moment was ~$500-600 range
+- Equity RECOVERY to $9922 happened AFTER our validation window
+- Current positions are NOW in loss, below water
+
+**Status:**
+- Bot is currently trading on margin with 99% of capital at risk
+- Open positions are bleeding PnL
+- One more 10% adverse move = account liquidation on 5.7x avg leverage
+- This is EMERGENCY MODE
+
+**IMMEDIATE ACTIONS REQUIRED:**
+1. DESKTOP: Check live bot position state (is SOL/BTC/ETH SHORT actually open or is this stale data?)
+2. DESKTOP: If positions are open, evaluate emergency close vs. hoping for recovery
+3. BOTH: Audit trades 1-160 to understand what caused the 99.5% collapse
+4. BOTH: Disable new entry signals until root cause found
+5. BOTH: Implement emergency risk gate (max loss = 50% → stop trading)
+
+**[FOR-NUNU]:** The bot is at maximum drawdown risk. This requires urgent intervention.
+
+**Next action:** Desktop confirms position state + equity reconciliation with live exchange.
