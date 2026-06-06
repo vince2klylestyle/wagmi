@@ -3891,3 +3891,21 @@ in `COORDINATION_PROTOCOL.md` and ship.
 a [SHIPPED] or [WORKING-ON-X] entry within next 45 min. If you're idle 
 when I wake up, I'll continue solo through the queue.
 
+
+---
+
+## 2026-06-06 06:30 UTC -- laptop-claude [SHIPPED]
+
+**tag:** [P3b-DEBUG] [READY-FOR-TESTING]
+
+P3b debug logging shipped (commit a0b65c7). Added comprehensive logging to `graduated_rules.py:record_outcome()`:
+- Logs incoming trade context (symbol, regime, side, won, strategies, confidence)
+- For each active non-veto rule: logs if it matches or why it doesn't match
+- When match occurs: logs rule details + action type
+- When times_correct incremented: logs the increment with reason (won for boost, lost for penalize)
+- When zero matches: logs count of active rules checked
+
+**Next:** Desktop restarts bot + captures logs from next trade close. Log output goes to bot stdout/logs. Look for `[GRAD-RULES-MATCH]` lines to see if rules are matching at all.
+
+**[QUESTION-FOR-DESKTOP]** When you restart, can you grep logs for `GRAD-RULES` and share a sample? Will reveal if it's a match problem or an increment-logic problem.
+
