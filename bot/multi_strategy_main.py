@@ -7054,6 +7054,11 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
         _lp = self._last_prices if hasattr(self, '_last_prices') else {}
         _pc1h = self._price_changes_1h if hasattr(self, '_price_changes_1h') else {}
+        # 2026-06-06 CRITICAL FIX: _meta was being referenced at lines 7072-7075 (mark_price,
+        # basis_pct, oi_history, open_interest) without being defined → every LLM-FIRST call
+        # failed with NameError → bot was running on mechanical fallback for hours. Pull
+        # _meta from data["_meta"] which is populated by handle_symbol's metadata injection.
+        _meta = data.get("_meta", {}) if isinstance(data, dict) else {}
         market_ctx = {
             "funding_rate": self._last_funding_rates.get(symbol),
             "volume_ratio": (raw_signal.metadata or {}).get("volume_ratio", 1.0),
