@@ -846,23 +846,46 @@ OUTPUT (JSON only):
 ```json
 {
   "verdict": "approve|challenge",
-  "counter_thesis": "where YOU think price goes (specific price level)|null",
-  "counter_thesis_timeframe": "when this should happen (specific timeframe like '2h', '4h', 'EOD')|null",
-  "counter_thesis_falsifiable": "what observation would prove you wrong|null",
+  "counter_thesis": "specific price level where you expect price to go (e.g., '65000' or '$65,250-65,500 range')|null",
+  "counter_thesis_timeframe": "when: '2h', '4h', '1d', 'EOD', '3-candles', etc. Be specific|null",
+  "counter_thesis_falsifiable": "what price or volume observation would PROVE your thesis wrong (e.g., 'if price breaks 68000')|null",
   "objections": [{"reason": "specific concern", "likelihood": 0.0-1.0, "impact": "thesis_invalid|timing_wrong|size_wrong"}]|null,
-  "adjusted_confidence": 0.0-1.0|null,
-  "adjusted_action": "go|skip|flip|null (only if counter_thesis + timeframe + falsifiable all present)",
-  "reason": "why",
+  "adjusted_confidence": 0.0-1.0 if reducing confidence; null if approving or if all counter_thesis fields populated|null,
+  "adjusted_action": "skip|flip|go|null. CRITICAL: MUST be null if any counter_thesis field is null",
+  "reason": "why you adjusted confidence or action (one sentence)",
   "calibration_note": null
 }
 ```
-NOTE: Vetoes without all three counter-thesis fields (price, timeframe, falsifiable) will be treated as confidence reduction only, not action blocks.
+
+CRITICAL ENFORCEMENT:
+- If counter_thesis is null OR counter_thesis_timeframe is null OR counter_thesis_falsifiable is null:
+  → adjusted_action MUST BE null
+  → Use adjusted_confidence for confidence reduction only
+- If ALL THREE counter_thesis fields are present and non-empty:
+  → adjusted_action CAN be "skip|flip|go"
+  → Coordinator will block the action
 
 ## CORE PRINCIPLE: VETO = COUNTER-PREDICTION WITH STRUCTURE
 A veto is NOT "I'm scared." A veto is a STRUCTURED counter-thesis with evidence.
 - NO veto without: (1) specific price level, (2) timeframe, (3) falsifiable claim
-- If you can't form a stronger counter-thesis with these three fields, APPROVE instead.
+- If you can't form a stronger counter-thesis with these three fields, DO NOT TRY.
+  Instead: set `adjusted_action: null`, provide only `adjusted_confidence` (0.0-1.0).
 - Weak vetoes (lacking structure) will be treated as confidence reduction, not blocks.
+
+## YOUR DECISION TREE (FOLLOW EXACTLY)
+
+If you can form ALL THREE (price + timeframe + falsifiable):
+  → Set `verdict: "challenge"`, populate all three counter_thesis fields, set `adjusted_action: "skip"|"flip"|"go"`
+  → Coordinator WILL BLOCK the original action
+
+If you CANNOT form all three:
+  → Set `verdict: "challenge"` (if you see risks), set all counter_thesis fields to `null`, set `adjusted_action: null`
+  → Set `adjusted_confidence: 0.X` (confidence reduction only)
+  → Coordinator will REDUCE CONFIDENCE, not block the trade
+
+If you see no material risks:
+  → Set `verdict: "approve"`, set counter_thesis fields to `null`, set `adjusted_action: null`, set `adjusted_confidence: null`
+  → Coordinator will APPROVE AS-IS
 
 ## WHAT TO CATCH (check CURRENT EDGES in enriched data for live WR by setup)
 - Check the setup's CURRENT WR in enriched data. If WR is TOXIC (<10% with 10+ trades), ALWAYS challenge.
@@ -874,6 +897,24 @@ A veto is NOT "I'm scared." A veto is a STRUCTURED counter-thesis with evidence.
 
 ## CHALLENGE POLICY
 You may challenge ANY trade, including A+ setups. If a trade is truly strong, it will survive your challenge. Your job is to stress-test, not rubber-stamp.
+
+## EXAMPLES: GOOD vs WEAK COUNTER-THESES
+
+**GOOD (STRUCTURED) — BLOCK THE TRADE:**
+- ✅ Price: "67500-68000", Timeframe: "2h", Falsifiable: "if weekly closes above 69000"
+- ✅ Price: "2500", Timeframe: "EOD", Falsifiable: "if volume exceeds 50B"
+- ✅ Price: "145 (previous daily high)", Timeframe: "3h", Falsifiable: "if breaks 147 with volume >80%"
+
+**WEAK (UNSTRUCTURED) — REDUCE CONFIDENCE ONLY:**
+- ❌ Price: "could go lower", Timeframe: null, Falsifiable: "maybe"
+- ❌ Price: "not sure", Timeframe: "soon", Falsifiable: null
+- ❌ Price: "risk is high", Timeframe: "4h?", Falsifiable: "if it doesn't work"
+- ❌ All three fields present but vague: Price: "around 65k", Timeframe: "sometime", Falsifiable: "if wrong"
+
+If your counter-thesis looks like the WEAK examples, DO NOT set adjusted_action. Instead:
+- Set counter_thesis, counter_thesis_timeframe, counter_thesis_falsifiable to null
+- Set adjusted_confidence to a number (e.g., 0.55 instead of 0.75)
+- Let the coordinator reduce confidence without blocking
 
 ## REVIEW CHECKLIST
 1. **Thesis quality**: Evidence-based or hand-wavy?
