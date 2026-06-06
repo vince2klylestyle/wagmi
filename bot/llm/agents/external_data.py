@@ -119,6 +119,74 @@ def get_latest_funding_oi(symbols: List[str] = None) -> Dict[str, Dict]:
     return result
 
 
+def get_oi_divergence_insight(symbol: str, hours: int = 12) -> Dict:
+    """Detect OI/price divergence patterns.
+
+    The four OI scenarios:
+      Price Up   + OI Down   = Short covering rally (not real demand) → FADE/short
+      Price Down + OI Up     = New shorts building → Confirm short
+      Price Up   + OI Up     = Real momentum (genuine demand) → Confirm long
+      Price Down + OI Down   = Long liquidation (trend ending) → Reversal watch
+
+    Returns dict with:
+      divergence: "bullish" | "bearish" | "liquidation" | "covering" | "none"
+      price_change_pct, oi_change_pct, strength, samples
+    """
+    OI_CHANGE_THRESHOLD = 0.02  # 2% OI change minimum
+    PRICE_CHANGE_THRESHOLD = 0.005  # 0.5% price change minimum
+
+    records = _read_jsonl_tail(FUNDING_FILE, max_lines=500)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    sym_records = []
+    for r in records:
+        if r.get("symbol") != symbol:
+            continue
+        dt = _parse_ts(r.get("timestamp", ""))
+        if dt and dt >= cutoff:
+            sym_records.append(r)
+
+    if len(sym_records) < 2:
+        return {"divergence": "unknown", "price_change_pct": 0, "oi_change_pct": 0,
+                "strength": 0, "samples": 0}
+
+    # Compute changes
+    current_price = sym_records[-1].get("price", 0)
+    past_price = sym_records[0].get("price", 0)
+    price_change_pct = (current_price - past_price) / past_price if past_price > 0 else 0
+
+    current_oi = sym_records[-1].get("open_interest", 0)
+    past_oi = sym_records[0].get("open_interest", 0)
+    oi_change_pct = (current_oi - past_oi) / past_oi if past_oi > 0 else 0
+
+    # Classify divergence
+    price_up = price_change_pct > PRICE_CHANGE_THRESHOLD
+    price_down = price_change_pct < -PRICE_CHANGE_THRESHOLD
+    oi_up = oi_change_pct > OI_CHANGE_THRESHOLD
+    oi_down = oi_change_pct < -OI_CHANGE_THRESHOLD
+
+    divergence = "none"
+    if price_up and oi_down:
+        divergence = "covering"  # Short covering rally, not real demand
+    elif price_down and oi_up:
+        divergence = "bearish"  # New shorts building, confirm short
+    elif price_up and oi_up:
+        divergence = "bullish"  # Real momentum, genuine demand
+    elif price_down and oi_down:
+        divergence = "liquidation"  # Long liquidation cascade
+
+    # Strength = absolute change magnitude
+    strength = max(abs(price_change_pct), abs(oi_change_pct))
+
+    return {
+        "divergence": divergence,
+        "price_change_pct": price_change_pct,
+        "oi_change_pct": oi_change_pct,
+        "strength": strength,
+        "samples": len(sym_records),
+    }
+
+
 def get_funding_trend(symbol: str, hours: int = 8) -> Dict:
     """Get funding rate trend over the last N hours.
 
@@ -354,6 +422,23 @@ def format_for_agent(symbols: List[str] = None) -> str:
         if funding_parts:
             parts.append("FUNDING: " + " ".join(funding_parts))
 
+    # ── Funding Rate Momentum line ──
+    funding_momentum_parts = []
+    for sym in symbols:
+        trend = get_funding_trend(sym, hours=8)
+        if trend.get("samples", 0) > 0:
+            direction = trend.get("direction", "?")
+            annualized = trend.get("annualized_pct", 0)
+            extreme_count = trend.get("extreme_count", 0)
+            momentum_tag = f"{sym}_{direction}"
+            if annualized != 0:
+                momentum_tag += f"_{annualized:+.1f}%/yr"
+            if extreme_count > 2:
+                momentum_tag += f"(EXTREME×{extreme_count})"
+            funding_momentum_parts.append(momentum_tag)
+    if funding_momentum_parts:
+        parts.append("FUNDING_MOMENTUM: " + " ".join(funding_momentum_parts))
+
     # ── OI line ──
     if latest:
         oi_parts = []
@@ -378,6 +463,22 @@ def format_for_agent(symbols: List[str] = None) -> str:
                 oi_parts.append(f"{sym}_OI/VOL={oi_vol:.1f}x(CROWDED)")
         if oi_parts:
             parts.append("OI: " + " ".join(oi_parts))
+
+    # ── OI Divergence line ──
+    oi_divergence_parts = []
+    for sym in symbols:
+        div = get_oi_divergence_insight(sym, hours=12)
+        if div.get("divergence") != "none" and div.get("divergence") != "unknown":
+            divergence = div.get("divergence", "?")
+            strength = div.get("strength", 0)
+            price_chg = div.get("price_change_pct", 0)
+            oi_chg = div.get("oi_change_pct", 0)
+            div_tag = f"{sym}_{divergence}"
+            if strength > 0:
+                div_tag += f"(P{price_chg:+.2f}%_OI{oi_chg:+.2f}%)"
+            oi_divergence_parts.append(div_tag)
+    if oi_divergence_parts:
+        parts.append("OI_DIVERGENCE: " + " ".join(oi_divergence_parts))
 
     # ── Liquidation line ──
     liq_parts = []
@@ -462,6 +563,36 @@ def get_external_data_for_snapshot(symbols: List[str] = None) -> Dict:
                 "price": data.get("price", 0),
             }
         result["ext_funding"] = ext_funding
+
+    # Funding rate momentum
+    ext_funding_momentum = {}
+    for sym in symbols:
+        trend = get_funding_trend(sym, hours=8)
+        if trend.get("samples", 0) > 0:
+            ext_funding_momentum[sym] = {
+                "avg_rate": trend.get("avg_rate", 0),
+                "direction": trend.get("direction", ""),
+                "extreme_count": trend.get("extreme_count", 0),
+                "annualized_pct": trend.get("annualized_pct", 0),
+                "samples": trend.get("samples", 0),
+            }
+    if ext_funding_momentum:
+        result["ext_funding_momentum"] = ext_funding_momentum
+
+    # OI divergence
+    ext_oi_divergence = {}
+    for sym in symbols:
+        div = get_oi_divergence_insight(sym, hours=12)
+        if div.get("divergence") not in ("none", "unknown"):
+            ext_oi_divergence[sym] = {
+                "divergence": div.get("divergence"),
+                "price_change_pct": div.get("price_change_pct", 0),
+                "oi_change_pct": div.get("oi_change_pct", 0),
+                "strength": div.get("strength", 0),
+                "samples": div.get("samples", 0),
+            }
+    if ext_oi_divergence:
+        result["ext_oi_divergence"] = ext_oi_divergence
 
     # Liquidation data
     ext_liq = {}
