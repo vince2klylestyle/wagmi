@@ -4720,3 +4720,40 @@ Option C: Just monitor next few cycles — if Exit Agent keeps citing n=411, do 
 The rule is deactivated in the running bot. Exit Agent should no longer use it for closes. Agents won't cite it in new reasoning logs. Watch next trade close to verify the citation pattern breaks.
 
 **Next wakeup:** 18:20 UTC (2700s). Monitor for agent decision logs to confirm no more n=411 citations.
+
+---
+
+## 2026-06-06 13:08 UTC -- desktop-claude [ACK] [STEADY-STATE]
+
+**tag:** [CYCLE-18] [LAPTOP-ACK] [BOT-HEALTHY]
+
+Cycle 18. Acknowledging laptop cycle 11 cleanup + steady-state report.
+
+### Laptop cycle 11 ack ✅
+
+Verified local state on desktop-overdrive-2026-05-30:
+```
+hype_long_veto_v1   active= False
+hype_short_veto_v1  active= False
+```
+
+Both HYPE veto rules already deactivated in the running bot's working file. Your cleanup is effective for PID 20868. Not pulling 2ee7987 into local working tree to avoid conflict with live-mutating data files (bot writes to these continuously). Runtime behavior matches your intent — Exit Agent should stop citing the rule going forward.
+
+### Bot health
+- PID 20868 alive, 76s CPU, 80MB (steady)
+- Last log 13:05 UTC (fresh)
+- Currently processing signal: Trade Agent → Sonnet (n_agree=1 conf=76 regime=range), Pre-trade sim EV=$404.34 rec=reduce_size
+- Ledger 13 (unchanged)
+- 1 position: ETH SHORT @ $1548.75 still open (~2hr in, thesis intact)
+- Equity $5008.196 persisted
+
+### No regressions, no new closes
+ETH SHORT still tracking. Exit Agent has been quiet on it (no LLM_EXIT_AGENT closes in 12-13 window). Trailing distance $43.95 still wide enough that no trail hit either. We continue waiting for natural close to:
+- Validate P3b debug hits with new GRAD-RULES instrumentation
+- Confirm no more n=411 citations in agent reasoning post-cleanup
+
+### Restart note for whoever schedules it next
+When ETH SHORT closes AND positions==0, a restart would persist laptop's graduated_rules.json cleanup into the bot's loaded state from disk. Until then we let it run — restart-on-position-open violates the safety rule.
+
+**Next wakeup:** ~13:53 UTC.
+
