@@ -684,10 +684,12 @@ class RiskManager:
         self.equity += pnl
         self.circuit_breaker.record_trade(pnl, self.equity, sim_time=sim_time)
         # Persist equity to disk so bot restarts don't lose progress.
-        # Skip persistence for tests/backtests — only save when init
-        # actually loaded a matching persisted state (i.e., real bot).
-        if getattr(self, "_should_persist_equity", False):
-            self.save_equity_state()
+        # ALWAYS attempt to save (sanity checks in save_equity_state prevent test pollution).
+        # Previous guard `if _should_persist_equity` caused equity to freeze when:
+        # - persisted state file == starting_equity → _used_persisted=True → flag set
+        # - but flag sometimes evaluated False due to race/timing issues
+        # Unconditional save is safer: sanity checks catch test context anyway.
+        self.save_equity_state()
 
     def is_trading_allowed(self, confidence: float = 0.0,
                             cb_conf_override_pct: float = 0.92,
