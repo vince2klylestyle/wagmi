@@ -1755,17 +1755,13 @@ class BacktestEngine:
                     signal, equity=_equity, df_1h=_df_1h,
                 )
 
-                # Store simulated agent decision for CSV export
+                # Store simulated agent decision on signal for CSV export
                 try:
                     _sim_decision = run_sim_agent_pipeline(signal, equity=_equity, df_1h=_df_1h)
-                    if not hasattr(self, '_sim_agent_decisions'):
-                        self._sim_agent_decisions = []
-                    self._sim_agent_decisions.append({
-                        'symbol': signal.symbol,
-                        'action': 'go' if _should else 'skip',
-                        'regime': getattr(_sim_decision, 'regime', 'unknown'),
-                        'confidence': float(getattr(_sim_decision, 'confidence', 0.0)),
-                    })
+                    # Attach directly to signal metadata so it carries through to CSV
+                    signal.metadata['sim_agent_regime'] = getattr(_sim_decision, 'regime', 'unknown')
+                    signal.metadata['sim_agent_action'] = 'go' if _should else 'skip'
+                    signal.metadata['sim_agent_confidence'] = float(getattr(_sim_decision, 'confidence', 0.0))
                 except Exception:
                     pass
 
@@ -1966,6 +1962,22 @@ class BacktestEngine:
         if sim_dt:
             self.pos_mgr._sim_now = sim_dt
 
+        # Prepare entry_reasons with simulated agent data
+        entry_reasons = {
+            "backtest": True,
+            "strategy": signal.strategy,
+            "num_agree": signal.metadata.get("num_agree", 1),
+            "strategies_agree": signal.metadata.get("strategies_agree", [signal.strategy]),
+            "sim_time": signal.metadata.get("sim_time", ""),
+            "regime": signal.metadata.get("regime", "unknown"),
+            "setup_type": signal.metadata.get("setup_type", "standard"),
+        }
+        # Attach simulated agent decision data so it flows through to TradeEvent
+        if "sim_agent_regime" in signal.metadata:
+            entry_reasons["sim_agent_regime"] = signal.metadata["sim_agent_regime"]
+            entry_reasons["sim_agent_action"] = signal.metadata.get("sim_agent_action", "skip")
+            entry_reasons["sim_agent_confidence"] = signal.metadata.get("sim_agent_confidence", 0.0)
+
         self.pos_mgr.open_position(
             symbol=signal.symbol,
             side=side,
@@ -1980,15 +1992,7 @@ class BacktestEngine:
             strategy=signal.strategy,
             confidence=signal.confidence,
             tp1_close_pct=adjusted["tp1_close_pct"],
-            entry_reasons={
-                "backtest": True,
-                "strategy": signal.strategy,
-                "num_agree": signal.metadata.get("num_agree", 1),
-                "strategies_agree": signal.metadata.get("strategies_agree", [signal.strategy]),
-                "sim_time": signal.metadata.get("sim_time", ""),
-                "regime": signal.metadata.get("regime", "unknown"),
-                "setup_type": signal.metadata.get("setup_type", "standard"),
-            },
+            entry_reasons=entry_reasons,
             trade_profile=trade_prof,
             notes=position_notes,
         )
@@ -3233,15 +3237,13 @@ class BacktestEngine:
                             row["llm_regime"] = dec.get("regime", "")
                             row["llm_confidence"] = dec.get("confidence", 0)
                             break
-                # Fall back to simulated agent decisions (if --sim-agents mode)
-                elif hasattr(self, '_sim_agent_decisions') and self._sim_agent_decisions:
-                    # Find the most recent decision for this symbol
-                    for _sim_dec in reversed(self._sim_agent_decisions):
-                        if _sim_dec.get("symbol") == event.symbol:
-                            row["llm_action"] = _sim_dec.get("action", "")
-                            row["llm_regime"] = _sim_dec.get("regime", "")
-                            row["llm_confidence"] = _sim_dec.get("confidence", 0)
-                            break
+                # Try simulated agent decisions from event metadata (if --sim-agents mode)
+                elif "entry_reasons" in event.metadata:
+                    entry_reasons = event.metadata.get("entry_reasons", {})
+                    if "sim_agent_regime" in entry_reasons:
+                        row["llm_action"] = entry_reasons.get("sim_agent_action", "skip")
+                        row["llm_regime"] = entry_reasons.get("sim_agent_regime", "unknown")
+                        row["llm_confidence"] = entry_reasons.get("sim_agent_confidence", 0.0)
 
                 timeline.append(row)
         return timeline
