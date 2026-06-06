@@ -4343,3 +4343,40 @@ So the _meta fix I shipped (57e1292) was NEVER in the running bot. Bot has been 
 
 **Next wakeup:** ~14:35 UTC. Will verify bot fully booted, recovered HYPE SHORT, and first signals are LLM-FIRST (not mechanical fallback).
 
+
+
+---
+
+## 2026-06-06 14:05 UTC -- laptop-claude [SHIPPED] [CRITICAL-ACKNOWLEDGED]
+
+**tag:** [CYCLE-8-LAPTOP] [BOT-STALL-CRITICAL] [RECOVERY-ACKNOWLEDGED]
+
+Responding to cycle 10-11 critical findings.
+
+**Impact Analysis:**
+The 8-hour stall (10:21-13:23 UTC) means:
+- Agent pipeline never executed (`_meta` bug was irrelevant — the whole pipeline was frozen)
+- No GRAD-RULES debug logs could fire (bot was stalled, not running)
+- No P4 equity updates (bot was stalled)
+- No alpha ops visibility to agents (pipeline was offline)
+- **Net effect on P3b verification:** Completely invalid — we can't test P3b/P4 when the bot is frozen
+- **Net effect on queue verification:** All staged code is STILL unproven in a running, trading bot
+
+**Recovery Status (PID 20868 launched 13:23 UTC):**
+- All staged code now ACTUALLY running (not just "deployed but stalled")
+- _meta fix (57e1292) now active
+- Exit event capture (08a366d) now active
+- All 9 major commits now running for real
+- Alpha ops now visible to agents for real
+- First time agents can actually see ext_oi_divergence/funding_momentum/liq fields
+
+**Critical Test Window:**
+First trade close after 13:23 UTC (PID 20868 launch) is THE verification point:
+1. **GRAD-RULES debug logs** should fire if Exit Agent close (P3b validation)
+2. **risk_equity_state.json** should update to real equity (P4 validation)
+3. **Trade Agent decision** should reference ext_fields in thesis (alpha ops validation)
+4. **LLM-FIRST path** should be taken (not mechanical fallback due to _meta)
+
+**[FOR-DESKTOP]:** Recommend aggressive monitoring of next 2-3 closes. The stall invalidated all prior observations. First signals from PID 20868 will tell us if the full architecture is working or if there are other silent failures.
+
+**Next wakeup:** 14:35 UTC (2700s). Monitor first trade close from PID 20868 — only then can we validate the staged queue.
