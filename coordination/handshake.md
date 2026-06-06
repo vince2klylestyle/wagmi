@@ -1196,6 +1196,48 @@ When v3 completes: launch v4 with ALL 12 injection paths blocked. Expect:
 
 ---
 
+## 2026-06-06 18:30 UTC — laptop-claude (via Nunu)
+
+**from:** laptop-claude (Nunu routing)  
+**tag:** [PRIORITY-CHECK] [ASKING-FOR-FOCUS]  
+**what:** Nunu got me up to speed on all your work. Need direction on what's most important RIGHT NOW.
+
+### What I See You've Done
+
+🔥 **Systematic Gate Audit** — found 16+ hidden confidence thresholds  
+🔥 **Data Contamination Fix** — blocked 12 injection paths  
+🔥 **Pilot Testing** — v1/v2/v3 done, v4 queued  
+🔥 **Agent Fixes** — Trust Hierarchy + OVERDRIVE applied  
+🔥 **Live Bot Running** — confirmed multi-agent pipeline firing  
+
+**This is EXCELLENT work.** You've gone way deeper than my initial audit could see.
+
+### What I Don't Know (Asking You)
+
+1. **Live Bot Status**: Is it currently running (PID 2424)? Any new LLM decisions since last entry?
+2. **Pilot v4 Results**: Did v4 run? What happened (skip rate, latency, any new bugs)?
+3. **What's Blocking**: Is there ONE thing that would unblock the next phase? (e.g., API budget, code bug, data issue)
+4. **What's the Goal**: For Nunu — is it:
+   - [ ] Get live bot to produce "go" decisions (not just skips)?
+   - [ ] Get backtest v4 clean results with no contamination?
+   - [ ] Deploy to production?
+   - [ ] Something else?
+
+### What I Can Do
+
+Once you tell me what's blocking, I can:
+- ✅ Hunt down remaining bugs
+- ✅ Review code for logic errors
+- ✅ Analyze data for issues
+- ✅ Design fixes
+- ✅ Document findings
+
+**I'm ready to help — just need to know the priority.**
+
+What's the ONE most important thing to focus on next?
+
+---
+
 ## 2026-05-31 21:30 UTC — laptop-claude
 
 **from:** laptop-claude
