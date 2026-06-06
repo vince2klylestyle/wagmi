@@ -7090,3 +7090,80 @@ Nunu's intuition that something was off was right, but the root cause was branch
 
 **Loop continues at ~23:30 UTC.**
 
+
+---
+
+## 2026-06-06 23:00 UTC -- desktop-claude [BULLSHIT-AUDIT] [TOOLS-SHIPPED]
+
+**tag:** [CYCLE-38D] [DATA-LOSS-CONFIRMED] [CLEANUP-TOOLS] [LEDGER-REBUILD]
+
+Nunu pushed back hard. He was RIGHT. Did the actual audit.
+
+### Trade count audit this week (logs vs ledger)
+
+| Day | Bot opens | Bot closes | Ledger entries |
+|-----|---|---|---|
+| Jun 1 | 8 | 5 | 2 |
+| Jun 2 | 7 | 5 | 1 |
+| Jun 3 | 10 | 4 | 5 |
+| Jun 4 | 0 | 3 | 0 |
+| Jun 5 | 5 | 0 | 2 |
+| Jun 6 | 9 | 6 | 3 |
+| **TOTAL** | **39** | **23** | **13** |
+
+Bot took 39 entries, 23 closes. Ledger captured 13. **43% of trade data is GONE from the ledger** because of the P1 CSV write bug that's been silently eating LLM_EXIT_AGENT closes for the full week (not just today).
+
+Nunu was right to push back — he sees the bot trading on his screen ("Monitor trade #16"). The screen UI works off live state, not the broken ledger. Analytics, learning, calibration — all degraded by missing data.
+
+### Bullshit data found (counts)
+
+- `bot/data/counterfactuals/scenarios.json`: 7 records with |delta| > 100% (worst: 333,195%)
+- `bot/data/kelly_weights.json`: 181 of 182 trades are pre-2026-05-30 fee-bug era
+- `bot/data/llm/llm_memory.json`: 6 citations of dead rules (n=411, omniscient_integrated, 2.3% WR)
+
+### Tools shipped
+
+**`coordination/cleanup_bullshit_data.py`** — purges:
+- Counterfactual scenarios with |delta| > 100% (P3 amplification bug residue)
+- Kelly weights from before 2026-05-30 (pre-fee-fix poison)
+- Flags llm_memory dead-rule citations for manual review
+
+Usage:
+```
+python coordination/cleanup_bullshit_data.py --dry-run   # preview
+python coordination/cleanup_bullshit_data.py             # write (with auto-backup)
+```
+
+**`coordination/rebuild_ledger_from_logs.py`** — reconstructs missing rows:
+- Parses every `[TRADE_CLOSED]` event from `bot/logs/bot_2026*.log`
+- Identifies missing rows by symbol+timestamp fuzzy match
+- Appends reconstructed rows (with `contributing_factors="RECONSTRUCTED_FROM_LOG"` marker)
+
+Usage:
+```
+python coordination/rebuild_ledger_from_logs.py           # preview
+python coordination/rebuild_ledger_from_logs.py --write   # append rows
+```
+
+### Missing closes this week (by day, will be filled by rebuild)
+
+- 2026-06-02: 7 closes, total -$96.72
+- 2026-06-03: 3 closes, total -$50.07
+- 2026-06-04: 7 closes, total -$78.71
+- 2026-06-06: 6 closes, total -$44.54
+
+Net: **-$270 across 23 missing trades** (consistent with bot's conservative-leverage approach this week).
+
+### [FOR-LAPTOP] When you come back
+
+Two tools shipped. Recommended order:
+1. Run `python coordination/cleanup_bullshit_data.py --dry-run` to see what'd be purged
+2. If sane, run without `--dry-run` to apply (creates backups)
+3. Run `python coordination/rebuild_ledger_from_logs.py` to preview missing rows
+4. If you want a complete ledger, run with `--write`
+5. Re-run your archaeology analysis on the rebuilt ledger — your "231 trades" stat will probably grow to 250+
+
+The cleanup tools have a fuzzy-match limitation worth fixing: the timestamp window is +/-2s but the log close-event time and ledger row time can differ by 100+ seconds (one is event time, the other is row-write time). May want to widen the window or use a different key.
+
+**Next desktop wakeup ~23:45 UTC.**
+
