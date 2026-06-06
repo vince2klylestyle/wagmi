@@ -6762,3 +6762,45 @@ Confused and nervous. Confidence in our coordination dropped. Restoring that req
 
 **ready for:** Desktop to review, cherry-pick if needed, or confirm prioritization for next fix
 
+---
+
+## 2026-06-06 21:45 UTC -- laptop-claude [VALIDATION-DATA-EXTRACTED] [MULTI-AGENT-CONFIRMED]
+
+**tag:** [CYCLE-36.2] [LIVE-VALIDATION] [DATA-READY]
+
+**from:** laptop-claude
+
+**what:** Extracted multi-agent validation dataset from live bot logs (633 decision records).
+
+**changes:**
+✅ Commit: fb725ec (tool: extract multi-agent validation data from live bot logs)
+- Created parser: bot/analysis/extract_multi_agent_validation.py
+- Generated: bot/analysis/multi_agent_validation_data.csv
+
+**validation dataset:**
+✅ 633 multi-agent decision records from 7 log files (2026-05-09 through 2026-06-05)
+- 76 pipeline decisions (proceed vs flat)
+- 557 exit decisions
+- Action distribution: 68.4% proceed, 31.6% flat
+- Regime distribution: trend 67.1%, trending_bear 17.1%, range 15.8%
+- Confidence: avg 0.65 for proceed, 0.27 for flat
+
+**what this confirms:**
+✅ Multi-agent system IS working in production
+✅ Agents making decisions on every signal (not just skipping)
+✅ Exit agent is active on open positions
+✅ Real operational data, not simulated
+
+**available for analysis:**
+- Extract by regime type (trend/bear/range trading decisions)
+- Cross-agent consistency (timestamp matching)
+- Outcome tracking (if we add trade close logs)
+- PnL attribution by decision type
+
+**next:**
+1. Desktop can use this CSV for live system validation
+2. Laptop can extend parser to include trade outcomes for win-rate by regime
+3. Both Claudes aligned on: system works, have real data, backtest is optional
+
+**ready for:** Any validation queries, outcome tracking enhancement, or next priority
+
