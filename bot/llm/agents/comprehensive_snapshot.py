@@ -320,6 +320,32 @@ def _build_signal_layer(
         if ens:
             sig["ens"] = ens
 
+    # 2026-06-06: Surface Probability Engine outputs (Monte Carlo + EV) to agents.
+    # The probability_engine strategy runs MC simulations + Bayesian on every trade
+    # and writes prob_tp1/prob_tp2/prob_sl/expected_value to Signal.metadata. Per
+    # forensic audit those fields were never injected to agent prompts — engine
+    # was computing alpha that agents couldn't see. 3-field surface = direct unlock.
+    try:
+        _meta = None
+        if isinstance(ensemble_result, dict):
+            _meta = ensemble_result.get("metadata") or ensemble_result.get("meta")
+        elif hasattr(ensemble_result, "metadata"):
+            _meta = ensemble_result.metadata
+        if _meta and isinstance(_meta, dict):
+            _mc = {}
+            if "prob_tp1" in _meta:
+                _mc["p_tp1"] = round(float(_meta["prob_tp1"]), 3)
+            if "prob_tp2" in _meta:
+                _mc["p_tp2"] = round(float(_meta["prob_tp2"]), 3)
+            if "prob_sl" in _meta:
+                _mc["p_sl"] = round(float(_meta["prob_sl"]), 3)
+            if "expected_value" in _meta:
+                _mc["ev"] = round(float(_meta["expected_value"]), 3)
+            if _mc:
+                sig["mc"] = _mc
+    except Exception:
+        pass
+
     # Gate decisions: only blocked gates to save tokens
     if gate_decisions:
         blocked = []
