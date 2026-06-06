@@ -123,6 +123,14 @@ def apply_quant_rules(
             meta["morning_edge_hour"] = now.hour
             meta["morning_edge_boost"] = boost
 
+    # SHIP-2026-04-19: hour_bucket_4 feature (IC=+0.178, p=0.035 per FEATURE_CANDIDATES).
+    # 00-05 UTC: 18% WR, -$103 across 33 trades (asia deadzone)
+    # 06-11 UTC: covered by morning edge above
+    # 12-17 UTC: neutral baseline
+    # 18-23 UTC: 39% WR, +$220 (US-session)
+    # Log the bucket for all signals so downstream calibration + IC re-studies have it.
+    meta["hour_bucket_4"] = now.hour // 6  # 0, 1, 2, 3
+
     # ── Rule 2: BTC SHORT Edge (67% WR, strongest setup) ──
     if getattr(config, "quant_btc_short_edge_enabled", True):
         if base_symbol == "BTC" and signal.side == "SELL":
@@ -266,6 +274,14 @@ class RiskFilterChain:
             _log_rejection(signal, "validity", _reason)
             self._log_signal_filtered(signal, "validity", _reason)
             return FilterResult(approved=False, signal=signal, rejection_reason=_reason)
+        # Gate 1a: BTC minimum stop width 0.8% — 47/47 BTC losses were instant SL hits
+        # at avg 0.494% stop; sub-0.8% stops on BTC are structural noise, not edge.
+        if signal.symbol == "BTC" and signal.stop_width_pct < 0.008:
+            _reason = f"BTC min stop 0.8% violated: stop_width={signal.stop_width_pct:.4f}"
+            if _pt: _pt.record_gate(signal.symbol, "btc_stop_width", False, signal.stop_width_pct, 0.008, _reason)
+            _log_rejection(signal, "btc_stop_width", _reason)
+            self._log_signal_filtered(signal, "btc_stop_width", _reason)
+            return FilterResult(approved=False, signal=signal, rejection_reason=_reason)
         # Gate 1b: Minimum R:R from config (stricter than is_valid's 1.0 floor)
         min_rr = getattr(self.config, "min_signal_rr", 1.0)
         if signal.risk_reward_tp1 < min_rr:
@@ -359,9 +375,32 @@ class RiskFilterChain:
         # Gate 1f: Minimum win probability (post-deflation from ensemble)
         # Trades 2&3 on 2026-03-25 had 42%/40% win_prob — below coin flip.
         # Sub-48% WP = negative EV after fees. Block these regardless of setup.
+        # Floor is regime-adaptive: bad regimes (illiquid=28% WR) require higher
+        # predicted win_prob since SL hits are noisy by default.
         _win_prob = meta.get("win_prob") if meta else None
         if _win_prob is not None and isinstance(_win_prob, (int, float)):
             _min_wp = getattr(self.config, "min_signal_win_prob", 0.43)
+            # Regime-adaptive adjustment: raise floor for losing regimes
+            try:
+                from llm.dynamic_thresholds import get_dynamic_thresholds
+                _regime_key = (meta.get("regime") or "") if meta else ""
+                if _regime_key:
+                    _rstats = get_dynamic_thresholds().get_regime_stats(_regime_key)
+                    if _rstats and _rstats["n"] >= 10:
+                        _rwr = _rstats["wr"]
+                        _blend = min(1.0, (_rstats["n"] - 10) / 30)
+                        # Poor regime → raise floor; strong regime → slight reduction
+                        if _rwr < 0.30:
+                            _dyn_wp = _min_wp + 0.08 * _blend   # up to +8%
+                        elif _rwr < 0.38:
+                            _dyn_wp = _min_wp + 0.04 * _blend   # up to +4%
+                        elif _rwr >= 0.48:
+                            _dyn_wp = _min_wp - 0.03 * _blend   # slight relaxation
+                        else:
+                            _dyn_wp = _min_wp
+                        _min_wp = max(0.35, _dyn_wp)  # absolute floor
+            except Exception:
+                pass
             if _win_prob < _min_wp:
                 _reason = f"Win probability {_win_prob:.1%} < min {_min_wp:.1%} (insufficient edge)"
                 if _pt: _pt.record_gate(signal.symbol, "win_prob_floor", False, _win_prob, _min_wp, _reason)
@@ -372,6 +411,75 @@ class RiskFilterChain:
                     rejection_reason=_reason,
                     metadata=meta,
                 )
+
+        # Gate 1g: Graduated rules — validated hypotheses become executable rules.
+        # Rules can VETO (block), BOOST (add confidence), or PENALIZE (subtract).
+        # Only vetoes hard-block; confidence adjustments are advisory and logged.
+        try:
+            from llm.graduated_rules import get_graduated_rules_engine
+            _gr_engine = get_graduated_rules_engine()
+            _gr_regime = (meta.get("regime") or "") if meta else ""
+            _gr_side = signal.side if isinstance(signal.side, str) else signal.side.value
+            _gr_n = (meta.get("num_agree") or 1) if meta else 1
+            _gr_veto, _gr_adj_conf, _gr_applied = _gr_engine.evaluate_signal(
+                symbol=signal.symbol, regime=_gr_regime, side=_gr_side,
+                num_agree=_gr_n, confidence=signal.confidence,
+                hour_utc=datetime.now(timezone.utc).hour,
+                strategies_active=(meta.get("strategies_agree") or []) if meta else [],
+            )
+            if _gr_veto:
+                _reason = f"Graduated rule veto: {_gr_applied[:100]}"
+                if _pt: _pt.record_gate(signal.symbol, "graduated_rule_veto", False, 0, 0, _reason)
+                _log_rejection(signal, "graduated_rule_veto", _reason)
+                self._log_signal_filtered(signal, "graduated_rule_veto", _reason)
+                return FilterResult(approved=False, signal=signal, rejection_reason=_reason, metadata=meta)
+            if _gr_applied:
+                _adj_delta = _gr_adj_conf - signal.confidence
+                if abs(_adj_delta) > 0.5:
+                    signal = copy.copy(signal)
+                    signal.confidence = max(0.0, min(100.0, _gr_adj_conf))
+                    meta["graduated_rules_adj"] = round(_adj_delta, 1)
+                    meta["graduated_rules_applied"] = _gr_applied[:120]
+        except Exception:
+            pass
+
+        # Gate 1h: Consecutive-loss streak penalty — penalize -15 conf after 2+ losses.
+        # Prevents amplifying bad signals during losing streaks (4 consecutive losses at shutdown).
+        try:
+            _consec_losses = getattr(self.risk_mgr, "consecutive_losses", 0)
+            if _consec_losses >= 2:
+                signal = copy.copy(signal)
+                signal.confidence = max(0.0, min(100.0, signal.confidence - 15.0))
+                meta["streak_penalty"] = -15.0
+                meta["consecutive_losses_at_eval"] = _consec_losses
+                logger.info(
+                    f"[{signal.symbol}] STREAK GATE: consecutive_losses={_consec_losses} "
+                    f"→ conf -15pts to {signal.confidence:.1f}"
+                )
+        except Exception:
+            pass
+
+        # Gate 1.5: Committee thesis alignment (flag-gated via COMMITTEE_GATE_ENABLED)
+        # Blocks signals that conflict with the live quant analyst committee verdict.
+        # No-op if thesis is missing/stale (fail-open to preserve trade throughput).
+        try:
+            from llm.committee_reader import is_enabled as _comm_enabled, committee_veto_reason as _comm_veto
+            if _comm_enabled():
+                _side_str = signal.side if isinstance(signal.side, str) else signal.side.value
+                _veto = _comm_veto(signal.symbol, _side_str, max_age_s=900)
+                if _veto:
+                    if _pt: _pt.record_gate(signal.symbol, "committee_thesis", False, 0, 0, _veto[:120])
+                    _log_rejection(signal, "committee_thesis", _veto[:120])
+                    self._log_signal_filtered(signal, "committee_thesis", _veto[:120])
+                    return FilterResult(approved=False, signal=signal, rejection_reason=_veto[:200])
+                else:
+                    # Apply size multiplier from committee
+                    from llm.committee_reader import committee_size_multiplier as _comm_size
+                    _mult = _comm_size(signal.symbol, max_age_s=900)
+                    if _mult != 1.0:
+                        meta["committee_size_mult"] = _mult
+        except Exception:
+            pass  # committee reader failure must never block trading
 
         # Gate 2: Circuit breaker
         if not self.risk_mgr.is_trading_allowed(
@@ -666,6 +774,12 @@ class RiskFilterChain:
         if _solo_rm is not None:
             risk_mult *= _solo_rm
             meta["solo_risk_mult"] = _solo_rm
+
+        # Apply committee size multiplier (from live_analyst thesis, flag-gated)
+        _comm_mult = meta.get("committee_size_mult")
+        if _comm_mult is not None and _comm_mult != 1.0:
+            risk_mult *= _comm_mult
+            if _pt: _pt.record_multiplier(signal.symbol, "committee_size_mult", _comm_mult, "committee_reader")
 
         # ── Confidence Calibration ──
         # Apply calibration BEFORE confidence-based sizing so sizing uses
@@ -1388,24 +1502,27 @@ class SafetyFilterChain:
                 metadata=meta,
             )
 
-        # ── Gate 5: Liquidation safety (worst-case check) ──
-        # Use max_leverage as ceiling — the LLM will pick actual leverage.
-        # This just ensures the signal's stop loss isn't beyond liquidation
-        # even at maximum possible leverage.
+        # ── Gate 5: Liquidation safety (practical-max check) ──
+        # Check at the practical leverage ceiling (10x), not the theoretical max.
+        # The Risk Agent uses 3-5x standard / 6-10x high conviction in overdrive mode.
+        # Checking at config.max_leverage (15x) was blocking wide-ATR-stop signals for
+        # volatile assets (HYPE, SOL) that the LLM would correctly size at 3-8x.
+        # At 10x, a 7% stop is still safely above liquidation; at 15x it is not.
         max_lev = getattr(self.config, "max_leverage", 25.0)
+        liq_check_lev = min(max_lev, 10.0)  # practical ceiling: LLM max is 6-10x in overdrive
         side_str = "BUY" if signal.side == "BUY" else "SELL"
-        notional_est = equity * max_lev * 0.5
+        notional_est = equity * liq_check_lev * 0.5
         liq_check = self.leverage_mgr.validate_stop_vs_liquidation(
             entry=signal.entry,
             stop_loss=signal.sl,
             side=side_str,
-            leverage=max_lev,
+            leverage=liq_check_lev,
             notional_usd=notional_est,
         )
         if not liq_check["safe"]:
             _reason = (
                 f"SL ({signal.sl}) beyond liquidation "
-                f"({liq_check['liquidation_price']:.2f}) at max leverage {max_lev}x"
+                f"({liq_check['liquidation_price']:.2f}) at practical max leverage {liq_check_lev}x"
             )
             _log_rejection(signal, "safety_liquidation", _reason)
             self._log_signal_filtered(signal, "liquidation", _reason)
@@ -1414,6 +1531,7 @@ class SafetyFilterChain:
                 metadata=meta,
             )
         meta["liq_gap_pct"] = round(liq_check.get("gap_pct", 0), 4)
+        meta["liq_check_leverage"] = liq_check_lev  # inform LLM of the leverage ceiling used
 
         # ── PASS: Signal is structurally safe ──
         # Attach useful metadata for the LLM pipeline to consume.

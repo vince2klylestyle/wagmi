@@ -71,7 +71,12 @@ def format_signal_telegram(
 ) -> str:
     """Format a trading signal as a clean, scannable Telegram message."""
 
-    direction = "LONG" if side == "BUY" else "SHORT"
+    # Finding 21 (2026-04-16): callers pass either "BUY"/"SELL" or
+    # "LONG"/"SHORT". Previous code only handled BUY/SELL, inverting the
+    # displayed direction for every call site that passed LONG/SHORT.
+    # The alert the user saw that said "SHORT ETH" was actually a LONG.
+    _side_upper = (side or "").upper()
+    direction = "LONG" if _side_upper in ("BUY", "LONG") else "SHORT"
 
     # Grade
     if confidence >= 80 and num_agree >= 3:

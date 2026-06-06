@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as dc_fields
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger("bot.llm.graduated_rules")
@@ -42,22 +42,57 @@ class GraduatedRule:
         return self.times_correct / self.times_applied if self.times_applied > 0 else 0.5
 
     def matches(self, symbol="", regime="", side="", strategy="",
-                setup_type="", num_agree=0) -> bool:
+                setup_type="", num_agree=0, confidence=0.0, hour_utc=-1,
+                strategies_active=None) -> bool:
         if not self.active:
             return False
         c = self.conditions
         if c.get("symbol") and symbol.upper() != c["symbol"].upper():
             return False
-        if c.get("regime") and regime.lower() != c["regime"].lower():
-            return False
+        if c.get("regime"):
+            # Canonicalize both sides for comparison — "trending_bull", "trending_bear",
+            # "trending", "trend" all compare equal to a rule condition of "trending" or "trend"
+            try:
+                from llm.regime_canonical import canonicalize_regime
+                _rule_rg = canonicalize_regime(c["regime"].lower())
+                _in_rg = canonicalize_regime(regime.lower())
+                # Also allow direct match on pre-canonicalization form
+                if _rule_rg != _in_rg and c["regime"].lower() != regime.lower():
+                    return False
+            except Exception:
+                if regime.lower() != c["regime"].lower():
+                    return False
         if c.get("side") and side.upper() != c["side"].upper():
             return False
         if c.get("strategy") and strategy != c["strategy"]:
             return False
+        if c.get("strategies_include"):
+            # Check that ALL listed strategies are present in the active strategies list.
+            # Enables rules like "when bollinger_squeeze fires" on ensemble signals where
+            # strategy="ensemble" but metadata["strategies_agree"] has the individual names.
+            _active = set(strategies_active or [])
+            if not all(s in _active for s in c["strategies_include"]):
+                return False
+        if c.get("strategies_exclude"):
+            # Block match if any of these strategies are active (anti-pattern detection).
+            _active = set(strategies_active or [])
+            if any(s in _active for s in c["strategies_exclude"]):
+                return False
         if c.get("setup_type") and setup_type != c["setup_type"]:
             return False
         if c.get("min_agree") and num_agree < c["min_agree"]:
             return False
+        if "confidence_min" in c and confidence < c["confidence_min"]:
+            return False
+        if "confidence_max" in c and confidence > c["confidence_max"]:
+            return False
+        if "hour_utc_min" in c or "hour_utc_max" in c:
+            if hour_utc < 0:
+                return False  # can't evaluate hour condition without entry hour — skip rather than false-match
+            if "hour_utc_min" in c and hour_utc < c["hour_utc_min"]:
+                return False
+            if "hour_utc_max" in c and hour_utc >= c["hour_utc_max"]:
+                return False
         return True
 
 
@@ -75,7 +110,14 @@ class GraduatedRulesEngine:
             if os.path.exists(_RULES_FILE):
                 with open(_RULES_FILE, "r") as f:
                     data = json.load(f)
-                self._rules = [GraduatedRule(**r) for r in data.get("rules", [])]
+                _known = {f.name for f in dc_fields(GraduatedRule)}
+                _loaded_rules: List[GraduatedRule] = []
+                for _r in data.get("rules", []):
+                    try:
+                        _loaded_rules.append(GraduatedRule(**{k: v for k, v in _r.items() if k in _known}))
+                    except Exception as _re:
+                        logger.warning(f"[GRAD-RULES] Skip malformed rule {_r.get('rule_id', '?')}: {_re}")
+                self._rules = _loaded_rules
                 logger.info(f"[GRAD-RULES] Loaded {len(self._rules)} rules ({sum(1 for r in self._rules if r.active)} active)")
         except Exception as e:
             logger.warning(f"[GRAD-RULES] Load error: {e}")
@@ -110,7 +152,49 @@ class GraduatedRulesEngine:
         self._rules.append(rule)
         self._save()
         logger.info(f"[GRAD-RULES] Graduated: {rule.action} when {conditions}")
+        # Persist into knowledge_base.json so prompt_enricher injects into agent prompts
+        self._write_to_knowledge_base(rule, hypothesis)
         return rule
+
+    def _write_to_knowledge_base(self, rule: "GraduatedRule", hypothesis: Any) -> None:
+        """Persist a graduated rule into knowledge_base.json for agent prompt injection."""
+        _kb_path = os.path.join("data", "llm", "teaching", "knowledge_base.json")
+        try:
+            os.makedirs(os.path.dirname(_kb_path), exist_ok=True)
+            if os.path.exists(_kb_path):
+                with open(_kb_path, "r") as _f:
+                    _kb = json.load(_f)
+            else:
+                _kb = {"entries": []}
+            # Deduplicate by hypothesis statement
+            for _e in _kb.get("entries", []):
+                if _e.get("content", "").endswith(hypothesis.statement):
+                    return
+            _conds = rule.conditions
+            _cat = "regime" if _conds.get("regime") else "symbol" if _conds.get("symbol") else "strategy"
+            _prefix = {"veto": "AVOID", "boost": "EDGE", "penalize": "CAUTION", "size_adjust": "SIZE"}.get(rule.action, "RULE")
+            _kb.setdefault("entries", []).append({
+                "knowledge_type": "graduated_rule",
+                "content": f"[{_prefix}] {hypothesis.statement}",
+                "confidence": round(rule.confidence, 3),
+                "evidence_count": rule.total_evidence,
+                "evidence_ratio": round(rule.evidence_ratio, 3),
+                "category": _cat,
+                "tags": list(_conds.keys()),
+                "source": "hypothesis_graduation",
+                "rule_id": rule.rule_id,
+                "action": rule.action,
+                "conditions": _conds,
+                "created_at": rule.created_at,
+                "last_validated": rule.created_at,
+                "validation_count": rule.total_evidence,
+                "invalidation_count": 0,
+            })
+            with open(_kb_path, "w") as _f:
+                json.dump(_kb, _f, indent=2, default=str)
+            logger.info(f"[GRAD-RULES→KB] [{_prefix}] {hypothesis.statement[:60]}")
+        except Exception as _e:
+            logger.debug(f"[GRAD-RULES→KB] Write error: {_e}")
 
     def _parse_hypothesis(self, hypothesis) -> tuple:
         stmt = hypothesis.statement.lower()
@@ -166,14 +250,29 @@ class GraduatedRulesEngine:
         return conditions, action, adjustment
 
     def evaluate_signal(self, symbol="", regime="", side="", strategy="",
-                        setup_type="", num_agree=0, confidence=0.0) -> tuple:
-        """Returns (should_veto, adjusted_confidence, applied_rules_summary)."""
+                        setup_type="", num_agree=0, confidence=0.0, hour_utc=-1,
+                        strategies_active=None, veto_only=False) -> tuple:
+        """Returns (should_veto, adjusted_confidence, applied_rules_summary).
+
+        strategies_active: list of individual strategy names that fired (e.g.
+        ["bollinger_squeeze", "multi_tier_quality"]). Enables rules that condition
+        on which strategies contributed — needed because ensemble signals always
+        have strategy="ensemble" while individual names live in metadata.
+        veto_only: if True, only check VETO rules (no times_applied increment for
+        BOOST/PENALIZE). Used by the pre-LLM filter to avoid double-counting when
+        the signal later flows through the full pipeline evaluation.
+        """
         self._ensure_loaded()
         vetoed, conf_delta, applied = False, 0.0, []
 
         for rule in self._rules:
             if not rule.active or not rule.matches(symbol=symbol, regime=regime, side=side,
-                                                    strategy=strategy, setup_type=setup_type, num_agree=num_agree):
+                                                    strategy=strategy, setup_type=setup_type,
+                                                    num_agree=num_agree, confidence=confidence,
+                                                    hour_utc=hour_utc,
+                                                    strategies_active=strategies_active):
+                continue
+            if veto_only and rule.action != "veto":
                 continue
             rule.times_applied += 1
             rule.last_applied = time.time()
@@ -193,25 +292,63 @@ class GraduatedRulesEngine:
 
         return vetoed, max(0, min(100, confidence + conf_delta)), "; ".join(applied)
 
-    def record_outcome(self, symbol="", regime="", side="", won=False):
-        """Track rule accuracy after trade closes."""
+    def record_outcome(self, symbol="", regime="", side="", won=False, hour_utc: int = -1,
+                       strategies_active=None, num_agree: int = 0, confidence: float = 0.0):
+        """Track rule accuracy after trade closes.
+
+        VETO rules are skipped here — their accuracy is tracked by
+        counterfactual_learner.py which has the blocked-trade context.
+        hour_utc: entry UTC hour (0-23). Pass -1 to skip hour-conditioned matching
+        (rules with hour conditions will then be skipped rather than incorrectly matched).
+        strategies_active: list of strategy names that agreed on this signal at entry.
+        num_agree: number of agreeing strategies.
+        confidence: signal confidence at entry (0-100).
+        """
         self._ensure_loaded()
+
+        # DEBUG: Log incoming trade context
+        logger.debug(f"[GRAD-RULES-DEBUG] record_outcome called: symbol={symbol} regime={regime} side={side} won={won} hour={hour_utc} strats={strategies_active} conf={confidence:.1f}")
+
+        matched_count = 0
         for rule in self._rules:
-            if not rule.active or not rule.matches(symbol=symbol, regime=regime, side=side):
+            if not rule.active:
                 continue
             if rule.action == "veto":
-                if not won:
-                    rule.times_correct += 1
-            elif rule.action == "boost":
+                continue  # handled by counterfactual_learner.py
+
+            # DEBUG: Check each rule's match status
+            match_result = rule.matches(symbol=symbol, regime=regime, side=side, hour_utc=hour_utc,
+                                strategies_active=strategies_active, num_agree=num_agree,
+                                confidence=confidence)
+            if not match_result:
+                # Log why this rule didn't match (detailed diagnosis)
+                logger.debug(f"[GRAD-RULES-DEBUG] Rule NO MATCH: {rule.rule_id} | sym={rule.conditions.get('symbol','*')} vs {symbol} | regime={rule.conditions.get('regime','*')} vs {regime} | side={rule.conditions.get('side','*')} vs {side} | active={rule.active}")
+                continue
+
+            # Rule matched
+            matched_count += 1
+            logger.info(f"[GRAD-RULES-MATCH] {rule.rule_id}: {rule.hypothesis_statement[:60]} (action={rule.action})")
+
+            if rule.action == "boost":
                 if won:
                     rule.times_correct += 1
+                    logger.info(f"[GRAD-RULES] BOOST +correct: {rule.rule_id} won trade (times_correct now={rule.times_correct}, times_applied={rule.times_applied})")
+                else:
+                    logger.debug(f"[GRAD-RULES] BOOST not incr: trade lost (correct only on wins)")
             elif rule.action == "penalize":
                 if not won:
                     rule.times_correct += 1
+                    logger.info(f"[GRAD-RULES] PENALIZE +correct: {rule.rule_id} lost trade (times_correct now={rule.times_correct}, times_applied={rule.times_applied})")
+                else:
+                    logger.debug(f"[GRAD-RULES] PENALIZE not incr: trade won (correct only on losses)")
 
             if rule.times_applied >= 10 and rule.accuracy < 0.35:
                 rule.active = False
                 logger.info(f"[GRAD-RULES] Auto-retired: {rule.hypothesis_statement[:50]} (acc={rule.accuracy:.0%})")
+
+        if matched_count == 0:
+            logger.debug(f"[GRAD-RULES-DEBUG] NO RULES MATCHED for {symbol} {side} in {regime} (checked {len([r for r in self._rules if r.active and r.action != 'veto'])} active non-veto rules)")
+
         self._save()
 
     def get_active_rules_summary(self) -> str:

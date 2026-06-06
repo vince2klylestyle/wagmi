@@ -6,11 +6,16 @@ Reads from:
   - strategy_fingerprints.json — per-setup WR data
   - sim_status.json — current sim equity and open positions
   - trades.csv — recent trade outcomes
+  - teaching/knowledge_base.json — graduated rules (written never read until now)
+  - meta_learning/insights.json — cross-trade pattern analysis
+  - overseer_memo.json — latest Overseer recommendations (written by run_overseer)
+  - feedback/adaptive_risk_state.json — real-time streak + regime WR
+  - llm/growth/hypotheses.json — validated/testing hypotheses from growth tracker
 
 Each agent gets a tailored "QUANT INTELLIGENCE BRIEFING" appended to its prompt,
-plus a "RECENT PERFORMANCE" section with last 10 trade outcomes.
+plus validated rules, meta-patterns, overseer memo, and recent performance.
 
-Results are cached for 1 hour to avoid re-reading files every LLM call.
+Results are cached for 30 min to balance freshness vs disk I/O.
 """
 
 import csv
@@ -29,9 +34,19 @@ _INSIGHT_PATH = os.path.join(_DEEP_MEMORY_DIR, "insight_journal.json")
 _FINGERPRINTS_PATH = os.path.join(_DEEP_MEMORY_DIR, "strategy_fingerprints.json")
 _SIM_STATUS_PATH = os.path.join(_DATA_DIR, "manual", "sim_status.json")
 _TRADES_CSV_PATH = os.path.join(_DATA_DIR, "trades.csv")
+_KB_PATH = os.path.join(_DATA_DIR, "llm", "teaching", "knowledge_base.json")
+_META_PATH = os.path.join(_DATA_DIR, "meta_learning", "insights.json")
+_OVERSEER_MEMO_PATH = os.path.join(_DATA_DIR, "llm", "overseer_memo.json")
+_ADAPTIVE_RISK_PATH = os.path.join(_DATA_DIR, "feedback", "adaptive_risk_state.json")
+_CIRCUIT_BREAKER_PATH = os.path.join(_DATA_DIR, "circuit_breaker_state.json")
+_PERFORMANCE_PATH = os.path.join(_DATA_DIR, "analysis", "performance.json")
+_COUNTERFACTUAL_PATH = os.path.join(_DATA_DIR, "counterfactuals", "scenarios.json")
+_HYPOTHESES_PATH = os.path.join(_DATA_DIR, "llm", "growth", "hypotheses.json")
+_CONFIDENCE_STATE_PATH = os.path.join(_DATA_DIR, "feedback", "confidence_state.json")
+_TRADE_DNA_PATH = os.path.join(_DATA_DIR, "llm", "deep_memory", "trade_dna.json")
 
 # ── Cache ───────────────────────────────────────────────────────
-_CACHE_TTL_S = 3600  # 1 hour
+_CACHE_TTL_S = 1800  # 30 min — balance freshness vs I/O
 _cache: Dict[str, Any] = {}
 _cache_ts: float = 0.0
 
@@ -86,7 +101,7 @@ def _load_json_safe(path: str, default: Any = None) -> Any:
     if not os.path.exists(path):
         return default if default is not None else {}
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError, OSError) as e:
         logger.debug(f"[ENRICHER] Failed to load {path}: {e}")
@@ -127,11 +142,34 @@ def _refresh_cache() -> None:
     sim_status = _load_json_safe(_SIM_STATUS_PATH, {})
     recent_trades = _load_recent_trades(_TRADES_CSV_PATH, max_trades=10)
 
+    kb_data = _load_json_safe(_KB_PATH, {"entries": []})
+    kb_entries = kb_data.get("entries", [])
+
+    meta_data = _load_json_safe(_META_PATH, {"insights": []})
+    meta_insights = meta_data.get("insights", [])
+
+    overseer_memo = _load_json_safe(_OVERSEER_MEMO_PATH, {})
+    adaptive_risk = _load_json_safe(_ADAPTIVE_RISK_PATH, {})
+    circuit_breaker = _load_json_safe(_CIRCUIT_BREAKER_PATH, {})
+    performance = _load_json_safe(_PERFORMANCE_PATH, {})
+    counterfactuals = _load_json_safe(_COUNTERFACTUAL_PATH, {"scenarios": []})
+    hypotheses_data = _load_json_safe(_HYPOTHESES_PATH, {"hypotheses": []})
+
     _cache = {
         "insights": insights,
         "fingerprints": fingerprints,
         "sim_status": sim_status,
         "recent_trades": recent_trades,
+        "kb_entries": kb_entries,
+        "meta_insights": meta_insights,
+        "overseer_memo": overseer_memo,
+        "adaptive_risk": adaptive_risk,
+        "circuit_breaker": circuit_breaker,
+        "performance": performance,
+        "counterfactuals": counterfactuals.get("scenarios", []),
+        "hypotheses": hypotheses_data.get("hypotheses", []),
+        "confidence_state": _load_json_safe(_CONFIDENCE_STATE_PATH, {}),
+        "trade_dna": _load_json_safe(_TRADE_DNA_PATH, {"trades": []}).get("trades", []),
     }
     _cache_ts = now
 
@@ -160,13 +198,18 @@ def _select_insights_for_agent(
         if ins.get("category", "") in relevant_categories
     ]
 
-    # Sort: validated first, then by confidence desc, then by validation_count desc, then recency
+    # Sort: validated first, then confidence bucket (rounded to 0.1 so 0.88 ties with 0.90),
+    # then recency (newer > older — live trades beat historical backtest within same tier),
+    # then capped vc (cap=100 so live n=164 competes equally with backtest n=2172).
+    _now = time.time()
+
     def sort_key(ins: Dict[str, Any]) -> Tuple:
+        conf_bucket = round(ins.get("confidence", 0) / 0.1) * 0.1  # e.g. 0.88 → 0.9, 0.72 → 0.7
         return (
             1 if ins.get("validated", False) else 0,
-            ins.get("confidence", 0),
-            ins.get("validation_count", 0),
-            ins.get("ts", 0),
+            conf_bucket,
+            ins.get("ts", 0) / (_now or 1),              # recency: newer ranks higher within tier
+            min(ins.get("validation_count", 0), 100),
         )
 
     relevant.sort(key=sort_key, reverse=True)
@@ -315,14 +358,632 @@ def _build_recent_performance() -> str:
     return "\n".join(lines)
 
 
+_KB_CATEGORY_MAP: Dict[str, List[str]] = {
+    "regime": ["general", "regime", "correlation"],
+    "trade": ["general", "strategy", "execution", "timing"],
+    "risk": ["general", "risk", "execution"],
+    "critic": ["general", "strategy", "risk"],
+    "exit": ["general", "execution", "risk", "timing"],
+    "scout": ["general", "strategy", "regime"],
+    "overseer": ["general", "strategy", "risk", "regime"],
+    "quant": ["general", "strategy", "execution", "risk"],
+    "learning": ["general", "strategy", "risk"],
+}
+
+
+def _build_knowledge_base_rules(agent_role: str) -> str:
+    """Inject validated rules from knowledge_base.json into agent prompt.
+
+    Filters to high-confidence entries with evidence (evidence_count > 0 OR
+    source == 'seed' with confidence >= 0.9) relevant to the agent's role.
+    Returns empty string if no entries available.
+    """
+    entries = _cache.get("kb_entries", [])
+    if not entries:
+        return ""
+
+    relevant_cats = _KB_CATEGORY_MAP.get(agent_role, ["general"])
+    relevant = [
+        e for e in entries
+        if e.get("category", "general") in relevant_cats
+        and (
+            e.get("evidence_count", 0) > 0
+            or (e.get("source") == "seed" and e.get("confidence", 0) >= 0.9)
+        )
+        and e.get("confidence", 0) >= 0.7
+    ]
+    if not relevant:
+        return ""
+
+    # Sort: most evidence first, then confidence
+    relevant.sort(
+        key=lambda e: (e.get("evidence_count", 0), e.get("confidence", 0)),
+        reverse=True,
+    )
+    top = relevant[:5]
+
+    lines = ["=== VALIDATED TRADING RULES ==="]
+    for e in top:
+        conf = e.get("confidence", 0)
+        n = e.get("evidence_count", 0)
+        text = str(e.get("content", e.get("rule", "")) or "")[:180]
+        lines.append(f"  • [conf={conf:.0%} n={n}] {text}")
+
+    return "\n".join(lines)
+
+
+def _build_meta_patterns() -> str:
+    """Surface top cross-trade patterns from meta_learning/insights.json.
+
+    De-duplicates by description prefix, separates edges from weaknesses.
+    Returns top 2 edges + top 2 weaknesses/biases.
+    """
+    meta = _cache.get("meta_insights", [])
+    if not meta:
+        return ""
+
+    qualified = [
+        m for m in meta
+        if m.get("confidence", 0) >= 0.70
+        and m.get("evidence_count", 0) >= 15
+    ]
+    if not qualified:
+        return ""
+
+    # De-duplicate by first 55 chars of description (catches repeated pattern variants)
+    seen: dict = {}
+    for m in sorted(qualified, key=lambda x: (x.get("confidence", 0), x.get("evidence_count", 0)), reverse=True):
+        key = str(m.get("description", "") or "")[:55]
+        if key and key not in seen:
+            seen[key] = m
+
+    unique = list(seen.values())
+    edges = [m for m in unique if m.get("category") in ("pattern", "edge")][:2]
+    risks = [m for m in unique if m.get("category") in ("weakness", "bias")][:2]
+    top = edges + risks
+    if not top:
+        return ""
+
+    lines = ["=== META-LEARNING PATTERNS ==="]
+    for m in top:
+        conf = m.get("confidence", 0)
+        n = m.get("evidence_count", 0)
+        cat = m.get("category", "")
+        desc = str(m.get("description", m.get("insight", "")) or "")[:140]
+        suggestion = str(m.get("actionable_suggestion", "") or "")[:70]
+        prefix = "EDGE" if cat in ("pattern", "edge") else "WARN"
+        line = f"  [{prefix} conf={conf:.0%} n={n}] {desc}"
+        if suggestion:
+            line += f"\n    => {suggestion}"
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def _build_overseer_memo(agent_role: str) -> str:
+    """Inject latest Overseer recommendations into downstream agent prompts.
+
+    Overseer runs ~hourly and writes to overseer_memo.json. Trade/Risk/Critic/Exit
+    agents read this so system-level insights from the last portfolio review
+    persist between pipeline runs (scratchpad is cleared each run; this isn't).
+    """
+    memo = _cache.get("overseer_memo", {})
+    if not memo:
+        return ""
+
+    # Only inject for decision-making agents, not regime/scout/learning
+    if agent_role not in ("trade", "risk", "critic", "exit", "quant"):
+        return ""
+
+    recs = memo.get("recommendations", [])
+    health = memo.get("health", "")
+    strategy_adj = memo.get("strategy_adjustments", "")
+    ts = memo.get("timestamp", 0)
+
+    # Only use if memo is less than 2 hours old
+    if ts and (time.time() - ts) > 7200:
+        return ""
+
+    lines = ["=== OVERSEER PORTFOLIO MEMO ==="]
+    if health:
+        lines.append(f"  Health: {str(health)[:100]}")
+    if strategy_adj:
+        lines.append(f"  Strategy: {str(strategy_adj)[:120]}")
+    for r in recs[:3]:
+        lines.append(f"  Rec: {str(r)[:120]}")
+
+    if len(lines) <= 1:
+        return ""
+
+    return "\n".join(lines)
+
+
+def _build_counterfactual_exit_patterns() -> str:
+    """Summarize what better exit timing would have earned — feeds Exit Agent.
+
+    Groups resolved counterfactuals by scenario_type and computes avg delta
+    (counterfactual_pnl - actual_pnl). A positive avg_delta for "exit_at_tp1"
+    means taking TP1 earlier would have been better on average.
+
+    Only injects patterns with n>=5 and avg_delta > $1 to avoid noise.
+    """
+    scenarios = _cache.get("counterfactuals", [])
+    if not scenarios:
+        return ""
+
+    resolved = [s for s in scenarios if s.get("resolved", False)]
+    if len(resolved) < 5:
+        return ""
+
+    from collections import defaultdict
+    by_type: dict = defaultdict(list)
+    for s in resolved[-100:]:  # last 100 resolved
+        stype = s.get("scenario_type", "unknown")
+        delta = float(s.get("delta", 0))
+        sym = s.get("symbol", "")
+        by_type[stype].append({"delta": delta, "sym": sym})
+
+    lines = []
+    for stype, items in by_type.items():
+        if len(items) < 5:
+            continue
+        avg_delta = sum(i["delta"] for i in items) / len(items)
+        if abs(avg_delta) < 1.0:
+            continue
+        direction = "BETTER" if avg_delta > 0 else "WORSE"
+        lines.append(
+            f"  {stype}: n={len(items)} avg_delta=${avg_delta:+.2f} "
+            f"({direction} than actual exit)"
+        )
+
+    if not lines:
+        return ""
+
+    return "=== COUNTERFACTUAL EXIT PATTERNS ===\n" + "\n".join(lines)
+
+
+def _build_system_health_context() -> str:
+    """Inject circuit breaker state + rolling performance for all decision agents.
+
+    Critical: if the CB is tripped or close, agents must know to be defensive.
+    Rolling WR (last 20/50 trades) + avg R:R gives agents live performance context.
+    """
+    lines = []
+
+    # Circuit breaker state
+    cb = _cache.get("circuit_breaker", {})
+    if cb:
+        tripped = cb.get("tripped", False)
+        daily_pnl = cb.get("daily_pnl", 0)
+        consec = cb.get("consecutive_losses", 0)
+        peak = cb.get("peak_equity", 0)
+        reason = cb.get("trip_reason", "")
+
+        if tripped:
+            lines.append(f"  ⚠ CB TRIPPED: {reason} (daily_pnl=${daily_pnl:.1f})")
+        else:
+            # Warn if approaching limits
+            if consec >= 3:
+                lines.append(f"  ⚠ CB WARNING: {consec} consecutive losses")
+            elif daily_pnl < 0 and peak > 0:
+                dd_pct = abs(daily_pnl) / peak * 100
+                if dd_pct > 4:
+                    lines.append(f"  CB PROXIMITY: daily DD={dd_pct:.1f}% (limit=8%) — be defensive")
+
+    # Rolling performance stats
+    perf = _cache.get("performance", {})
+    if perf:
+        wr20 = perf.get("win_rate_20")
+        wr50 = perf.get("win_rate_50")
+        avg_rr = perf.get("avg_rr")
+        total = perf.get("total_trades", 0)
+        parts = []
+        if wr20 is not None:
+            parts.append(f"WR_20={wr20:.0%}")
+        if wr50 is not None:
+            parts.append(f"WR_50={wr50:.0%}")
+        if avg_rr is not None:
+            parts.append(f"avg_RR={avg_rr:.2f}")
+        if total:
+            parts.append(f"n={total}")
+        if parts:
+            lines.append(f"  System: {' | '.join(parts)}")
+
+    if not lines:
+        return ""
+
+    return "=== SYSTEM HEALTH ===\n" + "\n".join(lines)
+
+
+def _build_adaptive_risk_context() -> str:
+    """Inject hot/cold streak + live regime WR from adaptive_risk_state.json.
+
+    This is the single most actionable real-time signal: consecutive losses
+    mean the system is in a bad regime and should reduce risk. Consecutive wins
+    mean the edge is alive. Regime WR shows which regimes are currently paying.
+    """
+    ar = _cache.get("adaptive_risk", {})
+    if not ar:
+        return ""
+
+    lines = []
+
+    # Recent streak
+    outcomes = ar.get("recent_outcomes", [])
+    if outcomes:
+        recent = outcomes[-10:]  # last 10
+        wins = sum(1 for o in recent if o)
+        total = len(recent)
+        streak = 0
+        last = outcomes[-1] if outcomes else None
+        for o in reversed(outcomes):
+            if o == last:
+                streak += 1
+            else:
+                break
+
+        streak_desc = f"{'WIN' if last else 'LOSS'} streak={streak}"
+        lines.append(f"  Recent: {wins}/{total} WR={wins/total:.0%} | {streak_desc}")
+        if streak >= 3 and not last:
+            lines.append(f"  ⚠ COLD STREAK: {streak} consecutive losses — reduce sizing")
+        elif streak >= 3 and last:
+            lines.append(f"  ✓ HOT STREAK: {streak} consecutive wins — edge alive")
+
+    # Live regime WR
+    regime_wr = ar.get("regime_wr", {})
+    if regime_wr:
+        rlines = []
+        for rg, stats in regime_wr.items():
+            w = stats.get("wins", 0)
+            t = stats.get("total", 0)
+            if t >= 3:
+                rlines.append(f"{rg}: {w}/{t}={w/t:.0%}")
+        if rlines:
+            lines.append(f"  Live regime WR: {' | '.join(rlines)}")
+
+    if not lines:
+        return ""
+
+    return "=== REAL-TIME RISK STATE ===\n" + "\n".join(lines)
+
+
+def _build_trade_dna_summary() -> str:
+    """Compute live WR statistics from trade_dna.json by regime and symbol+side.
+
+    Returns the top winners and worst losers as actionable lines. Only includes
+    cells with >=5 trades so the signal is statistically meaningful.
+    """
+    trades = _cache.get("trade_dna", [])
+    if not trades:
+        return ""
+
+    from collections import defaultdict
+
+    reg: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+    cell: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+
+    for t in trades:
+        regime = (t.get("regime") or "").strip()
+        sym = t.get("symbol", "?")
+        side = t.get("side", "?")
+        win = t.get("outcome") == "WIN"
+        pnl = float(t.get("pnl") or 0)
+
+        if regime:
+            reg[regime]["total"] += 1
+            reg[regime]["pnl"] += pnl
+            if win:
+                reg[regime]["wins"] += 1
+
+        k = f"{sym}.{side}"
+        cell[k]["total"] += 1
+        cell[k]["pnl"] += pnl
+        if win:
+            cell[k]["wins"] += 1
+
+    lines = ["=== TRADE DNA (live WR from past trades) ==="]
+
+    # Top regimes by total
+    qualified_reg = {r: s for r, s in reg.items() if s["total"] >= 5}
+    if qualified_reg:
+        best = sorted(qualified_reg.items(), key=lambda x: x[1]["pnl"], reverse=True)
+        lines.append("  Regime edge:")
+        for r, s in best[:4]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            lines.append(f"    {r}: {wr:.0%} WR avg_pnl=${avg:.1f} (n={s['total']})")
+
+    # Top/bottom symbol+side cells
+    qualified_cell = {k: s for k, s in cell.items() if s["total"] >= 5}
+    if qualified_cell:
+        sorted_cells = sorted(qualified_cell.items(), key=lambda x: x[1]["pnl"] / x[1]["total"], reverse=True)
+        lines.append("  Symbol edge (by avg PnL):")
+        for k, s in sorted_cells[:3]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            lines.append(f"    {k}: {wr:.0%} WR avg_pnl=${avg:.1f} (n={s['total']})")
+        # Also show worst
+        for k, s in sorted_cells[-2:]:
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            if avg < 0:
+                lines.append(f"    {k}: {wr:.0%} WR avg_pnl=${avg:.1f} AVOID")
+
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines)
+
+
+def _build_confidence_calibration() -> str:
+    """Surface calibrated confidence floors and per-symbol/regime adjustments.
+
+    Shows the Trade/Risk Agent the live confidence thresholds so it knows
+    when a signal's confidence is below the empirically-calibrated floor.
+    """
+    cs = _cache.get("confidence_state", {})
+    if not cs:
+        return ""
+
+    lines = ["=== CONFIDENCE CALIBRATION ==="]
+    floor = cs.get("current_floor")
+    if floor:
+        lines.append(f"  Min confidence threshold: {floor:.0f}%")
+
+    strat_floors = cs.get("strategy_floors", {})
+    if strat_floors:
+        sf_parts = [f"{k}={v:.0f}%" for k, v in strat_floors.items() if v]
+        if sf_parts:
+            lines.append(f"  Strategy floors: {', '.join(sf_parts)}")
+
+    sym_adj = cs.get("symbol_adjustments", {})
+    if sym_adj:
+        top_sym = sorted(sym_adj.items(), key=lambda x: abs(x[1]), reverse=True)[:4]
+        adj_parts = [f"{s}={'+' if v > 0 else ''}{v:.2f}" for s, v in top_sym]
+        lines.append(f"  Symbol edge adj: {', '.join(adj_parts)}")
+
+    reg_adj = cs.get("regime_adjustments", {})
+    if reg_adj:
+        top_reg = sorted(reg_adj.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
+        adj_parts = [f"{r}={'+' if v > 0 else ''}{v:.2f}" for r, v in top_reg]
+        lines.append(f"  Regime edge adj: {', '.join(adj_parts)}")
+
+    if len(lines) == 1:
+        return ""
+
+    return "\n".join(lines)
+
+
+def _build_validated_hypotheses(agent_role: str) -> str:
+    """Surface validated + high-confidence hypotheses from growth/hypotheses.json.
+
+    Only includes hypotheses in 'validated' stage or 'testing' with confidence>=0.7.
+    Skips invalidated ones. Returns empty string if none qualify.
+    """
+    hyps = _cache.get("hypotheses", [])
+    if not hyps:
+        return ""
+
+    qualified = [
+        h for h in hyps
+        if (
+            h.get("stage") in ("validated",) or
+            (h.get("stage") == "testing" and h.get("confidence", 0) >= 0.7)
+        )
+        and h.get("statement", "")
+    ]
+    if not qualified:
+        return ""
+
+    # Sort: validated first, then confidence
+    qualified.sort(
+        key=lambda h: (1 if h.get("stage") == "validated" else 0, h.get("confidence", 0)),
+        reverse=True,
+    )
+    top = qualified[:3]
+
+    lines = ["=== ACTIVE HYPOTHESES (empirically tested) ==="]
+    for h in top:
+        stage = h.get("stage", "?")
+        conf = h.get("confidence", 0)
+        stmt = str(h.get("statement", ""))[:150]
+        lines.append(f"  [{stage.upper()} conf={conf:.0%}] {stmt}")
+
+    return "\n".join(lines)
+
+
+def _build_hold_time_mechanism() -> str:
+    """Regime-conditional hold-time intelligence from 164 live trades.
+
+    Gives exit/trade/risk agents the CAUSAL mechanism — not just a rule.
+    Computed from trade_dna.json so it updates as new trades come in.
+    """
+    trades = _cache.get("trade_dna", [])
+    if len(trades) < 30:
+        return ""
+
+    from collections import defaultdict
+
+    # Hold-time buckets
+    hold_data: Dict[str, Dict] = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+    # Early losses by regime
+    early_loss_regimes: Dict[str, int] = defaultdict(int)
+    total_early_losses = 0
+    win_holds = []
+    loss_holds = []
+
+    for t in trades:
+        h = float(t.get("hold_time_s") or 0) / 3600
+        outcome = t.get("outcome", "")
+        pnl = float(t.get("pnl") or 0)
+        regime = (t.get("regime") or "unknown").strip() or "unknown"
+
+        if h < 1: bucket = "<1h"
+        elif h < 2: bucket = "1h-2h"
+        elif h < 4: bucket = "2h-4h"
+        elif h < 8: bucket = "4h-8h"
+        elif h < 12: bucket = "8h-12h"
+        else: bucket = "12h+"
+
+        hold_data[bucket]["total"] += 1
+        hold_data[bucket]["pnl"] += pnl
+        if outcome == "WIN":
+            hold_data[bucket]["wins"] += 1
+            win_holds.append(h)
+        elif outcome == "LOSS":
+            loss_holds.append(h)
+            if h < 2:
+                total_early_losses += 1
+                early_loss_regimes[regime] += 1
+
+    if not win_holds or not loss_holds:
+        return ""
+
+    sorted_wins = sorted(win_holds)
+    sorted_losses = sorted(loss_holds)
+    win_median = sorted_wins[len(sorted_wins) // 2]
+    loss_median = sorted_losses[len(sorted_losses) // 2]
+
+    noise_regimes = {"illiquid", "ranging", "unknown", "consolidation", "low_liquidity", "range"}
+    noise_early = sum(v for k, v in early_loss_regimes.items() if k in noise_regimes)
+    noise_pct = noise_early / total_early_losses if total_early_losses > 0 else 0
+
+    lines = ["=== HOLD TIME MECHANISM (live data) ==="]
+    lines.append(f"  WIN median hold={win_median:.1f}h | LOSS median hold={loss_median:.1f}h")
+    if noise_pct >= 0.7:
+        lines.append(f"  {noise_pct:.0%} of early SL hits (<2h) are in noise regimes (illiquid/ranging/unknown)")
+        lines.append("  TRENDING regime: early hold risk is LOW — stay patient through microstructure noise")
+        lines.append("  ILLIQUID/RANGING: early losses are regime failures — consider closing sooner")
+
+    # Show hold-time table (only non-empty buckets)
+    order = ["<1h", "1h-2h", "2h-4h", "4h-8h", "8h-12h", "12h+"]
+    for b in order:
+        if b in hold_data and hold_data[b]["total"] >= 3:
+            s = hold_data[b]
+            wr = s["wins"] / s["total"]
+            avg = s["pnl"] / s["total"]
+            flag = "+" if avg > 1 else ("-" if avg < -1 else " ")
+            lines.append(f"  {flag} {b}: {wr:.0%} WR avg=${avg:.1f} (n={s['total']})")
+
+    return "\n".join(lines)
+
+
+def _build_dynamic_floors_section() -> str:
+    """Show the system's live dynamic confidence floors computed from the enricher's cached trade_dna."""
+    try:
+        from llm.dynamic_thresholds import DynamicThresholds
+        trades = _cache.get("trade_dna", [])
+        if len(trades) < 15:
+            return ""
+        # Build a fresh (non-singleton) instance pointing at the cached data via a temp file approach
+        # We compute inline to avoid path conflicts in tests
+        from collections import defaultdict
+
+        def _wr_to_floor(wr: float, n: int) -> float:
+            if n < 10:
+                return 64.0
+            if wr < 0.25:
+                return 76.0
+            if wr < 0.35:
+                return 71.0
+            if wr < 0.45:
+                return 66.0
+            if wr < 0.55:
+                return 62.0
+            return 58.0
+
+        regime_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0, "sl_hits": 0, "sl_widths": []})
+        for t in trades:
+            r = (t.get("regime") or "unknown").lower()
+            pnl = float(t.get("pnl") or 0)
+            won = t.get("outcome") == "WIN"
+            entry = float(t.get("entry_price") or 0)
+            sl = float(t.get("sl") or 0)
+            exit_reason = (t.get("exit_reason") or "").upper()
+            regime_agg[r]["total"] += 1
+            regime_agg[r]["pnl"] += pnl
+            if won:
+                regime_agg[r]["wins"] += 1
+            if exit_reason == "SL":
+                regime_agg[r]["sl_hits"] += 1
+            if entry > 0 and sl > 0:
+                regime_agg[r]["sl_widths"].append(abs(entry - sl) / entry)
+
+        lines = []
+        for r, v in sorted(regime_agg.items(), key=lambda x: -x[1]["total"]):
+            n = v["total"]
+            wr = v["wins"] / n if n else 0
+            floor = _wr_to_floor(wr, n)
+            sl_hit = v["sl_hits"] / n if n else 0
+            widths = v["sl_widths"]
+            avg_sl = sum(widths) / len(widths) * 100 if widths else 0
+            lines.append(f"  {r}: WR={wr:.0%} n={n} floor={floor:.0f} SL_hit={sl_hit:.0%} avg_SL={avg_sl:.1f}%")
+
+        if not lines:
+            return ""
+
+        # Hold time performance (computed inline from same cache)
+        hold_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+        entry_agg: dict = defaultdict(lambda: {"wins": 0, "total": 0, "pnl": 0.0})
+        for t in trades:
+            won = t.get("outcome") == "WIN"
+            pnl = float(t.get("pnl") or 0)
+            hold_s = float(t.get("hold_time_s") or 0)
+            if hold_s < 3600: hb = "<1h"
+            elif hold_s < 7200: hb = "1-2h"
+            elif hold_s < 21600: hb = "2-6h"
+            elif hold_s < 43200: hb = "6-12h"
+            else: hb = ">12h"
+            hold_agg[hb]["total"] += 1
+            hold_agg[hb]["pnl"] += pnl
+            if won: hold_agg[hb]["wins"] += 1
+            et = (t.get("entry_type") or "").upper()
+            if et:
+                entry_agg[et]["total"] += 1
+                entry_agg[et]["pnl"] += pnl
+                if won: entry_agg[et]["wins"] += 1
+
+        hold_lines = []
+        for b in ["<1h", "1-2h", "2-6h", "6-12h", ">12h"]:
+            d = hold_agg.get(b)
+            if d and d["total"] >= 5:
+                wr = d["wins"] / d["total"]
+                hold_lines.append(f"  {b}: WR={wr:.0%} n={d['total']} PnL=${d['pnl']:+.0f}")
+
+        profile_lines = []
+        for et, d in sorted(entry_agg.items(), key=lambda x: -x[1]["total"]):
+            if d["total"] >= 5:
+                wr = d["wins"] / d["total"]
+                profile_lines.append(f"  {et}: WR={wr:.0%} n={d['total']} PnL=${d['pnl']:+.0f}")
+
+        result = (
+            "LIVE CONFIDENCE FLOORS (dynamic from trade_dna):\n"
+            + "\n".join(lines)
+            + "\nNote: mechanical gate uses these floors. Your conviction score should EXCEED the floor "
+            "for your current regime to pass the quality filter."
+        )
+        if hold_lines:
+            result += "\nHOLD TIME PERFORMANCE (key: 6-12h trades = profitable):\n" + "\n".join(hold_lines)
+        if profile_lines:
+            result += "\nTRADE PROFILE PERFORMANCE:\n" + "\n".join(profile_lines)
+        return result
+    except Exception:
+        return ""
+
+
 def enrich_prompt(agent_role: str, base_prompt: str) -> str:
     """Enrich an agent's base prompt with the latest quant intelligence.
 
     Appends:
       1. QUANT INTELLIGENCE BRIEFING — top 5 relevant insights by confidence
-      2. SETUP EDGE DATA — per-setup WR from strategy_fingerprints
-      3. SIM STATUS — current sim equity and performance
-      4. RECENT PERFORMANCE — last 10 trade outcomes from trades.csv
+      2. VALIDATED TRADING RULES — graduated rules from knowledge_base
+      3. META-LEARNING PATTERNS — cross-trade statistical patterns
+      4. OVERSEER PORTFOLIO MEMO — latest system-level recommendations
+      5. SETUP EDGE DATA — per-setup WR from strategy_fingerprints
+      6. SIM STATUS — current sim equity and performance
+      7. RECENT PERFORMANCE — last 10 trade outcomes from trades.csv
+      8. REAL-TIME RISK STATE — hot/cold streak + live regime WR
+      9. COUNTERFACTUAL EXIT PATTERNS — what better timing would have earned
+      10. SYSTEM HEALTH — circuit breaker state, rolling WR, avg R:R
 
     Args:
         agent_role: Agent role string (e.g., "regime", "trade", "risk")
@@ -336,35 +997,97 @@ def enrich_prompt(agent_role: str, base_prompt: str) -> str:
 
     sections = []
 
-    # 1. Quant intelligence briefing
+    # 1. Quant intelligence briefing (insight_journal — validated live findings)
     briefing = _build_quant_briefing(agent_role)
     if briefing:
         sections.append(briefing)
 
-    # 2. Setup edge data (fingerprints)
+    # 2. Validated trading rules (knowledge_base — graduated axioms + live evidence)
+    kb_rules = _build_knowledge_base_rules(agent_role)
+    if kb_rules:
+        sections.append(kb_rules)
+
+    # 3. Meta-learning patterns (cross-trade statistical patterns)
+    meta = _build_meta_patterns()
+    if meta:
+        sections.append(meta)
+
+    # 4. Overseer portfolio memo (system-level recommendations, persists between runs)
+    overseer = _build_overseer_memo(agent_role)
+    if overseer:
+        sections.append(overseer)
+
+    # 5. Setup edge data (fingerprints)
     fingerprint_summary = _build_fingerprint_summary(agent_role)
     if fingerprint_summary:
         sections.append(fingerprint_summary)
 
-    # 3. Sim status (for trade-facing agents)
+    # 6. Sim status (for trade-facing agents)
     if agent_role in ("trade", "risk", "critic", "exit", "overseer"):
         sim_summary = _build_sim_status_summary()
         if sim_summary:
             sections.append(sim_summary)
 
-    # 4. Recent performance (for decision-making agents)
+    # 7. Recent performance (for decision-making agents)
     if agent_role in ("trade", "risk", "critic", "exit", "learning", "overseer"):
         perf = _build_recent_performance()
         if perf:
             sections.append(perf)
 
+    # 8. Adaptive risk state (hot/cold streak + live regime WR)
+    if agent_role in ("trade", "risk", "critic", "regime", "overseer"):
+        adaptive = _build_adaptive_risk_context()
+        if adaptive:
+            sections.append(adaptive)
+
+    # 9. Counterfactual exit patterns (Exit Agent only — what exit timing cost/saved)
+    if agent_role in ("exit", "trade", "overseer"):
+        cf_patterns = _build_counterfactual_exit_patterns()
+        if cf_patterns:
+            sections.append(cf_patterns)
+
+    # 10. System health — CB state, rolling WR, R:R (injected into ALL decision agents)
+    system_health = _build_system_health_context()
+    if system_health:
+        sections.append(system_health)
+
+    # 11. Validated hypotheses (for decision agents — empirically tested edge claims)
+    if agent_role in ("trade", "risk", "critic", "regime", "quant", "overseer"):
+        hyp_section = _build_validated_hypotheses(agent_role)
+        if hyp_section:
+            sections.append(hyp_section)
+
+    # 12. Confidence calibration (floors + symbol/regime adjustments)
+    if agent_role in ("trade", "risk", "critic"):
+        conf_cal = _build_confidence_calibration()
+        if conf_cal:
+            sections.append(conf_cal)
+
+    # 13. Trade DNA — live WR by regime and symbol+side (50+ trades = reliable signal)
+    if agent_role in ("trade", "risk", "critic", "regime", "overseer"):
+        dna = _build_trade_dna_summary()
+        if dna:
+            sections.append(dna)
+
+    # 14. Hold-time causal mechanism — regime-conditional exit intelligence
+    if agent_role in ("exit", "trade", "risk"):
+        hold = _build_hold_time_mechanism()
+        if hold:
+            sections.append(hold)
+
+    # 15. Dynamic confidence floors — live per-regime WR floors
+    if agent_role in ("trade", "regime", "critic"):
+        dyn_floor = _build_dynamic_floors_section()
+        if dyn_floor:
+            sections.append(dyn_floor)
+
     if not sections:
         return base_prompt
 
-    # Join all sections and enforce token budget
+    # Join all sections and enforce token budget (raised to 5000 chars — CLI is $0/call)
     enrichment = "\n\n".join(sections)
-    if len(enrichment) > _MAX_BRIEFING_CHARS:
-        enrichment = enrichment[:_MAX_BRIEFING_CHARS - 3] + "..."
+    if len(enrichment) > 5000:
+        enrichment = enrichment[:4997] + "..."
 
     return f"{base_prompt}\n\n{enrichment}"
 
@@ -400,6 +1123,10 @@ def get_enrichment_stats() -> Dict[str, Any]:
         if ins.get("validated"):
             validated += 1
 
+    kb_entries = _cache.get("kb_entries", [])
+    meta_insights = _cache.get("meta_insights", [])
+    overseer_memo = _cache.get("overseer_memo", {})
+
     return {
         "total_insights": len(insights),
         "validated_insights": validated,
@@ -407,5 +1134,8 @@ def get_enrichment_stats() -> Dict[str, Any]:
         "recent_trades_loaded": len(trades),
         "fingerprints_setups": list(fps.keys()),
         "sim_equity": sim.get("current_equity"),
+        "kb_entries": len(kb_entries),
+        "meta_insights": len(meta_insights),
+        "overseer_memo_age_s": round(time.time() - overseer_memo.get("timestamp", time.time())),
         "cache_age_s": round(get_cache_age_seconds(), 0),
     }

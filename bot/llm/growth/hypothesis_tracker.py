@@ -140,6 +140,7 @@ class HypothesisTracker:
         self._data_dir = data_dir or _DATA_DIR
         self._hypotheses: List[Hypothesis] = []
         self._loaded = False
+        self._suppress_save = False
 
     def _ensure_loaded(self):
         if self._loaded:
@@ -154,6 +155,11 @@ class HypothesisTracker:
                 self._hypotheses = [Hypothesis.from_dict(h) for h in data.get("hypotheses", [])]
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning(f"[HYPO] Failed to load: {e}")
+        # One-time backfill of historical trades if evidence is sparse
+        try:
+            self.backfill_from_trade_dna()
+        except Exception as _be:
+            logger.debug(f"[HYPO] Backfill skipped: {_be}")
 
     def _save(self):
         _ensure_dir()
@@ -231,6 +237,7 @@ class HypothesisTracker:
         description: str,
         source: str = "trade_outcome",
         strength: float = 1.0,
+        _suppress_save: bool = False,
     ) -> bool:
         """Add evidence for or against a hypothesis."""
         self._ensure_loaded()
@@ -260,7 +267,8 @@ class HypothesisTracker:
                 h.confidence = 0.5 + (ratio - 0.5) * data_weight
 
                 h.last_updated = time.time()
-                self._save()
+                if not (_suppress_save or self._suppress_save):
+                    self._save()
 
                 direction = "FOR" if supporting else "AGAINST"
                 logger.debug(
@@ -271,65 +279,163 @@ class HypothesisTracker:
                 return True
         return False
 
-    def add_evidence_by_trade(self, trade_data: Dict[str, Any]):
+    def add_evidence_by_trade(self, trade_data: Dict[str, Any], _suppress_save: bool = False):
         """Automatically add evidence to relevant hypotheses based on a trade outcome.
 
         Examines each active hypothesis and checks if this trade
         provides supporting or contradicting evidence.
         """
         self._ensure_loaded()
-        symbol = trade_data.get("symbol", "")
-        regime = trade_data.get("regime", "")
-        side = trade_data.get("side", "")
+        symbol = (trade_data.get("symbol") or "").upper()
+        regime = (trade_data.get("regime") or "").lower()
+        side = (trade_data.get("side") or "").upper()
         won = trade_data.get("outcome") == "WIN"
-        hour = trade_data.get("hour", -1)
-        confidence = trade_data.get("confidence", 0)
-        num_agree = trade_data.get("num_agree", 0)
+        confidence = float(trade_data.get("confidence") or 0)
+        leverage = float(trade_data.get("leverage") or 0)
+        hold_time_s = float(trade_data.get("hold_time_s") or 0)
+        exit_reason = (trade_data.get("exit_reason") or "").upper()
+
+        # Derive UTC hour from timestamp if not explicitly provided
+        hour = int(trade_data.get("hour", -1))
+        if hour < 0:
+            ts = trade_data.get("timestamp", 0)
+            if ts:
+                try:
+                    from datetime import datetime, timezone
+                    hour = datetime.fromtimestamp(float(ts), tz=timezone.utc).hour
+                except Exception:
+                    pass
+
+        # Derived flags
+        is_long = side in ("LONG", "BUY")
+        is_short = side in ("SHORT", "SELL")
+        is_high_lev = leverage >= 5.0
+        # 18-06 UTC window (overnight crypto hours)
+        in_18_06 = hour in (18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6) if hour >= 0 else False
+        in_06_18 = (6 <= hour < 18) if hour >= 0 else False
+        # symbol+side combos both as "hype_buy" and "hype_long"
+        side_buy = "buy" if is_long else "sell"
+        side_long = "long" if is_long else "short"
+        combos = {
+            f"{symbol.lower()}_{side_buy}",
+            f"{symbol.lower()}_{side_long}",
+        }
 
         for h in self._hypotheses:
             if h.stage not in ("proposed", "testing"):
                 continue
 
-            statement_lower = h.statement.lower()
+            st = h.statement.lower()
             is_relevant = False
             is_supporting = None
 
-            # Symbol-specific hypotheses
-            if symbol.lower() in statement_lower:
+            # ── 1. Leverage-based hypotheses ─────────────────────────────────
+            # Matches: "high leverage", "5x+", "5x", ">5.0x", "leverage >5"
+            is_lev_hypo = (
+                ("high leverage" in st or "5x+" in st or "5x" in st
+                 or ">5.0x" in st or ">5.0" in st or ">5" in st)
+                and ("losing" in st or "capping" in st or "cap" in st or "whipsaw" in st)
+            )
+            if is_lev_hypo and is_high_lev:
                 is_relevant = True
-                if "performs better" in statement_lower or "strong" in statement_lower:
-                    is_supporting = won
-                elif "performs poorly" in statement_lower or "weak" in statement_lower:
+                # Hypothesis says high-lev trades LOSE → loss = supporting
+                is_supporting = not won
+
+            # ── 2. Symbol + side combo matching ──────────────────────────────
+            # Matches "HYPE_BUY", "hype_buy", "hype long", "hype_long"
+            if any(c in st for c in combos):
+                is_relevant = True
+                if "negative ev" in st or "losers" in st or "poorly" in st or "losing" in st:
                     is_supporting = not won
+                else:
+                    is_supporting = won  # default: win supports positive-edge thesis
 
-            # Regime-specific
-            if regime.lower() in statement_lower:
+            # ── 3. Symbol + side + regime combo ──────────────────────────────
+            if symbol.lower() in st and regime and regime in st:
+                side_match = (is_long and ("long" in st or "buy" in st)) or \
+                             (is_short and ("short" in st or "sell" in st)) or \
+                             ("long" not in st and "short" not in st and "buy" not in st and "sell" not in st)
+                if side_match:
+                    is_relevant = True
+                    if "negative" in st or "losing" in st or "whipsaw" in st or "poorly" in st:
+                        is_supporting = not won
+                    else:
+                        is_supporting = won
+
+            # ── 4. Time-of-day windows ────────────────────────────────────────
+            # "18-06 utc" — overnight hypothesis
+            if ("18-06" in st or "18:00-06" in st or "18-06 utc" in st) and (symbol.lower() in st or any(c in st for c in combos)):
                 is_relevant = True
-                if "works well" in statement_lower or "profitable" in statement_lower:
+                # Hypothesis: 18-06 UTC has HIGHER WR → win during 18-06 = supporting
+                if in_18_06:
                     is_supporting = won
-                elif "struggles" in statement_lower or "losing" in statement_lower:
+                elif in_06_18 and hour >= 0:
+                    is_supporting = not won  # winning in off-window contradicts
+
+            # "06-18 utc" — daytime hypothesis (usually lower WR)
+            if "06-18" in st and (symbol.lower() in st or any(c in st for c in combos)):
+                is_relevant = True
+                if in_06_18:
+                    is_supporting = not won  # "06-18 has lower WR" → loss = supporting
+
+            # Named sessions
+            if "asian" in st and 0 <= hour <= 8:
+                is_relevant = True
+                is_supporting = won
+            if "london" in st and 8 <= hour <= 16:
+                is_relevant = True
+                is_supporting = won
+            if ("new york" in st or " ny " in st) and 13 <= hour <= 21:
+                is_relevant = True
+                is_supporting = won
+
+            # ── 5. Hold-time patterns ─────────────────────────────────────────
+            # "5+ bars slow winners" — 1 bar ≈ 1h = 3600s
+            if ("5+ bars" in st or "5 bars" in st or "slow winner" in st) and symbol.lower() in st:
+                is_relevant = True
+                if hold_time_s > 5 * 3600 and won:
+                    is_supporting = True   # slow winner confirmed
+                elif hold_time_s <= 2 * 3600 and not won:
+                    is_supporting = True   # quick loser confirmed
+                else:
+                    is_supporting = False
+
+            # "winning trades resolve faster" / "tighter timeouts"
+            if ("faster" in st or "timeout" in st) and ("winning" in st or "resolve" in st):
+                is_relevant = True
+                # Winners with short hold = supporting; losers with long hold = supporting
+                if won and hold_time_s < 4 * 3600:
+                    is_supporting = True
+                elif not won and hold_time_s > 8 * 3600:
+                    is_supporting = True
+                else:
+                    is_supporting = False
+
+            # ── 6. Regime + confidence combos ─────────────────────────────────
+            # "illiquid regime ... conf>55%" — low conf in illiquid = loser
+            if regime == "illiquid" and "illiquid" in st and "conf" in st and confidence < 55:
+                is_relevant = True
+                is_supporting = not won   # hypothesis: low conf + illiquid loses
+
+            # ── 7. Generic symbol-only fallback ───────────────────────────────
+            if not is_relevant and symbol.lower() in st:
+                is_relevant = True
+                if ("performs better" in st or "strong" in st or "edge" in st
+                        or "higher wr" in st or "exploitable" in st):
+                    is_supporting = won
+                elif "performs poorly" in st or "weak" in st or "negative" in st:
                     is_supporting = not won
-
-            # Side-specific
-            if ("longs" in statement_lower or "long" in statement_lower) and side.upper() in ("LONG", "BUY"):
-                is_relevant = True
-                if "favors" in statement_lower:
-                    is_supporting = won
-            if ("shorts" in statement_lower or "short" in statement_lower) and side.upper() in ("SHORT", "SELL"):
-                is_relevant = True
-                if "favors" in statement_lower:
+                else:
                     is_supporting = won
 
-            # Timing hypotheses
-            if "hour" in statement_lower or "session" in statement_lower:
-                if "asian" in statement_lower and 0 <= hour <= 8:
-                    is_relevant = True
+            # ── 8. Generic regime-only fallback ───────────────────────────────
+            if not is_relevant and regime and regime in st:
+                is_relevant = True
+                if "works well" in st or "profitable" in st or "higher wr" in st:
                     is_supporting = won
-                elif "london" in statement_lower and 8 <= hour <= 16:
-                    is_relevant = True
-                    is_supporting = won
-                elif "new york" in statement_lower and 13 <= hour <= 21:
-                    is_relevant = True
+                elif "struggles" in st or "losing" in st:
+                    is_supporting = not won
+                else:
                     is_supporting = won
 
             if is_relevant and is_supporting is not None:
@@ -337,11 +443,47 @@ class HypothesisTracker:
                     h.hypothesis_id,
                     supporting=is_supporting,
                     description=(
-                        f"{symbol} {side} in {regime}: "
-                        f"{'WIN' if won else 'LOSS'} at {confidence:.0f}% conf"
+                        f"{symbol} {side} {regime} lev={leverage:.1f}x "
+                        f"h={hour} conf={confidence:.0f}%: "
+                        f"{'WIN' if won else 'LOSS'}"
                     ),
                     source="trade_outcome",
+                    _suppress_save=_suppress_save,
                 )
+
+    def backfill_from_trade_dna(self, trade_dna_path: str = None):
+        """Feed all historical trades through evidence matching (one-time backfill).
+
+        Skipped if hypotheses already have evidence to avoid double-counting.
+        Called once from _ensure_loaded when evidence is missing.
+        """
+        self._ensure_loaded()
+        # Only backfill if evidence is sparse (< 5 entries total across all active hypos)
+        active = [h for h in self._hypotheses if h.stage in ("proposed", "testing")]
+        total_ev = sum(len(h.evidence) for h in active)
+        if total_ev >= len(active) * 3:
+            return  # Already has reasonable evidence
+
+        path = trade_dna_path or os.path.join("data", "llm", "deep_memory", "trade_dna.json")
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            trades = data.get("trades", [])
+            if not trades:
+                return
+            # Suppress individual saves — batch save once at end
+            self._suppress_save = True
+            for t in trades:
+                self.add_evidence_by_trade(t, _suppress_save=True)
+            self._suppress_save = False
+            self._save()
+            added = sum(len(h.evidence) for h in active) - total_ev
+            logger.info(f"[HYPO] Backfill: {added} evidence entries from {len(trades)} trades")
+        except Exception as e:
+            self._suppress_save = False
+            logger.warning(f"[HYPO] Backfill error: {e}")
 
     def check_graduation(self) -> List[Hypothesis]:
         """Check all hypotheses for graduation readiness.
@@ -377,6 +519,14 @@ class HypothesisTracker:
                         f"[HYPO] GRADUATED (validated): {h.statement[:60]} "
                         f"-> {h.graduated_to} ({h.supporting_count}:{h.contradicting_count})"
                     )
+                # Wire validated hypothesis → GraduatedRules engine → KB
+                try:
+                    from llm.graduated_rules import get_graduated_rules_engine
+                    _rule = get_graduated_rules_engine().graduate_hypothesis(h)
+                    if _rule:
+                        logger.info(f"[HYPO→RULE] Created executable rule: {_rule.action} (id={_rule.rule_id})")
+                except Exception as _ge:
+                    logger.debug(f"[HYPO→RULE] Graduation error: {_ge}")
             elif h.evidence_ratio <= 0.3:
                 # Invalidated
                 h.stage = "invalidated"
@@ -393,6 +543,14 @@ class HypothesisTracker:
                         f"[HYPO] INVALIDATED: {h.statement[:60]} "
                         f"({h.supporting_count}:{h.contradicting_count})"
                     )
+                # Wire anti-pattern → GraduatedRules as a PENALIZE rule
+                try:
+                    from llm.graduated_rules import get_graduated_rules_engine
+                    _rule = get_graduated_rules_engine().graduate_hypothesis(h)
+                    if _rule:
+                        logger.info(f"[HYPO→RULE] Anti-pattern rule: {_rule.action} (id={_rule.rule_id})")
+                except Exception as _ge:
+                    logger.debug(f"[HYPO→RULE] Anti-pattern graduation error: {_ge}")
 
             h.last_updated = time.time()
 

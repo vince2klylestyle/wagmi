@@ -31,6 +31,17 @@ from core.filter_annotations import FilterAnnotation, AnnotatedSignal
 logger = logging.getLogger("bot.strategy.ensemble")
 
 
+def _get_dynamic_floor(regime: str, symbol: str, side: str, fallback: float) -> float:
+    """Lazy import of DynamicThresholds to avoid circular imports."""
+    try:
+        from llm.dynamic_thresholds import get_dynamic_thresholds
+        return get_dynamic_thresholds().get_confidence_floor(
+            regime=regime, symbol=symbol, side=side, fallback=fallback
+        )
+    except Exception:
+        return fallback
+
+
 def _get_tel():
     """Lazy import to avoid circular dependency."""
     try:
@@ -55,8 +66,14 @@ class EnsembleStrategy:
         weight_manager=None,
         veto_ratio: float = 1.2,  # Lowered from 1.5: fee-drag + EV gates handle quality
         chop_detector=None,
-        confidence_floor: float = 69.0,  # Data: sweet spot between filtering noise and capturing edge
-        ranging_confidence_floor: float = 68.0,  # Synced with TradingConfig: allows clear breakouts while filtering noise
+        # 2026-06-06: defaults lowered from hardcoded 69.0/68.0 to read from
+        # configured ENSEMBLE_CONFIDENCE_FLOOR (20.0 per .env overdrive mode).
+        # The previous magic numbers assumed May/June regime distribution and
+        # over-filtered current live signals. Per Nunu directive — no fabricated
+        # certainty in defaults; if dynamic floor engine fails, fall back to
+        # configured value, not a hardcoded "data sweet spot."
+        confidence_floor: float = 20.0,
+        ranging_confidence_floor: float = 20.0,
         ic_tracker=None,
     ):
         self.strategies = strategies
@@ -219,8 +236,17 @@ class EnsembleStrategy:
     }
 
     def _get_effective_min_votes(self, symbol: str) -> int:
-        """Get min_votes — using configured value for aggressive data collection."""
-        return self.min_votes  # Use configured MIN_VOTES_REQUIRED (currently 1)
+        """Get min_votes for this symbol.
+
+        Per-symbol overrides (data/symbol_strategy_profile.py) win over the
+        global default. HYPE uses min_votes=1 because only confidence_scorer
+        fires reliably on it (see forensic 2026-04-14).
+        """
+        try:
+            from data.symbol_strategy_profile import get_min_votes_for_symbol
+            return get_min_votes_for_symbol(symbol, default=self.min_votes)
+        except Exception:
+            return self.min_votes
 
     def set_symbol_volatility_profiles(self, profiles: Dict[str, str]):
         """Set volatility profiles for symbols (e.g., {"HYPE": "high", "BTC": "low"}).
@@ -363,6 +389,12 @@ class EnsembleStrategy:
 
         # Get regime-allowed strategies for this symbol
         regime_allowed = self._get_regime_allowed_strategies(symbol)
+        # Per-symbol strategy profile (drops dead-weight strategies per symbol)
+        try:
+            from data.symbol_strategy_profile import get_active_strategies_for_symbol
+            symbol_active = get_active_strategies_for_symbol(symbol)
+        except Exception:
+            symbol_active = None
 
         signals: List[Signal] = []
         shadow_signals: List[Signal] = []  # Disabled strategy signals for IC tracking
@@ -469,24 +501,38 @@ class EnsembleStrategy:
                     f"applying graduated confidence floor"
                 )
         elif self._is_low_volume(symbol, data):
-            # Fallback to simple volume filter if no chop detector
-            logger.info(f"[{symbol}] Signal skipped: low volume (chop filter)")
+            # 2026-05-30: NEUTRALIZED — volume chop is now informational, not a gate.
+            # Pure data flows to LLM; LLM decides whether low volume warrants skipping.
+            logger.info(f"[{symbol}] Low volume detected (was chop-filtering; now informational only)")
             if self._missed_trade_tracker is not None:
                 self._missed_trade_tracker.record_ensemble_rejection(
-                    symbol=symbol, signals=signals, reason="low_volume_chop"
+                    symbol=symbol, signals=signals, reason="low_volume_chop_observed_not_blocked"
                 )
-            return None
+            # NO return — continue to signal construction
+
+        # LLM-first mode: the EV gate inside _merge_signals becomes advisory.
+        # Without this, consensus signals like BTC funding_rate BUY get
+        # EV-blocked in evaluate() and never reach the LLM (the rescue path
+        # only fires when evaluate returns None, which it does — but for a
+        # DIFFERENT reason than solo min_votes). Setting llm_first_raw=True
+        # here keeps consensus signals alive so they can reach LLM-first.
+        _llm_first_active = False
+        try:
+            import os as _os
+            _llm_first_active = _os.environ.get("LLM_FIRST_MODE", "false").lower() == "true"
+        except Exception:
+            pass
 
         if self.mode == "voting":
-            result = self._voting(symbol, signals, effective_min_votes)
+            result = self._voting(symbol, signals, effective_min_votes, llm_first_raw=_llm_first_active)
         elif self.mode == "weighted_veto":
-            result = self._weighted_veto(symbol, signals, effective_min_votes)
+            result = self._weighted_veto(symbol, signals, effective_min_votes, llm_first_raw=_llm_first_active)
         elif self.mode == "weighted":
             result = self._weighted(symbol, signals)
         elif self.mode == "best":
             result = self._best(symbol, signals)
         else:
-            result = self._voting(symbol, signals, effective_min_votes)
+            result = self._voting(symbol, signals, effective_min_votes, llm_first_raw=_llm_first_active)
 
         if result is None:
             return None
@@ -509,13 +555,18 @@ class EnsembleStrategy:
         # This lets historically bad setups get rejected even with high raw confidence.
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -545,11 +596,22 @@ class EnsembleStrategy:
                 symbol=symbol, regime=_regime, side=result.side,
                 strategy=result.strategy or "", setup_type=_setup,
                 num_agree=_n_agree, confidence=result.confidence,
+                strategies_active=result.metadata.get("strategies_agree") or [],
             )
             if _vetoed:
-                logger.info(f"[{symbol}] Signal VETOED by graduated rule: {_rule_summary}")
-                self._record_counterfactual(result, "graduated_rule_veto")
-                return None
+                # 2026-05-30: under LLM_FIRST_MODE, graduated-rule vetoes become informational.
+                # These rules carry stale verdicts (e.g. "HYPE BUY 23% WR" pre-rally).
+                # The LLM gets the rule summary as context and decides itself.
+                import os as _os
+                if _os.environ.get("LLM_FIRST_MODE", "false").lower() == "true":
+                    logger.info(f"[{symbol}] Graduated rule WOULD veto (LLM_FIRST_MODE override): {_rule_summary}")
+                    result.metadata["graduated_rule_veto_overridden"] = _rule_summary
+                    self._record_counterfactual(result, "graduated_rule_veto_overridden")
+                    # Continue — don't return None
+                else:
+                    logger.info(f"[{symbol}] Signal VETOED by graduated rule: {_rule_summary}")
+                    self._record_counterfactual(result, "graduated_rule_veto")
+                    return None
             if _adj_conf != result.confidence:
                 logger.info(f"[{symbol}] Graduated rules: {result.confidence:.0f}% → {_adj_conf:.0f}% ({_rule_summary})")
                 result.confidence = _adj_conf
@@ -557,10 +619,37 @@ class EnsembleStrategy:
         except Exception:
             pass
 
-        # 1. Minimum confidence floor — regime-aware
-        # In choppy markets, require much higher confidence to trade.
-        # 100d backtest: ranging regime = 24% WR, trending = 100% WR.
-        effective_floor = self.confidence_floor
+        # 1. Minimum confidence floor — dynamic regime-aware
+        # Base floor computed from live per-regime WR in trade_dna (updates every 30min).
+        # Time-of-day adjustment applied on top, then chop score.
+        _result_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_result_regime,
+            symbol=symbol,
+            side=result.side,
+            fallback=self.confidence_floor,
+        )
+        result.metadata["dynamic_floor"] = round(effective_floor, 1)
+        # Time-of-day adjustment from live hourly WR data
+        try:
+            import datetime as _dt
+            from llm.dynamic_thresholds import get_dynamic_thresholds as _get_dt
+            _utc_hour = _dt.datetime.now(_dt.timezone.utc).hour
+            _dt_engine = _get_dt()
+            _tod_adj = _dt_engine.get_time_of_day_floor_adj(_utc_hour)
+            if _tod_adj != 0.0:
+                effective_floor = effective_floor + _tod_adj
+                result.metadata["tod_floor_adj"] = round(_tod_adj, 1)
+            # Entry type / trade profile floor adjustment (TREND=14% WR → +8 floor)
+            _entry_type = result.metadata.get("entry_type", "")
+            if _entry_type:
+                _et_adj = _dt_engine.get_entry_type_floor_adj(_entry_type)
+                if _et_adj != 0.0:
+                    effective_floor = effective_floor + _et_adj
+                    result.metadata["entry_type_floor_adj"] = round(_et_adj, 1)
+        except Exception:
+            pass
+
         raw_chop = result.metadata.get("chop_score", 0)
         # Apply EMA smoothing to prevent floor oscillation on noise
         prev = self._smoothed_chop.get(symbol, raw_chop)
@@ -569,28 +658,20 @@ class EnsembleStrategy:
         result.metadata["chop_score_smoothed"] = round(chop_score, 3)
         if chop_score > 0.35:
             if chop_score >= 0.65:
-                # Extreme chop: floor rises from ranging toward max.
-                # High-vol assets get lower max: their natural price action is choppy.
+                # Extreme chop: floor rises from regime-dynamic base toward max.
                 _vol_profile = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
-                _max_chop_floor = {"low": 75.0, "medium": 75.0, "high": 75.0}.get(_vol_profile, 75.0)
+                _max_chop_floor = {"low": 77.0, "medium": 77.0, "high": 77.0}.get(_vol_profile, 77.0)
                 chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)  # 0→1 over 0.65→0.85
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (
-                    _max_chop_floor - self.ranging_confidence_floor
+                effective_floor = effective_floor + chop_intensity * (
+                    _max_chop_floor - effective_floor
                 )
             else:
-                # Moderate chop: interpolate between normal and ranging floor
+                # Moderate chop: push floor upward toward ranging_confidence_floor
                 chop_intensity = (chop_score - 0.35) / 0.30  # 0→1 over 0.35→0.65
-                effective_floor = self.confidence_floor + chop_intensity * (
+                effective_floor = effective_floor + chop_intensity * (
                     self.ranging_confidence_floor - self.confidence_floor
                 )
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
-
-        # Regime-specific confidence override: consolidation ONLY works at 80%+
-        # Data: 70-79% consolidation = 9% WR (-$367), 80-89% = 80% WR (+$2,516)
-        _result_regime = result.metadata.get("regime", "")
-        if _result_regime in ("consolidation",) and result.confidence < 68:
-            effective_floor = max(effective_floor, 68.0)
-            result.metadata["regime_floor_override"] = 68.0
 
         if result.confidence < effective_floor:
             # Magnitude bypass: high-R:R signals on volatile assets get a second chance.
@@ -697,6 +778,31 @@ class EnsembleStrategy:
         except Exception:
             pass
 
+        # Apply signal quality context multipliers (learned meta-confidence)
+        try:
+            if hasattr(self, '_signal_quality_scorer') and self._signal_quality_scorer is not None:
+                from feedback.signal_quality import QualityFeatures
+
+                features = QualityFeatures(
+                    confidence=result.confidence,
+                    num_strategies_agree=(result.metadata or {}).get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    symbol=symbol,
+                    side=result.side,
+                    regime=(result.metadata or {}).get("regime", "unknown"),
+                    entry_type=(result.metadata or {}).get("entry_type", ""),
+                )
+                quality_mult, breakdown = self._signal_quality_scorer.score_signal(features)
+                if quality_mult != 1.0:
+                    old_conf = result.confidence
+                    result.confidence = min(100.0, result.confidence * quality_mult)
+                    logger.info(
+                        f"[ENSEMBLE] {symbol} {result.side} Quality multiplier: {quality_mult:.3f} "
+                        f"({old_conf:.0f}% → {result.confidence:.0f}%) | {breakdown}"
+                    )
+        except Exception as _sq_err:
+            logger.debug(f"Signal quality scoring error: {_sq_err}")
+
         # Telemetry: record ensemble consensus result
         try:
             from core.pipeline_telemetry import get_telemetry as _get_pt
@@ -725,6 +831,13 @@ class EnsembleStrategy:
 
         # Get regime-allowed strategies for this symbol
         regime_allowed = self._get_regime_allowed_strategies(symbol)
+        # Get per-symbol active strategy set (drops dead-weight strategies).
+        # Returns None if no override for this symbol (legacy: all active).
+        try:
+            from data.symbol_strategy_profile import get_active_strategies_for_symbol
+            symbol_active = get_active_strategies_for_symbol(symbol)
+        except Exception:
+            symbol_active = None
 
         signals: List[Signal] = []
         shadow_signals: List[Signal] = []
@@ -754,6 +867,11 @@ class EnsembleStrategy:
                 continue
 
             if regime_allowed is not None and strategy.name not in regime_allowed:
+                continue
+            # Per-symbol strategy profile: skip strategies with no empirical edge
+            # on this symbol (e.g., regime_trend on SOL = 0% WR). Data lives in
+            # bot/data/symbol_strategy_profile.py.
+            if symbol_active is not None and strategy.name not in symbol_active:
                 continue
             active_count += 1
             try:
@@ -811,15 +929,15 @@ class EnsembleStrategy:
         _llm_first_min = 1
 
         if self.mode == "voting":
-            result = self._voting(symbol, signals, _llm_first_min)
+            result = self._voting(symbol, signals, _llm_first_min, llm_first_raw=True)
         elif self.mode == "weighted_veto":
-            result = self._weighted_veto(symbol, signals, _llm_first_min)
+            result = self._weighted_veto(symbol, signals, _llm_first_min, llm_first_raw=True)
         elif self.mode == "weighted":
             result = self._weighted(symbol, signals)
         elif self.mode == "best":
             result = self._best(symbol, signals)
         else:
-            result = self._voting(symbol, signals, _llm_first_min)
+            result = self._voting(symbol, signals, _llm_first_min, llm_first_raw=True)
 
         if result is None:
             return None
@@ -835,14 +953,17 @@ class EnsembleStrategy:
         result.metadata["chop_score_smoothed"] = round(chop_score, 3)
 
         # Effective confidence floor (what the mechanical system would use)
-        effective_floor = self.confidence_floor
+        _meta_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_meta_regime, symbol=symbol, side=result.side, fallback=self.confidence_floor
+        )
         if chop_score > 0.35:
             if chop_score >= 0.65:
                 chop_intensity = min(1.0, (chop_score - 0.65) / 0.20)
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (75.0 - self.ranging_confidence_floor)
+                effective_floor = effective_floor + chop_intensity * (77.0 - effective_floor)
             else:
                 chop_intensity = (chop_score - 0.35) / 0.30
-                effective_floor = self.confidence_floor + chop_intensity * (self.ranging_confidence_floor - self.confidence_floor)
+                effective_floor = effective_floor + chop_intensity * (self.ranging_confidence_floor - self.confidence_floor)
         result.metadata["mechanical_confidence_floor"] = round(effective_floor, 1)
         result.metadata["would_pass_confidence_floor"] = result.confidence >= effective_floor
 
@@ -856,13 +977,18 @@ class EnsembleStrategy:
         # Quality score (attach but don't filter)
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -883,6 +1009,7 @@ class EnsembleStrategy:
                 symbol=symbol, regime=_regime, side=result.side,
                 strategy=result.strategy or "", setup_type=_setup,
                 num_agree=_n_agree, confidence=result.confidence,
+                strategies_active=result.metadata.get("strategies_agree") or [],
             )
             result.metadata["graduated_rules_advisory"] = {
                 "would_veto": _vetoed,
@@ -1022,13 +1149,18 @@ class EnsembleStrategy:
         # Quality adjustment (same as evaluate())
         if self._quality_scorer is not None:
             try:
+                import datetime as _dt
                 from feedback.signal_quality import QualityFeatures
+                _utc_h = _dt.datetime.now(_dt.timezone.utc).hour
                 features = QualityFeatures(
                     confidence=result.confidence,
                     num_strategies_agree=result.metadata.get("num_agree", 1),
                     total_strategies=len(self.strategies),
                     symbol=symbol,
                     side=result.side,
+                    regime=result.metadata.get("regime", ""),
+                    entry_type=result.metadata.get("entry_type", ""),
+                    hour_of_day=_utc_h,
                 )
                 _adj, _mult, _breakdown = self._quality_scorer.adjust_confidence(
                     result.confidence, features
@@ -1040,8 +1172,12 @@ class EnsembleStrategy:
             except Exception as e:
                 logger.debug(f"Quality scorer error: {e}")
 
-        # ── Soft-annotated confidence floor ──
-        effective_floor = self.confidence_floor
+        # ── Soft-annotated confidence floor (dynamic) ──
+        _ann_regime = result.metadata.get("regime", "")
+        effective_floor = _get_dynamic_floor(
+            regime=_ann_regime, symbol=symbol, side=result.side, fallback=self.confidence_floor
+        )
+        result.metadata["dynamic_floor"] = round(effective_floor, 1)
         raw_chop = result.metadata.get("chop_score", 0)
         prev = self._smoothed_chop.get(symbol, raw_chop)
         smoothed_chop = self._chop_ema_alpha * raw_chop + (1 - self._chop_ema_alpha) * prev
@@ -1051,14 +1187,14 @@ class EnsembleStrategy:
         if smoothed_chop > 0.35:
             if smoothed_chop >= 0.65:
                 _vol_profile = getattr(self, '_volatility_profiles', {}).get(symbol, "medium")
-                _max_chop_floor = {"low": 75.0, "medium": 75.0, "high": 75.0}.get(_vol_profile, 75.0)
+                _max_chop_floor = {"low": 77.0, "medium": 77.0, "high": 77.0}.get(_vol_profile, 77.0)
                 chop_intensity = min(1.0, (smoothed_chop - 0.65) / 0.20)
-                effective_floor = self.ranging_confidence_floor + chop_intensity * (
-                    _max_chop_floor - self.ranging_confidence_floor
+                effective_floor = effective_floor + chop_intensity * (
+                    _max_chop_floor - effective_floor
                 )
             else:
                 chop_intensity = (smoothed_chop - 0.35) / 0.30
-                effective_floor = self.confidence_floor + chop_intensity * (
+                effective_floor = effective_floor + chop_intensity * (
                     self.ranging_confidence_floor - self.confidence_floor
                 )
             result.metadata["effective_confidence_floor"] = round(effective_floor, 1)
@@ -1417,10 +1553,16 @@ class EnsembleStrategy:
         )
 
     def _voting(self, symbol: str, signals: List[Signal],
-                effective_min_votes: int = 0) -> Optional[Signal]:
+                effective_min_votes: int = 0,
+                llm_first_raw: bool = False) -> Optional[Signal]:
         """Require min_votes strategies to agree on direction.
         Opposition veto: if any strategy actively votes the opposite side,
-        require min_votes + len(opposition) to override."""
+        require min_votes + len(opposition) to override.
+
+        llm_first_raw: when True, the negative-EV hard block inside
+        _merge_signals() becomes advisory. The flag is threaded through to
+        _merge_signals.
+        """
         min_v = effective_min_votes or self.min_votes
         buy_signals = [s for s in signals if s.side == "BUY"]
         sell_signals = [s for s in signals if s.side == "SELL"]
@@ -1456,7 +1598,7 @@ class EnsembleStrategy:
                 )
                 return None
 
-        merged = self._merge_signals(symbol, chosen)
+        merged = self._merge_signals(symbol, chosen, llm_first_raw=llm_first_raw)
         if merged is None:
             return None
 
@@ -1474,11 +1616,16 @@ class EnsembleStrategy:
         return merged
 
     def _weighted_veto(self, symbol: str, signals: List[Signal],
-                       effective_min_votes: int = 0) -> Optional[Signal]:
+                       effective_min_votes: int = 0,
+                       llm_first_raw: bool = False) -> Optional[Signal]:
         """Weight-aware voting with graduated veto.
         Uses strategy accuracy weights * confidence to determine direction.
         Requires chosen side to have veto_ratio times the opposition's strength.
-        Minimum min_votes strategies must agree on the same side for a trade."""
+        Minimum min_votes strategies must agree on the same side for a trade.
+
+        llm_first_raw: threaded through to _merge_signals, where it turns the
+        negative-EV hard block into an advisory attachment.
+        """
         min_v = effective_min_votes or self.min_votes
         buy_signals = [s for s in signals if s.side == "BUY"]
         sell_signals = [s for s in signals if s.side == "SELL"]
@@ -1526,12 +1673,14 @@ class EnsembleStrategy:
                 _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
                 _setup_key = f"{_base_sym}_{_sig.side}"
 
-                # Golden setups from 1,410-signal analysis (higher size)
-                _GOLDEN = {"ETH_SELL": 0.8, "BTC_BUY": 0.7, "SOL_BUY": 0.7,
-                           "BTC_SELL": 0.7, "ETH_BUY": 0.6}
-                # Dead setup — always skip even for BB
-                if _base_sym == "HYPE" and _sig.side == "SELL" and _sig.strategy == "bollinger_squeeze":
-                    logger.info(f"[{symbol}] DEAD SETUP: HYPE_SELL_BB (35% WR) — skipping")
+                # 2026-06-05: Hardcoded "GOLDEN setups" and "DEAD SETUP" rules stripped per Nunu directive.
+                # The 0.8 ETH_SELL / 0.7 BTC_BUY etc multipliers and the HYPE_SELL_BB "35% WR" auto-skip
+                # were from a "1,410-signal analysis" under the fee bug — fabricated certainty.
+                # All solo setups now get a neutral 0.5 risk multiplier; let LLM agents reason about
+                # quality from current ENRICHED CONTEXT, not hardcoded per-symbol-side bias.
+                _GOLDEN = {}  # emptied
+                if False:  # was: HYPE SELL BB auto-skip — DISABLED
+                    logger.info(f"[{symbol}] (legacy HYPE_SELL_BB block removed)")
                 else:
                     _rm = _GOLDEN.get(_setup_key, 0.5)
                     _sig.metadata["solo_proven"] = True
@@ -1668,23 +1817,16 @@ class EnsembleStrategy:
         # Block known-losing combos (backtest-validated toxic combinations).
         # Only block when 3+ strategies agree and the toxic pair is a subset —
         # if the toxic pair are the ONLY voters, blocking guarantees zero trades.
-        # EXCEPTION: HYPE BUY is an empirically validated A+ setup (89% WR, 201 tests).
-        # Toxic combos that were measured on aggregate data may not apply to HYPE BUY.
+        # NOTE: HYPE BUY exemption removed (F8, 2026-05-04): counterfactual 89% WR
+        # was contradicted by 35 live trades showing 23% WR, -$77.26. HYPE BUY is
+        # now vetoed at Gate 1g (graduated_rules.json: hype_long_veto_v1).
         _LOSING_COMBOS = {
             # CS+MTQ REMOVED from global blacklist: +$55 on BTC/ETH (60% WR, best combo).
             # Original PF 0.08 was from HYPE data only. LLM can judge per-trade.
             frozenset({"regime_trend", "vmc_cipher"}),                          # PF 0.39, 29% WR — consistently losing
             frozenset({"probability_engine", "regime_trend"}),                  # PF 0.0, 0% WR in multiple runs
         }
-        # Proven setups exempt from losing combo blocks — their empirical WR
-        # overrides aggregate PF data measured across all symbols/sides.
         _base_sym_lc = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
-        _buy_side = any(s.side == "BUY" for s in buy_signals) if buy_signals else False
-        _PROVEN_SETUP_EXEMPT = {
-            # HYPE BUY: 89% WR (178/201 counterfactual tests) — do not block
-            ("HYPE", "BUY"),
-        }
-        _is_proven_setup = (_base_sym_lc, "BUY") in _PROVEN_SETUP_EXEMPT and _buy_side
         for side_signals in [buy_signals, sell_signals]:
             if len(side_signals) >= 2:
                 signal_names = frozenset(s.strategy for s in side_signals)
@@ -1694,13 +1836,6 @@ class EnsembleStrategy:
                     # EV gate which will properly evaluate. Blocking exact-match pairs
                     # guarantees zero trades in consolidation where only 2 strategies fire.
                     if blocked.issubset(signal_names) and signal_names != blocked:
-                        # Skip blocking for proven setups
-                        if _is_proven_setup and side_signals[0].side == "BUY":
-                            logger.info(
-                                f"[{symbol}] Proven setup override: {_base_sym_lc} BUY "
-                                f"bypasses losing combo {sorted(blocked)} (89% empirical WR)"
-                            )
-                            continue
                         logger.info(
                             f"[{symbol}] Blocked losing combo {sorted(blocked)} "
                             f"in {sorted(signal_names)}"
@@ -1740,7 +1875,7 @@ class EnsembleStrategy:
                 f"— size reduced to {_size_penalty:.0%} (not blocked)"
             )
 
-        merged = self._merge_signals(symbol, chosen)
+        merged = self._merge_signals(symbol, chosen, llm_first_raw=llm_first_raw)
         if merged is None:
             return None
 
@@ -1860,7 +1995,7 @@ class EnsembleStrategy:
         and daily-TF caps. Caps daily-timeframe strategies (monte_carlo_zones) at
         MAX_OPPOSITION_WEIGHT to prevent a single high-timeframe strategy from dominating voting."""
         if self.weight_manager is not None:
-            w = self.weight_manager.get_weight(strategy_name)
+            w = self.weight_manager.get_weight(strategy_name, symbol=self._current_eval_symbol or "")
         else:
             w = self.weights.get(strategy_name, 1.0)
         # Static base multiplier: demote strategies with poor backtest performance
@@ -1898,7 +2033,8 @@ class EnsembleStrategy:
         """Compute sum of weight * confidence for a list of signals."""
         return sum(self._get_strategy_weight(s.strategy) * s.confidence for s in signals)
 
-    def _merge_signals(self, symbol: str, signals: List[Signal]) -> Signal:
+    def _merge_signals(self, symbol: str, signals: List[Signal],
+                        llm_first_raw: bool = False) -> Signal:
         """Merge multiple agreeing signals into one consensus signal.
         Uses strategy accuracy weights for weighted-average confidence."""
         side = signals[0].side
@@ -2160,25 +2296,62 @@ class EnsembleStrategy:
             _regime_ev, _DEFAULT_DEFLATION.get(_indep_key, 0.65)
         )
 
-        # Setup-specific deflation floor: empirically validated setups should not be
-        # deflated below their proven win rate. HYPE BUY has 89% WR across 201
-        # counterfactual tests — deflating below that throws away proven alpha.
+        # Setup-specific edges from shadow ledger analysis (2026-04-15).
+        # Finding 11 rewrite: the old `_PROVEN_SETUP_FLOOR` collapsed the
+        # strategy dimension (symbol, side) → deflation. Reality: the same
+        # (symbol, side) has opposite edges depending on which strategy
+        # generated it. Example: SOL SELL via multi_tier_quality = 72% WR,
+        # SOL SELL via regime_trend = 0% WR on 149 samples. Treating them
+        # the same is a category error.
+        #
+        # Rebuilt from bot/data/shadow_ledger.csv (3,802 resolved entries) on
+        # 2026-04-15. Cutoff: n >= 40 samples for KEEP/BLOCK, 20 for NEUTRAL.
+        # Table format: (symbol, side, strategy) -> deflation floor.
         _base_sym = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
-        _PROVEN_SETUP_FLOOR = {
-            # (symbol, side): minimum deflation factor (= proven_WR / typical_raw_conf)
-            # Prevents win_prob from being crushed below proven levels
-            ("HYPE", "BUY"): 0.85,   # 89% WR on 201 shadow signals
-            ("BTC", "SELL"): 0.70,    # +$55 live, 38% WR, trending_bear golden setup
-            ("ETH", "BUY"): 0.80,     # 100% WR on 135 shadow signals from regime_trend
-            ("SOL", "SELL"): 0.70,    # +$40 live, 72% WR on 68 shadow signals (BB/MTQ)
-        }
-        _setup_floor = _PROVEN_SETUP_FLOOR.get((_base_sym, side))
-        if _setup_floor is not None and _deflation < _setup_floor:
+        # 2026-05-30 architectural decision:
+        #   - BLOCKS (hard kill switches based on stale data) — REMOVED, they interfered with live regimes
+        #   - EDGES (positive-WR setups from 3,802 resolved trades, 2026-04-15) — KEPT, this is real alpha
+        # Phase 2 (later): convert EDGES from confidence-floor multiplier to metadata that flows to the LLM,
+        #   so the LLM sees "this setup had 100% WR on 135 samples" as context and decides itself.
+        # 2026-06-05: _SHADOW_EDGES emptied per Nunu directive (overdrive strip).
+        # The 8 hardcoded (symbol,side,strategy) -> confidence-floor mappings were
+        # directly modulating real trade sizing via confidence floors (0.72-0.90).
+        # All claimed 60-100% WR from a pre-fee-fix April-window shadow audit. The
+        # fabricated certainty was the SINGLE most impactful injection point — it
+        # didn't just inform reasoning, it sized actual capital. Empty until live
+        # rolling stats can be computed from corrected-fee trade_ledger.
+        _SHADOW_EDGES: dict = {}
+        _SHADOW_BLOCKS = set()  # Hardcoded blocks removed — see commit note above
+
+        # Walk every agreeing strategy: find the best floor AND any block.
+        _agreeing_strats = [s.strategy for s in signals]
+        _best_floor = None
+        _blocking_combos = []
+        for _strat in _agreeing_strats:
+            _key = (_base_sym, side, _strat)
+            if _key in _SHADOW_BLOCKS:
+                _blocking_combos.append(_strat)
+                continue
+            _edge = _SHADOW_EDGES.get(_key)
+            if _edge is not None and (_best_floor is None or _edge > _best_floor):
+                _best_floor = _edge
+
+        if _blocking_combos and len(_agreeing_strats) <= 2:
+            # Majority of agreeing strategies are known money losers.
+            # Hard-deflate to 0.35 — signal must have overwhelming override to trade.
+            _old_defl = _deflation
+            _deflation = min(_deflation, 0.35)
             logger.info(
-                f"[{symbol}] Proven setup floor: {_base_sym} {side} deflation "
-                f"{_deflation:.2f} -> {_setup_floor:.2f} (89% empirical WR)"
+                f"[{symbol}] Shadow BLOCK: {_base_sym} {side} via "
+                f"{_blocking_combos} — deflation {_old_defl:.2f} -> {_deflation:.2f} "
+                f"(shadow-ledger-verified money loser)"
             )
-            _deflation = _setup_floor
+        elif _best_floor is not None and _deflation < _best_floor:
+            logger.info(
+                f"[{symbol}] Shadow edge floor: {_base_sym} {side} via "
+                f"{_agreeing_strats} — deflation {_deflation:.2f} -> {_best_floor:.2f}"
+            )
+            _deflation = _best_floor
 
         win_prob = raw_win_prob * _deflation
         # Cross-asset correlation boost: when multiple symbols move in signal direction
@@ -2190,6 +2363,15 @@ class EnsembleStrategy:
                     logger.debug(f"[{symbol}] Correlation boost: {_corr_mult:.2f}x -> win_prob={win_prob:.3f}")
             except Exception:
                 pass
+
+        # SHIP-2026-04-19: IC study proved win_prob_deflated has IC=-0.003 (p=0.976, pure noise)
+        # and reliability diagram is inverted (Q5 predicts 22% WR, Q1 predicts 41%).
+        # Regime-zoo found it works only in trending (AUC 0.60), broken in illiquid (AUC 0.388).
+        # Clamp non-trending regimes to 0.50 neutral prior until win_prob_v2 ships.
+        # Trending keeps original (has real signal per regime-conditional model zoo).
+        _raw_win_prob_v1 = win_prob  # preserve original for shadow logging
+        if _regime_ev not in ("trending", "trend", "trending_bull", "trending_bear"):
+            win_prob = 0.50
         try:
             from trading_config import TradingConfig as _TConf
             _fee_bps = _TConf().taker_fee_bps
@@ -2223,7 +2405,10 @@ class EnsembleStrategy:
         # Defense-in-depth: reject negative-EV signals at ensemble level.
         # The signal pipeline also checks EV, but this prevents wasted computation
         # on signals that are mathematically unprofitable.
-        if ev_per_dollar < 0:
+        #
+        # LLM-first raw path: EV is attached as metadata for the LLM to reason
+        # about, but NOT used as a hard gate. The LLM is the final filter.
+        if ev_per_dollar < 0 and not llm_first_raw:
             logger.info(
                 f"[ENSEMBLE] {symbol} {side} rejected: negative EV ({ev_per_dollar:.4f}) "
                 f"R:R={rr_tp1:.2f} fee_drag={fee_drag:.3f} win_prob={win_prob:.2f}"
@@ -2231,6 +2416,20 @@ class EnsembleStrategy:
             # Check adaptive EV calibrator for override
             _ev_override = False
             _ev_override_source = ""
+
+            # 2026-05-30 OVERDRIVE: when LLM_MODE >= 4, EV gate becomes informational only.
+            # LLM is the trader; mechanical EV math is a data point, not a hard block.
+            try:
+                import os as _os
+                if int(_os.getenv("LLM_MODE", "0")) >= 4:
+                    _ev_override = True
+                    _ev_override_source = "overdrive_llm_primary"
+                    logger.info(
+                        f"[ENSEMBLE] {symbol} {side} EV={ev_per_dollar:.4f} WP={win_prob:.2f} "
+                        f"R:R={rr_tp1:.2f} — informational only (LLM_MODE>=4, LLM decides)"
+                    )
+            except Exception:
+                pass
             if hasattr(self, '_ev_calibrator') and self._ev_calibrator is not None:
                 try:
                     if self._ev_calibrator.should_override(ev_per_dollar, n_agree):
@@ -2362,6 +2561,40 @@ class EnsembleStrategy:
             (s.metadata.get("chop_score", 0) for s in signals), default=0
         )
 
+        # SHIP-2026-04-20: alpha gate shadow mode — log verdicts, do NOT enforce by default.
+        # ALPHA_GATE_ENABLED=false → this block is a no-op.
+        # ALPHA_GATE_ENABLED=true + ALPHA_GATE_SHADOW=true → logs verdicts, does NOT reject.
+        # ALPHA_GATE_ENABLED=true + ALPHA_GATE_SHADOW=false → gate enforces live.
+        try:
+            from strategies.alpha_gate import (
+                ALPHA_GATE_ENABLED,
+                ALPHA_GATE_SHADOW,
+                evaluate as _alpha_eval,
+                log_shadow_verdict as _alpha_log,
+            )
+            if ALPHA_GATE_ENABLED:
+                _alpha_ctx = {
+                    "num_agree": len(signals),
+                    "chop_score": _chop_score,
+                    # TODO: wire btc_4h_return_signed + rsi_div_1h_6h_aligned from
+                    # DataFetcher + feature cache. Until then, those two signals
+                    # contribute None (neither + nor - to conviction count).
+                }
+                _alpha_verdict = _alpha_eval(None, _alpha_ctx)
+                _alpha_shim = type("S", (), {
+                    "symbol": symbol, "side": side, "strategy": "ensemble",
+                })()
+                _alpha_log(_alpha_shim, _alpha_verdict)
+                if not ALPHA_GATE_SHADOW and not _alpha_verdict.passes:
+                    logger.info(
+                        f"[{symbol}] ALPHA-GATE reject: "
+                        f"conviction={_alpha_verdict.conviction_count} "
+                        f"reason={_alpha_verdict.reason}"
+                    )
+                    return None
+        except Exception as _alpha_exc:
+            logger.exception(f"[{symbol}] ALPHA-GATE hook failure (non-fatal): {_alpha_exc}")
+
         return Signal(
             strategy="ensemble",
             symbol=symbol,
@@ -2377,6 +2610,18 @@ class EnsembleStrategy:
                 "num_agree": len(signals),
                 "total_strategies": len(self.strategies),
                 "individual_confidences": {s.strategy: s.confidence for s in signals},
+                # SHIP-2026-04-19: propagate regime_score + align_long from input signals.
+                # Previously dropped here, causing ml_conf, alerts, analytics to see always-0.
+                # See REGIME_SCORE_BUG_2026_04_19.md. Max-by-abs for regime, max for align.
+                "regime_score": max(
+                    ((s.metadata or {}).get("regime_score", 0) for s in signals),
+                    key=lambda v: abs(v or 0),
+                    default=0,
+                ),
+                "align_long": max(
+                    ((s.metadata or {}).get("align_long", 0) for s in signals),
+                    default=0,
+                ),
                 "raw_weighted_conf": round(weighted_conf, 2),
                 "consensus_mult": round(consensus_mult, 3),
                 "combined_conf": round(combined_conf, 2),

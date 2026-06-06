@@ -266,15 +266,25 @@ def _build_market_layer(
     return {k: v for k, v in mkt.items() if v is not None}
 
 
+# 2026-06-05: _AGENT_SHADOW_EDGES emptied per Nunu directive (overdrive strip).
+# Was injecting "100% WR validated edge" / "72.1% WR validated edge" / etc directly
+# into the agent snapshot under field name "validated_edges" — telling agents these
+# specific (symbol, side, strategy) combos were proven alpha. All from pre-fee-fix
+# 3,802-trade audit + April-19-day-window data. Agents were treating these as truth
+# every cycle. Empty until live rolling stats can be derived from corrected-fee ledger.
+_AGENT_SHADOW_EDGES: dict = {}
+
+
 def _build_signal_layer(
     strategy_signals: Optional[Dict[str, Any]],
     ensemble_result: Any,
     gate_decisions: Optional[List[Dict]],
     multiplier_chain: Optional[List[Dict]],
+    symbol: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Layer 2: Strategy signals, gate decisions, multiplier chain.
+    """Layer 2: Strategy signals, gate decisions, multiplier chain, shadow-edge matches.
 
-    Token budget: ~150 tokens.
+    Token budget: ~150 tokens (plus ~50 if shadow edges match).
     """
     sig: Dict[str, Any] = {}
 
@@ -310,6 +320,32 @@ def _build_signal_layer(
         if ens:
             sig["ens"] = ens
 
+    # 2026-06-06: Surface Probability Engine outputs (Monte Carlo + EV) to agents.
+    # The probability_engine strategy runs MC simulations + Bayesian on every trade
+    # and writes prob_tp1/prob_tp2/prob_sl/expected_value to Signal.metadata. Per
+    # forensic audit those fields were never injected to agent prompts — engine
+    # was computing alpha that agents couldn't see. 3-field surface = direct unlock.
+    try:
+        _meta = None
+        if isinstance(ensemble_result, dict):
+            _meta = ensemble_result.get("metadata") or ensemble_result.get("meta")
+        elif hasattr(ensemble_result, "metadata"):
+            _meta = ensemble_result.metadata
+        if _meta and isinstance(_meta, dict):
+            _mc = {}
+            if "prob_tp1" in _meta:
+                _mc["p_tp1"] = round(float(_meta["prob_tp1"]), 3)
+            if "prob_tp2" in _meta:
+                _mc["p_tp2"] = round(float(_meta["prob_tp2"]), 3)
+            if "prob_sl" in _meta:
+                _mc["p_sl"] = round(float(_meta["prob_sl"]), 3)
+            if "expected_value" in _meta:
+                _mc["ev"] = round(float(_meta["expected_value"]), 3)
+            if _mc:
+                sig["mc"] = _mc
+    except Exception:
+        pass
+
     # Gate decisions: only blocked gates to save tokens
     if gate_decisions:
         blocked = []
@@ -343,6 +379,31 @@ def _build_signal_layer(
         if chain:
             sig["mults"] = chain
             sig["final_mult"] = round(running, 3)
+
+    # SHADOW EDGES: surface any (symbol, side, strategy) matches so the LLM sees
+    # "this is a validated alpha setup" instead of having to remember from prompt context.
+    # Wired 2026-05-30 per Nunu's directive: agents must see all evidence available.
+    if symbol and strategy_signals:
+        matches = []
+        for strat_name, info in strategy_signals.items():
+            if not isinstance(info, dict): continue
+            side = info.get("side")
+            fired = info.get("fired", False)
+            if not (side and fired): continue
+            key = (symbol.upper(), side.upper(), strat_name)
+            if key in _AGENT_SHADOW_EDGES:
+                edge = _AGENT_SHADOW_EDGES[key]
+                matches.append({
+                    "setup": f"{symbol} {side} via {strat_name}",
+                    "wr": edge["wr"],
+                    "n": edge["n"],
+                    "note": edge["hypothesis"][:120],
+                })
+        if matches:
+            sig["validated_edges"] = matches
+            sig["edge_count"] = len(matches)
+        else:
+            sig["validated_edges"] = []
 
     return sig
 
@@ -530,14 +591,164 @@ def _build_system_layer(
     return sys
 
 
+# Cache the most recent skip-stats read so we don't hit disk every snapshot.
+# Refreshes if file mtime changes.
+_skip_stats_cache = {"mtime": 0, "stats": {}, "symbol_stats": {}}
+
+# Cache graduated rules — refresh on mtime change.
+_graduated_rules_cache = {"mtime": 0, "rules": []}
+
+
+def _load_graduated_rules() -> List[Dict]:
+    """Read graduated_rules.json, return list of active rules."""
+    import os, json as _json
+    path = os.path.join("data", "llm", "graduated_rules.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        mtime = os.path.getmtime(path)
+        if mtime == _graduated_rules_cache["mtime"] and _graduated_rules_cache["rules"]:
+            return _graduated_rules_cache["rules"]
+        with open(path) as f:
+            data = _json.load(f)
+        rules = [r for r in data.get("rules", []) if r.get("active")]
+        _graduated_rules_cache["mtime"] = mtime
+        _graduated_rules_cache["rules"] = rules
+        return rules
+    except Exception:
+        return []
+
+
+def _evaluate_rule_match(rule: Dict, symbol: Optional[str], side: Optional[str],
+                         confidence: Optional[float], regime: Optional[str],
+                         hour_utc: Optional[int]) -> bool:
+    """Check if a graduated rule's conditions match the current signal context."""
+    cond = rule.get("conditions", {})
+    if "symbol" in cond and (symbol or "").upper() != cond["symbol"].upper():
+        return False
+    if "side" in cond and (side or "").upper() != cond["side"].upper():
+        return False
+    if "regime" in cond and (regime or "") != cond["regime"]:
+        return False
+    if "confidence_min" in cond and (confidence is None or confidence < cond["confidence_min"]):
+        return False
+    if "confidence_max" in cond and (confidence is None or confidence > cond["confidence_max"]):
+        return False
+    if "hour_utc_min" in cond and (hour_utc is None or hour_utc < cond["hour_utc_min"]):
+        return False
+    if "hour_utc_max" in cond and (hour_utc is None or hour_utc >= cond["hour_utc_max"]):
+        return False
+    return True
+
+
+def _build_graduated_rules_context(symbol: Optional[str], side: Optional[str],
+                                    confidence: Optional[float], regime: Optional[str],
+                                    hour_utc: Optional[int]) -> Dict[str, Any]:
+    """For the given signal context, surface which graduated rules match.
+
+    Wired 2026-05-30: agents must see what the rule system is doing so they can
+    corroborate or contradict. Includes both ACTIVE rules and rules that would
+    have matched but are disabled (so agents see what evidence Nunu has chosen
+    to override).
+    """
+    import os, json as _json
+    path = os.path.join("data", "llm", "graduated_rules.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+        all_rules = data.get("rules", [])
+        matching = []
+        for r in all_rules:
+            if not _evaluate_rule_match(r, symbol, side, confidence, regime, hour_utc):
+                continue
+            matching.append({
+                "rule": r.get("rule_id", "?"),
+                "active": r.get("active", True),
+                "action": r.get("action", "?"),  # boost / penalize / veto
+                "adj": r.get("adjustment", 0),
+                "ev_ratio": r.get("evidence_ratio"),  # historical WR
+                "n": r.get("total_evidence"),
+                "hypothesis": r.get("hypothesis_statement", "")[:120],
+            })
+        if not matching:
+            return {}
+        return {
+            "matching_rules": matching,
+            "count_active_matching": sum(1 for m in matching if m["active"]),
+            "count_disabled_matching": sum(1 for m in matching if not m["active"]),
+        }
+    except Exception:
+        return {}
+
+
+def _load_recent_skip_stats(symbol: Optional[str] = None) -> Dict[str, Any]:
+    """Read counterfactual_pending.jsonl and surface skip patterns.
+
+    Wired 2026-05-30 per Nunu directive: agents should see how often we've been
+    skipping similar setups so they can corroborate or contradict their own
+    inclination to skip.
+    """
+    import os, json as _json
+    path = os.path.join("data", "llm", "counterfactual_pending.jsonl")
+    if not os.path.exists(path):
+        return {}
+    try:
+        mtime = os.path.getmtime(path)
+        if mtime == _skip_stats_cache["mtime"] and _skip_stats_cache["stats"]:
+            cached = dict(_skip_stats_cache["stats"])
+            if symbol:
+                cached["this_symbol"] = _skip_stats_cache["symbol_stats"].get(symbol.upper(), {})
+            return cached
+        # Recompute
+        from collections import Counter
+        rows = []
+        with open(path) as f:
+            for line in f:
+                try: rows.append(_json.loads(line))
+                except Exception: pass
+        total = len(rows)
+        sym_count = Counter(r.get("symbol", "?") for r in rows)
+        side_count = Counter(r.get("side", "?") for r in rows)
+        reason_count = Counter(r.get("skip_reason", "?")[:40] for r in rows)
+        symbol_stats = {}
+        for sym in ("BTC", "ETH", "SOL", "HYPE"):
+            sym_rows = [r for r in rows if r.get("symbol") == sym]
+            buys = sum(1 for r in sym_rows if r.get("side") == "BUY")
+            sells = sum(1 for r in sym_rows if r.get("side") == "SELL")
+            symbol_stats[sym] = {"total": len(sym_rows), "buy": buys, "sell": sells}
+        stats = {
+            "total_skips_today": total,
+            "by_symbol_count": dict(sym_count),
+            "by_side_count": dict(side_count),
+            "top_skip_reasons": dict(reason_count.most_common(3)),
+        }
+        _skip_stats_cache["mtime"] = mtime
+        _skip_stats_cache["stats"] = stats
+        _skip_stats_cache["symbol_stats"] = symbol_stats
+        if symbol:
+            stats = dict(stats)
+            stats["this_symbol"] = symbol_stats.get(symbol.upper(), {})
+        return stats
+    except Exception:
+        return {}
+
+
 def _build_memory_layer(
     lessons: Optional[List[str]],
     hypotheses: Optional[List[str]],
     trade_dna: Optional[Dict],
+    symbol: Optional[str] = None,
+    side: Optional[str] = None,
+    confidence: Optional[float] = None,
+    regime: Optional[str] = None,
+    hour_utc: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Layer 5: Memory — lessons, hypotheses, trade DNA.
+    """Layer 5: Memory — lessons, hypotheses, trade DNA, live skip patterns,
+    graduated-rule matches.
 
-    Token budget: ~100 tokens.
+    Token budget: ~100 tokens (plus ~30 if skip stats present, ~60 if rules match).
     """
     mem: Dict[str, Any] = {}
 
@@ -548,6 +759,25 @@ def _build_memory_layer(
     if hypotheses:
         # Active hypotheses, truncated
         mem["hyp"] = [h[:60] for h in hypotheses[:3]]
+
+    # LIVE SKIP PATTERNS: surface how much we've been skipping similar setups.
+    # If a setup has been skipped 30+ times today, that's evidence the LLM should
+    # weigh — either we're correctly being cautious, or we're missing alpha.
+    skip_stats = _load_recent_skip_stats(symbol)
+    if skip_stats:
+        mem["live_skip_evidence"] = {
+            "total_skips_today": skip_stats.get("total_skips_today", 0),
+            "this_symbol_skips": skip_stats.get("this_symbol", {}).get("total", 0),
+            "top_reasons": skip_stats.get("top_skip_reasons", {}),
+        }
+
+    # GRADUATED RULES CONTEXT: which learned rules match this signal?
+    # Agents can now see "rule X says veto with 23% historical WR" or
+    # "rule Y says boost +8 with 71% WR." Surfaces both active and disabled
+    # so agents see when a rule has been overridden by ops decision.
+    rules_ctx = _build_graduated_rules_context(symbol, side, confidence, regime, hour_utc)
+    if rules_ctx:
+        mem["graduated_rules"] = rules_ctx
 
     if trade_dna:
         # Compact DNA summary
@@ -682,6 +912,7 @@ def build_comprehensive_snapshot(
     try:
         snapshot["signals"] = _build_signal_layer(
             strategy_signals, ensemble_result, gate_decisions, multiplier_chain,
+            symbol=symbol,  # passes through so shadow edge matching can run
         )
     except Exception as e:
         logger.warning(f"[SNAPSHOT] Signal layer error: {e}")
@@ -708,7 +939,26 @@ def build_comprehensive_snapshot(
 
     # -- LAYER 5: MEMORY --
     try:
-        snapshot["memory"] = _build_memory_layer(lessons, hypotheses, trade_dna)
+        # Extract signal context for rule-matching
+        _sig_conf = None
+        _sig_side = None
+        _sig_regime = None
+        try:
+            if ensemble_result and isinstance(ensemble_result, dict):
+                _sig_conf = ensemble_result.get("confidence")
+                _sig_side = ensemble_result.get("side")
+            elif ensemble_result is not None:
+                _sig_conf = getattr(ensemble_result, "confidence", None)
+                _sig_side = getattr(ensemble_result, "side", None)
+            if "market" in snapshot and isinstance(snapshot["market"], dict):
+                _sig_regime = snapshot["market"].get("regime")
+        except Exception:
+            pass
+        snapshot["memory"] = _build_memory_layer(
+            lessons, hypotheses, trade_dna,
+            symbol=symbol, side=_sig_side, confidence=_sig_conf,
+            regime=_sig_regime, hour_utc=current_utc_hour,
+        )
     except Exception as e:
         logger.warning(f"[SNAPSHOT] Memory layer error: {e}")
         snapshot["memory"] = {}

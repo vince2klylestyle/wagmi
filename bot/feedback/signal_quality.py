@@ -472,6 +472,7 @@ class SignalQualityScorer:
 
     def _load_state(self):
         if not os.path.exists(self._state_file):
+            self._backfill_from_trade_dna()
             return
         try:
             with open(self._state_file) as f:
@@ -503,5 +504,61 @@ class SignalQualityScorer:
 
             total = sum(d["total"] for d in self.by_symbol.values())
             logger.info(f"[QUALITY] Loaded state: {total} historical outcomes")
+            # Always backfill from DNA if it has more trades than current state
+            self._backfill_from_trade_dna()
         except Exception as e:
             logger.warning(f"Failed to load quality state: {e}")
+
+    def _backfill_from_trade_dna(self):
+        """Populate quality dimensions from historical trade_dna when state is sparse."""
+        import datetime as _dt
+        # Derive DNA path relative to data_dir's parent (data/feedback → data/llm/deep_memory/)
+        _data_root = os.path.dirname(os.path.abspath(self.data_dir))
+        dna_path = os.path.join(_data_root, "llm", "deep_memory", "trade_dna.json")
+        if not os.path.exists(dna_path):
+            return
+        if not dna_path:
+            return
+        try:
+            with open(dna_path) as f:
+                data = json.load(f)
+            trades = data.get("trades", [])
+            if not trades:
+                return
+            current_total = sum(d["total"] for d in self.by_symbol.values())
+            if len(trades) <= current_total:
+                return  # Already have more data than DNA
+            # Rebuild all trackers from DNA
+            for tracker in [self.by_symbol, self.by_regime, self.by_consensus,
+                             self.by_entry_type, self.by_hour, self.by_side,
+                             self.by_session, self.by_llm_agreement]:
+                tracker.clear()
+            self.overall_recent.clear()
+            for t in trades:
+                win = t.get("outcome") == "WIN"
+                pnl = float(t.get("pnl") or 0)
+                # Derive hour from timestamp
+                ts = t.get("timestamp") or t.get("entry_time") or 0
+                try:
+                    hour = _dt.datetime.fromtimestamp(float(ts), tz=_dt.timezone.utc).hour
+                except Exception:
+                    hour = 12
+                features = QualityFeatures(
+                    confidence=float(t.get("confidence") or 0),
+                    num_strategies_agree=int(t.get("num_agree") or 1),
+                    total_strategies=4,
+                    symbol=(t.get("symbol") or "").replace("/USDC:USDC", "").replace("/USDT:USDT", ""),
+                    side=t.get("side") or "",
+                    regime=t.get("regime") or t.get("market_regime") or "",
+                    entry_type=t.get("entry_type") or "",
+                    hour_of_day=hour,
+                    llm_action=t.get("llm_action") or "",
+                    llm_confidence=float(t.get("llm_confidence") or 0),
+                )
+                self.record_outcome(features, win=win, pnl=pnl)
+            # Skip periodic save inside record_outcome — save once at end
+            self._save_state()
+            total = sum(d["total"] for d in self.by_symbol.values())
+            logger.info(f"[QUALITY] Backfilled {len(trades)} trades from DNA → {total} dimension entries")
+        except Exception as e:
+            logger.warning(f"[QUALITY] Backfill error: {e}")

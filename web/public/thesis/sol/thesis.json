@@ -1,0 +1,96 @@
+{
+  "symbol": "SOL",
+  "updated_at": "2026-04-24T06:24:36.757796+00:00",
+  "price": 85.6075,
+  "levels": {
+    "symbol": "SOL",
+    "ts": "2026-04-24T06:23:28.665099+00:00",
+    "price": 85.6075,
+    "daily": {
+      "ema20": 85.26949305929477,
+      "ema50": 85.09551397444565,
+      "slope_pct": 1.557966317717891,
+      "rsi14": 51.52836813897615,
+      "atr14": 3.518571428571428,
+      "hi60d": 97.638,
+      "lo60d": 75.591,
+      "trend": "UP"
+    },
+    "h4": {
+      "ema20": 86.10625057313416,
+      "ema50": 85.8769335676249,
+      "rsi14": 47.526501766784484,
+      "atr14": 1.1803571428571442,
+      "hi20": 89.296,
+      "lo20": 84.247
+    },
+    "h1": {
+      "ema20": 85.81489198093186,
+      "ema50": 86.07159060701309,
+      "rsi14": 47.48275862068963,
+      "atr14": 0.5244285714285694,
+      "hi20": 86.626,
+      "lo20": 84.5,
+      "vol_ratio": 0.37545224639096075
+    },
+    "m5": {
+      "rsi14": 67.25468577728742,
+      "atr14": 0.13599999999999873
+    }
+  },
+  "factors": {
+    "btc_4h_direction": "neutral",
+    "btc_4h_aligned_long": false,
+    "chop_score": 0.25,
+    "chop_ok": true,
+    "rsi_aligned": true,
+    "rsi_bullish_stack": false,
+    "daily_trend_up": true,
+    "conviction_count": 2,
+    "conviction_max": 4,
+    "conviction_wr_est": 38
+  },
+  "committee": {
+    "regime": {
+      "ok": true,
+      "agent": "regime",
+      "narrative": "**Regime: `range` | Bias: mild-bullish lean | Volatility band: moderate (ATR 1.38% / 4h)**\n\nSOL is compressing inside a range \u2014 price is pinned to the 20/50 EMA stack on daily, 4h, and 1h simultaneously ($85-$86), with RSI hovering at 47-52 across all timeframes, signaling no directional conviction. The structural conviction stack sits at 2/4 aligned signals (historical 38% WR, well below the 61% WR / PF 4.12 threshold at 4-aligned), and BTC 4h return is neutral, removing the highest-IC predictor from the bull case. The 1h volume at 0.38x and daily slope of only +1.56%/10d confirm low momentum \u2014 chop_score at 0.25 is acceptable but this is a **skip regime** until BTC aligns or conviction reaches \u22653.",
+      "latency_s": 19.95788550376892,
+      "regime_label": "trending_bull",
+      "confidence": 70,
+      "bias": "bullish",
+      "vol_band": "medium",
+      "daily_slope_pct": 1.56,
+      "daily_rsi": 52.0,
+      "h1_rsi": 47.0,
+      "vol_ratio_1h": 0.38
+    },
+    "trade": {
+      "ok": true,
+      "agent": "trade",
+      "narrative": "**WAIT**\n\nTwo Bonferroni-cleared signals are aligned (rsi_div_1h_6h + low chop at 0.25), which historically puts WR at 38% with positive cumulative PnL \u2014 but the strongest IC factor (btc_4h_return_signed, IC +0.519) is **neutral**, keeping conviction at 2/4 and well short of the 4-aligned 61% WR / PF 4.12 threshold. More critically, the current UTC window (04\u201307) is the lowest-probability session in the historical table at **15% WR** \u2014 structurally, that alone warrants standing down regardless of regime bias.\n\nIf BTC 4h turns bullish and conviction stacks to 3\u20134, the conditional long setup would be: **entry $84.50\u2013$85.20** (reclaim of 4h EMA cluster), **stop $82.50** (~1.5\u00d7 ATR below entry, outside the 52%-hunt zone), **TP1 $89** (4h range high, 1:2 R), **TP2 $92\u2013$93** (60d range midpoint). The 5m RSI at 67 against a 1h RSI of 47 signals short-term froth on weak momentum \u2014 entering here risks being the liquidity hunted before the real move.\n\nRevisit at the 20\u201323 UTC window (55% WR historically) with a BTC 4h confirmation.",
+      "latency_s": 29.913431882858276,
+      "action": "go_long",
+      "confidence": 65,
+      "entry_low": 85.44,
+      "entry_high": 85.78,
+      "stop": 84.34,
+      "target1": 86.63,
+      "target2": 97.64,
+      "rr_t1": 0.81,
+      "rr_t2": 9.51,
+      "invalidation": 85.1
+    },
+    "critic": {
+      "ok": true,
+      "agent": "critic",
+      "narrative": "**VETO.**\n\nThe #1 risk is the combination of dead-zone timing (UTC 06:23 falls squarely in the 04-07 window, historically 15% WR) with the strongest IC factor flat \u2014 btc_4h_return_signed at neutral means the +0.519 IC signal is contributing zero edge, leaving you with 38% WR conviction that likely can't survive the time-of-day haircut. Additionally, all higher-timeframe EMAs (daily, 4h, 1h) are converged at $85-86 with price sitting right inside them \u2014 that's compression, not breakout structure \u2014 while 5m RSI at 67 diverges bullishly against bearish higher-TF momentum, which historically resolves downward.\n\n**Counter-thesis:** SOL is in a mean-reversion trap \u2014 price squeezed between stacked EMAs with below-average volume (0.38x), the dominant alpha factor neutral, and the clock in the worst statistical window. The structural edge (reaching TRAILING) requires getting in *ahead* of directional resolution, not into compression. Wait for UTC 08:00+ and btc_4h_return to turn bullish, which would push conviction to 3/4 and put you in a structurally favorable window.",
+      "latency_s": 18.21711802482605,
+      "vote": "pass",
+      "risk_flags": [
+        "thin_volume"
+      ]
+    },
+    "mode": "cli"
+  }
+}

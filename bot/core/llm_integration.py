@@ -143,11 +143,49 @@ class LLMIntegrationMixin:
             )
 
         if result.decision is None:
-            # Fail-closed on API errors: skip trade rather than trade blind
-            if result.reason and "api_error" in str(result.reason):
+            # Fail-closed categories: LLM-ran-but-unparseable or API failure.
+            # These mean we cannot trust the LLM went through its safety checks.
+            # Throttled/not-triggered are user config, not failures — proceed.
+            reason_str = str(result.reason or "")
+            # Finding 18 (2026-04-15): Expanded fail-closed markers so real API
+            # failures actually trip the fail-closed branch. Previous list used
+            # substring matches like "api_error" which did NOT match
+            # "api_status_400" (credit balance errors). Now we match on status
+            # codes and concrete error shapes directly.
+            fail_closed_markers = (
+                "api_error",
+                "api_status_",        # matches api_status_400/403/429/500/503
+                "api_status",         # defensive, same concept
+                "status_400",
+                "status_401",
+                "status_402",
+                "status_403",
+                "status_429",         # rate limit
+                "status_500",
+                "status_502",
+                "status_503",
+                "credit",             # "credit balance is too low"
+                "insufficient",
+                "quota",
+                "rate_limit",
+                "rate limit",
+                "connection_error",
+                "connection error",
+                "network",
+                "validation_error",
+                "sanitization_error",
+                "sanitization_exception",
+                "parse_error",
+                "schema_error",
+                "max_retries_exceeded",
+                "timeout",
+            )
+            is_fail_closed = any(m in reason_str for m in fail_closed_markers)
+
+            if is_fail_closed:
                 logger.warning(
                     f"[{trace_id}][{candidate.symbol}] LLM veto: "
-                    f"API error ({result.reason}), SKIPPING trade (fail-closed)"
+                    f"{reason_str}, SKIPPING trade (fail-closed)"
                 )
                 from llm.decision_types import LLMDecision
                 flat_decision = LLMDecision(
@@ -155,20 +193,21 @@ class LLMIntegrationMixin:
                     confidence=0.0,
                     regime="unknown",
                     size_mult=0.0,
-                    reasoning=f"fail-closed: {result.reason}",
+                    reasoning=f"fail-closed: {reason_str}",
                     raw_response="",
                 )
                 from llm.decision_engine import DecisionResult
                 return DecisionResult(
                     decision=flat_decision,
-                    reason="fail_closed_api_error",
+                    reason=f"fail_closed:{reason_str}",
                     source="safety",
                     is_veto=True,
                 )
-            # Non-API failures (throttle, parse) still default to proceed
+            # Throttled / not-triggered / missing: legitimate LLM-not-consulted,
+            # proceed with bot's own decision.
             logger.info(
                 f"[{trace_id}][{candidate.symbol}] LLM veto: "
-                f"no decision ({result.reason}), defaulting to proceed"
+                f"no decision ({reason_str}), proceeding (non-failure reason)"
             )
             return None
 
@@ -927,6 +966,11 @@ class LLMIntegrationMixin:
         """
         try:
             from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+            from llm.autonomy import get_llm_mode, should_call_llm
+            # Finding 5 (2026-04-15): Scout agent was running when LLM_MODE=0,
+            # silently burning credits. Respect the master gate.
+            if not should_call_llm(get_llm_mode()):
+                return
             if not is_multi_agent_enabled():
                 return
             coordinator = get_coordinator()
@@ -1087,3 +1131,139 @@ class LLMIntegrationMixin:
         if not hasattr(self, '_reentry_cache'):
             self._reentry_cache = {}
         self._reentry_cache[symbol] = (cleared, time.time())
+
+    def _run_exit_agent_checks(self, trace_id: str):
+        """Run Exit Intelligence Agent on all open positions (advisory).
+
+        Called every 5 ticks (~5 min). Logs urgency warnings but does not force
+        close — mechanical SL/TP still governs execution. The Exit Agent assesses
+        whether the original trade thesis is still valid given current market state.
+        """
+        from llm.autonomy import get_llm_mode, should_call_llm
+        if not should_call_llm(get_llm_mode()):
+            return
+        try:
+            from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+        except Exception:
+            return
+        if not is_multi_agent_enabled():
+            return
+
+        coordinator = get_coordinator()
+        for symbol, pos in list(self.pos_mgr.positions.items()):
+            if pos.state in ("OPEN", "TP1_HIT", "TRAILING"):
+                try:
+                    from datetime import datetime, timezone
+                    _hold_s = (datetime.now(timezone.utc) - pos.open_time).total_seconds() \
+                        if hasattr(pos, 'open_time') else 0
+                    _price = self._last_prices.get(symbol, 0)
+                    _upnl = 0.0
+                    if _price and pos.entry and pos.qty:
+                        if pos.side == "LONG":
+                            _upnl = (_price - pos.entry) * pos.qty * pos.leverage
+                        else:
+                            _upnl = (pos.entry - _price) * pos.qty * pos.leverage
+
+                    pos_data = {
+                        "symbol": symbol,
+                        "side": pos.side,
+                        "entry": pos.entry,
+                        "current_price": _price,
+                        "sl": pos.sl,
+                        "tp1": pos.tp1,
+                        "tp2": getattr(pos, 'tp2', None),
+                        "unrealized_pnl": round(_upnl, 2),
+                        "hold_time_s": round(_hold_s),
+                        "state": pos.state,
+                        "leverage": pos.leverage,
+                        "confidence": pos.confidence,
+                    }
+                    market_data = {
+                        "regime": self._tick_regime_cache.get(symbol, "unknown"),
+                        "btc_price": self._last_prices.get("BTC", 0),
+                    }
+                    result = coordinator.get_exit_intelligence(pos_data, market_data)
+                    if result and isinstance(result, dict):
+                        action = result.get("action", "hold")
+                        urgency = result.get("urgency", "low")
+                        reason = str(result.get("reason", "") or "")[:120]
+                        if urgency in ("high", "critical") or action in ("full_close", "close"):
+                            logger.warning(
+                                f"[EXIT-AGENT] {symbol} urgency={urgency} action={action} — {reason}"
+                            )
+                            # Give Exit Agent actual teeth: force-close when it says to
+                            if action in ("full_close", "close") and urgency in ("high", "critical"):
+                                try:
+                                    _pm = getattr(self, 'pos_mgr', None) or getattr(self, 'position_manager', None)
+                                    _price = (_last_prices if hasattr(self, '_last_prices') else {}).get(symbol, 0)
+                                    if _pm and _price > 0 and hasattr(_pm, 'force_close'):
+                                        _pm.force_close(symbol, _price, f"LLM_EXIT_{urgency.upper()}")
+                                        logger.warning(
+                                            f"[EXIT-AGENT] {symbol} FORCE-CLOSED by LLM "
+                                            f"(urgency={urgency}): {reason[:60]}"
+                                        )
+                                except Exception as _ex:
+                                    logger.debug(f"[EXIT-AGENT] force_close error for {symbol}: {_ex}")
+                        else:
+                            logger.debug(
+                                f"[EXIT-AGENT] {symbol} action={action} "
+                                f"thesis_valid={result.get('thesis_still_valid', '?')}"
+                            )
+                except Exception as e:
+                    logger.debug(f"[EXIT-AGENT] {symbol} error: {e}")
+
+    def _run_overseer_review(self, trace_id: str):
+        """Run Overseer Agent for periodic system-level portfolio review (~1 hour).
+
+        Advisory: logs recommendations but does not directly modify bot state.
+        """
+        from llm.autonomy import get_llm_mode, should_call_llm
+        if not should_call_llm(get_llm_mode()):
+            return
+        try:
+            from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
+        except Exception:
+            return
+        if not is_multi_agent_enabled():
+            return
+
+        coordinator = get_coordinator()
+        if not hasattr(coordinator, 'run_overseer'):
+            return
+        try:
+            result = coordinator.run_overseer()
+            if result and isinstance(result, dict):
+                recs = result.get("recommendations", [])
+                if recs:
+                    logger.info(f"[OVERSEER] Portfolio review: {len(recs)} recommendations")
+                    for r in recs[:3]:
+                        logger.info(f"[OVERSEER]   — {str(r)[:100]}")
+
+                # Persist memo so prompt_enricher can inject into downstream agents.
+                # Without this, Overseer shouts into the void — scratchpad is cleared
+                # at the start of each get_trading_decision() call.
+                try:
+                    import json as _json
+                    import os as _os
+                    _memo = {
+                        "timestamp": __import__("time").time(),
+                        "recommendations": [str(r)[:200] for r in recs[:5]],
+                        "health": str(result.get("health", result.get("system_health", "")) or "")[:200],
+                        "strategy_adjustments": str(result.get("strategy_adjustments", "") or "")[:200],
+                        "diagnosis": str(result.get("diagnosis", "") or "")[:200],
+                    }
+                    _memo_path = _os.path.join("data", "llm", "overseer_memo.json")
+                    _os.makedirs(_os.path.dirname(_memo_path), exist_ok=True)
+                    with open(_memo_path, "w") as _f:
+                        _json.dump(_memo, _f)
+                    # Invalidate enricher cache so agents see the fresh memo immediately
+                    try:
+                        from llm.agents.prompt_enricher import invalidate_cache as _inv
+                        _inv()
+                    except Exception:
+                        pass
+                    logger.info(f"[OVERSEER] Memo written ({len(recs)} recs) — agents will see on next call")
+                except Exception as _me:
+                    logger.debug(f"[OVERSEER] Memo write error: {_me}")
+        except Exception as e:
+            logger.debug(f"[OVERSEER] Review error: {e}")

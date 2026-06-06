@@ -33,21 +33,27 @@ logger = logging.getLogger("bot.llm.usage_tiers")
 
 # ── Model IDs ────────────────────────────────────────────────────
 
-MODEL_HAIKU = "claude-haiku-4-5-20251001"
-MODEL_SONNET = "claude-sonnet-4-5-20250929"
-MODEL_OPUS = "claude-opus-4-20250115"
+MODEL_HAIKU = "claude-haiku-4-5"
+MODEL_SONNET = "claude-sonnet-4-6"
+MODEL_OPUS = "claude-opus-4-5"
 
-# Pricing per 1M tokens (input, output)
+# Pricing per 1M tokens (input, output) — CLI routing = $0/call; API fallback rates below
 MODEL_PRICING = {
     MODEL_HAIKU: (0.80, 4.0),
     MODEL_SONNET: (3.0, 15.0),
     MODEL_OPUS: (15.0, 75.0),
+    # Legacy IDs kept for backward-compat cost tracking
+    "claude-haiku-4-5-20251001": (0.80, 4.0),
+    "claude-sonnet-4-5-20250929": (3.0, 15.0),
+    "claude-opus-4-20250115": (15.0, 75.0),
 }
 
 
 # ── Trigger categories ───────────────────────────────────────────
 
 # High-value triggers: the LLM's decision here directly affects PnL
+# HIGH_CONFIDENCE restored to high-value: 90%+ conf = 56% WR +$32.33/trade (best EV cohort).
+# confidence_60_70_sweet_spot downgraded it to medium/Sonnet — that rule is now SUSPENDED_PENDING_REVERT.
 HIGH_VALUE_TRIGGERS = {
     "PRE_TRADE",
     "pre-trade validation",
@@ -57,14 +63,14 @@ HIGH_VALUE_TRIGGERS = {
     "strategy disagreement",
     "PRE_CLOSE",
     "pre-close assessment",
+    "HIGH_CONFIDENCE",
+    "high-confidence signal",
 }
 
 # Medium-value triggers: informational, shapes future decisions
 MEDIUM_VALUE_TRIGGERS = {
     "POSITION_CLOSED",
     "position closed",
-    "HIGH_CONFIDENCE",
-    "high-confidence signal",
     "STRATEGY_CONSENSUS",
     "strategy consensus",
     "CROSS_MARKET_DIVERGENCE",
@@ -123,12 +129,12 @@ class UsageTier:
         trigger_upper = trigger_reason.upper().replace(" ", "_").replace("-", "_")
 
         if trigger_reason in HIGH_VALUE_TRIGGERS or trigger_upper in {
-            "PRE_TRADE", "REGIME_SHIFT", "STRATEGY_DISAGREEMENT", "PRE_CLOSE"
+            "PRE_TRADE", "REGIME_SHIFT", "STRATEGY_DISAGREEMENT", "PRE_CLOSE", "HIGH_CONFIDENCE"
         }:
             return self.high_value_model or self.default_model
 
         if trigger_reason in MEDIUM_VALUE_TRIGGERS or trigger_upper in {
-            "POSITION_CLOSED", "HIGH_CONFIDENCE", "STRATEGY_CONSENSUS",
+            "POSITION_CLOSED", "STRATEGY_CONSENSUS",
             "CROSS_MARKET_DIVERGENCE",
         }:
             return self.medium_value_model or self.default_model

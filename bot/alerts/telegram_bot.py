@@ -77,6 +77,11 @@ class TelegramCommandBot:
         self._digest_mode = False    # Batch updates every 30-60 min
         self._digest_buffer = []     # Buffered messages for digest mode
         self._last_digest_ts = 0.0   # Last digest flush timestamp
+        self._silence_until_ts = 0.0  # Unix ts: silence non-critical alerts until this (0 = off)
+        # Pending-alerts LRU for inline-button callbacks (see _handle_callback).
+        # Keyed by short hex id so callback_data stays under Telegram's 64-byte cap.
+        from collections import OrderedDict
+        self._pending_alerts: "OrderedDict[str, dict]" = OrderedDict()
 
         if not token:
             logger.info("Telegram bot: no token configured, commands disabled")
@@ -113,8 +118,12 @@ class TelegramCommandBot:
                 data = resp.json()
                 for update in data.get("result", []):
                     self._offset = update["update_id"] + 1
-                    msg = update.get("message", {})
-                    self._handle_message(msg)
+                    # Inline-button callbacks (added 2026-04-17) — handled
+                    # before plain messages so button taps ack fast.
+                    if "callback_query" in update:
+                        self._handle_callback(update["callback_query"])
+                    elif "message" in update:
+                        self._handle_message(update["message"])
 
             except Exception as e:
                 logger.debug(f"Telegram poll error: {e}")
@@ -234,6 +243,21 @@ class TelegramCommandBot:
             "/digest": self._cmd_digest,
             "/live": self._cmd_live,
             "/help": self._cmd_help,
+            # Premium alert system commands (2026-04-16)
+            "/watch": self._cmd_watch,
+            "/alerts": self._cmd_alerts,
+            "/briefing": self._cmd_briefing,
+            "/edges": self._cmd_edges,
+            "/siminject": lambda: self._cmd_siminject(args),
+            "/simstatus": self._cmd_simstatus,
+            # UX commands added 2026-04-17 (Telegram UX overhaul)
+            "/pnl": lambda: self._cmd_pnl(args),
+            "/missed": lambda: self._cmd_missed(args),
+            "/tier": self._cmd_tier,
+            "/silence": lambda: self._cmd_silence(args),
+            "/syshealth": self._cmd_sys_health,
+            "/menu": self._cmd_help,  # alias users expect
+            "/commands": self._cmd_help,  # alias
         }
         handler = handlers.get(command)
         if handler:
@@ -244,38 +268,213 @@ class TelegramCommandBot:
         return ""
 
     def _cmd_status(self) -> str:
+        """Unified status: equity, daily PnL, positions, last 5 trades, health.
+
+        Upgraded 2026-04-17 from a 5-line summary to the full dashboard
+        view the user used to need 3 commands (/status /positions /perf)
+        to assemble.
+        """
         if not self.bot:
             return "Bot not connected"
+        try:
+            from alerts.tg_format import (
+                fmt_price, fmt_usd, fmt_hold, direction_emoji, pnl_bar,
+            )
+        except Exception:
+            fmt_price = lambda p: f"{p:.4f}"
+            fmt_usd = lambda a, show_sign=True: f"${a:+,.2f}"
+            fmt_hold = lambda s: f"{int(s)}s"
+            direction_emoji = lambda s: ""
+            pnl_bar = lambda u, n, width=10: ""
+
         eq = self.bot.risk_mgr.equity
         n_pos = self.bot.pos_mgr.get_open_count()
         daily = self.bot.risk_mgr.circuit_breaker.daily_pnl
-        paused = "PAUSED" if self._paused else "ACTIVE"
-        return (
-            f"*Status: {paused}*\n"
-            f"Equity: ${eq:,.2f}\n"
-            f"Open positions: {n_pos}\n"
-            f"Daily PnL: ${daily:+,.2f}\n"
-            f"Tick: {self.bot._tick}"
-        )
+        paused = "PAUSED" if self._paused else ("QUIET" if self._quiet_mode else "ACTIVE")
+
+        lines = [
+            f"*WAGMI Status: {paused}*",
+            f"Equity: {fmt_usd(eq, show_sign=False)} | Daily: {fmt_usd(daily)}",
+        ]
+
+        # Unrealized PnL across all open positions
+        try:
+            open_positions = self.bot.pos_mgr.get_open_positions() or {}
+            total_unreal = 0.0
+            for sym, pos in open_positions.items():
+                price = self.bot._last_prices.get(sym, pos.entry)
+                if pos.side == "LONG":
+                    total_unreal += (price - pos.entry) * pos.qty * pos.leverage
+                else:
+                    total_unreal += (pos.entry - price) * pos.qty * pos.leverage
+            if n_pos > 0:
+                lines.append(f"Open: {n_pos} position(s) | Unrealized: {fmt_usd(total_unreal)}")
+                for sym, pos in open_positions.items():
+                    price = self.bot._last_prices.get(sym, pos.entry)
+                    if pos.side == "LONG":
+                        unreal = (price - pos.entry) * pos.qty * pos.leverage
+                    else:
+                        unreal = (pos.entry - price) * pos.qty * pos.leverage
+                    notional = pos.entry * pos.qty * pos.leverage
+                    bar = pnl_bar(unreal, notional, width=6)
+                    emoji = direction_emoji(pos.side)
+                    lines.append(f"  {emoji} {sym} {pos.leverage:.0f}x {bar} {fmt_usd(unreal)}")
+            else:
+                lines.append("Open: flat (scanning)")
+        except Exception:
+            pass
+
+        # LLM mode + budget
+        try:
+            mode = getattr(self.bot, "llm_mode", None)
+            mode_str = mode.name if mode else "?"
+            from llm.cost_tracker import get_cost_tracker
+            ct = get_cost_tracker()
+            pct = ct.get_budget_used_pct()
+            cap = float(os.environ.get("LLM_DAILY_BUDGET_USD", "5"))
+            spent = pct * cap
+            lines.append(f"LLM mode: {mode_str} | API: ${spent:.2f}/${cap:.2f} ({pct:.0%})")
+        except Exception:
+            pass
+
+        # Circuit breaker / kill status
+        try:
+            cb = self.bot.risk_mgr.circuit_breaker
+            if cb.tripped:
+                lines.append(f"\u26a0 *CIRCUIT BREAKER TRIPPED*")
+            from execution.ops_guard import OpsGuard
+            if OpsGuard().killed:
+                lines.append(f"\u26a0 *KILL SWITCH ACTIVE*")
+        except Exception:
+            pass
+
+        # Last 5 trades
+        try:
+            import csv as _csv
+            from pathlib import Path
+            # Try both possible locations — bot/data and data/ (depends on cwd).
+            candidates = [Path("data/trades.csv"), Path("bot/data/trades.csv")]
+            trades_path = next((p for p in candidates if p.exists()), None)
+            if trades_path:
+                recent = []
+                with open(trades_path, "r", encoding="utf-8", errors="replace") as f:
+                    reader = _csv.reader(f)
+                    rows = list(reader)
+                for row in rows[-6:-1] if len(rows) > 6 else rows[1:]:
+                    if len(row) < 11:
+                        continue
+                    try:
+                        sym = row[1]
+                        side = row[2]
+                        pnl = float(row[10])
+                        outcome = row[17] if len(row) > 17 else ""
+                        recent.append((sym, side, pnl, outcome))
+                    except Exception:
+                        continue
+                if recent:
+                    lines.append("\n*Last 5 trades:*")
+                    for sym, side, pnl, outcome in recent[-5:]:
+                        mark = "\u2705" if pnl > 0 else ("\u274c" if pnl < 0 else "\u27a1")
+                        lines.append(f"  {mark} {sym} {side}  {fmt_usd(pnl)}  {outcome}")
+        except Exception:
+            pass
+
+        lines.append(f"\n_Tick {self.bot._tick} | /positions /pnl /missed /help_")
+        return "\n".join(lines)
 
     def _cmd_positions(self) -> str:
+        """Rich position view: live PnL bar, time held, distance to SL/TP1/TP2.
+
+        Upgraded 2026-04-17. Each open position shows a signed PnL bar,
+        current-price distance to SL and TPs, and hold duration — the
+        info a 7-20x manual trader actually reads at a glance.
+        """
         if not self.bot:
             return "Bot not connected"
-        from data.fetcher import DataFetcher
+        from datetime import datetime, timezone
         from trading_config import DEFAULT_SYMBOLS
+        try:
+            from alerts.tg_format import (
+                fmt_price, fmt_pct, fmt_usd, fmt_hold,
+                direction_emoji, pnl_bar, distance_pct,
+            )
+        except Exception:
+            fmt_price = lambda p: f"{p:.4f}"
+            fmt_pct = lambda p, show_sign=True: f"{p:+.2f}%"
+            fmt_usd = lambda a, show_sign=True: f"${a:+,.2f}"
+            fmt_hold = lambda s: f"{int(s)}s"
+            direction_emoji = lambda s: ""
+            pnl_bar = lambda u, n, width=10: ""
+            distance_pct = lambda c, t: 0.0
+
         open_pos = self.bot.pos_mgr.get_open_positions()
         if not open_pos:
-            return "No open positions"
-        lines = []
+            return "No open positions. Bot is scanning."
+
+        now = datetime.now(timezone.utc)
+        lines: list = []
+        total_unreal = 0.0
+        total_notional = 0.0
+
         for sym, pos in open_pos.items():
-            price = self.bot.fetcher.latest_price(sym, DEFAULT_SYMBOLS.get(sym, type('', (), {'coingecko_id': sym.lower()})()).coingecko_id) or 0
-            pnl = (price - pos.entry) * pos.qty * pos.leverage if pos.side == "LONG" else (pos.entry - price) * pos.qty * pos.leverage
+            # Get live price with fallback. 2026-04-17 fix: old code used
+            # `type('', (), {...})()` in the .get() default which created
+            # a new anon class on every call and broke dict identity.
+            sym_cfg = DEFAULT_SYMBOLS.get(sym)
+            cg_id = sym_cfg.coingecko_id if sym_cfg else sym.lower()
+            price = self.bot.fetcher.latest_price(sym, cg_id) or pos.entry
+
+            if pos.side == "LONG":
+                unreal = (price - pos.entry) * pos.qty * pos.leverage
+            else:
+                unreal = (pos.entry - price) * pos.qty * pos.leverage
+
+            notional = pos.entry * pos.qty * pos.leverage
+            total_unreal += unreal
+            total_notional += notional
+
+            # Distances (signed % from current price, matching direction)
+            if pos.side == "LONG":
+                sl_dist = (pos.sl - price) / price * 100
+                tp1_dist = (pos.tp1 - price) / price * 100
+                tp2_dist = (pos.tp2 - price) / price * 100
+            else:
+                sl_dist = (price - pos.sl) / price * 100
+                tp1_dist = (price - pos.tp1) / price * 100
+                tp2_dist = (price - pos.tp2) / price * 100
+
+            # Hold time
+            opened = getattr(pos, "open_time", None) or getattr(pos, "opened_at", None)
+            if opened is not None:
+                try:
+                    hold_s = (now - opened).total_seconds()
+                except Exception:
+                    hold_s = 0
+            else:
+                hold_s = 0
+
+            # Unrealized % on notional
+            pnl_pct = (unreal / notional * 100) if notional > 0 else 0
+            bar = pnl_bar(unreal, notional, width=8)
+
+            emoji = direction_emoji(pos.side)
             lines.append(
-                f"*{sym}* {pos.side} {pos.leverage:.0f}x\n"
-                f"  Entry: {pos.entry} | State: {pos.state}\n"
-                f"  SL: {pos.sl} | TP1: {pos.tp1} | TP2: {pos.tp2}\n"
-                f"  Unrealized: ${pnl:+,.2f} | Realized: ${pos.realized_pnl:+,.2f}"
+                f"{emoji} *{sym}* {pos.side} {pos.leverage:.0f}x  {pos.state}\n"
+                f"  {bar}  {fmt_usd(unreal)} ({fmt_pct(pnl_pct)})\n"
+                f"  Entry ${fmt_price(pos.entry)} -> Mark ${fmt_price(price)}  |  Held {fmt_hold(hold_s)}\n"
+                f"  SL  ${fmt_price(pos.sl)}  ({fmt_pct(sl_dist)} away)\n"
+                f"  TP1 ${fmt_price(pos.tp1)}  ({fmt_pct(tp1_dist)} away)\n"
+                f"  TP2 ${fmt_price(pos.tp2)}  ({fmt_pct(tp2_dist)} away)\n"
+                f"  Realized: {fmt_usd(pos.realized_pnl)}"
             )
+
+        # Footer — portfolio-level unrealized
+        if len(open_pos) > 1 and total_notional > 0:
+            total_pct = total_unreal / total_notional * 100
+            lines.append(
+                f"\n*Portfolio unrealized*: {fmt_usd(total_unreal)} ({fmt_pct(total_pct)})"
+            )
+
         return "\n\n".join(lines)
 
     def _cmd_ml(self) -> str:
@@ -800,33 +999,399 @@ class TelegramCommandBot:
         except Exception as e:
             return f"Intel error: {e}"
 
+    def _cmd_siminject(self, args: str) -> str:
+        """Inject a hypothetical trade into the sim for manual exploration.
+
+        Usage: /siminject SYMBOL SIDE PRICE LEVx QTY [SL] [TP]
+        Example: /siminject SOL SELL 87.50 15x 0.3 89.20 84.50
+
+        The sim equity is SEPARATE from the bot's live equity. This lets
+        you test high-leverage ideas (your 7-20x zone) without touching
+        real positions. 2026-04-16 addition.
+        """
+        try:
+            parts = args.strip().split()
+            if len(parts) < 5:
+                return (
+                    "Usage: `/siminject SYMBOL SIDE PRICE LEVx QTY [SL] [TP]`\n"
+                    "Examples:\n"
+                    "  `/siminject SOL SELL 87.50 15x 0.3`\n"
+                    "  `/siminject HYPE BUY 44.5 10x 2.0 43.90 46.0`\n\n"
+                    "SL/TP optional — defaults to 1%/2% of entry.\n"
+                    "Sim equity is independent from bot equity."
+                )
+            symbol = parts[0].upper()
+            side = parts[1].upper()
+            if side not in ("BUY", "SELL", "LONG", "SHORT"):
+                return f"Invalid side: {side}. Use BUY/SELL or LONG/SHORT."
+            entry_price = float(parts[2])
+            lev_str = parts[3].lower().rstrip("x")
+            leverage = float(lev_str)
+            qty = float(parts[4])
+            sl = float(parts[5]) if len(parts) > 5 else None
+            tp = float(parts[6]) if len(parts) > 6 else None
+
+            # Grab the simulator from the bot
+            sim = getattr(self.bot, "_manual_sim", None) or getattr(self.bot, "_manual_simulator", None)
+            if sim is None:
+                return (
+                    "Simulator not available.\n"
+                    "Enable with `MANUAL_SIMULATOR_ENABLED=true` in .env and restart."
+                )
+
+            pos = sim.inject_manual_trade(
+                symbol=symbol, side=side,
+                entry_price=entry_price, leverage=leverage, qty=qty,
+                sl=sl, tp_scalp=tp, tp_swing=None,
+                tier="MANUAL_INJECTION",
+                notes=f"User injected via /siminject",
+            )
+            if pos is None:
+                return f"⚠️ Could not inject — see logs (duplicate position or invalid input?)"
+
+            eff_side = "LONG" if pos.side == "BUY" else "SHORT"
+            dir_emoji = "🟢" if pos.side == "BUY" else "🔴"
+            stop_pct = abs(pos.entry - pos.sl) / pos.entry * 100
+            tp_pct = abs(pos.tp_scalp - pos.entry) / pos.entry * 100
+            risk_dollar = pos.risk_amount
+
+            return (
+                f"🧪 *SIM INJECTION* {dir_emoji} {eff_side} {pos.symbol}\n"
+                f"Entry: ${pos.entry:.4g}  Lev: {pos.leverage:.1f}x  Qty: {pos.qty:.4f}\n"
+                f"SL: ${pos.sl:.4g} ({stop_pct:.2f}% away)\n"
+                f"TP1: ${pos.tp_scalp:.4g} ({tp_pct:.2f}% away)\n"
+                f"Risk if SL: ${risk_dollar:.2f}\n"
+                f"Notional: ${pos.position_size_usd:,.2f}\n"
+                f"Trade ID: `{pos.trade_id}`\n\n"
+                f"Sim equity (independent from bot): ${sim._equity:,.2f}\n"
+                f"Use `/simstatus` to see all sim positions + PnL."
+            )
+        except ValueError as ve:
+            return f"Parse error: {ve}\nUsage: `/siminject SYMBOL SIDE PRICE LEVx QTY [SL] [TP]`"
+        except Exception as e:
+            return f"Injection failed: {e}"
+
+    def _cmd_simstatus(self) -> str:
+        """Show the manual simulator's current state (positions, equity, stats)."""
+        try:
+            sim = getattr(self.bot, "_manual_sim", None) or getattr(self.bot, "_manual_simulator", None)
+            if sim is None:
+                return "Simulator not available."
+            s = sim.get_status()
+            equity = s.get("equity", 0)
+            starting = s.get("starting_equity", 100)
+            pct = ((equity / starting) - 1) * 100 if starting > 0 else 0
+            open_count = len(s.get("open_positions", []))
+            closed_count = s.get("total_closed", 0)
+            wr = s.get("win_rate_pct", 0)
+            pf = s.get("profit_factor", 0)
+            lines = [
+                "🧪 *SIM STATUS*",
+                f"Equity: ${equity:,.2f}  (started ${starting:,.2f}, {pct:+.1f}%)",
+                f"Open: {open_count}  |  Closed: {closed_count}",
+                f"WR: {wr:.1f}%  |  PF: {pf:.2f}",
+                "",
+            ]
+            if open_count > 0:
+                lines.append("*Open positions*:")
+                for p in s.get("open_positions", [])[:10]:
+                    side = p.get("side", "?")
+                    side_emoji = "🟢" if side in ("BUY", "LONG") else "🔴"
+                    lines.append(
+                        f"  {side_emoji} {p.get('symbol','?')} {side} @ "
+                        f"${p.get('entry',0):.4g}  {p.get('leverage',0):.1f}x  "
+                        f"(${p.get('position_size_usd',0):,.0f} notional)"
+                    )
+            lines.append("")
+            lines.append("Use `/siminject` to add a new hypothetical trade.")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Sim status error: {e}"
+
+    def _cmd_watch(self) -> str:
+        """Show current anticipatory watchlist and WATCH-alert queue.
+
+        Shows (a) anticipatory engine pre-stages that have fired recent
+        WATCH alerts and (b) current open positions the user should be
+        aware of. Built 2026-04-16 as part of the premium alert system.
+        """
+        from datetime import datetime, timezone
+        try:
+            from alerts.premium_filter import _last_watch_alert, _WATCH_ALERT_COOLDOWN_S
+        except Exception:
+            _last_watch_alert = {}
+            _WATCH_ALERT_COOLDOWN_S = 1800
+
+        lines = ["🔔 *Watch List*", ""]
+
+        # Anticipatory engine pre-stages
+        ant = getattr(self.bot, "_anticipation_engine", None)
+        if ant and hasattr(ant, "_pending"):
+            pending = [p for p in ant._pending if not getattr(p, "resolved", False)]
+            if pending:
+                lines.append(f"📡 *Anticipatory pre-stages* ({len(pending)}):")
+                for p in pending[:10]:
+                    side_emoji = "🟢" if getattr(p, "side", "") == "BUY" else "🔴"
+                    lines.append(
+                        f"  {side_emoji} {p.symbol} {p.side} target ${p.target_price:.4g} "
+                        f"({p.setup_type})"
+                    )
+                lines.append("")
+            else:
+                lines.append("📡 No anticipatory pre-stages active\n")
+
+        # Recent WATCH alerts (last 30 min)
+        now = __import__("time").time()
+        recent = [
+            (k, t) for k, t in _last_watch_alert.items()
+            if (now - t) < _WATCH_ALERT_COOLDOWN_S
+        ]
+        if recent:
+            lines.append(f"📨 *Recent WATCH alerts* ({len(recent)} in last 30m):")
+            for (sym, side, strat), t in sorted(recent, key=lambda x: -x[1])[:10]:
+                mins_ago = (now - t) / 60
+                side_emoji = "🟢" if side in ("BUY", "LONG") else "🔴"
+                lines.append(f"  {side_emoji} {sym} {side} via {strat} ({mins_ago:.0f}m ago)")
+            lines.append("")
+        else:
+            lines.append("📨 No recent WATCH alerts\n")
+
+        # Open positions the user should be tracking
+        try:
+            open_count = self.bot.pos_mgr.get_open_count() if self.bot else 0
+            if open_count > 0 and self.bot and hasattr(self.bot.pos_mgr, "positions"):
+                lines.append(f"💼 *Open positions* ({open_count}):")
+                for sym, pos in self.bot.pos_mgr.positions.items():
+                    if pos.qty <= 0:
+                        continue
+                    side_emoji = "🟢" if pos.side == "LONG" else "🔴"
+                    lines.append(
+                        f"  {side_emoji} {sym} {pos.side} @ ${pos.entry:.4g} "
+                        f"(state: {pos.state})"
+                    )
+        except Exception:
+            pass
+
+        lines.append("")
+        lines.append("💡 Want an EXECUTE alert? Wait for the full setup. 3-8 WATCHes/day expected.")
+        return "\n".join(lines)
+
+    def _cmd_alerts(self) -> str:
+        """Show alert system status and recent filter activity."""
+        import os
+        enabled = os.environ.get("PREMIUM_ALERTS_ENABLED", "true").lower() in ("1", "true", "yes")
+
+        lines = [
+            f"📢 *Premium Alert System*",
+            f"",
+            f"Status: {'✅ ENABLED' if enabled else '⚠️ DISABLED (noise mode)'}",
+            f"",
+            f"*How it works:*",
+            f"• Every ensemble signal passes through premium_filter",
+            f"• Only shadow-ledger-verified setups fire to your phone",
+            f"• 2 tiers: 🎯 EXECUTE (take action) | 🔔 WATCH (get ready)",
+            f"",
+            f"*Expected volume:*",
+            f"• EXECUTE alerts: 1-3/day",
+            f"• WATCH alerts: 3-8/day",
+            f"• Filter target: ~170 raw → 4-11 actionable",
+            f"",
+            f"*Tune it:*",
+            f"• Set `PREMIUM_ALERTS_ENABLED=false` in .env to revert to raw firehose",
+            f"• See /edges for the verified setups",
+            f"• See /watch for current pre-stages",
+        ]
+        return "\n".join(lines)
+
+    def _cmd_edges(self) -> str:
+        """Show the shadow-ledger-verified edges and blocks."""
+        try:
+            from alerts.premium_filter import _SHADOW_EDGES, _SHADOW_BLOCKS, _ADVERSE_REGIMES
+        except Exception as e:
+            return f"Edge table not loaded: {e}"
+
+        lines = ["📊 *Shadow-Ledger Edges*", ""]
+
+        lines.append("✅ *Verified edges (EXECUTE candidates)*:")
+        for (sym, side, strat), data in sorted(
+            _SHADOW_EDGES.items(), key=lambda x: -float(x[1]["wr"])
+        ):
+            wr = float(data["wr"]) * 100
+            n = int(data["n"])
+            grade = data["grade"]
+            side_emoji = "🟢" if side == "BUY" else "🔴"
+            lines.append(
+                f"  {side_emoji} {sym} {side} via {strat}: {wr:.0f}% WR on {n} ({grade})"
+            )
+
+        lines.append("")
+        lines.append("🚫 *Blocked (verified money losers)*:")
+        for (sym, side, strat) in sorted(_SHADOW_BLOCKS):
+            side_emoji = "🟢" if side == "BUY" else "🔴"
+            lines.append(f"  {side_emoji} {sym} {side} via {strat}")
+
+        if _ADVERSE_REGIMES:
+            lines.append("")
+            lines.append("⚠️ *Regime-adverse combos*:")
+            for (sym, side), regimes in _ADVERSE_REGIMES.items():
+                lines.append(f"  {sym} {side} avoided in: {', '.join(sorted(regimes))}")
+
+        lines.append("")
+        lines.append("💡 Rebuilt from 3,835 shadow ledger entries. See /alerts for filter status.")
+        return "\n".join(lines)
+
+    def _cmd_briefing(self) -> str:
+        """Morning briefing — everything you need to know in one screen.
+
+        Built 2026-04-16 per user's ask: "I want a visually appealing
+        easy-to-scan one-screen morning view when I wake up."
+
+        Updated 2026-04-16 to show BOTH windows — today (since UTC
+        midnight, matches circuit breaker daily_pnl) AND last 7 days.
+        The single daily_pnl number was confusing when big wins landed
+        just before UTC midnight.
+        """
+        from datetime import datetime, timezone, timedelta
+        import csv
+        now = datetime.now(timezone.utc)
+        lines = ["☀️ *Morning Briefing*", f"_{now.strftime('%Y-%m-%d %H:%M UTC')}_", ""]
+
+        # Read trades.csv once, compute multiple windows.
+        trades_today = []      # since UTC midnight (matches daily_pnl)
+        trades_24h = []        # rolling last 24h
+        trades_7d = []         # rolling last 7 days
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_7d = now - timedelta(days=7)
+        try:
+            # 2026-04-17 fix: cwd can be either "bot/" or repo root.
+            # Old hardcoded "bot/data/trades.csv" failed when launched
+            # from bot/ directly. Try both layouts.
+            from pathlib import Path as _Path
+            _trades_paths = [_Path("data/trades.csv"), _Path("bot/data/trades.csv")]
+            _trades_path = next((p for p in _trades_paths if p.exists()), None)
+            if _trades_path is None:
+                raise FileNotFoundError("trades.csv not found in either location")
+            with open(_trades_path, "r", encoding="utf-8") as f:
+                r = csv.reader(f)
+                next(r)
+                today_str = now.strftime("%Y-%m-%d")
+                for row in r:
+                    try:
+                        ts = row[0]
+                        pnl = float(row[10])
+                        tdt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if tdt.tzinfo is None:
+                            tdt = tdt.replace(tzinfo=timezone.utc)
+                        if ts.startswith(today_str):
+                            trades_today.append(pnl)
+                        if tdt >= cutoff_24h:
+                            trades_24h.append(pnl)
+                        if tdt >= cutoff_7d:
+                            trades_7d.append(pnl)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        def _winline(emoji_pfx, label, trades):
+            if not trades:
+                return f"{emoji_pfx} *{label}*: no trades"
+            n = len(trades)
+            wins = sum(1 for p in trades if p > 0)
+            net = sum(trades)
+            emoji = "📈" if net > 0 else ("📉" if net < 0 else "➡️")
+            return f"{emoji} *{label}*: {n} trades, {wins}W/{n-wins}L, net ${net:+.2f}"
+
+        # Equity + multiple PnL windows
+        try:
+            equity = self.bot.risk_mgr.equity if self.bot else 0
+            lines.append(f"💰 *Equity*: ${equity:,.2f}")
+            lines.append(_winline("  ", "Today (since UTC 00:00)", trades_today))
+            lines.append(_winline("  ", "Last 24h rolling", trades_24h))
+            lines.append(_winline("  ", "Last 7d rolling", trades_7d))
+            lines.append("")
+        except Exception:
+            lines.append("📊 Equity: unavailable")
+
+        # Open positions
+        try:
+            if self.bot and hasattr(self.bot.pos_mgr, "positions"):
+                open_pos = [
+                    p for p in self.bot.pos_mgr.positions.values() if p.qty > 0
+                ]
+                lines.append(f"💼 *Open*: {len(open_pos)} position{'s' if len(open_pos) != 1 else ''}")
+                for p in open_pos[:5]:
+                    side_emoji = "🟢" if p.side == "LONG" else "🔴"
+                    lines.append(
+                        f"  {side_emoji} {p.symbol} {p.side} @ ${p.entry:.4g} ({p.state})"
+                    )
+                if not open_pos:
+                    lines.append("  (flat — scanning)")
+        except Exception:
+            pass
+
+        # Recent WATCH alerts
+        try:
+            from alerts.premium_filter import _last_watch_alert, _WATCH_ALERT_COOLDOWN_S
+            import time as _t
+            now_ts = _t.time()
+            recent = [k for k, t in _last_watch_alert.items() if (now_ts - t) < _WATCH_ALERT_COOLDOWN_S]
+            if recent:
+                lines.append("")
+                lines.append(f"🔔 *Watching* ({len(recent)} setups forming) — use /watch for details")
+        except Exception:
+            pass
+
+        lines.append("")
+        lines.append("*Quick actions:*")
+        lines.append("/snapshot • /positions • /watch • /edges • /ask <q>")
+        return "\n".join(lines)
+
     def _cmd_help(self) -> str:
         return (
             "*WAGMI Bot Commands*\n\n"
-            "*Quick Access:*\n"
-            "/snapshot - One-screen status\n"
-            "/ask <question> - Ask the AI brain\n"
-            "/copilot <idea> - AI trade plan\n"
-            "/costs - LLM spend today\n\n"
-            "*Trading:*\n"
-            "/status - Equity, positions, PnL\n"
-            "/positions - Open position details\n"
+            "*\U0001f305 Quick status:*\n"
+            "/status - Equity, positions, last trades, health\n"
+            "/snapshot - Compact status\n"
+            "/briefing - One-screen morning overview\n"
+            "/positions - Live PnL bars + SL/TP distances\n"
+            "/pnl [today|7d|30d] - PnL summary\n"
+            "/missed [hours] - High-conf signals you missed\n"
+            "\n"
+            "*\U0001f514 Premium alerts:*\n"
+            "/alerts - Alert system status\n"
+            "/watch - Current watchlist + pre-stages\n"
+            "/edges - Shadow-ledger-verified edges\n"
+            "/tier - Tier thresholds explained\n"
+            "\n"
+            "*\U0001f916 AI brain:*\n"
+            "/ask <question> - Ask the AI anything\n"
+            "/copilot <idea> - Full trade plan from idea\n"
+            "/costs - LLM spend today\n"
+            "\n"
+            "*\U0001f4b0 Trading control:*\n"
             "/close <SYM> - Force close position\n"
             "/closeall - Close all positions\n"
-            "/pause / /resume - Trading control\n\n"
-            "*Intelligence:*\n"
-            "/llm - Brain status\n"
-            "/mode <0-5> - LLM mode\n"
+            "/pause / /resume - Trading pause\n"
+            "/trade <args> - Log manual trade\n"
+            "/exit <args> - Log manual exit\n"
+            "/signal <args> - Submit manual signal\n"
+            "\n"
+            "*\U0001f9e0 Intelligence:*\n"
+            "/llm - Brain status  |  /mode <0-5> - LLM mode\n"
             "/performance - Win rate metrics\n"
             "/growth - Learning dashboard\n"
             "/intel - Market intel\n"
-            "/edge <setup> - Edge analysis\n\n"
-            "*Notifications:*\n"
-            "/quiet / /loud - Minimal vs full alerts\n"
-            "/digest / /live - Batched vs real-time\n\n"
-            "*System:*\n"
-            "/health - System health\n"
-            "/kill / /unkill - Emergency controls\n"
+            "/edge <setup> - Edge analysis\n"
+            "\n"
+            "*\U0001f515 Notifications:*\n"
+            "/quiet /loud - Minimal vs full alerts\n"
+            "/digest /live - Batched vs real-time\n"
+            "/silence <min> - Mute for N minutes\n"
+            "\n"
+            "*\U0001f6e0 System:*\n"
+            "/health - Sniper health  |  /syshealth - System health\n"
+            "/kill /unkill - Emergency controls\n"
             "/ops - Safety guard status"
         )
 
@@ -1528,7 +2093,7 @@ class TelegramCommandBot:
             result, usage = call_llm(
                 system_prompt=system_prompt,
                 snapshot_json="\n".join(ctx_parts),
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=400,
                 timeout=20.0,
             )
@@ -1663,7 +2228,7 @@ class TelegramCommandBot:
             result, usage = call_llm(
                 system_prompt=system_prompt,
                 snapshot_json="\n".join(ctx_parts),
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=500,
                 timeout=25.0,
             )
@@ -1699,3 +2264,453 @@ class TelegramCommandBot:
             self._digest_buffer = []
             return f"Live mode ON. Flushed {flushed} buffered messages."
         return "Live mode ON. Real-time notifications restored."
+
+    # ── UX commands added 2026-04-17 ──
+
+    def _cmd_pnl(self, args: str = "") -> str:
+        """Quick PnL summary for today / 7d / 30d.
+
+        Reads trades.csv directly so it works even if bot state is
+        degraded. Windows: today (since UTC midnight), 24h rolling, 7d
+        rolling, 30d rolling.
+        """
+        try:
+            import csv as _csv
+            from datetime import datetime, timezone, timedelta
+            from pathlib import Path
+            try:
+                from alerts.tg_format import fmt_usd
+            except Exception:
+                fmt_usd = lambda a, show_sign=True: f"${a:+,.2f}"
+
+            period = (args or "").strip().lower()
+            now = datetime.now(timezone.utc)
+            cutoff_24h = now - timedelta(hours=24)
+            cutoff_7d = now - timedelta(days=7)
+            cutoff_30d = now - timedelta(days=30)
+            today_str = now.strftime("%Y-%m-%d")
+
+            candidates = [Path("data/trades.csv"), Path("bot/data/trades.csv")]
+            trades_path = next((p for p in candidates if p.exists()), None)
+            if not trades_path:
+                return "No trades.csv found. Bot may not have traded yet."
+
+            today_pnls, d24_pnls, d7_pnls, d30_pnls = [], [], [], []
+            by_symbol: dict = {}
+            with open(trades_path, "r", encoding="utf-8", errors="replace") as f:
+                reader = _csv.reader(f)
+                next(reader, None)
+                for row in reader:
+                    if len(row) < 11:
+                        continue
+                    try:
+                        ts = row[0]
+                        sym = row[1]
+                        pnl = float(row[10])
+                        tdt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if tdt.tzinfo is None:
+                            tdt = tdt.replace(tzinfo=timezone.utc)
+                        if ts.startswith(today_str):
+                            today_pnls.append(pnl)
+                        if tdt >= cutoff_24h:
+                            d24_pnls.append(pnl)
+                            s = by_symbol.setdefault(sym, {"n": 0, "w": 0, "pnl": 0.0})
+                            s["n"] += 1
+                            if pnl > 0:
+                                s["w"] += 1
+                            s["pnl"] += pnl
+                        if tdt >= cutoff_7d:
+                            d7_pnls.append(pnl)
+                        if tdt >= cutoff_30d:
+                            d30_pnls.append(pnl)
+                    except Exception:
+                        continue
+
+            def _line(label, pnls):
+                if not pnls:
+                    return f"  {label}: no trades"
+                n = len(pnls)
+                wins = sum(1 for p in pnls if p > 0)
+                net = sum(pnls)
+                wr = wins / n * 100 if n > 0 else 0
+                avg = net / n if n > 0 else 0
+                return f"  {label}: {n} trades | {wins}W/{n-wins}L ({wr:.0f}% WR) | net {fmt_usd(net)} | avg {fmt_usd(avg)}"
+
+            lines = ["*PnL Summary*"]
+            lines.append(_line("Today (UTC)  ", today_pnls))
+            lines.append(_line("24h rolling  ", d24_pnls))
+            lines.append(_line("7d rolling   ", d7_pnls))
+            lines.append(_line("30d rolling  ", d30_pnls))
+
+            if period in ("week", "7d") and by_symbol:
+                pass  # shortcut: users can read 24h breakdown below by default
+
+            if by_symbol and period in ("", "today", "24h", "day"):
+                lines.append("\n*Last 24h by symbol:*")
+                for sym, s in sorted(by_symbol.items(), key=lambda x: -x[1]["pnl"]):
+                    wr = s["w"] / s["n"] * 100 if s["n"] > 0 else 0
+                    lines.append(f"  {sym}: {s['n']}t {wr:.0f}%WR  {fmt_usd(s['pnl'])}")
+
+            # Account equity context
+            if self.bot:
+                try:
+                    eq = self.bot.risk_mgr.equity
+                    lines.append(f"\n_Equity: {fmt_usd(eq, show_sign=False)}_")
+                except Exception:
+                    pass
+            return "\n".join(lines)
+        except Exception as e:
+            return f"PnL error: {e}"
+
+    def _cmd_missed(self, args: str = "") -> str:
+        """Show top filtered signals you would want to know about.
+
+        Reads signal_outcomes.jsonl for passed-but-not-traded signals and
+        risk_rejections.csv for pre-pipeline rejects. Default window: 6h.
+        Usage: /missed [hours]
+        """
+        try:
+            import json as _json
+            import csv as _csv
+            import time as _t
+            from pathlib import Path
+            from collections import Counter
+
+            hours = 6.0
+            arg = (args or "").strip()
+            if arg:
+                try:
+                    hours = float(arg.rstrip("hd"))
+                    if arg.endswith("d"):
+                        hours *= 24
+                except Exception:
+                    pass
+            hours = max(1.0, min(hours, 168.0))
+            cutoff = _t.time() - hours * 3600
+
+            # Find logs in either cwd layout
+            outcomes_candidates = [
+                Path("data/logs/signal_outcomes.jsonl"),
+                Path("bot/data/logs/signal_outcomes.jsonl"),
+            ]
+            rej_candidates = [
+                Path("data/logs/risk_rejections.csv"),
+                Path("bot/data/logs/risk_rejections.csv"),
+            ]
+            outcomes_path = next((p for p in outcomes_candidates if p.exists()), None)
+            rej_path = next((p for p in rej_candidates if p.exists()), None)
+
+            if not outcomes_path and not rej_path:
+                return "No signal logs found. Bot may not be running."
+
+            passed_but_not_traded = []
+            rejected_high_conf = []
+            total_signals = 0
+            by_reason = Counter()
+
+            if outcomes_path:
+                with open(outcomes_path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        try:
+                            rec = _json.loads(line)
+                        except Exception:
+                            continue
+                        if rec.get("ts", 0) < cutoff:
+                            continue
+                        total_signals += 1
+                        conf = float(rec.get("conf", 0))
+                        reason = rec.get("rej_reason", "")
+                        if rec.get("passed"):
+                            if conf >= 75:
+                                passed_but_not_traded.append(rec)
+                        else:
+                            if reason:
+                                by_reason[reason[:50]] += 1
+                            if conf >= 80 and not rec.get("hard_rej"):
+                                rejected_high_conf.append((rec, reason))
+
+            rej_rows = []
+            if rej_path:
+                try:
+                    import csv as _csv2
+                    from datetime import datetime, timezone
+                    with open(rej_path, "r", encoding="utf-8", errors="replace") as f:
+                        for row in _csv2.DictReader(f):
+                            ts_str = row.get("timestamp", "")
+                            try:
+                                ts = datetime.fromisoformat(
+                                    ts_str.replace("Z", "+00:00")
+                                ).timestamp()
+                            except Exception:
+                                continue
+                            if ts < cutoff:
+                                continue
+                            conf = float(row.get("confidence", 0) or 0)
+                            if conf >= 75:
+                                rej_rows.append(row)
+                except Exception:
+                    pass
+
+            lines = [f"*Missed Signals (last {hours:.0f}h)*", ""]
+            lines.append(f"Total tracked: {total_signals}")
+            if by_reason:
+                lines.append("\n*Top rejection reasons:*")
+                for reason, count in by_reason.most_common(5):
+                    lines.append(f"  {count}x  {reason}")
+
+            if rejected_high_conf:
+                lines.append("\n*High-conf rejections (soft):*")
+                for rec, reason in rejected_high_conf[-8:]:
+                    sym = rec.get("sym", "?")
+                    side = rec.get("side", "?")
+                    conf = float(rec.get("conf", 0))
+                    lines.append(f"  {sym} {side} {conf:.0f}% — {reason[:60]}")
+
+            if rej_rows:
+                lines.append("\n*Risk-gate rejects (pre-pipeline):*")
+                for row in rej_rows[-8:]:
+                    sym = row.get("symbol", "?")
+                    conf = row.get("confidence", "?")
+                    reason = row.get("reason", "?")
+                    lines.append(f"  {sym} conf={conf}  — {reason[:60]}")
+
+            if not rejected_high_conf and not rej_rows:
+                lines.append("\n\u2705 No high-quality signals were filtered in window.")
+                lines.append("(Low-conf filtering is noise — not shown.)")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Missed-signal analysis error: {e}"
+
+    def _cmd_tier(self) -> str:
+        """Show current sniper/alert tier thresholds and examples.
+
+        Useful when you see a 🎯 vs 🔔 vs ⚡ alert and want to know what
+        triggered each tier.
+        """
+        lines = [
+            "*Alert Tiers*",
+            "",
+            "\U0001f3af *EXECUTE* — take action now",
+            "  Shadow WR \u2265 80% AND conf \u2265 75% AND 2+ strategies",
+            "  OR Shadow WR 60-80% AND conf \u2265 82% AND 3+ strategies + good regime",
+            "  Target volume: 1-3/day",
+            "",
+            "\U0001f514 *WATCH* — setup forming, get ready",
+            "  Any shadow-verified edge AND conf \u2265 65%",
+            "  OR explicit anticipatory pre-stage",
+            "  Target volume: 3-8/day",
+            "",
+            "\U0001f52b *MICRO_SNIPER* — lottery ticket (manual only)",
+            "  Small risk, high asymmetry, 3h time-stop",
+            "",
+            "\U0001f3af *SNIPER* — max conviction (manual only)",
+            "  Top-tier sniper filter. Full-Kelly sizing.",
+            "",
+            "\u26a1 *PREMIUM* — strong setup below sniper bar",
+            "  Moderate Kelly fraction, still actionable.",
+            "",
+            "_See /edges for the shadow-ledger-verified edge table._",
+            "_See /alerts to enable/disable premium filter._",
+        ]
+        return "\n".join(lines)
+
+    def _cmd_silence(self, args: str = "") -> str:
+        """Mute non-critical alerts for N minutes. Critical (CB, KILL) still fire.
+
+        Usage: /silence [minutes]  (default 60)
+        Use /silence 0 or /resume to cancel early.
+        """
+        try:
+            import time as _t
+            minutes = 60
+            arg = (args or "").strip()
+            if arg:
+                try:
+                    minutes = int(float(arg))
+                except ValueError:
+                    return "Usage: /silence [minutes]  (e.g. /silence 30)"
+            if minutes <= 0:
+                self._silence_until_ts = 0.0
+                self._quiet_mode = False
+                return "Silence OFF. Alerts restored."
+            self._silence_until_ts = _t.time() + minutes * 60
+            self._quiet_mode = True
+            until = _t.strftime("%H:%M UTC", _t.gmtime(self._silence_until_ts))
+            return (
+                f"\U0001f515 Silenced for {minutes}m (until {until}).\n"
+                f"Critical alerts (circuit breakers, kill switch) still fire.\n"
+                f"/loud or /silence 0 to cancel early."
+            )
+        except Exception as e:
+            return f"Silence error: {e}"
+
+    def _cmd_sys_health(self) -> str:
+        """Full system health check (was /health before /health was reassigned to sniper).
+
+        Shows equity, CB, exchange, symbol data, LLM, watchdog, recent
+        alerts, signal performance — everything in one view.
+        """
+        if not self.bot:
+            return "Bot not connected"
+        try:
+            from trading_config import DEFAULT_SYMBOLS
+            from execution.time_sizing import is_weekend, is_low_liquidity_hours
+
+            lines = ["*System Health*"]
+            eq = self.bot.risk_mgr.equity
+            cb = self.bot.risk_mgr.circuit_breaker
+            lines.append(f"Equity: ${eq:,.2f}")
+            lines.append(f"CB: {'TRIPPED' if cb.tripped else 'OK'}")
+            lines.append(f"Paused: {'YES' if self._paused else 'NO'}")
+            lines.append(f"Quiet: {'YES' if self._quiet_mode else 'NO'}")
+            lines.append(f"Weekend: {'YES' if is_weekend() else 'NO'}")
+            lines.append(f"Low-liq hours: {'YES' if is_low_liquidity_hours() else 'NO'}")
+
+            fetcher = self.bot.fetcher
+            try:
+                stats = fetcher.get_stats()
+                lines.append(f"\n*Data*: {stats['ccxt_requests']} reqs, {stats['ccxt_failures']} fails")
+            except Exception:
+                pass
+
+            symbols_ok = sum(
+                1 for sym in DEFAULT_SYMBOLS
+                if sym in getattr(self.bot, "_last_prices", {})
+                and self.bot._last_prices[sym] > 0
+            )
+            symbols_fail = len(DEFAULT_SYMBOLS) - symbols_ok
+            lines.append(f"Symbols: {symbols_ok} OK, {symbols_fail} no data")
+
+            try:
+                from llm.recovery import get_error_stats
+                err = get_error_stats()
+                lines.append(
+                    f"\n*LLM*: mode={self.bot.llm_mode.name} "
+                    f"| {err.total_calls} calls, {err.error_rate:.1f}% err"
+                )
+            except Exception:
+                pass
+
+            try:
+                wd = self.bot.watchdog.get_status()
+                wd_line = f"Watchdog: {'OK' if wd['running'] else 'STOPPED'}"
+                if wd.get("stalled"):
+                    wd_line += " | STALLED"
+                if wd.get("last_heartbeat_s_ago"):
+                    wd_line += f" | hb {wd['last_heartbeat_s_ago']:.0f}s ago"
+                lines.append(wd_line)
+            except Exception:
+                pass
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"System health error: {e}"
+
+    # ── Inline-button callback handling (per feasibility doc 2026-04-16) ──
+
+    def _register_alert(self, payload: dict, max_size: int = 50) -> str:
+        """Store an alert in the LRU cache, return a short id for callback_data.
+
+        Bounded: oldest entries evicted past max_size so we don't leak
+        memory on long-running bots. 8-char hex stays well under
+        Telegram's 64-byte callback_data cap.
+        """
+        import secrets
+        alert_id = secrets.token_hex(4)
+        self._pending_alerts[alert_id] = payload
+        while len(self._pending_alerts) > max_size:
+            self._pending_alerts.popitem(last=False)
+        return alert_id
+
+    def build_alert_buttons(self, alert_id: str) -> dict:
+        """Return a reply_markup dict for a sniper/premium alert.
+
+        Callers can include this in sendMessage JSON to attach
+        one-tap trade / ask / dismiss buttons. Not used yet by default
+        — will be wired after the next bot restart (additive change).
+        """
+        return {
+            "inline_keyboard": [[
+                {"text": "\U0001f3af Log trade", "callback_data": f"trade:{alert_id}"},
+                {"text": "\U0001f4ac Ask brain", "callback_data": f"ask:{alert_id}"},
+                {"text": "\u2716 Dismiss", "callback_data": f"dismiss:{alert_id}"},
+            ]]
+        }
+
+    def _handle_callback(self, cq: dict) -> None:
+        """Dispatch a Telegram inline-button press.
+
+        Callback flow: user taps button -> Telegram sends callback_query
+        update -> we ack immediately (else phone shows spinner) -> parse
+        action:alert_id -> look up cached payload -> run the equivalent
+        text command. If the alert has expired (evicted from LRU),
+        tell the user politely.
+        """
+        import requests
+        try:
+            user_id = cq.get("from", {}).get("id")
+            if self.allowed_user_id and user_id != self.allowed_user_id:
+                return
+            cq_id = cq.get("id", "")
+            data = cq.get("data", "")
+            msg = cq.get("message", {}) or {}
+            chat_id = msg.get("chat", {}).get("id")
+            message_id = msg.get("message_id")
+
+            # Ack the callback fast — Telegram shows a spinner otherwise.
+            try:
+                requests.post(
+                    f"{self._base_url}/answerCallbackQuery",
+                    json={"callback_query_id": cq_id, "text": "\u2705 noted"},
+                    timeout=5,
+                )
+            except Exception:
+                pass
+
+            action, _, alert_id = data.partition(":")
+            payload = self._pending_alerts.get(alert_id)
+            reply = ""
+            if not payload and action != "dismiss":
+                reply = "Alert expired or not found."
+            elif action == "trade":
+                sym = payload.get("symbol", "")
+                side = payload.get("side", "BUY")
+                entry = payload.get("entry", 0)
+                lev = payload.get("leverage", 1)
+                qty = payload.get("qty", 0)
+                args = f"{sym} {side} {entry} {int(lev)}x {qty}"
+                reply = self._cmd_trade(args)
+            elif action == "ask":
+                sym = payload.get("symbol", "?")
+                side = payload.get("side", "?")
+                entry = payload.get("entry", 0)
+                reply = self._cmd_ask(f"{side} {sym} at {entry}? Take it or skip?")
+            elif action == "dismiss":
+                # Strip the buttons from the original alert so the user
+                # can see it was dealt with.
+                try:
+                    requests.post(
+                        f"{self._base_url}/editMessageReplyMarkup",
+                        json={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "reply_markup": {"inline_keyboard": []},
+                        },
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+                return
+
+            if reply and chat_id:
+                try:
+                    requests.post(
+                        f"{self._base_url}/sendMessage",
+                        json={"chat_id": chat_id, "text": reply, "parse_mode": "Markdown"},
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Callback handler error: {e}")

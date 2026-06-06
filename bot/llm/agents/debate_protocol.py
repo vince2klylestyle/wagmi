@@ -40,7 +40,7 @@ from llm.client import call_llm
 logger = logging.getLogger("bot.llm.agents.debate_protocol")
 
 # ── Constants ────────────────────────────────────────────────────────
-DEBATE_MODEL = os.getenv("AGENT_DEBATE_MODEL", "claude-sonnet-4-5-20250929")
+DEBATE_MODEL = os.getenv("AGENT_DEBATE_MODEL", "claude-sonnet-4-6")
 DEBATE_MAX_TOKENS = 512  # Token-efficient: ~500 tokens per round
 CONFIDENCE_BOOST_TRADE_WINS = 7    # +7% when Trade defends successfully
 CONFIDENCE_CUT_CRITIC_WINS = -12   # -12% when Critic's challenge holds

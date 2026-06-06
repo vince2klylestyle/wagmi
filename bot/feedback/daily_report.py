@@ -28,6 +28,7 @@ WALK_FORWARD_ALERT = 0.4        # Alert if walk-forward ratio < 0.4
 SESSION_DD_ALERT = 15.0         # Alert if session drawdown > 15%
 IC_ALERT = 0.02                 # Alert if any factor IC < 0.02
 KELLY_ALERT = 0.05              # Alert if any Kelly weight < 0.05
+ANTICIPATORY_HIT_RATE_ALERT = 0.30  # Alert if anticipatory hit rate < 30%
 
 
 class DailyReporter:
@@ -47,10 +48,17 @@ class DailyReporter:
         trade_ledger,
         ic_tracker=None,
         kelly_engine=None,
+        anticipatory_history_path: Optional[str] = None,
     ):
         self._ledger = trade_ledger
         self._ic_tracker = ic_tracker
         self._kelly_engine = kelly_engine
+        # Optional path to anticipatory_history.jsonl; defaults to standard location
+        import os as _os
+        self._anticipatory_history_path = (
+            anticipatory_history_path
+            or _os.path.join("data", "manual", "anticipatory_history.jsonl")
+        )
 
     # ── Report generation ─────────────────────────────────────────
 
@@ -88,6 +96,9 @@ class DailyReporter:
 
         # 6. Kelly weights per factor
         report["metrics"]["kelly_weights"] = self._metric_kelly_weights()
+
+        # 7. Anticipatory entry hit rate (triggered / created over last 7 days)
+        report["metrics"]["anticipatory"] = self._metric_anticipatory_hit_rate()
 
         # Compute alerts and recommendations
         report["alerts"] = self.check_alerts(report)
@@ -207,6 +218,116 @@ class DailyReporter:
             "alert_threshold": IC_ALERT,
         }
 
+    def _metric_anticipatory_hit_rate(self) -> Dict[str, Any]:
+        """Metric 7: Anticipatory entry hit rate over last 7 days.
+
+        Reads ``data/manual/anticipatory_history.jsonl`` and computes what
+        fraction of pre-staged entries actually triggered (vs. expired or
+        got invalidated). Also breaks down by setup type so we can see which
+        patterns are catching real moves and which are speculative noise.
+
+        This wires up a previously-unread data stream so the daily report
+        reflects the performance of the Anticipatory Entry Engine.
+        """
+        import json as _json
+        import os as _os
+        from datetime import timedelta as _td
+
+        path = self._anticipatory_history_path
+        if not path or not _os.path.exists(path):
+            return {
+                "label": "Anticipatory Entry Hit Rate (7d)",
+                "status": "no anticipatory_history.jsonl found",
+                "total": 0,
+                "triggered": 0,
+                "expired": 0,
+                "invalidated": 0,
+                "hit_rate": 0.0,
+                "by_setup": {},
+                "alert_threshold": ANTICIPATORY_HIT_RATE_ALERT,
+            }
+
+        cutoff = datetime.now(timezone.utc) - _td(days=7)
+        total = triggered = expired = invalidated = 0
+        by_setup: Dict[str, Dict[str, int]] = {}
+        errors = 0
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = _json.loads(line)
+                    except Exception:
+                        errors += 1
+                        continue
+                    resolved_at = rec.get("resolved_at") or ""
+                    try:
+                        ts = datetime.fromisoformat(resolved_at.replace("Z", "+00:00"))
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        if ts < cutoff:
+                            continue
+                    except Exception:
+                        # Unparseable timestamps still count in overall totals
+                        pass
+
+                    outcome = str(rec.get("outcome", "")).lower()
+                    setup = str(rec.get("setup_type", "unknown"))
+                    total += 1
+                    if outcome == "triggered":
+                        triggered += 1
+                    elif outcome == "expired":
+                        expired += 1
+                    elif outcome in ("invalidated", "cancelled", "canceled"):
+                        invalidated += 1
+
+                    bucket = by_setup.setdefault(
+                        setup, {"total": 0, "triggered": 0}
+                    )
+                    bucket["total"] += 1
+                    if outcome == "triggered":
+                        bucket["triggered"] += 1
+        except Exception as e:
+            logger.warning(f"[DAILY] Anticipatory history read error: {e}")
+            return {
+                "label": "Anticipatory Entry Hit Rate (7d)",
+                "status": f"error: {e}",
+                "total": 0,
+                "triggered": 0,
+                "expired": 0,
+                "invalidated": 0,
+                "hit_rate": 0.0,
+                "by_setup": {},
+                "alert_threshold": ANTICIPATORY_HIT_RATE_ALERT,
+            }
+
+        hit_rate = (triggered / total) if total else 0.0
+        # Per-setup hit rate for reporting
+        setup_rates = {
+            name: {
+                "total": b["total"],
+                "triggered": b["triggered"],
+                "hit_rate": round(b["triggered"] / b["total"], 3) if b["total"] else 0.0,
+            }
+            for name, b in by_setup.items()
+        }
+
+        return {
+            "label": "Anticipatory Entry Hit Rate (7d)",
+            "status": "computed",
+            "total": total,
+            "triggered": triggered,
+            "expired": expired,
+            "invalidated": invalidated,
+            "hit_rate": round(hit_rate, 3),
+            "by_setup": setup_rates,
+            "parse_errors": errors,
+            "alert_threshold": ANTICIPATORY_HIT_RATE_ALERT,
+        }
+
     def _metric_kelly_weights(self) -> Dict[str, Any]:
         """Metric 6: Kelly-optimal weights per factor.
 
@@ -302,6 +423,15 @@ class DailyReporter:
                     f"[KELLY] Factor '{factor}': weight={weight:.4f} — "
                     f"below {KELLY_ALERT} threshold"
                 )
+
+        # 7. Anticipatory hit rate
+        ant = metrics.get("anticipatory", {})
+        if ant.get("total", 0) >= 10 and ant.get("hit_rate", 0) < ANTICIPATORY_HIT_RATE_ALERT:
+            alerts.append(
+                f"[ANTICIPATORY] 7d hit rate {ant['hit_rate']:.1%} "
+                f"({ant['triggered']}/{ant['total']}) — "
+                f"below {ANTICIPATORY_HIT_RATE_ALERT:.0%} threshold"
+            )
 
         return alerts
 
@@ -484,6 +614,31 @@ class DailyReporter:
                 lines.append(f"  {factor:<25} weight={weight:.4f}{flag}")
         else:
             lines.append(f"  Status: {kelly.get('status', 'N/A')}")
+
+        # ── 7. Anticipatory Entry Hit Rate ───────────────────────
+        lines.append("")
+        lines.append("  7. ANTICIPATORY ENTRY HIT RATE (7d)")
+        lines.append("  " + "-" * 55)
+        ant = metrics.get("anticipatory", {})
+        if ant.get("status") == "computed" and ant.get("total", 0) > 0:
+            lines.append(
+                f"  Triggered: {ant['triggered']}/{ant['total']} "
+                f"({ant['hit_rate']:.1%} hit rate)  "
+                f"expired={ant['expired']}  invalidated={ant['invalidated']}"
+            )
+            by_setup = ant.get("by_setup", {})
+            if by_setup:
+                lines.append("  " + "-" * 55)
+                lines.append(f"  {'Setup':<30} {'Total':>6} {'Hit':>5} {'Hit%':>7}")
+                for name, d in sorted(
+                    by_setup.items(), key=lambda kv: -kv[1].get("total", 0)
+                )[:10]:
+                    lines.append(
+                        f"  {name:<30} {d['total']:>6} {d['triggered']:>5} "
+                        f"{d['hit_rate']:>6.1%}"
+                    )
+        else:
+            lines.append(f"  Status: {ant.get('status', 'N/A')}")
 
         # ── Alerts ────────────────────────────────────────────────
         alerts = report.get("alerts", [])

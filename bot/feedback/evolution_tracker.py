@@ -594,7 +594,7 @@ class EvolutionTracker:
         """Recommend optimal throttle settings based on trigger ROI."""
         current_hourly = int(os.getenv("LLM_MAX_CALLS_HOUR", "15"))
         current_daily = int(os.getenv("LLM_MAX_CALLS_DAY", "150"))
-        current_model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+        current_model = os.getenv("LLM_MODEL", "claude-haiku-4-5")
 
         total_calls = sum(t.calls for t in trigger_roi)
         total_vetoes = sum(t.vetoes for t in trigger_roi)
@@ -650,12 +650,12 @@ class EvolutionTracker:
             (w for w in trajectory if w.window_label == "all"), None
         )
         if all_time and all_time.total_trades >= 20 and all_time.win_rate >= 50:
-            rec_model = "claude-sonnet-4-5-20250929"
+            rec_model = "claude-sonnet-4-6"
             reasons.append(
                 "System is profitable — upgrade to Sonnet for better regime analysis"
             )
         elif all_time and all_time.total_trades >= 20 and all_time.win_rate < 45:
-            rec_model = "claude-sonnet-4-5-20250929"
+            rec_model = "claude-sonnet-4-6"
             reasons.append(
                 "System is losing — upgrade to Sonnet for smarter vetoes"
             )

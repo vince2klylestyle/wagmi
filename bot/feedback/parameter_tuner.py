@@ -176,7 +176,14 @@ class ParameterTuner:
                 )
 
         if calibration_offset is not None:
-            target = max(-15, min(15, calibration_offset))
+            # Finding 2 (2026-04-15): the old ±15 cap let the offset drift to
+            # -9.28 during losing streaks, which then killed signal flow and
+            # created a feedback deadlock (no trades → no learning →
+            # persistent negative offset). Cap tightened to ±3 so the offset
+            # can correct bias but can't single-handedly starve the ensemble.
+            # Fix confidence-vs-WR calibration upstream if bigger correction
+            # is actually needed.
+            target = max(-3, min(3, calibration_offset))
             self.params.calibration_offset = self._gradual_move(
                 self.params.calibration_offset, target, max_step * 30
             )
@@ -418,6 +425,45 @@ class ParameterTuner:
             self.params.trust_score = state.get("trust_score", 0.3)
             self.params.total_adjustments = state.get("total_adjustments", 0)
             self._suggestion_outcomes = state.get("suggestion_outcomes", [])
+
+            # Sanity-clamp: prevent WR-poisoning-era drift from persisting across restarts.
+            # The confidence floor was calibrated against 50% WR baseline (now corrected to 35%),
+            # causing it to drift to 73.58. Floor >70 is almost certainly stale over-tightening.
+            # Calibration offset caps at ±3 (tightened from ±15 in session 2026-04-15).
+            # max_leverage floor at 10 ensures Kelly fractions can reach meaningful sizes.
+            repaired = False
+            if self.params.confidence_floor > 70.0:
+                logger.warning(
+                    f"[TUNER] confidence_floor={self.params.confidence_floor:.1f} > 70 "
+                    f"(likely WR-poisoning drift) — clamping to 65.0"
+                )
+                self.params.confidence_floor = 65.0
+                repaired = True
+            if self.params.max_leverage < 10.0:
+                logger.warning(
+                    f"[TUNER] max_leverage={self.params.max_leverage:.1f} < 10 — raising to 25.0"
+                )
+                self.params.max_leverage = 25.0
+                repaired = True
+            if self.params.calibration_offset < -3.0:
+                logger.warning(
+                    f"[TUNER] calibration_offset={self.params.calibration_offset:.1f} < -3 "
+                    f"— clamping to -3.0"
+                )
+                self.params.calibration_offset = -3.0
+                repaired = True
+            # Drop strategy weights below 0.5 — extreme low weights kill good strategies
+            for k in list(self.params.strategy_weights.keys()):
+                if self.params.strategy_weights[k] < 0.5:
+                    logger.warning(
+                        f"[TUNER] strategy_weight[{k}]={self.params.strategy_weights[k]:.2f} "
+                        f"< 0.5 — removing (over-penalized)"
+                    )
+                    del self.params.strategy_weights[k]
+                    repaired = True
+            if repaired:
+                self._save_state()
+
             logger.info(
                 f"[TUNER] Loaded state: floor={self.params.confidence_floor:.1f}%, "
                 f"trust={self.params.trust_score:.2f}, "

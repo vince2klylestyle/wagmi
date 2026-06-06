@@ -1,4 +1,179 @@
 {
-  "last_updated": 0,
-  "notes": []
+  "last_updated": 1780694919,
+  "notes": [
+    {
+      "text": "BTC range/bearish solo ensemble SELL \u2014 quality 0.3, miscalibrated system (35% acc). Outcome needed for learning.",
+      "ts": 1780346817.2352262,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "BTC solo ensemble SELL in range regime; volume compressed 0.4x, miscalibrated system (35% acc). Low conviction but no hard block. Monitor for volume expansion confirming continuation or reversal.",
+      "ts": 1780346977.2814243,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "BTC range-sell taken: solo_ensemble 0.70, range bearish regime, quality 0.3, agent MISCALIBRATED 35% acc +18% drift \u2014 track outcome for calibration",
+      "ts": 1780347161.209755,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "Solo signal flag acknowledged but already priced into 0.35 floor confidence and minimum sizing. Syst",
+      "ts": 1780347319.1313775,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "BTC SELL signal 2026-06-01: solo ensemble 0.72 in range regime; skipped \u2014 existing short at 70031 already profitable at 69538, range bounce risk, quality 0.3",
+      "ts": 1780347492.1819491,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "BTC solo ensemble SELL 0.77 in range; system miscalibrated 35% accuracy \u2014 log outcome for recalibration; existing short at 70031 already ~0.8% ITM",
+      "ts": 1780347658.6404746,
+      "symbol": "BTC",
+      "regime": "range"
+    },
+    {
+      "text": "BTC solo ensemble SELL in consolidation/squeeze skipped: regime wired data explicitly flagged as false signal; ATR% extreme low (0.68%) makes fee EV negative",
+      "ts": 1780348099.8425226,
+      "symbol": "BTC",
+      "regime": "consolidation"
+    },
+    {
+      "text": "BTC squeeze breakout pending; solo ensemble SELL explicitly flagged as likely false signal by regime agent in compression phase. Revisit when ADX/OI/EMA data confirm direction post-squeeze.",
+      "ts": 1780348152.6347027,
+      "symbol": "BTC",
+      "regime": "consolidation"
+    },
+    {
+      "text": "BTC solo ensemble SELL in consolidation, quality 0.3, vol 0.7x. Trade agent MISCALIBRATED at 35% accuracy n=17 drift +18%. Note for calibration review.",
+      "ts": 1780348173.7640083,
+      "symbol": "BTC",
+      "regime": "consolidation"
+    },
+    {
+      "text": "SOL SHORT taken trending_bear conf=0.88 at $64.99; solo PRIORITY MTQ 6h-aligned; validated 62%WR n=213 SOL SELL edge; hold 4h+ mandatory per quant; fee_drag 5% requires 3%+ move to profit",
+      "ts": 1780682253.317681,
+      "symbol": "[HIGH-CONFIDENCE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT trending_bear: 2-agree CS+MTQ PRIORITY (6h-aligned), validated 62%WR n=213 US-session edge, vol 2.71x confirms. Hold 4h+ mandatory. Post-big-win SOL +$377 \u2192 size 0.5x cold-streak multiplier.",
+      "ts": 1780685335.8157313,
+      "symbol": "[PRE-CLOSE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT trending_bear: 2-agree PRIORITY, cold streak 4L \u2192 0.5x size mandatory, post-big-win SOL+$377 giveback risk. Hold \u22654h to clear noise stops per quant.",
+      "ts": 1780685673.9582534,
+      "symbol": "[PRE-CLOSE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT trending_bear 2-agree CS+MTQ PRIORITY 6h-aligned conf=0.55; cold streak 4L \u2192 0.5x size mandatory; post-big-win SOL+$377 giveback risk; RSI=32 oversold watch bounce; hold 4h+ mandatory per qu",
+      "ts": 1780686487.7133827,
+      "symbol": "[PRE-CLOSE",
+      "regime": "trend"
+    },
+    {
+      "text": "BTC SHORT trending_bear 2-agree (conf_scorer+MTQ) c=0.58; cold streak 4L \u2192 0.5x size MANDATORY; RSI=31 oversold bounce risk active; VR=0.3 low volume confirms exhaustion \u2014 hold 4h+ to escape noise sto",
+      "ts": 1780687001.661823,
+      "symbol": "[PRE-CLOSE",
+      "regime": "trend"
+    },
+    {
+      "text": "ETH SHORT solo MTQ REGULAR skipped: conditional_wr=40% in exhausting trending_bear, oversold RSI=30, vol=0.5x \u2014 next entry requires PRIORITY tier or volume confirmation",
+      "ts": 1780687301.7104614,
+      "symbol": "[PRE-CLOSE",
+      "regime": "trend"
+    },
+    {
+      "text": "BTC SHORT in trending: 75% WR (3/4 recent) vs 50% baseline. Ensemble voting filters noise effectively\u2014sustains this edge. Increase BTC SHORT allocation on 2+ consensus.",
+      "ts": 1780687744.1072624,
+      "symbol": "BTC",
+      "regime": "trending"
+    },
+    {
+      "text": "BTC SHORT WIN +$39 in trending, conf=85%, held 96min\u2014replicate this setup",
+      "ts": 1780687744.175123,
+      "symbol": "BTC",
+      "regime": "trending"
+    },
+    {
+      "text": "BTC SHORT trending with ensemble consensus: 80% recent WR via trailing stops. Lock as primary strategy. In streak\u2014increase allocation 10-20% per trade",
+      "ts": 1780687801.4151275,
+      "symbol": "BTC",
+      "regime": "trending"
+    },
+    {
+      "text": "ETH SHORT solo MTQ REGULAR skipped: RSI=26 deeply oversold, regime itself flags 'oversold bounce likely', BTC diverging +0.7%/1h \u2014 wait for bounce exhaustion then re-short",
+      "ts": 1780688754.6817694,
+      "symbol": "PRE_TRADE",
+      "regime": "range"
+    },
+    {
+      "text": "ETH SHORT solo MTQ REGULAR skipped AGAIN: RSI=27 deeply oversold, BTC diverging +0.7%/1h, regime_momentum=weakening, regime_trend strategy flagging neutral on 6h. Entry requires bounce exhaustion to R",
+      "ts": 1780688953.2946572,
+      "symbol": "[HIGH-CONFIDENCE",
+      "regime": "range"
+    },
+    {
+      "text": "ETH SHORT trending_bear: BOOST rule active (ETH TRENDING=71% WR). Solo CS cap 0.55 applied. Entry contingent on BTC bounce rolling over to confirm dead-cat. HYPE SELL 4-agree remains permanently block",
+      "ts": 1780689544.7363546,
+      "symbol": "PRE_TRADE",
+      "regime": "range"
+    },
+    {
+      "text": "BTC SHORT confidence_scorer solo in trending_bear (Regime Agent conf=0.85): took at floor 0.55. Main risk = vr=0.2 very low volume. Monitor dead-cat exhaustion near $61k. Post-big-win caution applied.",
+      "ts": 1780690496.3114493,
+      "symbol": "PRE_TRADE",
+      "regime": "range"
+    },
+    {
+      "text": "ETH SHORT confidence_scorer solo in trending_bear; BOOST rule active (ETH trending=71% WR). Entry conditioned on BTC bounce rollover near $60k zone \u2014 do not chase the 1h dead-cat.",
+      "ts": 1780690947.152229,
+      "symbol": "PRE_TRADE",
+      "regime": "range"
+    },
+    {
+      "text": "SOL SHORT solo CS trending_bear ADX=56, BTC -5.2%/24h leading. Validated 62% WR US-session SOL SELL edge. Hold 4h+ to avoid noise stops; sub-4h exits destroy value per quant lesson.",
+      "ts": 1780691738.5201561,
+      "symbol": "[HIGH-CONFIDENCE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT trending_bear ADX=56 solo CS c=0.55. Validated 62% WR US-session SOL SELL edge (n=213). BTC 1h +1.4% dead-cat headwind acknowledged \u2014 hold 4h+ minimum to escape noise-regime stops per quant",
+      "ts": 1780692313.669182,
+      "symbol": "PRE_TRADE",
+      "regime": "trend"
+    },
+    {
+      "text": "BTC SHORT solo CS trending_bear: conditional_wr=39% (solo non-BB 0.7x penalty + n<5 base rate fallback). Re-evaluate when: regime_trend turns short (2-agree \u2192 ~62% cWR), price rejection at 61.6k, or B",
+      "ts": 1780692996.8660772,
+      "symbol": "PRE_TRADE",
+      "regime": "trend"
+    },
+    {
+      "text": "ETH SHORT solo CS trending_bear ADX=36; entry conditioned on 1h bounce rollover; structural bear confirmed; hold 4h+ to avoid noise stops per quant lesson",
+      "ts": 1780693453.7548366,
+      "symbol": "PRE_TRADE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT PRIORITY MTQ solo trending_bear: vol=0.1x weak at scan time \u2014 wait for BTC 1h bounce to exhaust + volume expansion. US session 14-22 UTC activates Grade B 62% WR edge (n=213). ETH SHORT hard",
+      "ts": 1780694424.3434293,
+      "symbol": "PRE_TRADE",
+      "regime": "trend"
+    },
+    {
+      "text": "SOL SHORT PRIORITY MTQ solo at $64.7; HV regime conf=0.70 transitioning trending_bear; vol=2.54x P90 (condition met); validated 62% WR SOL SELL edge n=213; target $62-63 in 4-8h; fat-tail elevated",
+      "ts": 1780694919.407548,
+      "symbol": "[HIGH-CONFIDENCE",
+      "regime": "range"
+    }
+  ]
 }

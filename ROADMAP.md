@@ -544,4 +544,49 @@ bot/feedback/parameter_tuner.py    → Parameter optimization
 
 ---
 
+## 2026-04-17 — Overnight Audit + Frontend Rebuild
+
+### Completed this session
+- **Frontend ground-up rewrite** (3 phases) — dashboard, performance, LLM brain, reasoning, counterfactuals, sniper alerts, signal funnel, performance heatmap, DecisionTrail slide-over, AgentHealthStrip. 20/20 pages build clean. Glass-morphism + WAGMI rebrand complete.
+- **API gap-fill** — 12 new endpoints shipped: `/v1/backtest/results{,/latest,/id,/runs}`, `/v1/forensics/analysis`, `/v1/copy/status`, `/v1/portfolio/allocation`, `/v1/performance/metrics`, `/v1/signals`, `/v1/ohlcv`, `/v1/activity/feed`, `/v1/agents/{name}/performance,calibration`, `/v1/reasoning/feed`, `/v1/reasoning/pipeline/{id}`, `/v1/counterfactuals/resolved`, `/v1/agents/health`, `/v1/signals/funnel/cost`, `/v1/trade/{id}/trail`. NaN/numpy-scalar scrubber added to prevent FastAPI JSON errors.
+- **Telegram UX overhaul** — 6 new commands (`/pnl`, `/missed`, `/tier`, `/silence`, `/syshealth`, `/menu`), `/positions` + `/status` rewrites, inline-button callback handler wired, shared `alerts/tg_format.py` module. 266 telegram/sniper tests green.
+- **Half-built features** — 3 completed: extended api_server, sniper_counterfactual JSON/CSV export, daily_report anticipatory-history consumer. 49 new tests added.
+- **Morning briefing** consolidator with ship-now/paper-test/reject ranking.
+- **Sniper forensics** (23 trades, +$48.05 realized, 34.8% WR, 2.08 R-mult, −$147 tail risk) — literacy-only, no re-enable recommended yet per user caution.
+- **Proposal backtest** — P6 dedup (+$30/60d), P3 HYPE illiquid-long block (+$24), P2 6× leverage cap (+$120) all deterministic SHIP-NOW. P1 per-symbol confidence floors (+$1,727) + P5 Critic-veto removal (+$1,255) PAPER-TEST FIRST. P7 stop-width revert REJECTED (would cost −$198).
+- **Test-coverage phase (this task)** — 5 new test files (91 new tests): `test_learning_integrator.py`, `test_knowledge_roadmap.py`, `test_auto_optimizer.py`, `test_llm_metrics.py`, `test_comprehensive_snapshot.py`. Target modules 0% → 43–81% coverage. 3485 tests green (2 pre-existing `test_ops_reliability` failures flagged separately).
+
+### New work items from tonight's audits (open)
+
+**Bug fixes (critical — flagged for morning review, PROPOSALS only):**
+1. **Stop-bug root cause found** (STOP_BUG_ROOT_CAUSE_2026_04_17.md) — not a `Signal.is_valid` bypass. It's the `position_manager.py:572-587` profit-lock moving SL to exact entry at 0.6R (MEDIUM) / 0.3R (SCALP) / 0.8R (TREND). Whipsaw = sub-0.3% stop loss. 49 trades affected (−$111). **Fix proposal F1 (fee-buffer on breakeven, LOW risk, +$35-55/60d)** awaiting user approval.
+2. **Duplicate-entry dedup gap** in `core/signal_pipeline.py` (not sniper) — 7 pairs on BTC/ETH/SOL/HYPE = −$46.63. P6 proposal ready.
+3. **Sniper `max_lev=25.0x` logged at startup instead of documented 5.0x cap** — init log source disputed vs actual leverage binding at `OrderExecutor.open_position()`. Blocks safe sniper re-enable.
+
+**LLM agent efficiency (ready-to-apply):**
+4. **4 dead agents (Learning/Exit/Scout/Overseer)** — READY_PATCHES_2026_04_17.md has exact edit blocks. 5-line `performance_tracker.record_pipeline_run` insert per path. LOW risk, high impact — Exit-agent revival is highest-PnL lever.
+5. **Critic agent rubber-stamps** — 100% of 1,975 records show confidence=0.5 hardcoded. Costs 42% of LLM bill, produces no real vetoes. Fix prompt OR disable.
+6. **Quant agent outputs `"unknown"` on every call** (2,477 records). Pure waste — one-line prompt/parse investigation.
+7. **Regime agent over-calls "trend"** (79% labeled / 17% realized) and emits out-of-vocab `trending_bull`. Add alias + recalibrate.
+
+**Per-symbol tuning:**
+8. **Confidence floors must be per-(symbol, side)** — `confidence_floor_65` alone blocked 65,722 signals in 30d, ~$41k missed PnL. Kills HYPE/BUY 79.8% WR cell AND SOL/BUY 8.8% WR cell — symmetric, which is the bug.
+9. **Leverage cap at 6x global** (4-6x = +$320, 41.7% WR; 6-10x = −$167; 10x+ = −$131). Corr(lev, pnl) = −0.22.
+10. **Pause LONG trades in illiquid regime** until edge returns (8% WR recent vs 35% prior).
+
+**Learning-loop fixes:**
+11. **Learning system outcome-writer broken** (KNOWLEDGE_AUDIT_2026_04_17.md). 70 hypotheses / 0 evidence. 219 recommendations / 217 expired. Only 1 graduated rule, never applied. Highest-leverage LLM fix after dead-agent logging.
+12. **5 rules pre-ratified and ready to graduate:** 6× lev cap, skip LONG illiquid+low, per-symbol confidence floors, ≥3-strategy LONG confluence, SOL post-loss cooldown.
+
+### Known regressions
+- **LLM pipeline dark** — 62.7% `api_error: credit balance too low` in recent `decisions.jsonl`. Multi-agent system intact but producing nothing. Needs credit-top-up + silent-failure alerting.
+- **BTC 0% WR recent 30** (was 42% lifetime), **illiquid regime 8% recent** (was 35%). 48h PF 2.34 is a SHORT-driven mirage.
+- **6 of 11 strategies never fire at all**; `multi_tier_quality` at 15.4% WR bleeding −$64 — demotion candidate.
+- **RECONCILE warn on every startup** — `requires user parameter` — reconcile can't query live exchange state, crash recovery depends on `position_backup.json`.
+
+### Tests
+- Total tests: **3485 passing** (was 3396), 2 pre-existing failures in `test_ops_reliability.py::TestAlertStatePersistence` (AlertRouter auto-loads default state before test can override path — test-design bug, not production code).
+
+---
+
 *This document is the single source of truth for the nunuIRL roadmap. Update it as phases are completed.*

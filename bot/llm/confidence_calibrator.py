@@ -40,8 +40,11 @@ class ConfidenceCalibrator:
     # Calibration bins (confidence % ranges)
     BINS = [(50, 60), (60, 70), (70, 80), (80, 90), (90, 100)]
 
-    # Minimum samples per bin before calibration is applied
-    MIN_SAMPLES_PER_BIN = 5
+    # SHIP-2026-04-19: raised from 5 to 20.
+    # A 6-trade HYPE 60-70 bin (WR=0.32) was poisoning every HYPE signal with a
+    # max -20pt penalty. With MIN=20, thin/noisy bins fall through to global bin.
+    # See HYPE_CALIBRATION_DEEPDIVE_2026_04_17.md.
+    MIN_SAMPLES_PER_BIN = 20
 
     # Smoothing: blend calibrated value with raw value (prevents overcorrection)
     # 0.0 = fully raw, 1.0 = fully calibrated

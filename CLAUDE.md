@@ -188,6 +188,10 @@ Invoke these with `/skill-name` in Claude Code sessions:
 - `/alert-config [setup|test|status|tune]` — Discord/Telegram alert configuration
 - `/web-dashboard [dashboard|api|health|monitoring]` — Web systems health check
 
+**Continuous Monitoring:**
+- `/babysit` — Claude-Code paper-trading overwatch loop (collects intel, analyzes signals, flags regime mismatches + missed trades, updates KB)
+- `/babysit-sniper` — Manual sniper-signal monitoring loop (signal gen, quality, simulator performance, optimization, learnings)
+
 ## Claude Code Rules
 Domain-specific rules in `.claude/rules/` auto-load when editing matching files:
 - Editing `bot/llm/**` → loads `llm-agents.md` (agent dev rules)

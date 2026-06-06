@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+import collections
 import logging
 import os
 import signal
@@ -28,6 +29,9 @@ from data.db import (
     update_daily_performance, get_signal_performance, get_recent_trades,
 )
 from data.strategy_weights import StrategyWeightManager
+from feedback.regime_feedback import RegimeFeedbackManager
+from feedback.adaptive_confidence import AdaptiveConfidenceFloor
+from feedback.hold_time_rules import HoldTimeRuleManager
 from data.risk_log import log_rejection, get_rejection_counts
 from data.ml_log import log_ml_stats, log_ml_confidence
 from data.trade_log import log_closed_trade
@@ -87,7 +91,12 @@ from data.fetchers.telemetry import Telemetry
 
 # Feedback loop system
 from feedback.loop import FeedbackLoop
-from feedback.signal_quality import QualityFeatures
+from feedback.signal_quality import QualityFeatures, SignalQualityScorer
+from feedback.parameter_tuner import ParameterTuner
+from feedback.continuous_backtest import ContinuousBacktester
+
+# Perpetual learning systems (Master Engine + 5 subsystems)
+from learning import get_master_engine
 
 # Signal ingestion pipeline
 from signals.telegram_ingest import TelegramSignalMonitor, IngestedSignal
@@ -400,6 +409,24 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             decay_alpha=0.9,
         )
 
+        # Regime-specific feedback (tracks per-regime performance)
+        self.regime_feedback = RegimeFeedbackManager(data_dir="data/feedback")
+
+        # Adaptive confidence floor (dynamic thresholds from realized performance)
+        self.confidence_floor = AdaptiveConfidenceFloor(data_dir="data/feedback")
+
+        # Hold-time rules (minimum hold times per regime based on live performance)
+        self.hold_time_rules = HoldTimeRuleManager(data_dir="data/feedback")
+
+        # Signal quality scorer (meta-confidence based on signal context)
+        self.signal_quality = SignalQualityScorer(data_dir="data/feedback")
+
+        # Parameter tuner (autonomous parameter adaptation based on performance)
+        self.parameter_tuner = ParameterTuner(data_dir="data/feedback")
+
+        # Continuous backtest (real-time validation of signal quality against historical baselines)
+        self.continuous_backtest = ContinuousBacktester(data_dir="data/feedback")
+
         # Strategies — each toggleable via STRATEGY_*_ENABLED env var
         sym_configs = DEFAULT_SYMBOLS
         self.strategies = []
@@ -472,6 +499,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             confidence_floor=config.ensemble_confidence_floor,
             ranging_confidence_floor=config.ranging_confidence_floor,
         )
+        # Wire signal quality scoring to ensemble (applies learned context confidence multipliers)
+        self.ensemble._signal_quality_scorer = self.signal_quality
+
         # Wire manual sniper callback: receives solo signals that the ensemble
         # rejects for insufficient consensus. The sniper has its own proven-setup
         # gates and can profitably trade signals the bot sits out on.
@@ -639,11 +669,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 cooldown_minutes=config.circuit_breaker_cooldown_min,
             ),
         )
+
         self.pos_mgr = PositionManager(
             taker_fee_bps=config.taker_fee_bps,
             enable_trailing=config.enable_trailing_stop,
             trailing_atr_mult=config.trailing_stop_atr_mult,
             time_stop_hours=config.time_stop_hours,
+            hold_time_rules=self.hold_time_rules,
         )
         # Per-symbol execution lock: prevents duplicate entries when two signals
         # for the same symbol race through the pipeline simultaneously.
@@ -715,6 +747,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         self._tick = 0
         self._needed_tfs = self.ensemble.get_all_required_timeframes()
+        # Always fetch 4h for intermediate-trend context injected into LLM agent snapshots
+        if "4h" not in self._needed_tfs:
+            self._needed_tfs.append("4h")
 
         # Per-symbol cooldown: prevent rapid re-entry after a position closes
         self._symbol_cooldown: Dict[str, float] = {}  # symbol -> timestamp of last close
@@ -743,6 +778,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Last known funding rates per symbol (updated from fetcher)
         self._last_funding_rates: Dict[str, float] = {}  # symbol -> funding rate
         self._last_open_interest: Dict[str, float] = {}  # symbol -> OI (for oi_delta strategy)
+        self._oi_history: Dict[str, collections.deque] = {}  # symbol -> deque of {ts, oi} (12-entry rolling)
 
         # LLM meta-brain
         self.llm_mode = get_llm_mode()
@@ -771,6 +807,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Feedback loop: self-improving confidence, backtesting, quality scoring
         self.feedback = FeedbackLoop(data_dir="data/feedback")
+        # Wire SignalQualityScorer into ensemble so session/hour/entry_type WR
+        # adjustments (US=57% WR, Asia=14% WR) actually affect confidence scoring.
+        self.ensemble.set_quality_scorer(self.feedback.quality)
+        logger.info("[INIT] SignalQualityScorer wired into ensemble — session/hour WR now adjusts confidence")
 
         # Quant system: IC tracker, Kelly engine, trade ledger, shadow ledger, daily report
         try:
@@ -870,7 +910,12 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             self._sector_exposure_cls = None
             self.execution_analytics = None
             self._missed_trade_tracker = None
-            self.daily_reporter = None
+
+        # AutoOptimizer: autonomous review + parameter tuning
+        # Lazy-initialized on first tick when EvolutionTracker is ready
+        self._evolution_tracker = None
+        self._auto_optimizer_initialized = False
+        logger.info("[INIT] AutoOptimizer will initialize on first tick with EvolutionTracker")
 
         # Growth intelligence: self-evolving meta-brain
         self.growth = get_growth_orchestrator()
@@ -1053,6 +1098,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     enable_trailing=config.enable_trailing_stop,
                     trailing_atr_mult=config.trailing_stop_atr_mult,
                     time_stop_hours=config.time_stop_hours,
+                    hold_time_rules=self.hold_time_rules,
                 )
                 self._wallet_a.risk_mgr = RiskManager(
                     starting_equity=wallet_equity_a,
@@ -1080,6 +1126,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     enable_trailing=config.enable_trailing_stop,
                     trailing_atr_mult=config.trailing_stop_atr_mult,
                     time_stop_hours=config.time_stop_hours,
+                    hold_time_rules=self.hold_time_rules,
                 )
                 self._wallet_b.risk_mgr = RiskManager(
                     starting_equity=wallet_equity_b,
@@ -1278,15 +1325,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _llm_dual = getattr(self.config, 'llm_first_dual_track', False)
         if _llm_first:
             _multi = os.getenv("LLM_MULTI_AGENT", "false").lower() == "true"
-            _has_key = bool(os.getenv("ANTHROPIC_API_KEY", ""))
+            # Accept CLI routing (USE_CLI_LLM=true) as equivalent to having an API key
+            _has_llm = (
+                bool(os.getenv("ANTHROPIC_API_KEY", ""))
+                or os.getenv("USE_CLI_LLM", "").lower() in ("1", "true", "yes")
+            )
             _mode_ok = self.llm_mode >= LLMMode.SIZING
-            if _multi and _mode_ok and _has_key:
-                logger.info(f"  LLM-FIRST: ACTIVE — brain before gates (9 agents)")
+            if _multi and _mode_ok and _has_llm:
+                _llm_src = "CLI" if os.getenv("USE_CLI_LLM", "").lower() in ("1", "true", "yes") else "API"
+                logger.info(f"  LLM-FIRST: ACTIVE — brain before gates (9 agents, {_llm_src})")
             else:
                 _reasons = []
                 if not _multi: _reasons.append("LLM_MULTI_AGENT=false")
                 if not _mode_ok: _reasons.append(f"LLM_MODE={self.llm_mode.value} < SIZING(3)")
-                if not _has_key: _reasons.append("no ANTHROPIC_API_KEY")
+                if not _has_llm: _reasons.append("no ANTHROPIC_API_KEY or USE_CLI_LLM")
                 logger.warning(
                     f"  LLM-FIRST: DISABLED — prerequisites not met: "
                     f"{', '.join(_reasons)}. Falling back to mechanical path."
@@ -1339,6 +1391,38 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Start watchdog (background health monitoring)
         self.watchdog.start()
         log_health_event("BOT_START", "INFO", f"Bot started: {len(DEFAULT_SYMBOLS)} symbols, LLM={self.llm_mode.name}")
+
+        # Auto-start live_analyst as background subprocess when committee gate is enabled
+        # Writes thesis files to web/public/thesis/{symbol}/ that committee_reader.py reads
+        if os.getenv("COMMITTEE_GATE_ENABLED", "").lower() in ("1", "true", "yes"):
+            try:
+                import subprocess, sys
+                _analyst_script = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "tools", "live_analyst.py"
+                )
+                if os.path.exists(_analyst_script):
+                    _pid_file = os.path.join("data", "live_analyst.pid")
+                    _already_running = False
+                    if os.path.exists(_pid_file):
+                        try:
+                            _pid = int(open(_pid_file).read().strip())
+                            os.kill(_pid, 0)  # raises if dead
+                            _already_running = True
+                        except Exception:
+                            pass
+                    if not _already_running:
+                        _proc = subprocess.Popen(
+                            [sys.executable, _analyst_script, "--loop", "--interval", "600"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                        )
+                        with open(_pid_file, 'w') as _pf:
+                            _pf.write(str(_proc.pid))
+                        logger.info(f"[INIT] live_analyst started (pid={_proc.pid}, committee gate active)")
+                    else:
+                        logger.info(f"[INIT] live_analyst already running (committee gate active)")
+            except Exception as _ae:
+                logger.debug(f"[INIT] live_analyst auto-start: {_ae}")
 
         # Start web dashboard (background HTTP server)
         if self.dashboard:
@@ -1642,6 +1726,28 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # to produce actionable signals first (lead-lag targets, volatile, open positions)
         eval_order = self._prioritize_symbols(DEFAULT_SYMBOLS)
 
+        # Update ensemble confidence floor from adaptive floor (dynamic gating).
+        # OVERDRIVE/LLM_FIRST_MODE: cap adaptive floor at the configured value -- the
+        # adaptive module hardcodes ABSOLUTE_MIN_FLOOR=50 in feedback/adaptive_confidence.py,
+        # which silently overrode ENSEMBLE_CONFIDENCE_FLOOR=20 every scan, gating off
+        # signals like ETH BUY conf=52% that LLM said GO on. Adaptive can lower the floor
+        # in LLM-first mode but cannot raise it above the user's configured baseline.
+        try:
+            if self.confidence_floor and hasattr(self.ensemble, 'confidence_floor'):
+                new_floor = self.confidence_floor.current_floor
+                llm_first = os.getenv("LLM_FIRST_MODE", "false").lower() == "true"
+                if llm_first:
+                    new_floor = min(new_floor, self.config.ensemble_confidence_floor)
+                self.ensemble.confidence_floor = new_floor
+                # Log if floor changed significantly
+                if abs(new_floor - self.config.ensemble_confidence_floor) > 2.0:
+                    logger.info(
+                        f"[ADAPTIVE-FLOOR] Updated ensemble confidence floor from "
+                        f"{self.config.ensemble_confidence_floor:.1f} to {new_floor:.1f}"
+                    )
+        except Exception as e:
+            logger.debug(f"Failed to update adaptive confidence floor: {e}")
+
         for symbol, sym_cfg in eval_order:
             try:
                 self._process_symbol(symbol, sym_cfg, trace_id)
@@ -1708,7 +1814,59 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         except Exception:
                             pass
                         if _ant_1h is not None and not _ant_1h.empty:
-                            self._anticipation_engine.scan_for_setups(_ant_sym, _ant_1h, _ant_5m)
+                            _new_entries = self._anticipation_engine.scan_for_setups(_ant_sym, _ant_1h, _ant_5m)
+                            # Fire WATCH alerts for newly-staged anticipatory entries (2026-04-16)
+                            # These are setups the engine expects to trigger soon. User
+                            # gets advance notice so they're ready when EXECUTE fires.
+                            if (_new_entries
+                                    and os.environ.get("PREMIUM_ALERTS_ENABLED", "true").lower() in ("1", "true", "yes")
+                                    and self.alerts
+                                    and self.alerts.telegram_token
+                                    and self.alerts.telegram_chat_id):
+                                try:
+                                    from alerts.premium_filter import (
+                                        evaluate_for_alert, AlertTier,
+                                        is_watch_deduped, mark_watch_sent,
+                                    )
+                                    from alerts.premium_telegram import format_premium_watch_alert
+                                    for _ne in _new_entries:
+                                        _ne_side = "BUY" if _ne.side == "BUY" else "SELL"
+                                        _ne_strategy = _ne.setup_type or "anticipatory"
+                                        # Dedup: skip if same (symbol, side, strategy) WATCH
+                                        # was sent in the last 30 min.
+                                        if is_watch_deduped(_ne.symbol, _ne_side, _ne_strategy):
+                                            continue
+                                        _ne_dec = evaluate_for_alert(
+                                            symbol=_ne.symbol, side=_ne_side,
+                                            strategy=_ne_strategy,
+                                            confidence=70.0,  # anticipatory defaults
+                                            num_agree=1,
+                                            regime="",
+                                            entry=_ne.target_price,
+                                            sl=_ne.sl, tp1=_ne.tp, tp2=_ne.tp,
+                                            leverage=_ne.leverage,
+                                            equity=self.risk_mgr.equity,
+                                            anticipatory_prestage=True,
+                                        )
+                                        if _ne_dec.tier == AlertTier.WATCH:
+                                            _watch_msg = format_premium_watch_alert(
+                                                symbol=_ne.symbol, side=_ne_side,
+                                                entry=_ne.target_price,
+                                                sl=_ne.sl, tp1=_ne.tp, tp2=_ne.tp,
+                                                leverage=_ne.leverage,
+                                                confidence=70.0,
+                                                decision=_ne_dec,
+                                                strategy=_ne_strategy,
+                                                regime="", num_agree=1, total_strategies=0,
+                                            )
+                                            self.alerts._send_telegram(_watch_msg)
+                                            mark_watch_sent(_ne.symbol, _ne_side, _ne_strategy)
+                                            logger.info(
+                                                f"[WATCH-ALERT] Sent for {_ne.symbol} {_ne_side} "
+                                                f"@ ${_ne.target_price:.2f} ({_ne_strategy})"
+                                            )
+                                except Exception as _we:
+                                    logger.debug(f"Watch alert dispatch failed: {_we}")
 
                 # 2. Build indicators dict for trigger checking
                 _ant_indicators = {}
@@ -1849,6 +2007,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except Exception as e:
             logger.warning(f"[{trace_id}] Feedback loop tick error: {e}")
 
+        # Perpetual learning engine: auto-fix, execution forensics, live injection, etc.
+        try:
+            master_engine = get_master_engine()
+            master_engine.tick(trade_count=len(self.trade_ledger.all_trades()) if hasattr(self, 'trade_ledger') else 0)
+        except Exception as e:
+            logger.debug(f"[{trace_id}] Master learning engine tick error: {e}")
+
         # Growth intelligence: periodic learning cycles, hypothesis graduation,
         # veto resolution, auto-safe proposal application, report generation
         try:
@@ -1886,14 +2051,36 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             except Exception as e:
                 logger.warning(f"[{trace_id}] Exit intelligence error: {e}")
 
-        # Scout Agent: idle-time preparation and forecasting
-        # Runs every 120th tick (~2 hours at 60s intervals) to minimize cost
-        # Blueprint: scout should run every 2-4 hours, not per-signal
-        if self._tick % 120 == 0 and os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
+        # Scout Agent: idle-time preparation and watchlist formation
+        # CLI = $0/call: drop from 120-tick (~2h) to 15-tick (~15 min) cadence
+        if self._tick % 15 == 0 and os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
             try:
                 self._run_scout_preparation(trace_id)
             except Exception as e:
                 logger.debug(f"[{trace_id}] Scout preparation error: {e}")
+
+        # Exit Agent: thesis-validity check on ALL open positions
+        # CLI = $0/call: run every 2 ticks (~2 min) and only if positions are open
+        _has_open_positions = bool(getattr(self, 'pos_mgr', None) and
+                                   hasattr(self.pos_mgr, 'positions') and
+                                   any(p.state not in ("CLOSED",) for p in self.pos_mgr.positions.values()))
+        if (_has_open_positions
+                and self._tick % 2 == 0
+                and os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes")
+                and os.getenv("AGENT_EXIT_ENABLED", "true").lower() in ("1", "true", "yes")):
+            try:
+                self._run_exit_agent_checks(trace_id)
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Exit agent periodic check error: {e}")
+
+        # Overseer Agent: system-level portfolio review every 60 ticks (~1 hour)
+        if (self._tick % 60 == 0
+                and os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes")
+                and os.getenv("AGENT_OVERSEER_ENABLED", "true").lower() in ("1", "true", "yes")):
+            try:
+                self._run_overseer_review(trace_id)
+            except Exception as e:
+                logger.debug(f"[{trace_id}] Overseer review error: {e}")
 
         # Daily summary: send once per day at ~8:00 UTC (every 1440 ticks = 24h at 60s)
         # Also triggers if the bot just started and hasn't sent one today
@@ -1902,6 +2089,33 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 self._send_daily_summary()
             except Exception as e:
                 logger.debug(f"[{trace_id}] Daily summary error: {e}")
+
+        # Morning briefing (2026-04-16): wall-clock-based, sends the /briefing
+        # multi-window snapshot to Telegram at 08:00 UTC daily regardless of
+        # tick count drift. User asked: "I want the briefing on my phone first
+        # thing in the morning without typing anything."
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            _now_utc = _dt.now(_tz.utc)
+            _last_morning = getattr(self, "_last_morning_briefing_date", None)
+            _today_str = _now_utc.strftime("%Y-%m-%d")
+            # Fire once between 08:00 and 08:59 UTC, at most one per day
+            if (_now_utc.hour == 8
+                    and _last_morning != _today_str
+                    and hasattr(self, "alerts") and self.alerts
+                    and getattr(self.alerts, "telegram_token", None)
+                    and getattr(self.alerts, "telegram_chat_id", None)):
+                try:
+                    # Build the briefing inline (use the same logic as /briefing
+                    # command but without requiring a telegram_bot instance).
+                    _briefing_msg = self._build_morning_briefing_message()
+                    self.alerts._send_telegram(_briefing_msg)
+                    self._last_morning_briefing_date = _today_str
+                    logger.info(f"[MORNING-BRIEFING] Sent for {_today_str}")
+                except Exception as _mb_err:
+                    logger.debug(f"[MORNING-BRIEFING] Send error: {_mb_err}")
+        except Exception:
+            pass
 
         # Position aging alerts: flag positions held too long with adverse funding
         # Runs every 10th tick (~10 min at 60s intervals)
@@ -2017,6 +2231,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             try:
                 from feedback.evolution_tracker import EvolutionTracker
                 tracker = EvolutionTracker("data")
+
+                # Lazy-initialize AutoOptimizer with EvolutionTracker on first run
+                if not self._auto_optimizer_initialized:
+                    self._evolution_tracker = tracker
+                    try:
+                        self.feedback.setup_auto_optimizer(
+                            evolution_tracker=tracker,
+                            llm_client=self.llm_client if hasattr(self, 'llm_client') else None
+                        )
+                        self._auto_optimizer_initialized = True
+                        logger.info("[INIT] AutoOptimizer initialized with EvolutionTracker")
+                    except Exception as aoi_e:
+                        logger.warning(f"[INIT] AutoOptimizer setup failed: {aoi_e}")
+
                 report = tracker.generate_report()
                 if self.alerts and report:
                     # Enhanced daily report with full breakdown
@@ -2511,12 +2739,38 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     _meta["open_interest"] = _oi
                     if _oi_prev is not None:
                         _meta["open_interest_prev"] = _oi_prev
+                    # Append to rolling OI history (12 entries ≈ 12h at 60-tick sampling)
+                    if symbol not in self._oi_history:
+                        self._oi_history[symbol] = collections.deque(maxlen=12)
+                    self._oi_history[symbol].append({"ts": int(time.time()), "oi": _oi})
             except Exception:
                 pass
         else:
             _oi = self._last_open_interest.get(symbol)
             if _oi is not None:
                 _meta["open_interest"] = _oi
+        # Always inject OI history when available
+        if symbol in self._oi_history and len(self._oi_history[symbol]) >= 2:
+            _meta["oi_history"] = list(self._oi_history[symbol])
+        # Mark price + basis: fetch every 60 ticks (same cadence as OI)
+        if self._tick % 60 == 0 or symbol not in getattr(self, "_last_mark_price", {}):
+            if not hasattr(self, "_last_mark_price"):
+                self._last_mark_price: Dict[str, tuple] = {}
+            try:
+                _mark, _basis = self.fetcher.fetch_mark_price(symbol)
+                if _mark is not None:
+                    self._last_mark_price[symbol] = (_mark, _basis)
+                    _meta["mark_price"] = _mark
+                    if _basis is not None:
+                        _meta["basis_pct"] = round(_basis * 100, 4)  # as % e.g. 0.15
+            except Exception:
+                pass
+        else:
+            _cached = getattr(self, "_last_mark_price", {}).get(symbol)
+            if _cached:
+                _meta["mark_price"] = _cached[0]
+                if _cached[1] is not None:
+                    _meta["basis_pct"] = round(_cached[1] * 100, 4)
 
         # Inject BTC 1h data for lead_lag strategy on non-BTC symbols
         if symbol != "BTC":
@@ -2730,6 +2984,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     context=pre_close,
                 )
 
+        # force_close() calls below return TradeEvents that bypass the normal events loop.
+        # Collect them here and inject after update_price() so equity/ledger/kelly stay in sync.
+        _force_close_events: list = []
+
         # Liquidation distance monitoring: check every tick for leveraged positions
         if symbol in open_pos and open_pos[symbol].leverage > 1.0:
             _liq_pos = open_pos[symbol]
@@ -2755,7 +3013,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         symbol, _close_side, _fc_pos.qty, current_price, "LIQUIDATION_PROXIMITY"
                     )
                     if _liq_close and getattr(_liq_close, "filled", False):
-                        self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
+                        _fc = self.pos_mgr.force_close(symbol, current_price, "LIQUIDATION_PROXIMITY")
+                        if _fc:
+                            _fc.metadata["_exchange_submitted"] = True
+                            _force_close_events.append(_fc)
                     else:
                         logger.critical(
                             f"[{trace_id}][{symbol}] LIQUIDATION CLOSE FAILED — position still open on exchange. "
@@ -2801,7 +3062,10 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             symbol, _close_side, _fc_pos.qty, current_price, "FUNDING_AVOIDANCE"
                         )
                         if _fund_close and getattr(_fund_close, "filled", False):
-                            self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                            _fc = self.pos_mgr.force_close(symbol, current_price, "FUNDING_AVOIDANCE")
+                            if _fc:
+                                _fc.metadata["_exchange_submitted"] = True
+                                _force_close_events.append(_fc)
                         else:
                             logger.critical(
                                 f"[{trace_id}][{symbol}] FUNDING CLOSE FAILED — position still open. "
@@ -2831,14 +3095,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 )
                 if _mfe_rec.action == "TAKE_PROFIT":
                     logger.info(f"[{symbol}] MFE EXIT: TAKE_PROFIT — {_mfe_rec.reason}")
-                    self.pos_mgr.force_close(symbol, current_price, "MFE_TAKE_PROFIT")
+                    _fc = self.pos_mgr.force_close(symbol, current_price, "MFE_TAKE_PROFIT")
                     close_side = "SELL" if _mfe_pos.side == "LONG" else "BUY"
                     self.order_executor.close_position(symbol, close_side, _mfe_pos.qty, current_price, "MFE_TAKE_PROFIT")
+                    if _fc:
+                        _fc.metadata["_exchange_submitted"] = True
+                        _force_close_events.append(_fc)
                 elif _mfe_rec.action == "EXIT_NOW":
                     logger.info(f"[{symbol}] MFE EXIT: EXIT_NOW — {_mfe_rec.reason}")
-                    self.pos_mgr.force_close(symbol, current_price, "MFE_EXIT_NOW")
+                    _fc = self.pos_mgr.force_close(symbol, current_price, "MFE_EXIT_NOW")
                     close_side = "SELL" if _mfe_pos.side == "LONG" else "BUY"
                     self.order_executor.close_position(symbol, close_side, _mfe_pos.qty, current_price, "MFE_EXIT_NOW")
+                    if _fc:
+                        _fc.metadata["_exchange_submitted"] = True
+                        _force_close_events.append(_fc)
                 elif _mfe_rec.action == "TIGHTEN_STOP":
                     # Move SL closer to lock in gains
                     if _mfe_pos.side == "LONG":
@@ -2856,13 +3126,34 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Update existing positions (pass 5m data for early exit momentum detection)
         df_5m = data.get("5m")
-        events = self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m)
+        events = list(self.pos_mgr.update_price(symbol, current_price, df_5m=df_5m))
+        if _force_close_events:
+            events.extend(_force_close_events)
+        # Inject LLM_EXIT_AGENT close events from _check_llm_exit_suggestions()
+        # These were collected in self._pending_exit_events during background exit checks.
+        # Must be injected per symbol to ensure they go through post-trade callbacks.
+        if hasattr(self, '_pending_exit_events') and self._pending_exit_events:
+            # Filter to events for this symbol
+            symbol_exit_events = [e for e in self._pending_exit_events if e.symbol == symbol]
+            if symbol_exit_events:
+                events.extend(symbol_exit_events)
+                # Remove from pending (already injected)
+                self._pending_exit_events = [e for e in self._pending_exit_events if e.symbol != symbol]
         for event in events:
+            # 2026-06-05: capture position object BEFORE close processing removes
+            # it from pos_mgr.positions. Without this snapshot, every downstream
+            # lookup (line ~3282 strategy weights, ~3457 deep_memory trade_dna,
+            # learning_integration, etc) gets None and silently skips writes.
+            # This was the root cause of ALL memory/learning writes being dead
+            # since 2026-05-30 restart — every closed trade was information loss.
+            _captured_pos = self.pos_mgr.positions.get(symbol)
+
             # Submit close order to exchange for full/partial closes
             _close_actions = ("SL", "TP1", "TP2", "TRAILING_STOP", "EARLY_EXIT",
                               "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
-                              "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
-            if event.action in _close_actions and event.qty > 0:
+                              "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
+                              "TIME_STOP", "TP1_FULL")
+            if event.action in _close_actions and event.qty > 0 and not event.metadata.get("_exchange_submitted"):
                 # Determine close side (opposite of position side)
                 close_side = "SELL" if event.side == "LONG" else "BUY"
                 close_result = self.order_executor.close_position(
@@ -2897,15 +3188,96 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             )
 
             # Full close actions (for ML, weight tracking, cooldown)
+            # TIME_STOP/TP1_FULL/HOLD_LIMIT previously missing → trades silently dropped from trade_ledger
+            # MFE_TAKE_PROFIT/MFE_EXIT_NOW: force-close path, injected via _force_close_events
             _FULL_CLOSE = ("SL", "TP2", "TRAILING_STOP", "EARLY_EXIT",
-                           "EMERGENCY", "LIQUIDATION_AVOID",
-                           "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE")
+                           "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
+                           "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
+                           "TIME_STOP", "TP1_FULL", "HOLD_LIMIT",
+                           "MFE_TAKE_PROFIT", "MFE_EXIT_NOW",
+                           # 2026-06-06: LLM_EXIT_AGENT was missing — Exit Agent closes
+                           # silently bypassed trade_ledger writes + strategy weight
+                           # outcome + deep memory + ALL post-trade learning. HYPE SHORT
+                           # close at 07:40:37 (-$1.49) was lost. Adding here so future
+                           # Exit Agent closes properly persist.
+                           "LLM_EXIT_AGENT")
 
             # Record outcome for strategy weight tracking (only on full close, use total PnL)
-            if event.action in _FULL_CLOSE and event.strategy:
+            # 2026-06-05: removed `and event.strategy` guard — empty strategy was silently
+            # bypassing record_outcome for ALL ensemble trades since 2026-05-30 restart,
+            # causing strategy weights frozen at 0.30 across all 6 strategies. Fallback
+            # to "ensemble" when event.strategy is empty so the outcome still records.
+            if event.action in _FULL_CLOSE:
                 pos = self.pos_mgr.positions.get(symbol)
                 total_pnl = pos.realized_pnl if pos else event.pnl
-                self.weight_mgr.record_outcome(event.strategy, total_pnl > 0)
+                _strategy_key = event.strategy if event.strategy else "ensemble"
+                self.weight_mgr.record_outcome(_strategy_key, total_pnl > 0, symbol=symbol)
+
+                # Record regime-specific feedback and confidence floor
+                try:
+                    regime = "unknown"
+                    confidence = 50.0
+                    hold_hours = 0.0
+                    if pos:
+                        regime = pos.entry_reasons.get("regime", "unknown") if pos.entry_reasons else "unknown"
+                        confidence = pos.confidence if pos.confidence else (pos.entry_reasons.get("llm_confidence") or pos.entry_reasons.get("win_prob_deflated") or 50.0) if pos.entry_reasons else 50.0
+                        if pos.opened_at and pos.close_time:
+                            hold_hours = (pos.close_time - pos.opened_at).total_seconds() / 3600.0
+                    self.regime_feedback.record_trade(
+                        regime=regime,
+                        pnl=total_pnl,
+                        confidence=confidence,
+                        strategy=event.strategy,
+                        hold_hours=hold_hours,
+                        metadata={"symbol": symbol, "action": event.action}
+                    )
+                    # Record for adaptive confidence floor (binned by confidence level)
+                    self.confidence_floor.record_outcome(
+                        confidence=confidence,
+                        win=total_pnl > 0,
+                        pnl=total_pnl,
+                        strategy=event.strategy,
+                        symbol=symbol,
+                        regime=regime,
+                    )
+                    # Record hold-time performance (learn min hold times per regime)
+                    self.hold_time_rules.record_trade(
+                        regime=regime,
+                        hold_hours=hold_hours,
+                        win=total_pnl > 0,
+                        pnl=total_pnl
+                    )
+                    # Record signal quality outcome (learns meta-confidence)
+                    if self.signal_quality:
+                        self.signal_quality.record_outcome(
+                            features_key=(event.strategy, symbol, regime),
+                            win=total_pnl > 0,
+                            pnl=total_pnl
+                        )
+                    # Record parameter tuning outcome (learns parameter adjustments)
+                    if self.parameter_tuner:
+                        self.parameter_tuner.record_outcome(
+                            win=total_pnl > 0,
+                            pnl=total_pnl,
+                            pnl_pct=total_pnl / (self.risk_mgr.equity or 1.0),
+                            regime=regime,
+                            symbol=symbol,
+                            num_agree=len(pos.entry_reasons.get("strategies_agree", [])) if pos and pos.entry_reasons else 1
+                        )
+                    # Record continuous backtest outcome (real-time validation)
+                    if self.continuous_backtest:
+                        self.continuous_backtest.record_outcome(
+                            symbol=symbol,
+                            side=pos.side if pos else ("BUY" if "BUY" in event.side else "SELL"),
+                            entry_price=pos.entry if pos else 0,
+                            exit_price=event.price if hasattr(event, 'price') else 0,
+                            entry_confidence=confidence,
+                            predicted_direction=1 if (pos and pos.side == "LONG") else -1 if pos else 0,
+                            actual_return=total_pnl,
+                            holding_time_hours=hold_hours
+                        )
+                except Exception as e:
+                    logger.debug(f"Feedback recording error: {e}")
 
                 # Record for LLM memory-worthy event detection
                 _et = ""
@@ -2931,7 +3303,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
             # Record outcome for feedback loop (TOTAL trade PnL)
             if event.action in _FULL_CLOSE:
-                pos = self.pos_mgr.positions.get(symbol)
+                # 2026-06-05: use _captured_pos (snapshot taken before close removed
+                # position from pos_mgr) so trade DNA + memory writes actually fire
+                pos = _captured_pos if _captured_pos else self.pos_mgr.positions.get(symbol)
                 total_pnl = pos.realized_pnl if pos else event.pnl
                 _et_fb = ""
                 _pd_fb = ""
@@ -2970,6 +3344,22 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     )
                 except Exception as e:
                     logger.warning(f"Feedback outcome error: {e}")
+
+                # Graduated rules: record outcome so rules track accuracy + auto-retire poor rules
+                try:
+                    from llm.graduated_rules import get_graduated_rules_engine
+                    _gr_hr = pos.open_time.hour if pos and getattr(pos, "open_time", None) else -1
+                    _gr_er = (pos.entry_reasons or {}) if pos and getattr(pos, "entry_reasons", None) else {}
+                    _gr_strats = _gr_er.get("strategies_agree", [])
+                    _gr_num = len(_gr_strats) or _gr_er.get("num_agree", 0)
+                    _gr_conf = _gr_er.get("llm_confidence") or _gr_er.get("win_prob_deflated") or 0.0
+                    get_graduated_rules_engine().record_outcome(
+                        symbol=symbol, regime=_rg_fb, side=event.side, won=total_pnl > 0,
+                        hour_utc=_gr_hr, strategies_active=_gr_strats,
+                        num_agree=_gr_num, confidence=float(_gr_conf) if _gr_conf else 0.0,
+                    )
+                except Exception:
+                    pass
 
                 # Quant system: record to IC tracker, Kelly engine, trade ledger, resolve shadows
                 if pos:
@@ -3027,6 +3417,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                 "hold_hours": f"{_hold_hours:.2f}",
                                 "exit_type": event.action,
                                 "entry_price": str(pos.entry),
+                                "snapshot_entry": str(pos.entry_reasons.get("snapshot_entry", "")) if pos.entry_reasons else "",
                                 "exit_price": str(event.price),
                                 "gross_pnl": str(round(total_pnl + (pos.fees_paid or 0), 2)),
                                 "fees": str(round(pos.fees_paid or 0, 2)),
@@ -3039,7 +3430,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                                 "win": "1" if total_pnl > 0 else "0",
                             })
                         except Exception as e:
-                            logger.debug(f"Trade ledger record error: {e}")
+                            logger.warning(f"Trade ledger record error: {e}")
 
                     if self.shadow_ledger:
                         try:
@@ -3088,10 +3479,24 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     pass  # Corpus not critical
 
                 # Deep memory: record full trade DNA for LLM knowledge base
+                # 2026-06-05: use _captured_pos snapshot — re-fetching from
+                # pos_mgr.positions returned None because close already removed it.
                 try:
-                    _dm_pos = self.pos_mgr.positions.get(symbol)
+                    _dm_pos = _captured_pos if _captured_pos else self.pos_mgr.positions.get(symbol)
                     if _dm_pos:
                         self._record_trade_dna(symbol, _dm_pos, event)
+                        # Invalidate dynamic threshold cache so next decision sees fresh data
+                        try:
+                            from llm.dynamic_thresholds import get_dynamic_thresholds
+                            get_dynamic_thresholds().invalidate()
+                        except Exception:
+                            pass
+                        # Invalidate prompt enricher cache so agents see fresh regime floors
+                        try:
+                            from llm.agents.prompt_enricher import invalidate_cache as _inv_enricher
+                            _inv_enricher()
+                        except Exception:
+                            pass
                 except Exception as e:
                     logger.debug(f"Deep memory trade DNA error: {e}")
 
@@ -3176,6 +3581,58 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 except Exception as e:
                     logger.debug(f"Learning integrator trade close error: {e}")
 
+                # Multi-Agent Learning: run LLM Learning Agent on each closed trade
+                # Previously only ran in backtest — now wired to live loop
+                if os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
+                    try:
+                        from llm.agents.coordinator import get_coordinator
+                        _llm_notes_close = (pos.entry_reasons or {}).get("llm_notes", "") if pos else ""
+                        _exit_price_close = event.metadata.get("exit_price", 0.0)
+                        _hold_h = event.metadata.get("hold_time_s", 0) / 3600.0
+                        _ma_lesson = get_coordinator().get_post_trade_lesson({
+                            "symbol": symbol,
+                            "side": event.side,
+                            "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                            "pnl": total_pnl,
+                            "pnl_pct": (total_pnl / self.risk_mgr.equity * 100) if self.risk_mgr.equity > 0 else 0,
+                            "pnl_pct_signed": (total_pnl / self.risk_mgr.equity * 100) if self.risk_mgr.equity > 0 else 0,
+                            "confidence": pos.confidence if pos else 0,
+                            "regime": _rg_fb,
+                            "strategy": event.strategy,
+                            "hold_time_s": event.metadata.get("hold_time_s", 0),
+                            "hold_hours": _hold_h,
+                            "exit_action": event.action,
+                            "exit_price": _exit_price_close,
+                            "leverage": event.leverage,
+                            "entry_type": _et_fb,
+                            "notes": _llm_notes_close,  # carries thesis_id= for close_thesis()
+                        })
+                        if _ma_lesson and isinstance(_ma_lesson, dict):
+                            _lesson_txt = _ma_lesson.get("lesson", "") or _ma_lesson.get("insight", "")
+                            if _lesson_txt:
+                                logger.info(f"[LEARNING-AGENT] {symbol}: {str(_lesson_txt)[:100]}")
+
+                            # Wire lesson into all learning systems (deep_memory, knowledge_base, calibration, etc.)
+                            try:
+                                from llm.agents.learning_integration import process_agent_lesson
+                                _trade_data_for_learning = {
+                                    "symbol": symbol,
+                                    "side": event.side,
+                                    "outcome": "WIN" if total_pnl > 0 else "LOSS",
+                                    "pnl": total_pnl,
+                                    "pnl_pct": (total_pnl / self.risk_mgr.equity * 100) if self.risk_mgr.equity > 0 else 0,
+                                    "confidence": pos.confidence if pos else 0,
+                                    "regime": _rg_fb,
+                                    "strategy": event.strategy,
+                                    "notes": _llm_notes_close,
+                                }
+                                process_agent_lesson(_ma_lesson, _trade_data_for_learning)
+                                logger.debug(f"[LEARNING-AGENT] Lesson wired to deep_memory/knowledge/calibration")
+                            except Exception as e:
+                                logger.debug(f"[LEARNING-AGENT] Integration error: {e}")
+                    except Exception as e:
+                        logger.debug(f"Multi-agent learning error: {e}")
+
                 # RL buffer: record transition for offline learning
                 try:
                     _rl_pos = self.pos_mgr.positions.get(symbol)
@@ -3244,6 +3701,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                         )
                     except Exception as e:
                         logger.debug(f"Adaptive risk record error: {e}")
+
+                # Adaptive Sizer: record per-symbol outcome for anti-martingale heat tracking
+                try:
+                    from execution.adaptive_risk import get_adaptive_sizer
+                    get_adaptive_sizer(self.config).record_outcome(symbol, won=total_pnl > 0)
+                except Exception as e:
+                    logger.debug(f"Adaptive sizer record error: {e}")
 
                 # Wave 4: Counterfactual — record exit alternative (TP1 vs TP2)
                 if self.counterfactual:
@@ -3834,25 +4298,59 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # LLM can evaluate. This lets the LLM take trades mechanical blocks.
         signal_result = self.ensemble.evaluate(symbol, data)  # Always run mechanical first
 
-        # If mechanical returned None (solo signal blocked), check if this is a
-        # proven solo setup the LLM should evaluate
+        # If mechanical returned None (solo signal or sub-consensus), route to
+        # the LLM-first pathway when LLM_FIRST_MODE is active.
+        #
+        # In legacy mode (LLM_FIRST_MODE=false), only a hardcoded whitelist of
+        # proven-solo setups bypass the consensus gate. In LLM-first mode, we
+        # let the LLM see every ≥60% solo signal — the cost gate at line 4147
+        # and the 10-min cooldown at line 4164 still protect the API budget.
+        # Hard safety (circuit breakers, position limits, liquidation, notional
+        # cap) still applies downstream via SafetyFilterChain + post-LLM caps.
         if signal_result is None and self.llm_mode >= LLMMode.SIZING:
             _raw = self.ensemble.evaluate_raw(symbol, data)
             if _raw is not None:
                 _base = symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "")
-                _PROVEN_SOLOS = {
-                    ("BTC", "SELL"),   # +$55 live, trending_bear golden
-                    ("ETH", "BUY"),    # 100% WR on 135 shadow signals
-                    ("SOL", "SELL"),   # +$44 live, 72% shadow WR via BB/MTQ
-                }
-                if (_base, _raw.side) in _PROVEN_SOLOS and _raw.confidence >= 65:
-                    # Route to LLM for evaluation — it decides, not us
-                    signal_result = _raw
-                    signal_result.metadata["llm_solo_evaluation"] = True
-                    logger.info(
-                        f"[{symbol}] PROVEN SOLO → LLM: {_base} {_raw.side} "
-                        f"conf={_raw.confidence:.0f}% (proven edge, LLM decides)"
-                    )
+                _llm_first_active = getattr(self.config, 'llm_first_mode', False)
+                if _llm_first_active:
+                    # LLM-FIRST: all ≥60% solo signals go to the LLM. The LLM
+                    # is the filter, not the consensus gate. Log only when the
+                    # dispatch is actually novel (not suppressed by cooldown)
+                    # to prevent log spam.
+                    if _raw.confidence >= 60:
+                        signal_result = _raw
+                        if signal_result.metadata is None:
+                            signal_result.metadata = {}
+                        signal_result.metadata["llm_solo_evaluation"] = True
+                        signal_result.metadata["bypassed_consensus"] = True
+                        # Only log the first occurrence per cooldown window.
+                        # Matches the LLM-first cooldown key at line ~4164.
+                        _spam_key = f"{_base}_{_raw.side}"
+                        if not hasattr(self, '_llm_first_solo_log_ts'):
+                            self._llm_first_solo_log_ts = {}
+                        _last_log = self._llm_first_solo_log_ts.get(_spam_key, 0)
+                        if time.time() - _last_log >= 600:  # match cooldown
+                            logger.info(
+                                f"[{symbol}] LLM-FIRST solo → LLM: {_base} {_raw.side} "
+                                f"conf={_raw.confidence:.0f}% num_agree=1 (LLM decides)"
+                            )
+                            self._llm_first_solo_log_ts[_spam_key] = time.time()
+                else:
+                    # Legacy: hardcoded whitelist of proven-edge solos only.
+                    _PROVEN_SOLOS = {
+                        ("BTC", "SELL"),   # +$55 live, trending_bear golden
+                        ("ETH", "BUY"),    # 100% WR on 135 shadow signals
+                        ("SOL", "SELL"),   # +$44 live, 72% shadow WR via BB/MTQ
+                    }
+                    if (_base, _raw.side) in _PROVEN_SOLOS and _raw.confidence >= 65:
+                        signal_result = _raw
+                        if signal_result.metadata is None:
+                            signal_result.metadata = {}
+                        signal_result.metadata["llm_solo_evaluation"] = True
+                        logger.info(
+                            f"[{symbol}] PROVEN SOLO → LLM: {_base} {_raw.side} "
+                            f"conf={_raw.confidence:.0f}% (proven edge, LLM decides)"
+                        )
 
         # ── EARLY: Sniper Signal Evaluation (before regime gating can null the signal) ──
         # Route ALL raw strategy signals to sniper, even if ensemble rejected them.
@@ -4142,11 +4640,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         _llm_first = getattr(self.config, 'llm_first_mode', False)
         _llm_dual_track = getattr(self.config, 'llm_first_dual_track', False)
 
-        # Cost gate: skip LLM entirely for low-confidence signals (not worth the cost)
+        # Cost gate: skip LLM entirely for low-confidence signals (not worth the cost).
+        # OVERDRIVE: use the user's configured ensemble floor as the LLM gate -- the
+        # hardcoded 60% threshold was routing ETH BUY conf=52% to the mechanical path
+        # (where the EV gate then killed it) instead of letting the LLM trade-first
+        # pipeline decide. Falls back to 60 for safety if user didn't lower the floor.
         _sig_conf = signal_result.confidence if hasattr(signal_result, 'confidence') else 0
-        if _sig_conf < 60:
+        _llm_first_min = min(60.0, float(self.config.ensemble_confidence_floor))
+        if _sig_conf < _llm_first_min:
             logger.info(
-                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_sig_conf:.0f}% < 60% threshold"
+                f"[{trace_id}][{symbol}] LLM SKIP: confidence {_sig_conf:.0f}% < {_llm_first_min:.0f}% threshold"
             )
             # Fall through to mechanical path (no LLM cost incurred)
             _llm_first = False
@@ -4536,6 +5039,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             _entry_type_fb = ""
             _vol_ratio_fb = signal_result.metadata.get("volume_ratio", 1.0)
 
+            # quality_pre_applied: ensemble already called quality.adjust_confidence()
+            # when quality_scorer is wired in. Avoid double-applying.
+            _quality_already_done = "quality_multiplier" in signal_result.metadata
             should_trade, fb_adjusted_conf, fb_floor, fb_reason = self.feedback.evaluate_signal(
                 confidence=signal_result.confidence,
                 strategy=signal_result.strategy,
@@ -4549,6 +5055,7 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 volatility=ml_volatility if self.ml else 0.0,
                 rr1=signal_result.risk_reward_tp1,
                 trend_alignment=signal_result.metadata.get("trend_adjustment", 0.0),
+                quality_pre_applied=_quality_already_done,
             )
 
             # Apply quality-adjusted confidence
@@ -5596,11 +6103,29 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 else:
                     return
             else:
-                # LLM approved (or API failed -> default proceed)
-                candidate.llm_action = "proceed"
+                # Finding 18 (2026-04-15): distinguish real LLM approval from
+                # fail-open fallbacks. Previously this unconditionally stamped
+                # `llm_action="proceed"` on every non-veto path including LLM
+                # failures, hiding true LLM state in the metadata. Now we only
+                # mark "proceed" when the LLM actually returned an approval;
+                # anything else is tagged "no_llm" so analytics can distinguish
+                # "LLM said go" from "LLM was skipped/failed".
                 if veto_result is None:
-                    # _llm_veto_check returns None for proceed
-                    pass
+                    # _llm_veto_check returned None for two reasons:
+                    #   1. LLM wasn't consulted (throttled, disabled, below cost gate)
+                    #   2. LLM was called and approved (candidate.llm_* already set)
+                    # Preserve any value _llm_veto_check wrote; otherwise tag no_llm.
+                    if not candidate.llm_action:
+                        candidate.llm_action = "no_llm"
+                else:
+                    # veto_result is a DecisionResult object (LLM was called)
+                    _dec = getattr(veto_result, 'decision', None)
+                    if _dec is not None and getattr(_dec, 'action', None) == "proceed":
+                        candidate.llm_action = "proceed"
+                        candidate.llm_confidence = _dec.confidence
+                        candidate.llm_notes = _dec.notes
+                    else:
+                        candidate.llm_action = "no_llm"
 
         # Learning Mode: record signal observation
         if _LEARNING_MODE_AVAILABLE and is_learning_mode_active():
@@ -6206,37 +6731,123 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # Send signal alert (enhanced format with actionable data)
         tier = signal_result.metadata.get("tier", "")
         try:
-            # Fetch historical win rates for context
+            # Fetch historical win rates for context (used by Discord/dashboard)
             _sp = get_signal_performance(7, symbol=symbol)
             _sym_wr = _sp.get("by_symbol", {}).get(symbol, {}).get("win_rate", 0)
             _sym_trades = _sp.get("by_symbol", {}).get(symbol, {}).get("trades", 0)
             _strat_wr = _sp.get("by_strategy", {}).get(signal_result.strategy, {}).get("win_rate", 0)
-            _enhanced_signal = format_signal_telegram(
-                symbol=symbol,
-                side=side,
-                confidence=signal_result.confidence,
-                entry=actual_entry,
-                sl=signal_result.sl,
-                tp1=signal_result.tp1,
-                tp2=signal_result.tp2,
-                leverage=lev_decision.leverage,
-                strategies_agree=signal_result.metadata.get("strategies_agree"),
-                num_agree=signal_result.metadata.get("num_agree", 1),
-                total_strategies=len(self.strategies),
-                regime=trade_prof.regime or "",
-                equity=self.risk_mgr.equity,
-                risk_per_trade=self.config.risk_per_trade,
-                win_rate_symbol=_sym_wr,
-                win_rate_strategy=_strat_wr,
-                total_trades_symbol=_sym_trades,
-                ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
-                fee_drag_pct=entry_reasons.get("fee_drag_pct", 0),
-                setup_type=entry_reasons.get("primary_driver", ""),
-                solo_trade=signal_result.metadata.get("solo_trade", False),
-            )
-            # Send enhanced to Telegram, normal to Discord
-            if self.alerts.telegram_token and self.alerts.telegram_chat_id:
-                self.alerts._send_telegram(_enhanced_signal)
+
+            # ── PREMIUM ALERT FILTER (2026-04-16) ──
+            # Only send Telegram alerts for shadow-ledger-verified setups.
+            # The old behavior sent every ensemble signal to Telegram (~170/day),
+            # most of them low quality. Now we route through premium_filter
+            # which enforces a shadow-verified quality bar. Disable by setting
+            # PREMIUM_ALERTS_ENABLED=false in .env if you want the old firehose.
+            _premium_enabled = os.environ.get(
+                "PREMIUM_ALERTS_ENABLED", "true"
+            ).lower() in ("1", "true", "yes")
+
+            _telegram_msg = None
+            _alert_decision = None
+
+            if _premium_enabled:
+                try:
+                    from alerts.premium_filter import evaluate_for_alert, AlertTier
+                    from alerts.premium_telegram import (
+                        format_premium_execute_alert,
+                        format_premium_watch_alert,
+                        format_signal_skipped_debug,
+                    )
+
+                    _alert_decision = evaluate_for_alert(
+                        symbol=symbol,
+                        side=side,
+                        strategy=signal_result.strategy,
+                        confidence=signal_result.confidence,
+                        num_agree=signal_result.metadata.get("num_agree", 1),
+                        regime=trade_prof.regime or signal_result.metadata.get("regime", ""),
+                        entry=actual_entry,
+                        sl=signal_result.sl,
+                        tp1=signal_result.tp1,
+                        tp2=signal_result.tp2,
+                        leverage=lev_decision.leverage,
+                        strategies_agree=signal_result.metadata.get("strategies_agree"),
+                        equity=self.risk_mgr.equity,
+                        ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
+                    )
+
+                    if _alert_decision.tier == AlertTier.EXECUTE:
+                        _telegram_msg = format_premium_execute_alert(
+                            symbol=symbol, side=side,
+                            entry=actual_entry, sl=signal_result.sl,
+                            tp1=signal_result.tp1, tp2=signal_result.tp2,
+                            leverage=lev_decision.leverage,
+                            confidence=signal_result.confidence,
+                            decision=_alert_decision,
+                            strategy=signal_result.strategy,
+                            regime=trade_prof.regime or "",
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                        )
+                    elif _alert_decision.tier == AlertTier.WATCH:
+                        _telegram_msg = format_premium_watch_alert(
+                            symbol=symbol, side=side,
+                            entry=actual_entry, sl=signal_result.sl,
+                            tp1=signal_result.tp1, tp2=signal_result.tp2,
+                            leverage=lev_decision.leverage,
+                            confidence=signal_result.confidence,
+                            decision=_alert_decision,
+                            strategy=signal_result.strategy,
+                            regime=trade_prof.regime or "",
+                            num_agree=signal_result.metadata.get("num_agree", 1),
+                            total_strategies=len(self.strategies),
+                        )
+                    else:
+                        # Alert filtered. Log the skip reason so we can audit filter quality.
+                        logger.info(
+                            format_signal_skipped_debug(
+                                symbol=symbol, side=side,
+                                decision=_alert_decision,
+                                confidence=signal_result.confidence,
+                            )
+                        )
+                except Exception as _pe:
+                    logger.warning(
+                        f"[{trace_id}][{symbol}] Premium filter error: {_pe}. "
+                        f"Falling back to no alert."
+                    )
+
+            # Fallback path: if premium filter disabled, use old raw-signal alert
+            if not _premium_enabled:
+                _telegram_msg = format_signal_telegram(
+                    symbol=symbol,
+                    side=side,
+                    confidence=signal_result.confidence,
+                    entry=actual_entry,
+                    sl=signal_result.sl,
+                    tp1=signal_result.tp1,
+                    tp2=signal_result.tp2,
+                    leverage=lev_decision.leverage,
+                    strategies_agree=signal_result.metadata.get("strategies_agree"),
+                    num_agree=signal_result.metadata.get("num_agree", 1),
+                    total_strategies=len(self.strategies),
+                    regime=trade_prof.regime or "",
+                    equity=self.risk_mgr.equity,
+                    risk_per_trade=self.config.risk_per_trade,
+                    win_rate_symbol=_sym_wr,
+                    win_rate_strategy=_strat_wr,
+                    total_trades_symbol=_sym_trades,
+                    ev_per_dollar=entry_reasons.get("ev_per_dollar", 0),
+                    fee_drag_pct=entry_reasons.get("fee_drag_pct", 0),
+                    setup_type=entry_reasons.get("primary_driver", ""),
+                    solo_trade=signal_result.metadata.get("solo_trade", False),
+                )
+
+            # Send only if we have a message (premium may filter to None)
+            if _telegram_msg and self.alerts.telegram_token and self.alerts.telegram_chat_id:
+                self.alerts._send_telegram(_telegram_msg)
+
+            # Discord still always gets the raw signal (that channel is bot-operator-focused)
             self.alerts.send_signal(signal_result, lev_decision.leverage, tier)
         except Exception:
             self.alerts.send_signal(signal_result, lev_decision.leverage, tier)
@@ -6294,21 +6905,63 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         strats = meta.get("strategies_agree", [signal_result.strategy])
         sym = signal_result.symbol.replace("/USDC:USDC", "").replace("/USDT:USDT", "").split("/")[0]
         side = signal_result.side
+        rg = (getattr(trade_prof, "regime", "") or meta.get("regime", "")).split("_")[0][:8]
         has_bb = "bollinger_squeeze" in strats
         has_mtq = "multi_tier_quality" in strats
         if has_bb and has_mtq:
-            return f"{sym}_{side}_BB+MTQ"
+            strat_tag = "BB+MTQ"
         elif has_bb:
-            return f"{sym}_{side}_BB"
+            strat_tag = "BB"
         elif len(strats) >= 2:
-            return f"{sym}_{side}_{len(strats)}-agree"
+            strat_tag = f"{len(strats)}agree"
         elif strats:
-            return f"{sym}_{side}_{strats[0]}"
-        return f"{sym}_{side}_unknown"
+            strat_tag = strats[0][:12]
+        else:
+            strat_tag = "unknown"
+        regime_tag = f"_{rg}" if rg else ""
+        return f"{sym}_{side}_{strat_tag}{regime_tag}"
 
     # ══════════════════════════════════════════════════════════════════
     # ── LLM-FIRST ARCHITECTURE: Signal → Safety → LLM → Execute ──
     # ══════════════════════════════════════════════════════════════════
+
+    def _track_llm_first_outcome(
+        self,
+        raw_signal,
+        symbol: str,
+        passed: bool,
+        hard_rejected: bool,
+        reason: str,
+        stage: str,
+        metadata: dict = None,
+    ):
+        """Record an LLM-first path outcome to signal_outcomes.jsonl.
+
+        The LLM-first path doesn't flow through the mechanical annotation
+        pipeline that populates signal_tracker, so without this call every
+        LLM-first decision is invisible to downstream analytics.
+        """
+        try:
+            from core.signal_tracker import get_signal_tracker
+            tracker = get_signal_tracker()
+            meta = metadata or {}
+            meta["pipeline"] = "llm_first"
+            meta["stage"] = stage
+            tracker.record_signal(
+                symbol=symbol,
+                side=raw_signal.side or "",
+                confidence=raw_signal.confidence or 0,
+                strategy=raw_signal.strategy or "",
+                passed=passed,
+                hard_rejected=hard_rejected,
+                hard_rejection_reason=reason,
+                annotations=[{"gate": stage, "severity": "ok" if passed else "rej", "value": 0, "threshold": 0}],
+                filter_metadata=meta,
+                num_strategies_agree=(raw_signal.metadata or {}).get("num_agree", 1),
+                regime=(raw_signal.metadata or {}).get("regime", "") or "",
+            )
+        except Exception:
+            pass  # Never crash the bot on tracking errors
 
     def _process_symbol_llm_first(
         self,
@@ -6398,24 +7051,55 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         }
 
         # Market context
+        _now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        _lp = self._last_prices if hasattr(self, '_last_prices') else {}
+        _pc1h = self._price_changes_1h if hasattr(self, '_price_changes_1h') else {}
+        # 2026-06-06 CRITICAL FIX: _meta was being referenced at lines 7072-7075 (mark_price,
+        # basis_pct, oi_history, open_interest) without being defined → every LLM-FIRST call
+        # failed with NameError → bot was running on mechanical fallback for hours. Pull
+        # _meta from data["_meta"] which is populated by handle_symbol's metadata injection.
+        _meta = data.get("_meta", {}) if isinstance(data, dict) else {}
         market_ctx = {
             "funding_rate": self._last_funding_rates.get(symbol),
             "volume_ratio": (raw_signal.metadata or {}).get("volume_ratio", 1.0),
-            "time_utc_hour": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ).hour,
-            "btc_trend": self._price_changes_1h.get("BTC", 0.0) if hasattr(self, '_price_changes_1h') else 0.0,
+            "time_utc_hour": _now_utc.hour,
+            "day_of_week": _now_utc.weekday(),  # 0=Mon … 6=Sun; weekends = low liquidity
+            "btc_price": _lp.get("BTC", _lp.get("BTC/USDC:USDC", 0.0)),
+            "btc_trend": _pc1h.get("BTC", 0.0),
+            "eth_price": _lp.get("ETH", _lp.get("ETH/USDC:USDC", 0.0)),
+            "eth_trend": _pc1h.get("ETH", 0.0),
+            "sol_price": _lp.get("SOL", _lp.get("SOL/USDC:USDC", 0.0)),
+            "sol_trend": _pc1h.get("SOL", 0.0),
             "signal_age": time.time() - (raw_signal.metadata or {}).get("generated_at", time.time()),
             "ohlcv_1h": data.get("1h"),
             "ohlcv_5m": data.get("5m"),
+            "ohlcv_4h": data.get("4h"),
+            "mark_price": _meta.get("mark_price"),
+            "basis_pct": _meta.get("basis_pct"),
+            "oi_history": _meta.get("oi_history"),
+            "open_interest": _meta.get("open_interest"),
         }
 
         # Portfolio context
+        _equity = self.risk_mgr.equity
+        # Include "symbol" key in each position dict so _parse() in
+        # portfolio_intelligence.py can identify the symbol when iterating values.
+        # Without it, _parse silently drops all positions → Risk Agent sees "0 positions"
+        # → sizes freely → OpsGuard rejects at 500% notional cap.
+        _open_positions_ctx = {
+            s: {"symbol": s, "side": p.side, "entry": float(p.entry),
+                "qty": float(p.qty), "leverage": getattr(p, "leverage", 1.0)}
+            for s, p in open_pos.items()
+        }
+        # Pre-compute total notional deployed so Risk Agent has explicit budget info
+        _total_notional = sum(
+            v["entry"] * v["qty"] for v in _open_positions_ctx.values()
+        )
+        _notional_cap = _equity * 5.0  # OpsGuard MAX_SINGLE_POSITION_PCT = 5.0
+        _remaining_notional = max(0.0, _notional_cap - _total_notional)
         portfolio_ctx = {
-            "equity": self.risk_mgr.equity,
-            "open_positions": {s: {"side": p.side, "entry": p.entry, "qty": p.qty,
-                                   "leverage": p.leverage}
-                              for s, p in open_pos.items()},
+            "equity": _equity,
+            "open_positions": _open_positions_ctx,
             "open_positions_count": len(open_pos),
             "daily_pnl": getattr(self.risk_mgr, 'daily_pnl', 0.0),
             "circuit_breaker_proximity": getattr(
@@ -6424,16 +7108,45 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             "consecutive_losses": getattr(
                 self.risk_mgr.circuit_breaker, 'consecutive_losses', 0
             ) if hasattr(self.risk_mgr, 'circuit_breaker') else 0,
+            "total_notional": round(_total_notional, 2),
+            "total_notional_pct": round(_total_notional / _equity * 100, 1) if _equity > 0 else 0.0,
+            "notional_cap_pct": 500.0,
+            "remaining_notional_pct": round(_remaining_notional / _equity * 100, 1) if _equity > 0 else 500.0,
         }
 
         # Enrich signal context with edge data and behavioral patterns
-        # so the LLM can make truly informed decisions
+        # so the LLM can make truly informed decisions.
+        #
+        # Loads TWO kinds of edge data:
+        #   1. Global backtest verdict (CONFIRMED_EDGE / MARGINAL / NEGATIVE_EV_BLOCKED)
+        #   2. Regime-specific live performance (HYPE_BUY_illiquid = 9% WR TOXIC etc.)
+        #
+        # is_toxic=True when regime-specific WR < 10% with n >= 10. This flag is
+        # read downstream by SafetyFilterChain and the agent snapshot.
         try:
             from llm.deep_memory import get_deep_memory
             _dm = get_deep_memory()
             _bt = _dm.strategy_fps.get_all().get("_quant_backtest_2026_03_26", {})
-            _setup_key = f"{symbol.replace('/USDC:USDC','').replace('/USDT:USDT','')}_{'BUY' if raw_signal.side == 'BUY' else 'SELL'}"
+            _base_sym = symbol.replace('/USDC:USDC','').replace('/USDT:USDT','')
+            _side = 'BUY' if raw_signal.side == 'BUY' else 'SELL'
+            _setup_key = f"{_base_sym}_{_side}"
             _setup = _bt.get(_setup_key, {})
+
+            # Regime-specific live performance (from ensemble.by_symbol_regime bucket)
+            _regime = (raw_signal.metadata or {}).get("regime_1h") or \
+                      (raw_signal.metadata or {}).get("regime", "unknown")
+            _regime_bucket = _dm.strategy_fps.get_all().get("ensemble", {}).get(
+                "by_symbol_regime", {}
+            )
+            _regime_key = f"{_base_sym}_{_side}_{_regime}"
+            _regime_setup = _regime_bucket.get(_regime_key, {}) if isinstance(_regime_bucket, dict) else {}
+            _reg_n = int(_regime_setup.get("total", 0) or 0)
+            _reg_wins = int(_regime_setup.get("wins", 0) or 0)
+            _reg_wr = (_reg_wins / _reg_n * 100.0) if _reg_n > 0 else None
+            # TOXIC threshold: WR < 10% AND n >= 20 (n=10 was too small; 20 gives ~2.5 SE).
+            # n=10 caused SOL SHORT to be hard-blocked with insufficient data.
+            _is_toxic = bool(_reg_wr is not None and _reg_wr < 10.0 and _reg_n >= 20)
+
             if _setup and _setup.get("total", 0) > 0:
                 signal_ctx["edge_data"] = {
                     "setup_key": _setup_key,
@@ -6442,9 +7155,50 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     "n": _setup.get("total", 0),
                     "verdict": _setup.get("verdict", ""),
                     "best_hours": _setup.get("best_hours_utc", ""),
+                    # Regime-specific live verdict
+                    "regime": _regime,
+                    "regime_wr": _reg_wr,
+                    "regime_n": _reg_n,
+                    "is_toxic": _is_toxic,
                 }
-        except Exception:
-            pass
+            # Hard TOXIC block: if regime-specific live WR < 10% with n >= 10,
+            # do not call the LLM. This fixes the enforcement gap where
+            # HYPE_BUY_illiquid=9% WR TOXIC was loaded but never blocked.
+            # Defense-in-depth: LLM agents also see is_toxic via the snapshot
+            # built in coordinator._build_entry_snapshot, so even if this
+            # short-circuit is bypassed, the prompts have the data.
+            if _is_toxic:
+                _toxic_reason = f"TOXIC_SETUP: {_regime_key} WR={_reg_wr:.1f}% n={_reg_n}"
+                logger.warning(
+                    f"[{trace_id}][{symbol}] LLM-FIRST TOXIC BLOCK: "
+                    f"{_regime_key} WR={_reg_wr:.1f}% n={_reg_n} — "
+                    f"hard-blocked before LLM call"
+                )
+                # Record counterfactual for learning
+                if self.counterfactual:
+                    try:
+                        self.counterfactual.record_veto(
+                            symbol=symbol,
+                            side=raw_signal.side,
+                            entry_price=raw_signal.entry,
+                            sl_price=raw_signal.sl,
+                            tp1_price=raw_signal.tp1,
+                            tp2_price=raw_signal.tp2,
+                            confidence=raw_signal.confidence,
+                            reason=_toxic_reason,
+                        )
+                    except Exception:
+                        pass
+                # Track rejection in signal_outcomes.jsonl
+                self._track_llm_first_outcome(
+                    raw_signal, symbol,
+                    passed=False, hard_rejected=True,
+                    reason=_toxic_reason, stage="toxic_block",
+                    metadata={"regime_wr": _reg_wr, "regime_n": _reg_n, "regime": _regime},
+                )
+                return
+        except Exception as e:
+            logger.debug(f"[{trace_id}][{symbol}] edge_data load failed: {e}")
 
         # Add reflection/exhaustion context if available
         try:
@@ -6499,6 +7253,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                     )
                 except Exception:
                     pass
+            # Track rejection in signal_outcomes.jsonl
+            self._track_llm_first_outcome(
+                raw_signal, symbol,
+                passed=False, hard_rejected=False,
+                reason=f"LLM veto: {_thesis}",
+                stage="llm_skip",
+                metadata={
+                    "llm_confidence": entry_decision.confidence,
+                    "llm_regime": entry_decision.regime,
+                    "thesis": _thesis,
+                },
+            )
             return
 
         # ── Step 4: Post-LLM safety caps ──
@@ -6623,6 +7389,22 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             f"regime={_regime} thesis={_thesis[:60]}"
         )
 
+        # Track successful LLM-first execution
+        self._track_llm_first_outcome(
+            raw_signal, symbol,
+            passed=True, hard_rejected=False,
+            reason="LLM approved",
+            stage="llm_execute",
+            metadata={
+                "llm_confidence": entry_decision.confidence,
+                "llm_regime": _regime,
+                "leverage": leverage,
+                "qty": qty,
+                "entry": actual_entry,
+                "thesis": _thesis[:100],
+            },
+        )
+
         # Build entry reasons for position manager
         entry_reasons = {
             "llm_first": True,
@@ -6640,11 +7422,25 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         }
 
         # ── Execute trade ──
+        # 2026-06-01 fix: TradeProfile requires entry_reasons/confidence/volatility_band/
+        # timeframe_bias (all positional, no defaults). Previous code only passed 3 of 7
+        # required args, crashing every LLM-first GO at trade entry and falling back to
+        # mechanical path. The first ETH GO at 14:48 UTC hit this. Now populated from
+        # raw_signal + entry_decision context.
         from execution.position_manager import TradeProfile
+        _vol_band = "high" if _regime == "high_volatility" else ("low" if _regime == "consolidation" else "medium")
+        _tf_bias = "short" if _regime in ("range", "consolidation") else "medium"
+        _strategies = (raw_signal.metadata or {}).get("strategies_agree", [raw_signal.strategy or "ensemble"])
+        if isinstance(_strategies, str):
+            _strategies = [_strategies]
         trade_prof = TradeProfile(
             entry_type="LLM_FIRST",
+            entry_reasons=list(_strategies),
             primary_driver=raw_signal.strategy or "ensemble",
+            confidence=float(entry_decision.confidence * 100.0),  # scale 0-1 -> 0-100
             regime=_regime,
+            volatility_band=_vol_band,
+            timeframe_bias=_tf_bias,
         )
 
         # Build fake LeverageDecision for compatibility
@@ -6767,11 +7563,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             market_ctx = {
                 "ohlcv_1h": data.get("1h"),
                 "ohlcv_5m": data.get("5m"),
+                "ohlcv_4h": data.get("4h"),
             }
             portfolio_ctx = {
                 "equity": self.risk_mgr.equity,
-                "open_positions": {s: {"side": p.side, "entry": p.entry}
-                                  for s, p in open_pos.items()},
+                "open_positions": {
+                    s: {"symbol": s, "side": p.side, "entry": float(p.entry),
+                        "qty": float(getattr(p, "qty", 0)),
+                        "leverage": getattr(p, "leverage", 1.0)}
+                    for s, p in open_pos.items()
+                },
                 "open_positions_count": len(open_pos),
             }
 
@@ -6806,6 +7607,95 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
 
 
+
+    def _build_morning_briefing_message(self) -> str:
+        """Build the morning briefing message for 08:00 UTC auto-send.
+
+        Phone-first, scannable, multi-window PnL so the user sees the
+        true state without needing to type /briefing. 2026-04-16 addition.
+        """
+        from datetime import datetime, timezone, timedelta
+        import csv
+
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_7d = now - timedelta(days=7)
+        today_str = now.strftime("%Y-%m-%d")
+
+        trades_today = []
+        trades_24h = []
+        trades_7d = []
+
+        try:
+            with open("data/trades.csv", "r", encoding="utf-8") as f:
+                r = csv.reader(f)
+                next(r, None)
+                for row in r:
+                    try:
+                        ts = row[0]
+                        pnl = float(row[10])
+                        tdt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if tdt.tzinfo is None:
+                            tdt = tdt.replace(tzinfo=timezone.utc)
+                        if ts.startswith(today_str):
+                            trades_today.append(pnl)
+                        if tdt >= cutoff_24h:
+                            trades_24h.append(pnl)
+                        if tdt >= cutoff_7d:
+                            trades_7d.append(pnl)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        def _winline(label, trades):
+            if not trades:
+                return f"  *{label}*: no trades"
+            n = len(trades)
+            wins = sum(1 for p in trades if p > 0)
+            net = sum(trades)
+            emoji = "📈" if net > 0 else ("📉" if net < 0 else "➡️")
+            return f"  {emoji} *{label}*: {n} trades, {wins}W/{n-wins}L, net ${net:+.2f}"
+
+        lines = [
+            "☀️ *Good morning — WAGMI Briefing*",
+            f"_{now.strftime('%Y-%m-%d %H:%M UTC')}_",
+            "",
+            f"💰 *Equity*: ${self.risk_mgr.equity:,.2f}",
+            _winline("Today (since UTC 00:00)", trades_today),
+            _winline("Last 24h rolling", trades_24h),
+            _winline("Last 7d rolling", trades_7d),
+            "",
+        ]
+
+        # Open positions
+        try:
+            open_pos = [p for p in self.pos_mgr.positions.values() if p.qty > 0]
+            lines.append(f"💼 *Open*: {len(open_pos)} position{'s' if len(open_pos) != 1 else ''}")
+            for p in open_pos[:5]:
+                side_emoji = "🟢" if p.side == "LONG" else "🔴"
+                lines.append(f"  {side_emoji} {p.symbol} {p.side} @ ${p.entry:.4g} ({p.state})")
+            if not open_pos:
+                lines.append("  (flat — scanning)")
+        except Exception:
+            pass
+
+        # Recent WATCH alerts
+        try:
+            from alerts.premium_filter import _last_watch_alert, _WATCH_ALERT_COOLDOWN_S
+            import time as _t
+            now_ts = _t.time()
+            recent = [k for k, t in _last_watch_alert.items() if (now_ts - t) < _WATCH_ALERT_COOLDOWN_S]
+            if recent:
+                lines.append("")
+                lines.append(f"🔔 *Watching* ({len(recent)} setups forming)")
+        except Exception:
+            pass
+
+        lines.append("")
+        lines.append("*Quick actions:*")
+        lines.append("/briefing • /positions • /watch • /edges • /ask <q>")
+        return "\n".join(lines)
 
     def _send_daily_summary(self):
         """Send daily summary via Telegram alert bridge."""

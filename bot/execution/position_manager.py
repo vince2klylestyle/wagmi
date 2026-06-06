@@ -2,8 +2,8 @@
 Position manager with state machine, progressive trailing stop, and dynamic TP1.
 
 State machine: IDLE -> OPEN -> TP1_HIT -> TRAILING -> CLOSED
-                        ↓                              ↑
-                        └── CLOSED (SL, EARLY_EXIT) ───┘
+                        |                              |
+                        +-- CLOSED (SL, EARLY_EXIT) ---+
 
 Exit behavior is driven by TradeProfile (entry_type + regime + volatility):
 - SCALP:  tight SL/TP, high TP1%, tight trailing, very short hold
@@ -196,6 +196,7 @@ class PositionManager:
         enable_trailing: bool = True,
         trailing_atr_mult: float = 1.5,
         time_stop_hours: int = 12,
+        hold_time_rules=None,  # Optional HoldTimeRuleManager for blocking early exits
     ):
         self.positions: Dict[str, Position] = {}
         self.trade_log: List[TradeEvent] = []
@@ -203,6 +204,7 @@ class PositionManager:
         self.enable_trailing = enable_trailing
         self.trailing_atr_mult = trailing_atr_mult
         self._time_stop_hours = time_stop_hours
+        self.hold_time_rules = hold_time_rules  # Optional HoldTimeRuleManager
         # Setup-specific time stops from 2,172-signal analysis
         # Each setup has an optimal hold window where WR peaks.
         self._setup_time_stops = {
@@ -535,8 +537,19 @@ class PositionManager:
         if current_price < pos.lowest_price:
             pos.lowest_price = current_price
 
-        # 0a. PROFIT LOCK: move SL to breakeven once we're up 0.3R+
+        # 0a. PROFIT LOCK: move SL toward breakeven once we're up enough.
         # Never ride a winner back to a loser. We can always re-enter.
+        #
+        # Finding 22 trail audit (2026-04-16): old 0.3R trigger was firing
+        # on market noise — at ~0.3% profit on a 1% stop, within normal
+        # intraday wiggle. 58 historical trades closed within ±0.5% of
+        # entry with no TP1 hit = -$47.77 of noise losses from this.
+        #
+        # New profile-aware thresholds (SCALP keeps tight, MEDIUM/TREND
+        # get patience):
+        #   SCALP:  0.3R -> BE, 0.6R -> lock 0.3R  (as before)
+        #   MEDIUM: 0.6R -> BE, 1.0R -> lock 0.3R
+        #   TREND:  0.8R -> BE, 1.2R -> lock 0.4R
         if pos.state == OPEN:
             sl_dist = abs(pos.entry - pos.original_sl)
             if sl_dist > 0:
@@ -545,34 +558,60 @@ class PositionManager:
                 else:
                     unrealized_r = (pos.entry - current_price) / sl_dist
 
-                # At 0.3R profit: move SL to breakeven (entry price)
-                if unrealized_r >= 0.3:
-                    be_sl = pos.entry
+                # Determine profile-aware thresholds
+                _entry_type = ""
+                _prof = getattr(pos, "trade_profile", None)
+                if _prof is not None:
+                    _entry_type = getattr(_prof, "entry_type", "") or ""
+                # SHIP-2026-04-20: raised thresholds + fee buffer on BE move.
+                # Reversal study: 25% reversal at 0.5R, 6.7% at 1.5R. Old 0.6R
+                # MEDIUM trigger sat in reversal zone; BE clamp at exact entry
+                # (zero buffer) was hit by microstructure wicks. 5 independent
+                # studies converged on this change.
+                if _entry_type == "SCALP":
+                    _be_trigger, _lock_trigger, _lock_frac = 0.8, 1.2, 0.3
+                elif _entry_type == "TREND":
+                    _be_trigger, _lock_trigger, _lock_frac = 1.5, 2.0, 0.4
+                else:  # MEDIUM default (and unknown)
+                    _be_trigger, _lock_trigger, _lock_frac = 1.2, 1.8, 0.3
+
+                # Breakeven trigger — fee buffer escapes microstructure noise
+                if unrealized_r >= _be_trigger:
+                    fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
+                    be_sl = (pos.entry + fee_buffer) if is_long else (pos.entry - fee_buffer)
                     if is_long and pos.sl < be_sl:
                         pos.sl = be_sl
                         logger.info(
-                            f"[{symbol}] PROFIT LOCK: {unrealized_r:.2f}R profit -> "
-                            f"SL moved to breakeven {be_sl}"
+                            f"[{symbol}] PROFIT LOCK ({_entry_type or 'MEDIUM'}): "
+                            f"{unrealized_r:.2f}R >= {_be_trigger:.1f}R trigger -> "
+                            f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
                     elif not is_long and pos.sl > be_sl:
                         pos.sl = be_sl
                         logger.info(
-                            f"[{symbol}] PROFIT LOCK: {unrealized_r:.2f}R profit -> "
-                            f"SL moved to breakeven {be_sl}"
+                            f"[{symbol}] PROFIT LOCK ({_entry_type or 'MEDIUM'}): "
+                            f"{unrealized_r:.2f}R >= {_be_trigger:.1f}R trigger -> "
+                            f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
 
-                # At 0.6R profit: lock in 0.3R (SL at entry + 0.3 * sl_dist)
-                if unrealized_r >= 0.6:
+                # Lock-in trigger (above breakeven)
+                if unrealized_r >= _lock_trigger:
                     if is_long:
-                        lock_sl = pos.entry + sl_dist * 0.3
+                        lock_sl = pos.entry + sl_dist * _lock_frac
                         if pos.sl < lock_sl:
                             pos.sl = lock_sl
-                            logger.info(f"[{symbol}] PROFIT LOCK 0.3R: SL -> {lock_sl}")
+                            logger.info(
+                                f"[{symbol}] PROFIT LOCK {_lock_frac:.1f}R "
+                                f"({_entry_type or 'MEDIUM'}): SL -> {lock_sl}"
+                            )
                     else:
-                        lock_sl = pos.entry - sl_dist * 0.3
+                        lock_sl = pos.entry - sl_dist * _lock_frac
                         if pos.sl > lock_sl:
                             pos.sl = lock_sl
-                            logger.info(f"[{symbol}] PROFIT LOCK 0.3R: SL -> {lock_sl}")
+                            logger.info(
+                                f"[{symbol}] PROFIT LOCK {_lock_frac:.1f}R "
+                                f"({_entry_type or 'MEDIUM'}): SL -> {lock_sl}"
+                            )
 
         # 0b. Check stop loss — on flash crashes, SL must fire before early exit
         sl_hit = (current_price <= pos.sl) if is_long else (current_price >= pos.sl)
@@ -609,26 +648,53 @@ class PositionManager:
             if hold_hours >= time_stop_hours:
                 # Assess position health before closing
                 _health = self._assess_position_health(pos, current_price, df_5m)
-                _max_extension = 4.0  # Maximum 4h extension (8h -> 12h absolute max)
+                # Very healthy positions (score≥75) get double extension (8h vs 4h).
+                # BTC SHORT #4 was closed at +$105 real PnL before hitting TP1 because
+                # 12h + 4h = 16h max wasn't enough for a trending_bear move. At 20h max,
+                # TP1 would have been reachable. Extension only applies if score ≥75 and
+                # MFE retention is high (position isn't giving back gains).
+                _health_score = _health.get("score", 0)
+                _max_extension = 8.0 if _health_score >= 75 else 4.0
                 _extension = _health.get("extension_hours", 0)
                 _extended_stop = time_stop_hours + min(_extension, _max_extension)
 
                 if hold_hours >= _extended_stop:
-                    _reason = _health.get("reason", "time_expired")
-                    logger.info(
-                        f"[{symbol}] TIME STOP: held {hold_hours:.1f}h >= {_extended_stop:.1f}h "
-                        f"(base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
-                        f"reason={_reason} health={_health.get('score', 0):.0f}%"
-                    )
-                    event = self._close_position(pos, current_price, "TIME_STOP")
-                    events.append(event)
-                    return events
+                    # TP1-proximity guard: if price is within 0.5% of TP1, extend 1h.
+                    # Prevents closing 5 minutes before TP1 (BTC #4 incident: +$77 left
+                    # on the table when TP1 was just minutes away at 16h).
+                    _tp1 = getattr(pos, 'tp1', 0)
+                    _is_long = pos.side == "LONG"
+                    _tp1_dist_pct = 0.0
+                    if _tp1 > 0 and current_price > 0:
+                        if _is_long:
+                            _tp1_dist_pct = (_tp1 - current_price) / current_price
+                        else:
+                            _tp1_dist_pct = (current_price - _tp1) / current_price
+                    _tp1_very_close = 0 < _tp1_dist_pct < 0.005  # within 0.5%
+                    if _tp1_very_close and pos.state not in ("TP1_HIT", "TRAILING"):
+                        _extended_stop += 1.0
+                        logger.info(
+                            f"[{symbol}] TIME STOP DEFERRED 1h: TP1 within "
+                            f"{_tp1_dist_pct*100:.2f}% ({current_price:.2f} → {_tp1:.2f})"
+                        )
+                    if hold_hours < _extended_stop:
+                        pass  # deferred — TP1 proximity extended stop, skip close this tick
+                    else:
+                        _reason = _health.get("reason", "time_expired")
+                        logger.info(
+                            f"[{symbol}] TIME STOP: held {hold_hours:.1f}h >= {_extended_stop:.1f}h "
+                            f"(base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
+                            f"reason={_reason} health={_health_score:.0f}%"
+                        )
+                        event = self._close_position(pos, current_price, "TIME_STOP")
+                        events.append(event)
+                        return events
                 else:
                     # Position is healthy — log extension and continue
                     if not hasattr(pos, '_extension_logged'):
                         logger.info(
                             f"[{symbol}] TIME STOP EXTENDED: {hold_hours:.1f}h held, "
-                            f"extending to {_extended_stop:.1f}h (health={_health.get('score', 0):.0f}% "
+                            f"extending to {_extended_stop:.1f}h (health={_health_score:.0f}% "
                             f"tp1_progress={_health.get('tp1_progress', 0):.0f}%)"
                         )
                         pos._extension_logged = True
@@ -636,24 +702,42 @@ class PositionManager:
         # 1a2. Data-driven 1h assessment (from 2,172-signal analysis):
         # If position is losing at 1h mark, 67% chance it stays losing.
         # Exception: BB signals recover 56% of the time — hold BB losers to 4h.
+        #
+        # Finding 20 trail audit (2026-04-16): this tightening creates 59
+        # premature stops over 30 days for ~$87 of leaked alpha. The 67%
+        # stat is SURVIVOR BIAS — it counts "didn't recover" = "hit SL",
+        # but with wider original SL, many would have recovered past 1h.
+        # We now apply this ONLY to SCALP entries (short horizon — 1h is
+        # meaningful) and skip MEDIUM/TREND where 1h is too early to judge.
+        # Also adding confidence_scorer to the exception list (largest
+        # premature-stop contributor per audit Part B).
         if pos.state == OPEN:
             _now_1h = sim_now or getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
             _hold_h = (_now_1h - pos.open_time).total_seconds() / 3600
             if 0.9 <= _hold_h <= 1.5:  # ~1h mark (window to avoid checking every tick)
                 _pnl_pct = (current_price - pos.entry) / pos.entry if is_long else (pos.entry - current_price) / pos.entry
                 if _pnl_pct < -0.001:  # Losing at 1h (>0.1% adverse)
-                    _is_bb = "bollinger_squeeze" in (pos.entry_reasons or {}).get("strategies_agree", []) or \
-                             (pos.entry_reasons or {}).get("primary_driver") == "bollinger_squeeze"
-                    if not _is_bb:
-                        # Non-BB loser at 1h: 67% stays losing, only 45% recover.
-                        # Tighten SL to reduce max loss.
+                    _trade_prof = getattr(pos, "trade_profile", None)
+                    _entry_type = getattr(_trade_prof, "entry_type", "") if _trade_prof else ""
+                    _driver = (pos.entry_reasons or {}).get("primary_driver", "") if pos.entry_reasons else ""
+                    _is_bb = ("bollinger_squeeze" in (pos.entry_reasons or {}).get("strategies_agree", [])
+                              or _driver == "bollinger_squeeze")
+                    _is_cs = _driver == "confidence_scorer"
+                    # Only tighten for SCALP profile AND not BB/CS drivers.
+                    # MEDIUM and TREND profiles: skip entirely (1h too early).
+                    _should_tighten = (
+                        _entry_type == "SCALP"
+                        and not _is_bb
+                        and not _is_cs
+                    )
+                    if _should_tighten:
                         _tight_sl = pos.entry  # Tighten to breakeven
                         if is_long and _tight_sl < pos.sl:
                             pass  # SL already tighter than breakeven
                         elif is_long:
                             pos.sl = _tight_sl
                             logger.info(
-                                f"[{symbol}] 1H ASSESSMENT: non-BB losing ({_pnl_pct:.2%}), "
+                                f"[{symbol}] 1H ASSESSMENT (SCALP only): non-BB/CS losing ({_pnl_pct:.2%}), "
                                 f"tightening SL to breakeven (67% chance stays losing)"
                             )
                         elif not is_long and _tight_sl > pos.sl:
@@ -661,13 +745,19 @@ class PositionManager:
                         elif not is_long:
                             pos.sl = _tight_sl
                             logger.info(
-                                f"[{symbol}] 1H ASSESSMENT: non-BB losing ({_pnl_pct:.2%}), "
+                                f"[{symbol}] 1H ASSESSMENT (SCALP only): non-BB/CS losing ({_pnl_pct:.2%}), "
                                 f"tightening SL to breakeven (67% chance stays losing)"
                             )
                     else:
+                        # MEDIUM/TREND or BB/CS driver — let the trade breathe
+                        _skip_reason = (
+                            "BB driver (56% recovery)" if _is_bb else
+                            "CS driver (premature-stop leak)" if _is_cs else
+                            f"{_entry_type} profile (1h too early)"
+                        )
                         logger.debug(
-                            f"[{symbol}] 1H ASSESSMENT: BB losing ({_pnl_pct:.2%}), "
-                            f"holding (56% recovery rate for BB)"
+                            f"[{symbol}] 1H ASSESSMENT: losing ({_pnl_pct:.2%}), "
+                            f"NOT tightening — {_skip_reason}"
                         )
 
         # 1b. Early exit: cut position if momentum accelerating toward SL
@@ -882,9 +972,22 @@ class PositionManager:
         Detect momentum reversal heading toward SL and cut early.
         Regime-adaptive: high-vol/range cut faster (1-2 conditions at 35-45%),
         trending lets trades breathe (3 conditions at 70%).
+
+        Respects dynamic hold-time rules: blocks early exit if trade hasn't held long enough.
         """
         if df_5m is None or df_5m.empty or len(df_5m) < 15:
             return False
+
+        # Check hold-time rules: block early exit if held less than regime minimum
+        if self.hold_time_rules and pos.opened_at:
+            try:
+                from datetime import datetime, timezone
+                hold_hours = (datetime.now(timezone.utc) - pos.opened_at).total_seconds() / 3600.0
+                regime = (pos.entry_reasons or {}).get("regime", "unknown")
+                if self.hold_time_rules.should_block_early_exit(regime, hold_hours):
+                    return False
+            except Exception:
+                pass  # If hold-time check fails, allow early exit to proceed
 
         try:
             is_long = pos.side == "LONG"
@@ -1215,7 +1318,9 @@ class PositionManager:
         elif action == "SL":
             if tp1_was_hit:
                 return "TP1_THEN_SL"
-            return "CLEAN_LOSS"
+            # Trailing SL can move above entry on strong moves without TP1_HIT
+            # having fired. A closed-at-profit SL trigger is a win, not a loss.
+            return "CLEAN_WIN" if win else "CLEAN_LOSS"
         elif tp1_was_hit and not win:
             return "TP1_ONLY"
         else:
@@ -1379,6 +1484,16 @@ class PositionManager:
         # Remove backup after successful close
         self._remove_backup(pos.symbol)
 
+        # SHIP-2026-04-19: persist state on every close to prevent ghost-position bug
+        # where auto_recovery resurrects already-closed positions (COOLDOWN_BYPASS_RCA_2026_04_17.md).
+        # Previously only persisted every 5 ticks, so a crash between close and next tick
+        # left disk state showing OPEN; on restart, the closed position got resurrected.
+        try:
+            from execution.auto_recovery import save_position_state
+            save_position_state(self)
+        except Exception:
+            logger.exception("[SAVE-ON-CLOSE] non-fatal state persistence failure")
+
         return event
 
     def force_close(self, symbol: str, price: float, reason: str = "EMERGENCY") -> Optional[TradeEvent]:
@@ -1445,20 +1560,21 @@ class PositionManager:
                 )
                 return self.force_close(symbol, price, reason="HOLD_LIMIT")
 
-            # Default: tighten SL to breakeven
-            if pos.side == "LONG" and pos.sl < pos.entry:
+            # Default: tighten SL to breakeven + fee buffer (SHIP-2026-04-20)
+            fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
+            if pos.side == "LONG" and pos.sl < pos.entry + fee_buffer:
                 old_sl = pos.sl
-                pos.sl = pos.entry
+                pos.sl = pos.entry + fee_buffer
                 logger.info(
                     f"[HOLD_LIMIT] {symbol} LONG open {age_hours:.1f}h "
-                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.2f} -> {pos.entry:.2f} (breakeven)"
+                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.4f} -> {pos.sl:.4f} (BE+buffer)"
                 )
-            elif pos.side == "SHORT" and pos.sl > pos.entry:
+            elif pos.side == "SHORT" and pos.sl > pos.entry - fee_buffer:
                 old_sl = pos.sl
-                pos.sl = pos.entry
+                pos.sl = pos.entry - fee_buffer
                 logger.info(
                     f"[HOLD_LIMIT] {symbol} SHORT open {age_hours:.1f}h "
-                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.2f} -> {pos.entry:.2f} (breakeven)"
+                    f">= {max_hold_hours:.0f}h — SL tightened {old_sl:.4f} -> {pos.sl:.4f} (BE+buffer)"
                 )
 
         return None

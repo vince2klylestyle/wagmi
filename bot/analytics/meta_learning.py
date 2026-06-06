@@ -390,10 +390,21 @@ class MetaLearningEngine:
         # --- 8. Consecutive loss streaks ---
         insights.extend(self._analyze_streak_patterns(trades, now))
 
-        # Store new insights
+        # Store new insights — dedup by (category, description prefix) to avoid
+        # re-adding the same pattern every tick
         with self._lock:
-            self._insights.extend(insights)
-            self._save_insights()
+            existing_keys = {
+                (i.category, i.description[:80])
+                for i in self._insights
+            }
+            new_unique = [
+                ins for ins in insights
+                if (ins.category, ins.description[:80]) not in existing_keys
+            ]
+            if new_unique:
+                self._insights.extend(new_unique)
+                self._save_insights()
+            insights = new_unique  # Return only truly new ones
 
         if insights:
             logger.info(

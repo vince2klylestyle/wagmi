@@ -1060,6 +1060,13 @@ class AgentPerformanceTracker:
             return d.get("recommendation", d.get("action", "hold"))
         elif role_val == "scout":
             return d.get("action", "monitor")
+        elif role_val == "quant":
+            # Quant has no "action" — summarize EV direction + signal quality
+            ev_dir = d.get("ev", {}).get("direction", "neutral") if isinstance(d.get("ev"), dict) else "neutral"
+            sq = d.get("signal_quality", {})
+            noise = sq.get("noise_probability", 0.5) if isinstance(sq, dict) else 0.5
+            quality = "noise" if noise > 0.6 else ("clean" if noise < 0.3 else "marginal")
+            return f"ev={ev_dir},quality={quality}"
         return str(d.get("action", d.get("a", "unknown")))
 
     @staticmethod

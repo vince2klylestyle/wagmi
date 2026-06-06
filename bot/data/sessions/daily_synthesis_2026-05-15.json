@@ -1,0 +1,93 @@
+{
+  "date": "2026-05-15",
+  "eod_generated_at": "2026-05-15T22:15:07.489989+00:00",
+  "run_type": "EOD_SYNTHESIS",
+  "bot_status": "OFFLINE",
+  "offline_duration_hours": 528.0,
+  "offline_duration_days": 22.0,
+  "today_trades": 0,
+  "today_pnl": 0.0,
+  "today_wr": null,
+  "equity": 497.05,
+  "peak_equity": 508.06,
+  "dd_from_peak_pct": 2.17,
+  "anomalies": [
+    {
+      "type": "BOT_OFFLINE_CRITICAL",
+      "severity": "CRITICAL",
+      "value": "507h (21.1 days) \u2014 no change since last run",
+      "action": "RESTART: cd bot && python run.py paper"
+    },
+    {
+      "type": "STREAK_GATE_ACTIVE_ON_RESTART",
+      "severity": "HIGH",
+      "value": "Gate 1h live. 4 consecutive losses at shutdown \u2192 -15pts penalty on every new signal until streak breaks.",
+      "detail": "With 4 consecutive losses, any signal < 85% confidence will be penalized to < 70%. conf_floor_70_v1 (-20pts for 60-70%) may then compound. Monitor: first signal on restart should show 'STREAK GATE: consecutive_losses=4' in logs.",
+      "action": "On restart: verify Gate 1h fires in first signal. After first win, consecutive_losses resets to 0."
+    },
+    {
+      "type": "BTC_STOP_GATE_ACTIVE",
+      "severity": "MEDIUM",
+      "value": "Gate 1a live. BTC signals with stop < 0.8% now hard-rejected.",
+      "action": "Monitor: btc_stop_width rejections in rejection_tracker.json. If >50% of BTC signals are rejected, consider softening to 0.6%."
+    },
+    {
+      "type": "CONSECUTIVE_LOSSES",
+      "severity": "HIGH",
+      "value": 4,
+      "detail": "4 consecutive losses at shutdown. Circuit breaker fires at 5. Gate 1h now provides soft-start protection.",
+      "action": "Monitor first 5 trades on restart."
+    },
+    {
+      "type": "TRENDING_MIN_HOLD_UPGRADED",
+      "severity": "INFO",
+      "value": "NEW RUN 2110: Trend regime min hold upgraded 2.0h -> 3.0h via hold_time_rules_state.json. Forensics: losses exit 1.5h median, wins exit 3.3h. Noise fires before signal materializes.",
+      "action": "On restart: verify HoldTimeRuleManager loads state file. First trend trade blocked from early exit at <3h."
+    },
+    {
+      "type": "ETH_TRENDING_BOOST_ACTIVE",
+      "severity": "INFO",
+      "value": "NEW RUN 2110: eth_trending_regime_boost_v1 added (+8pts for ETH in TREND). 71% WR, +$9.49/trade, n=7. 20% A/B gate.",
+      "action": "On restart: verify boost fires for ETH TREND signals. Monitor A/B cohort performance."
+    },
+    {
+      "type": "OFFLINE_22_DAY_EOD_MILESTONE",
+      "severity": "CRITICAL",
+      "value": "EOD 2026-05-15: Bot offline 528h (22.0 days) \u2014 crossing 22-day mark.",
+      "detail": "4 consecutive losses at shutdown \u2192 streak gate active. 82 A/B rules frozen. 10 graduated rules (eth_trending_regime_boost_v1, trending_min_hold_3h_v1 added this week). No equity movement since 2026-04-23. Compound penalty risk CONFIRMED SAFE this run. Critical finding: sniper auto-execute OFF = #1 alpha source disabled (human decision required). SOL_SHORT suspended = #1 historical alpha +$5807 frozen.",
+      "action": "HUMAN DECISION REQUIRED: (1) SOL_SHORT probe? (2) SNIPER_AUTO_EXECUTE=true? (3) CONF_FLOOR_70 suspend for live re-eval?",
+      "eod_generated": "2026-05-15T22:15:07.489989+00:00"
+    }
+  ],
+  "eod_summary": {
+    "trades": 0,
+    "pnl": 0.0,
+    "wr": null,
+    "best_trade": null,
+    "worst_trade": null,
+    "note": "Bot offline \u2014 no trades executed today"
+  },
+  "tomorrows_focus": {
+    "symbols_priority": [
+      "ETH (trending_regime_boost active)",
+      "BTC (btc_short_90plus_boost active)"
+    ],
+    "regimes_avoid": [
+      "illiquid (87% noise stops)",
+      "ranging (25% WR)"
+    ],
+    "gate_checks_on_restart": [
+      "Gate 1h: streak_penalty fires (4 consecutive losses \u2192 -15pts)",
+      "Gate 1a: BTC min stop 0.8% active",
+      "eth_trending_regime_boost_v1: +8pts for ETH TREND (20% A/B gate)",
+      "trending_min_hold_3h_v1: hold_time_rules_state.json loaded"
+    ],
+    "human_decisions_needed": [
+      "SOL_SHORT probe (50% gate) \u2014 #1 alpha source blocked 21+ days",
+      "SNIPER_AUTO_EXECUTE=true \u2014 restores +$328/34-trade path",
+      "CONF_FLOOR_70 suspend for 50-trade live re-eval"
+    ]
+  },
+  "report_generated": true,
+  "end_of_day_report_pending": false
+}

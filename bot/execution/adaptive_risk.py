@@ -116,22 +116,62 @@ class AdaptiveRiskManager:
             logger.warning(f"Failed to save adaptive risk state: {e}")
 
     def _load_state(self):
-        """Restore persisted state from disk."""
+        """Restore persisted state from disk. Backfills from trade_dna if sparse."""
         if not os.path.exists(_STATE_PATH):
+            self._backfill_from_trade_dna()
             return
         try:
             with open(_STATE_PATH) as f:
                 state = json.load(f)
             self._recent_outcomes = state.get("recent_outcomes", [])[-20:]
             self._regime_wr = state.get("regime_wr", {})
-            total_outcomes = len(self._recent_outcomes)
-            if total_outcomes:
+            total_tracked = sum(v["total"] for v in self._regime_wr.values())
+            if total_tracked < 50:
+                # Regime WR data too sparse — backfill from full trade_dna
+                self._backfill_from_trade_dna()
+            elif total_tracked:
                 logger.info(
-                    f"[ADAPTIVE_RISK] Restored state: {total_outcomes} outcomes, "
-                    f"{len(self._regime_wr)} regimes tracked"
+                    f"[ADAPTIVE_RISK] Restored state: {len(self._recent_outcomes)} outcomes, "
+                    f"{len(self._regime_wr)} regimes ({total_tracked} total)"
                 )
         except Exception as e:
             logger.warning(f"Failed to load adaptive risk state: {e}")
+
+    def _backfill_from_trade_dna(self):
+        """Populate regime_wr from historical trade_dna if state is sparse."""
+        _dna_path = os.path.join("data", "llm", "deep_memory", "trade_dna.json")
+        if not os.path.exists(_dna_path):
+            return
+        try:
+            with open(_dna_path) as f:
+                data = json.load(f)
+            trades = data.get("trades", [])
+            if not trades:
+                return
+            new_regime_wr: Dict[str, Dict] = {}
+            outcomes = []
+            for t in trades:
+                regime = (t.get("regime") or "").lower()
+                won = t.get("outcome") == "WIN"
+                outcomes.append(won)
+                if regime:
+                    if regime not in new_regime_wr:
+                        new_regime_wr[regime] = {"wins": 0, "total": 0}
+                    new_regime_wr[regime]["total"] += 1
+                    if won:
+                        new_regime_wr[regime]["wins"] += 1
+            # Only replace if we got more data than current state
+            current_total = sum(v["total"] for v in self._regime_wr.values())
+            if len(trades) > current_total:
+                self._regime_wr = new_regime_wr
+                self._recent_outcomes = outcomes[-20:]
+                self._save_state()
+                logger.info(
+                    f"[ADAPTIVE_RISK] Backfilled {len(trades)} trades → "
+                    f"{len(new_regime_wr)} regimes"
+                )
+        except Exception as e:
+            logger.warning(f"[ADAPTIVE_RISK] Backfill error: {e}")
 
 
 # Singleton
@@ -300,8 +340,9 @@ class AdaptiveSizer:
             logger.warning(f"Failed to save adaptive sizer state: {e}")
 
     def _load_state(self):
-        """Restore persisted state."""
+        """Restore persisted state. Backfills per-symbol outcomes from trade_dna if sparse."""
         if not os.path.exists(_ADAPTIVE_SIZER_STATE_PATH):
+            self._backfill_from_trade_dna()
             return
         try:
             with open(_ADAPTIVE_SIZER_STATE_PATH) as f:
@@ -310,12 +351,48 @@ class AdaptiveSizer:
             # Trim to current window size
             for sym, outs in raw.items():
                 self._outcomes[sym] = outs[-self.window:]
+            total_tracked = sum(len(v) for v in self._outcomes.values())
             if self._outcomes:
                 logger.info(
                     f"[ADAPTIVE_SIZER] Restored state: {len(self._outcomes)} symbols tracked"
                 )
+            if total_tracked < 20:
+                self._backfill_from_trade_dna()
         except Exception as e:
             logger.warning(f"Failed to load adaptive sizer state: {e}")
+
+    def _backfill_from_trade_dna(self):
+        """Populate per-symbol outcomes from trade_dna when state is sparse."""
+        _dna_path = os.path.join("data", "llm", "deep_memory", "trade_dna.json")
+        if not os.path.exists(_dna_path):
+            return
+        try:
+            with open(_dna_path) as f:
+                data = json.load(f)
+            trades = data.get("trades", [])
+            if not trades:
+                return
+            current_total = sum(len(v) for v in self._outcomes.values())
+            if len(trades) <= current_total:
+                return
+            new_outcomes: Dict[str, list] = {}
+            for t in trades:
+                raw_sym = t.get("symbol", "")
+                base = self._normalize_symbol(raw_sym)
+                if not base:
+                    continue
+                if base not in new_outcomes:
+                    new_outcomes[base] = []
+                new_outcomes[base].append(t.get("outcome") == "WIN")
+            # Keep only rolling window
+            self._outcomes = {sym: outs[-self.window:] for sym, outs in new_outcomes.items()}
+            self._save_state()
+            logger.info(
+                f"[ADAPTIVE_SIZER] Backfilled {len(trades)} trades → "
+                f"{len(self._outcomes)} symbols"
+            )
+        except Exception as e:
+            logger.warning(f"[ADAPTIVE_SIZER] Backfill error: {e}")
 
 
 # Singleton for AdaptiveSizer

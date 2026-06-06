@@ -114,7 +114,7 @@ class ContentEngine:
 
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",  # Sonnet for quality content
+                model="claude-sonnet-4-6",  # Sonnet for quality content
                 max_tokens=1500,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
@@ -155,7 +155,7 @@ Example: ["Hook tweet here", "Second point...", "Third point...", "CTA tweet"]
 
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=2000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
@@ -195,7 +195,7 @@ Output just the tweet text, nothing else."""
 
         try:
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",  # Haiku for fast signal tweets
+                model="claude-haiku-4-5",  # Haiku for fast signal tweets
                 max_tokens=400,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
@@ -230,7 +230,7 @@ Output just the tweet text."""
 
         try:
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=400,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
@@ -264,7 +264,7 @@ Output just the tweet text."""
 
         try:
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=400,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],

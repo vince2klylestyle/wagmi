@@ -20,8 +20,8 @@ from typing import Dict, Optional, Tuple
 logger = logging.getLogger("bot.llm.agents.cost_optimizer")
 
 # Model IDs (import-safe duplicates from usage_tiers)
-MODEL_HAIKU = "claude-haiku-4-5-20251001"
-MODEL_SONNET = "claude-sonnet-4-5-20250929"
+MODEL_HAIKU = "claude-haiku-4-5"
+MODEL_SONNET = "claude-sonnet-4-6"
 
 # Cost per call estimates by model (avg input+output tokens)
 MODEL_COST_PER_CALL = {

@@ -256,7 +256,7 @@ def analyze_signal(
         verdict_confidence=float(data.get("verdict_confidence", 0.0)),
         verdict_reasoning=data.get("verdict_reasoning", ""),
         modifications=data.get("modifications", {}),
-        llm_model="claude-sonnet-4-5-20250929",
+        llm_model="claude-sonnet-4-6",
         llm_tokens_in=usage.get("input_tokens", 0),
         llm_tokens_out=usage.get("output_tokens", 0),
         llm_latency_ms=usage.get("latency_ms", 0),

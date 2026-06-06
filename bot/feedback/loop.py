@@ -37,12 +37,13 @@ Usage in main loop:
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
 from feedback.adaptive_confidence import AdaptiveConfidenceFloor
 from feedback.continuous_backtest import ContinuousBacktester
 from feedback.parameter_tuner import ParameterTuner
 from feedback.signal_quality import SignalQualityScorer, QualityFeatures
+from learning.auto_fix_pipeline import AutoFixPipeline
 
 logger = logging.getLogger("bot.feedback.loop")
 
@@ -63,12 +64,15 @@ class FeedbackLoop:
         self.backtester = ContinuousBacktester(data_dir=data_dir)
         self.tuner = ParameterTuner(data_dir=data_dir)
         self.quality = SignalQualityScorer(data_dir=data_dir)
+        self.auto_fix = AutoFixPipeline(data_dir="data/learning")
 
         # Tick counter for periodic operations
         self._tick_count = 0
         self._last_tuner_update = 0
         self._trade_count = 0  # Trade counter for fast weight updates
         self._weight_manager = None  # Set externally for fast strategy weight recomputation
+        self._last_ab_eval_trade = 0  # Track trade count at last AB evaluation
+        self._recent_ab_records: List[Dict] = []  # Stable (win, ab_gate_hash) pairs for A/B eval
 
         # AutoOptimizer (optional — requires EvolutionTracker)
         self._auto_optimizer = None
@@ -93,13 +97,18 @@ class FeedbackLoop:
         volatility: float = 0.0,
         rr1: float = 1.0,
         trend_alignment: float = 0.0,
+        quality_pre_applied: bool = False,
     ) -> Tuple[bool, float, float, str]:
         """Evaluate whether a signal should be traded.
 
         Applies:
-        1. Signal quality scoring (adjusts confidence)
+        1. Signal quality scoring (adjusts confidence) — skipped if quality_pre_applied=True
         2. Adaptive confidence floor (dynamic threshold)
         3. Parameter tuner adjustments
+
+        Args:
+            quality_pre_applied: Set True when the ensemble already applied quality scoring
+                                  to avoid double-adjustment.
 
         Returns:
             (should_trade, adjusted_confidence, floor, reason)
@@ -123,10 +132,14 @@ class FeedbackLoop:
             trend_alignment=trend_alignment,
         )
 
-        # Step 1: Quality-adjust confidence
-        adjusted_conf, quality_mult, _ = self.quality.adjust_confidence(
-            confidence, features
-        )
+        # Step 1: Quality-adjust confidence (skip if ensemble already applied it)
+        if quality_pre_applied:
+            adjusted_conf = confidence
+            quality_mult = 1.0
+        else:
+            adjusted_conf, quality_mult, _ = self.quality.adjust_confidence(
+                confidence, features
+            )
 
         # Step 2: Apply tuner calibration offset
         cal_offset = self.tuner.get_calibration_offset()
@@ -269,6 +282,35 @@ class FeedbackLoop:
                 self._auto_optimizer.record_trade(pnl, win)
             except Exception as e:
                 logger.debug(f"AutoOptimizer record_trade failed: {e}")
+
+        # 7. A/B fix evaluation: every 20 trades, evaluate active fixes
+        # Maintain a stable ab_gate_hash per trade (hashed from symbol+side+conf+pnl) so
+        # A/B splits are consistent across evaluations rather than index-position-dependent.
+        ab_hash = int(abs(hash((symbol, side, round(confidence), round(abs(pnl) * 1000)))) % 100)
+        self._recent_ab_records.append({"win": win, "ab_gate_hash": ab_hash})
+        if len(self._recent_ab_records) > 100:
+            self._recent_ab_records = self._recent_ab_records[-100:]
+
+        if self._trade_count - self._last_ab_eval_trade >= 20:
+            try:
+                result = self.auto_fix.evaluate_active_fixes(self._recent_ab_records)
+                self._last_ab_eval_trade = self._trade_count
+                logger.info(
+                    f"[FEEDBACK] AB eval: evaluated={result.get('evaluated', 0)} "
+                    f"reverted={result.get('reverted', 0)} promoted={result.get('promoted', 0)}"
+                )
+            except Exception as e:
+                logger.debug(f"AB fix evaluation failed: {e}")
+
+        # 8. Graduated rules accuracy tracking — feed outcome to rule accuracy counters.
+        # This updates times_correct so rules can auto-retire at < 35% accuracy.
+        try:
+            from llm.graduated_rules import get_graduated_rules_engine
+            get_graduated_rules_engine().record_outcome(
+                symbol=symbol, regime=regime, side=side, won=win, hour_utc=now.hour
+            )
+        except Exception as e:
+            logger.debug(f"Graduated rules outcome tracking failed: {e}")
 
         logger.info(
             f"[FEEDBACK] Outcome recorded: {symbol} {side} "

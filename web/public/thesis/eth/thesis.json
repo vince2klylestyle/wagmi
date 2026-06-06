@@ -1,0 +1,97 @@
+{
+  "symbol": "ETH",
+  "updated_at": "2026-04-24T06:22:50.438436+00:00",
+  "price": 2314.65,
+  "levels": {
+    "symbol": "ETH",
+    "ts": "2026-04-24T06:21:39.326874+00:00",
+    "price": 2314.65,
+    "daily": {
+      "ema20": 2278.489165293197,
+      "ema50": 2239.490550934086,
+      "slope_pct": 3.6758761693789026,
+      "rsi14": 54.387933183744714,
+      "atr14": 101.80714285714284,
+      "hi60d": 2462.5,
+      "lo60d": 1797.2,
+      "trend": "UP"
+    },
+    "h4": {
+      "ema20": 2335.2577242901893,
+      "ema50": 2326.978907513093,
+      "rsi14": 47.38010657193602,
+      "atr14": 35.66428571428563,
+      "hi20": 2422.2,
+      "lo20": 2283.8
+    },
+    "h1": {
+      "ema20": 2323.576943798803,
+      "ema50": 2334.5984126941794,
+      "rsi14": 44.45652173913053,
+      "atr14": 16.35714285714292,
+      "hi20": 2341.5,
+      "lo20": 2283.9,
+      "vol_ratio": 0.35030010165775205
+    },
+    "m5": {
+      "rsi14": 87.64705882353196,
+      "atr14": 2.885714285714357
+    }
+  },
+  "factors": {
+    "btc_4h_direction": "neutral",
+    "btc_4h_aligned_long": false,
+    "chop_score": 0.28,
+    "chop_ok": true,
+    "rsi_aligned": true,
+    "rsi_bullish_stack": false,
+    "daily_trend_up": true,
+    "conviction_count": 2,
+    "conviction_max": 4,
+    "conviction_wr_est": 38
+  },
+  "committee": {
+    "regime": {
+      "ok": true,
+      "agent": "regime",
+      "narrative": "**Regime: `range` | Bias: neutral-to-bullish | Volatility band: low**\n\nDaily slope is constructive (+3.68%/10d, RSI 54) but the 4h and 1h are printing bearish mean-reversion (RSI 47/44, price below both EMAs on each frame, volume 0.35x) \u2014 classic daily-uptrend-in-consolidation structure. The structural alpha stack is weak: `btc_4h_return_signed` is neutral (removes the IC +0.519 tailwind), conviction count sits at 2/4 (historical 38% WR, PF marginal), and UTC 04\u201307 is the statistically dead window (15% WR base rate). Volatility is contained \u2014 chop proxy 0.28 clears the 0.60 threshold and 1h ATR at 0.71% is well inside normal \u2014 but the 5m RSI 88 spike on thin volume reads as a low-conviction micro-bounce, not a regime shift. No-trade is the correct posture until BTC 4h aligns or conviction stacks to 3\u20134.",
+      "latency_s": 33.36003565788269,
+      "regime_label": "trending_bull",
+      "confidence": 70,
+      "bias": "bullish",
+      "vol_band": "medium",
+      "daily_slope_pct": 3.68,
+      "daily_rsi": 54.0,
+      "h1_rsi": 44.0,
+      "vol_ratio_1h": 0.35
+    },
+    "trade": {
+      "ok": true,
+      "agent": "trade",
+      "narrative": "**wait**\n\nConviction sits at 2/4 (historical 38% WR) \u2014 below the structural edge threshold of 4-aligned (61% WR, PF 4.12). The critical alpha factor `btc_4h_return_signed` is **neutral**, removing the single highest-IC signal (IC +0.519) from the stack; without it, the long thesis lacks its strongest Bonferroni-cleared anchor. The 5m RSI at 88 is a near-term exhaustion flag right at a micro-top, and the 1h RSI at 44 with price below both EMAs ($2,324/$2,335) suggests the 4h is still coiling \u2014 not yet resolved directionally. Entry into this setup would be buying into a low-conviction, time-of-day disadvantaged window (UTC 06h, ~24% WR historically) with `btc_4h_return_signed` not yet confirming. Watch for `btc_4h_return_signed` to flip bullish and conviction to reach 3\u20134 before committing; the structural edge is earned by stacking, not anticipating.",
+      "latency_s": 10.35592794418335,
+      "action": "wait",
+      "confidence": 55,
+      "entry_low": 2318.93,
+      "entry_high": 2328.22,
+      "stop": 2278.99,
+      "target1": 2341.5,
+      "target2": 2462.5,
+      "rr_t1": 0.4,
+      "rr_t2": 3.12,
+      "invalidation": 2239.49
+    },
+    "critic": {
+      "ok": true,
+      "agent": "critic",
+      "narrative": "**PASS \u2014 wait is correct.**\n\nThe structural case is clean: btc_4h_return_signed neutral removes IC +0.519 from the stack, dropping you to 38% WR territory where risk-adjusted edge is flat or negative. Volume at 0.35x confirms no institutional sponsorship behind the 5m RSI-88 micro-pump \u2014 that's a thin-air spike, not a breakout.\n\n**Main risk:** BTC 4h momentum flips bullish rapidly (one strong 4h close), conviction jumps 2\u21924, and you're now chasing an entry above $2,335 EMA20 instead of the current $2,314 discount. Daily trend is genuinely UP (slope +3.68%) and chop is low (0.28) \u2014 the setup is primed to ignite, not dead. The cost of waiting is a worse entry if structure confirms, not a missed thesis.\n\n**Counter-thesis:** Initiate a starter (25% size) now on daily-trend alignment + low chop, add the remaining 75% only when btc_4h_return_signed turns bullish. Limits regret without violating the conviction-stacking rule.",
+      "latency_s": 27.38685131072998,
+      "vote": "pass",
+      "risk_flags": [
+        "thin_volume",
+        "rsi5m_overbought"
+      ]
+    },
+    "mode": "cli"
+  }
+}

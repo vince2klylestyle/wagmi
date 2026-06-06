@@ -433,6 +433,25 @@ class PositionWiringMixin:
             risk_tier="medium",
         )
         leverage = _kelly_decision.leverage
+        # Auto-exec safety cap (2026-04-16): the sniper emits up to 20x now
+        # for manual exploration, but auto-executed trades get clamped to
+        # the tighter auto-exec cap (default 5x). This is the "can never
+        # unsupervised-blow-up like the -$147 SOL SHORT at 9.7x" safety.
+        try:
+            from manual.config import ManualSniperConfig as _MSC
+            _auto_exec_cap = getattr(
+                _MSC(), "max_auto_exec_leverage", 5.0
+            )
+            if leverage > _auto_exec_cap:
+                logger.info(
+                    f"[SNIPER-EXEC] {symbol} leverage clamped "
+                    f"{leverage:.1f}x -> {_auto_exec_cap:.1f}x (auto-exec cap)"
+                )
+                leverage = _auto_exec_cap
+        except Exception as _cap_err:
+            # On any error, fall back to hard 5x cap (defense in depth)
+            logger.warning(f"[SNIPER-EXEC] auto-exec cap load failed: {_cap_err}; using 5x fallback")
+            leverage = min(leverage, 5.0)
         # Recalculate qty with Kelly leverage and Full Kelly risk
         _stop_dist = abs(current_price - sniper_sig.sl)
         if _stop_dist > 0:
@@ -565,8 +584,16 @@ class PositionWiringMixin:
         regime-specific patterns) to decide when to tighten stops on losing patterns
         and widen TPs on confirmed winning patterns.
 
+        Stores TradeEvents from full closes (LLM_EXIT_AGENT force_close calls) in
+        self._pending_exit_events so they can be injected into the main event loop
+        for post-trade callbacks (graduated_rules.record_outcome, learning, etc).
+
         Called every 5th tick from _tick_once() to avoid excessive computation.
         """
+        # Initialize pending events list if needed
+        if not hasattr(self, '_pending_exit_events'):
+            self._pending_exit_events = []
+
         if not self.exit_engine:
             return
 
@@ -635,11 +662,23 @@ class PositionWiringMixin:
                     continue
 
                 # ── LLM Exit Intelligence Agent (when multi-agent enabled) ──
-                # Replaces heuristic rules with thesis-aware LLM reasoning
+                # Replaces heuristic rules with thesis-aware LLM reasoning.
+                #
+                # Finding 5 (2026-04-15): Exit agent was calling the API even
+                # when LLM_MODE=0 (user's "LLM off" state). That created a
+                # silent ~$2-8/month cost leak. Now we respect the master
+                # LLM_MODE gate before calling, so LLM_MODE=0 genuinely stops
+                # all agent API calls. Preserves the agent for manual use
+                # (coordinator can still be invoked directly from scripts/REPL).
                 if os.getenv("LLM_MULTI_AGENT", "").lower() in ("1", "true", "yes"):
                     try:
                         from llm.agents.coordinator import get_coordinator, is_multi_agent_enabled
-                        if is_multi_agent_enabled():
+                        from llm.autonomy import get_llm_mode, should_call_llm
+                        if not should_call_llm(get_llm_mode()):
+                            # LLM_MODE=0 (OFF): skip background Exit agent entirely.
+                            # Mechanical exit rules below still apply.
+                            pass
+                        elif is_multi_agent_enabled():
                             coordinator = get_coordinator()
                             pos_data = {
                                 "symbol": symbol,
@@ -736,7 +775,14 @@ class PositionWiringMixin:
                                                     reason="LLM_EXIT_AGENT"
                                                 )
                                                 if _llm_close and getattr(_llm_close, "filled", False):
-                                                    self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_AGENT")
+                                                    _fc = self.pos_mgr.force_close(symbol, current_price, "LLM_EXIT_AGENT")
+                                                    # Store force_close event for post-trade callbacks
+                                                    # (record_outcome, learning, ledger, etc).
+                                                    # Event will be injected into main event loop by
+                                                    # next symbol processing cycle.
+                                                    if _fc:
+                                                        _fc.metadata["_exchange_submitted"] = True
+                                                        self._pending_exit_events.append(_fc)
                                                 else:
                                                     logger.critical(
                                                         f"[{symbol}] LLM EXIT CLOSE FAILED — position still open. "

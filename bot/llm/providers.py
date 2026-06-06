@@ -85,7 +85,7 @@ def get_provider_config() -> List[LLMProvider]:
     if primary_key:
         providers.append(LLMProvider(
             name="primary",
-            model=os.getenv("LLM_MODEL", "claude-sonnet-4-5-20250929"),
+            model=os.getenv("LLM_MODEL", "claude-sonnet-4-6"),
             api_key_env="ANTHROPIC_API_KEY",
             weight=1.0,
         ))

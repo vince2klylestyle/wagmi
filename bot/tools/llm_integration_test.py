@@ -30,7 +30,7 @@ def test_6_end_to_end():
     result, usage = call_llm(
         system_prompt=system,
         snapshot_json=snapshot,
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         max_tokens=200,
         timeout=30.0,
     )
@@ -62,7 +62,7 @@ def test_7_exit_agent():
     result, usage = call_llm(
         system_prompt=system,
         snapshot_json=snapshot,
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         max_tokens=150,
         timeout=30.0,
     )
@@ -93,7 +93,7 @@ def test_8_veto():
     result, usage = call_llm(
         system_prompt=system,
         snapshot_json=snapshot,
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         max_tokens=150,
         timeout=30.0,
     )
@@ -124,7 +124,7 @@ def test_9_sizing():
     result, usage = call_llm(
         system_prompt=system,
         snapshot_json=snapshot,
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         max_tokens=150,
         timeout=30.0,
     )

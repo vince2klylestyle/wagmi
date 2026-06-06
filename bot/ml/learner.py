@@ -734,16 +734,24 @@ class SignalLearner:
             fast_prob = 1.0 - fast_prob
 
         # Blend available models (trade > 1h snapshot > 5m fast)
-        if win_prob is not None and direction_prob is not None:
+        # SHIP-2026-04-20: snap model has time-of-day overfit (sin/cos weights
+        # dominate z at hours 18-23 and 0-4 UTC, forcing output to 0.001-0.003
+        # regardless of other features). Treat extreme outputs as unreliable.
+        _snap_ok = direction_prob is not None and 0.02 < direction_prob < 0.98
+        _fast_ok = fast_prob is not None and 0.02 < fast_prob < 0.98
+        if win_prob is not None and _snap_ok:
             combined = win_prob * 0.6 + direction_prob * 0.4
             source = f"trade={win_prob:.1%}+snap={direction_prob:.1%}"
+        elif win_prob is not None and direction_prob is not None:
+            combined = win_prob
+            source = f"trade={win_prob:.1%}+snap_skip({direction_prob:.1%})"
         elif win_prob is not None:
             combined = win_prob
             source = f"trade={win_prob:.1%}"
-        elif direction_prob is not None:
+        elif _snap_ok:
             combined = direction_prob
             source = f"snap={direction_prob:.1%}"
-        elif fast_prob is not None:
+        elif _fast_ok:
             combined = fast_prob
             source = f"fast5m={fast_prob:.1%}"
         else:
