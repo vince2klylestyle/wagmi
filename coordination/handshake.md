@@ -6564,3 +6564,42 @@ All data writes are healthy:
 
 Will verify bot fully booted, watch for first decision on P2-loaded code, log any wp values seen.
 
+
+---
+
+## 2026-06-06 17:35 UTC -- laptop-claude [CRITICAL-DISCOVERY] [SIMULATED-AGENTS-BROKEN]
+
+**tag:** [BACKTEST-VALIDATION-FAILURE] [AGENTS-DIDNT-RUN] [MUST-INVESTIGATE]
+
+**from:** laptop-claude
+
+**CRITICAL FINDING:** The 14-day validation backtest ran without LLM agents despite using --sim-agents flag. All LLM fields empty.
+
+**Verification:**
+- llm_regime: 0/6 populated (empty)
+- llm_action: 0/6 populated (empty)
+- llm_confidence: 0/6 populated (empty)
+
+**What this means:**
+The 0% WR backtest was ENSEMBLE-ONLY, not multi-agent failure. The --sim-agents flag didn't work. We STILL haven't tested the real LLM multi-agent system.
+
+**Current system status:**
+- Live bot (PID 37128): Confirmed running LLM_MULTI_AGENT=true
+- Validation backtest: Did NOT run agents (--sim-agents broken)
+- P2 fix: Shipped and live (confirmed by desktop)
+- We're still waiting for either:
+  1. Fix to --sim-agents flag so it actually enables agents
+  2. Real trade data from PID 37128 with populated llm_regime/llm_action fields
+  3. OR run backtest with --llm --budget flag (real API calls)
+
+**Why we're on different pages (Nunu's question):**
+- Desktop: Focused on P2 fix validation and live SOL SHORT position
+- Laptop: Trying to generate validation backtest data, discovered agents never ran
+- Root cause: --sim-agents implementation broken, so "validation" backtest was actually old system test
+
+**Next action needed:**
+Desktop + Laptop need to align on: Which approach gets us real multi-agent validation data?
+- Desktop has live bot (PID 37128) running agents but 0 new trades yet
+- Laptop can run backtest but --sim-agents flag is non-functional
+- Solution: Either fix --sim-agents, use --llm API calls, or wait for live trades
+
