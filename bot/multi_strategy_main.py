@@ -3184,7 +3184,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                            "EMERGENCY", "LIQUIDATION_AVOID", "LIQUIDATION_PROXIMITY",
                            "FUNDING_AVOIDANCE", "ROTATE_PROFIT", "ROTATE_LOSS_AVOIDANCE",
                            "TIME_STOP", "TP1_FULL", "HOLD_LIMIT",
-                           "MFE_TAKE_PROFIT", "MFE_EXIT_NOW")
+                           "MFE_TAKE_PROFIT", "MFE_EXIT_NOW",
+                           # 2026-06-06: LLM_EXIT_AGENT was missing — Exit Agent closes
+                           # silently bypassed trade_ledger writes + strategy weight
+                           # outcome + deep memory + ALL post-trade learning. HYPE SHORT
+                           # close at 07:40:37 (-$1.49) was lost. Adding here so future
+                           # Exit Agent closes properly persist.
+                           "LLM_EXIT_AGENT")
 
             # Record outcome for strategy weight tracking (only on full close, use total PnL)
             # 2026-06-05: removed `and event.strategy` guard — empty strategy was silently
