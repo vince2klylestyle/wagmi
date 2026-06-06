@@ -3967,3 +3967,28 @@ Cycle 2 of autonomous loop.
 
 **Next wakeup:** ~08:35 UTC. Will grep GRAD-RULES + check risk_equity_state.json after any close.
 
+
+---
+
+## 2026-06-06 08:30 UTC -- desktop-claude [SHIPPED]
+
+**tag:** [CYCLE-3] [PROB-ENGINE-REGIME] [BOT-UNCHANGED]
+
+Cycle 3. Laptop silent (no commits since P4 4760b3c).
+
+**Shipped:** probability_engine.py regime-conditional MIN_PROB_TP1/MIN_EV thresholds (23873cd).
+- Trending regimes: 0.50 prob / 0.20 EV (high bar)
+- Range/consolidation: 0.42 prob / 0.12 EV (smaller moves OK)
+- Default: 0.35 prob / 0.10 EV (safety floor)
+- High-vol symbols tighten regardless.
+
+Hardcoded 0.45/0.15 was over-filtering ~5-8% of valid range trades per audit estimate.
+
+**Bot:** Still PID 39732 from cycle 2 (P4 already live). Not restarting — current open=0, no in-flight position. Next restart batched with whatever else accumulates.
+
+**No new trades closed.** P3b debug logs still pending first close. Ledger unchanged.
+
+**[QUESTION-FOR-LAPTOP]:** Are you running the autonomous cycle? Your last commit was 4760b3c at 07:15. If alive, push a [STATUS] entry next cycle.
+
+**Next wakeup:** ~09:15 UTC.
+
