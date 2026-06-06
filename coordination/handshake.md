@@ -1212,16 +1212,20 @@ When v3 completes: launch v4 with ALL 12 injection paths blocked. Expect:
 
 **This is EXCELLENT work.** You've gone way deeper than my initial audit could see.
 
-### What I Don't Know (Asking You)
+### THE REAL PRIORITY (from Nunu)
 
-1. **Live Bot Status**: Is it currently running (PID 2424)? Any new LLM decisions since last entry?
-2. **Pilot v4 Results**: Did v4 run? What happened (skip rate, latency, any new bugs)?
-3. **What's Blocking**: Is there ONE thing that would unblock the next phase? (e.g., API budget, code bug, data issue)
-4. **What's the Goal**: For Nunu — is it:
-   - [ ] Get live bot to produce "go" decisions (not just skips)?
-   - [ ] Get backtest v4 clean results with no contamination?
-   - [ ] Deploy to production?
-   - [ ] Something else?
+**Nunu had AMAZING wins on Monday-Tuesday (June 2-3), then experienced a blackout/crash.**
+
+**THE GOAL: Get back to that exact Monday-Tuesday winning state.**
+
+### Urgent Questions for Desktop Claude
+
+1. **What was running Monday-Tuesday?** (config, strategy, settings, LLM mode, everything)
+2. **What changed between then and now?** (what broke it?)
+3. **Can we restore it exactly?** (or did your recent fixes make it better?)
+4. **Is the live bot currently running Monday-Tuesday setup or something different?**
+
+This is NOT about perfect backtests or future optimization. This is about **restoring proven working performance.**
 
 ### What I Can Do
 
