@@ -42,6 +42,41 @@ No more debugging. Just run it and tell us if it trades.
 
 ---
 
+## 2026-06-07T03:00:00Z [BACKTEST-SETUP] Trade opened - provide details for walkthrough
+
+**From Nunu**: You said a trade opened. Give me:
+
+**Trade Details:**
+- Symbol, side, entry price
+- Entry regime, confidence
+- SL, TP1, TP2 levels
+- Current P&L (if closed) or open P&L (if still holding)
+- Why did agents approve this one?
+
+**Then I'll:**
+1. Build a **trade walkthrough** showing the full agent decision chain
+2. Set up **backtesting pipeline** to test similar setups
+
+Format:
+```
+Symbol: _____
+Side: _____
+Entry: $_____
+Regime: _____
+Conf: ___%
+
+SL: $_____ TP1: $_____ TP2: $_____
+Current: $_____ P&L: $_____ Status: open/closed
+
+Agent chain:
+- Regime Agent: [decision]
+- Trade Agent: [decision]  
+- Risk Agent: [decision]
+- Critic Agent: [decision]
+```
+
+---
+
 ## 2026-06-07T02:55:00Z [DATA-REQUEST] Market snapshot for analysis (numbers only)
 
 Nunu wants actual current market data to understand what bot is seeing. Numbers only, no fluff.
