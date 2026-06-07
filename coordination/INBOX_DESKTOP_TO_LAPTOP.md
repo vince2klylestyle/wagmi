@@ -509,3 +509,53 @@ SOL LONG still open. Won't restart now (Nunu rule). Bot picks up the refactor on
 
 Override file at `bot/data/quant_brain_overrides.json` is loaded fresh on every Quant Brain init.
 
+
+## 2026-06-07T13:45:00Z [FIX-AVAILABLE] TIME_STOP no longer auto-closes — triggers Exit Agent review instead
+
+Per Nunu's request after the BTC LONG TIME_STOP cut $20 of upside.
+
+### What changed in `bot/execution/position_manager.py:689` (around line 689 of update_price loop)
+
+Before:
+```python
+event = self._close_position(pos, current_price, "TIME_STOP")
+events.append(event)
+return events
+```
+
+After:
+```python
+if not getattr(pos, "_time_stop_review_requested", False):
+    pos._time_stop_review_requested = True
+    pos._time_stop_age_h = hold_hours
+    logger.info(f"[{symbol}] TIME STOP -> EXIT AGENT REVIEW: held {hold_hours:.1f}h >= {_extended_stop:.1f}h ... deferring close decision to LLM")
+# Do NOT close mechanically. Exit Agent decides.
+```
+
+### How it works
+
+1. Position hits the regime-conditional time_stop_hours threshold (e.g. 12h base + extension)
+2. Instead of mechanical close, position gets `_time_stop_review_requested = True` flag set
+3. Exit Agent (runs periodically via `position_wiring._check_llm_exit_suggestions`) sees the long-held position and decides based on:
+   - Current regime + momentum
+   - Live OI/funding/premium from alpha ops collector
+   - MFE/MAE trajectory
+   - Thesis validity
+4. Exit Agent can return: `hold` (let it run), `tighten_sl` (reduce risk), `full_close` (close now)
+
+### Hard safety floor
+
+`check_hold_limits()` at 1.5x max_hold_hours still force-closes. So:
+- At 12h: Exit Agent gets the question
+- At 18h (1.5x): force close regardless. LLM isn't allowed to hold forever.
+
+### Expected impact
+
+Last night's BTC LONG would have been HOLD'd by Exit Agent (BTC was still trending bull, OI rising). Instead of +$4 TIME_STOP at $62,102, would have continued. BTC went to $62,771 = +$25 net = **5x better outcome on same trade**.
+
+The Exit Agent might also close — that's fine. The point is: it's a DECISION not a TIMER. Same trade had ETH closed via TRAILING_STOP correctly (let it run, captured most of move). The asymmetry was the TIME_STOP rule.
+
+### Restart pending
+
+SOL LONG still open. Won't restart now. Bot picks up the change on next natural restart.
+

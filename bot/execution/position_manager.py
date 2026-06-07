@@ -681,14 +681,25 @@ class PositionManager:
                         pass  # deferred — TP1 proximity extended stop, skip close this tick
                     else:
                         _reason = _health.get("reason", "time_expired")
-                        logger.info(
-                            f"[{symbol}] TIME STOP: held {hold_hours:.1f}h >= {_extended_stop:.1f}h "
-                            f"(base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
-                            f"reason={_reason} health={_health_score:.0f}%"
-                        )
-                        event = self._close_position(pos, current_price, "TIME_STOP")
-                        events.append(event)
-                        return events
+                        # 2026-06-07: instead of mechanical close at TIME_STOP, flag the
+                        # position for urgent Exit Agent review. The LLM sees current data
+                        # (regime, momentum, OI/funding, alpha ops) and decides whether to
+                        # close/tighten/hold. Mechanical close cost ~$20 on the BTC LONG
+                        # winner this morning (cut at +$4, would have run to +$25).
+                        # HARD safety: check_hold_limits() at 1.5x max_hold_hours still
+                        # force-closes regardless — Exit Agent isn't allowed to hold forever.
+                        if not getattr(pos, "_time_stop_review_requested", False):
+                            pos._time_stop_review_requested = True
+                            pos._time_stop_age_h = hold_hours
+                            logger.info(
+                                f"[{symbol}] TIME STOP -> EXIT AGENT REVIEW: held {hold_hours:.1f}h "
+                                f">= {_extended_stop:.1f}h (base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
+                                f"reason={_reason} health={_health_score:.0f}% — deferring close decision to LLM"
+                            )
+                        # Do NOT mechanically close here. Exit Agent (via
+                        # position_wiring._check_llm_exit_suggestions) will see the
+                        # _time_stop_review_requested flag and act. Hard fallback at
+                        # 1.5x time_stop in check_hold_limits().
                 else:
                     # Position is healthy — log extension and continue
                     if not hasattr(pos, '_extension_logged'):
