@@ -391,3 +391,61 @@ Multi-agent + Sonnet timeout fix + P1v2 + cleaned data + cleaned prompts
 
 If next trade is in the next 30-60 min, the prompt cleanup worked. If we still see "night session" skips, more digging needed.
 
+
+## 2026-06-07T02:55:00Z [FIX-AVAILABLE] Deep audit pass 2 — stripped 5 more hardcoded anchors
+
+Following Nunu's "audit even harder" — second cleanup pass. Bot restarted as PID 42400 on fully cleaned prompts.
+
+### Audit method (autonomous)
+
+```
+grep -cE '"[0-9]+\.?[0-9]*% WR|[0-9]+% WR' [critical decision files]
+```
+
+Hits per file:
+- bot/llm/agents/prompts.py: 11 → 7 (down from 11 after pass 1, now further to 7 after pass 2)
+- bot/strategies/ensemble.py: 39 (most are legit strategy parameters, not WR claims)
+- bot/core/signal_pipeline.py: 13 (mostly EV/probability thresholds)
+- bot/llm/quant_brain.py: 4 (RSI bands)
+- bot/execution/risk.py: 3 (margin thresholds)
+
+### Pass 2 stripped from prompts.py
+
+- L398: "12h is typically optimal hold time. R:R sweet spot around 2.5% SL / 3.75% TP" → "Hold time and R:R sweet spots are regime-dependent — read them from CURRENT EDGES"
+- L1094-1097: "ETH_SELL_BB: Hold 4-8h (70% WR peak at 4h). BTC_SELL_BB: 8h (63% WR)..." → "Read per-setup optimal hold times from g.edge / setup_mfe live data"
+- L1226-1228: "2-agree = all the profit. 5-7x = sweet spot. SOL SHORT trending_bear = the golden setup" → "Read leverage distribution from live data. Golden setups should be derived from live edge data, not hardcoded"
+- L964: "Confidence 70-80 is the danger zone (25% WR in live data)" → "Don't rubber-stamp high confidence. Read calibration from live data"
+- L1057-1059: "5+ bar survivor: Nearly 100% WR. MFE peaks at 8-12h" → "Bar survival is a positive signal. MFE typically peaks well after entry — read distribution from edge_data"
+- L1270: "BB solo -> 1.3x (67.6% WR in shadow data)" → "Read confluence boost from live edge_data"
+- Stripped "from N live trades" sample-size anchors at L379, L956, L1023, L1222, L1733
+
+### Remaining 7 hits in prompts.py (mostly safe)
+
+- L329: explicit counter-example ("do NOT assume 100% WR below 7x rule")
+- L947: shadow-vs-live comparison teaching the agent (28% WR live noted)
+- L1296: Kelly math example (58% WR / 1.5 R:R → 5x lev calculation)
+- L1481, L1494, L1497: JSON example schemas + labeled "gap" hypotheses
+
+These are pedagogical/calculation references, not poison anchors. Safe.
+
+### Memory seeder
+
+Checked `bot/llm/memory_seeder.py` — already NEUTRALIZED per Nunu directive 2026-06-05. FINDINGS list is empty. The hardcoded 18 findings live in `_LEGACY_FINDINGS_DO_NOT_USE` and are never seeded. ✓
+
+### Still flagged for laptop review
+
+The 39 hits in `bot/strategies/ensemble.py` look like legit strategy parameters (confidence floors, ATR multipliers) but I haven't done line-by-line review. Want me to do that pass, or you want to?
+
+The 13 in `signal_pipeline.py` similarly need review — these are gates (rr, chop, floor_pass) that may or may not be appropriately tuned.
+
+### Status
+
+```
+Bot PID 42400 on fully cleaned prompts (pass 2 done)
+Equity $4,966.36
+Ledger 14, 0 positions
+Multi-agent + Sonnet timeout + P1v2 + clean data + clean prompts + clean memory
+```
+
+Watching next 30-60 min for first trade. If Trade Agent still skips citing stale anchors, more digging needed.
+
