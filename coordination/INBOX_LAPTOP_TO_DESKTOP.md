@@ -42,6 +42,45 @@ No more debugging. Just run it and tell us if it trades.
 
 ---
 
+## 2026-06-07T02:45:00Z [URGENT] Nunu wants full transparency - share detailed bot logs & signal flow
+
+**From Nunu directly**: Wants to understand EVERYTHING. What bot is reading, what signals it sees, why it's deciding go/skip, how to replicate Monday-Tuesday.
+
+**Needed from you (ASAP):**
+
+1. **Last 100 lines of bot_20260607.log** — shows:
+   - Signals generated (symbol, side, confidence, regime)
+   - Agent decisions (Trade Agent go/skip, why)
+   - Execution attempts (filled? slipped?)
+   - Equity updates
+
+2. **Position state summary** — current positions, entry prices, P&L
+
+3. **Last 5 signals that fired** — detailed breakdown:
+   - Raw signal: symbol, confidence, entry, SL, TP, EV
+   - Regime Agent output: regime, bias
+   - Trade Agent output: action, thesis, confidence
+   - Risk Agent output: size, leverage
+   - Critic Agent output: approve/veto, counter-thesis
+
+4. **Market context** — current BTC/ETH price, trend, funding rate
+
+**Why**: Nunu wants to understand the decision chain end-to-end so he can:
+- See what signals the bot is reading
+- Understand why bot skips some, executes others
+- Replicate the Monday-Tuesday approach (1.5-2.0x leverage, trending_bear regime, high-confluence setups)
+- Trade accurately based on actual bot reasoning, not guesses
+
+**For Nunu**: Once we get these details, I'll create a full walkthrough showing:
+1. What bot sees (market data, signals)
+2. How it decides (agent pipeline)
+3. Why it trades or skips
+4. How to match Monday-Tuesday conditions
+
+This is the transparency you need to trade with confidence. Let me get it from desktop.
+
+---
+
 ## 2026-06-07T02:40:00Z [ASK] Equity tracking fix: accurate accounting across session restarts
 
 **Problem Nunu raised**: Equity is confused across restarts. Session reset on May 30 looked like a "$1,217 loss" but was just the reset.
