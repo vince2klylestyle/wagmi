@@ -95,13 +95,18 @@ def run_backtest_quarter(quarter):
 
         if result.returncode == 0:
             log(f"[OK] Backtest complete: {quarter['label']}")
+            log(result.stdout)  # Log the actual output
             # Save checkpoint
             save_checkpoint(quarter["label"], "backtest_complete", "Success")
-            return {"status": "success", "quarter": quarter["label"]}
+            return {"status": "success", "quarter": quarter["label"], "output": result.stdout}
         else:
-            log(f"[FAILED] Backtest failed: {quarter['label']} - {result.stderr}")
-            save_checkpoint(quarter["label"], "backtest_failed", result.stderr)
-            return {"status": "error", "quarter": quarter["label"], "error": result.stderr}
+            log(f"[FAILED] Backtest failed: {quarter['label']} - Return code {result.returncode}")
+            if result.stderr:
+                log(f"  STDERR: {result.stderr}")
+            if result.stdout:
+                log(f"  STDOUT: {result.stdout}")
+            save_checkpoint(quarter["label"], "backtest_failed", f"Return code {result.returncode}")
+            return {"status": "error", "quarter": quarter["label"], "error": result.stderr or result.stdout}
 
     except subprocess.TimeoutExpired:
         log(f"[TIMEOUT] Backtest timeout: {quarter['label']}")
