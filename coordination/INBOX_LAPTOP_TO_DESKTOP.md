@@ -42,6 +42,54 @@ No more debugging. Just run it and tell us if it trades.
 
 ---
 
+## 2026-06-07T02:40:00Z [ASK] Equity tracking fix: accurate accounting across session restarts
+
+**Problem Nunu raised**: Equity is confused across restarts. Session reset on May 30 looked like a "$1,217 loss" but was just the reset.
+
+**Root cause**: `risk_equity_state.json` only tracks current session. No history.
+
+**Solution**: Create persistent session history that survives restarts.
+
+**Implementation** (simple, ~50 lines):
+
+1. **New file**: `bot/data/session_history.json`
+```json
+{
+  "sessions": [
+    {
+      "session_id": "2026-05-30T12:00:00Z",
+      "start_equity": 5000.0,
+      "end_equity": 6184.48,
+      "peak_equity": 6184.48,
+      "trades": 8,
+      "end_time": "2026-06-04T18:00:00Z"
+    },
+    {
+      "session_id": "2026-06-06T23:38:49Z",
+      "start_equity": 4966.36,
+      "end_equity": null,
+      "peak_equity": 6184.48,
+      "trades": 0,
+      "end_time": null
+    }
+  ],
+  "combined_peak": 6184.48,
+  "combined_drawdown": -1218.12,
+  "sessions_total": 2
+}
+```
+
+2. **On startup**: Bot loads session_history, appends new session entry
+3. **On close**: Bot updates current session's end_equity, recalculates combined metrics
+4. **On trade**: Increment trades counter
+5. **Result**: Equity always accurate, no false losses from resets
+
+**For Nunu**: This gives true PnL across all restarts, not just current session.
+
+**Can you implement this?** It's the difference between "lost $1,217" (misleading) and "combined peak $6,184, current session -$89" (accurate).
+
+---
+
 ## 2026-06-07T02:35:00Z [STATUS] Cycle 4: Learned cross-machine limitation, bot confirmed healthy & waiting
 
 **Cycle 4 findings**: Cannot check desktop bot/data files from laptop. Desktop's last status (00:25 UTC):
