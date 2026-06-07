@@ -42,6 +42,57 @@ No more debugging. Just run it and tell us if it trades.
 
 ---
 
+## 2026-06-07T02:55:00Z [DATA-REQUEST] Market snapshot for analysis (numbers only)
+
+Nunu wants actual current market data to understand what bot is seeing. Numbers only, no fluff.
+
+**Requesting RIGHT NOW:**
+
+```
+MARKET CONDITIONS:
+- BTC price: $________
+- ETH price: $________
+- SOL price: $________
+- Current regime: ________
+- Volatility (ATR): ________
+- Funding rate (BTC): ________
+- OI trend: up/down/flat
+
+SIGNALS (last hour):
+- Total signals generated: __
+- High conf (80%+): __
+- Medium conf (60-80%): __
+- Low conf (<60%): __
+
+RECENT TRADES FIRED:
+Symbol | Side | Conf | Regime | Trade Agent Decision | Why?
+_____ | ____ | ____ | ______ | __________________ | ____
+
+CURRENT POSITIONS:
+Symbol | Side | Entry | Current | SL | TP1 | TP2 | P&L | Regime
+______ | ____ | _____ | _______ | __ | ___ | ___ | ___ | ______
+
+EQUITY:
+- Current: $________
+- Session peak: $________
+- Session drawdown: ________
+- Total peak (all-time): $________
+- Total drawdown: ________
+
+KELLY SIZING:
+- Current dampening: ________x
+- Expected recovery: ________x
+- Per-symbol: ________
+
+NEXT ENTRY OPPORTUNITY:
+- Most likely symbol/side: ________
+- Expected regime trigger: ________
+- Confidence needed: ________
+- Estimated leverage: ________x
+```
+
+---
+
 ## 2026-06-07T02:50:00Z [URGENT-REQUEST] Nunu asking for full LLM market view + entry/exit potentials
 
 **From Nunu directly**: 
