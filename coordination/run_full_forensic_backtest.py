@@ -105,9 +105,11 @@ def run_backtest_quarter(quarter):
 
     except subprocess.TimeoutExpired:
         log(f"[TIMEOUT] Backtest timeout: {quarter['label']}")
+        save_checkpoint(quarter["label"], "backtest_timeout", "Timeout after 2 hours")
         return {"status": "timeout", "quarter": quarter["label"]}
     except Exception as e:
         log(f"[ERROR] Backtest error: {quarter['label']} - {str(e)}")
+        save_checkpoint(quarter["label"], "backtest_exception", str(e))
         return {"status": "exception", "quarter": quarter["label"], "error": str(e)}
 
 def generate_forensic_analysis(quarter):
