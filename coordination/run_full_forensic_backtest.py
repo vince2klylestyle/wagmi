@@ -19,20 +19,20 @@ if sys.platform == "win32":
 
 # Configuration
 QUARTERS = [
-    {"label": "Q1 2023", "start": "2023-01-01", "end": "2023-03-31"},
-    {"label": "Q2 2023", "start": "2023-04-01", "end": "2023-06-30"},
-    {"label": "Q3 2023", "start": "2023-07-01", "end": "2023-09-30"},
-    {"label": "Q4 2023", "start": "2023-10-01", "end": "2023-12-31"},
-    {"label": "Q1 2024", "start": "2024-01-01", "end": "2024-03-31"},
-    {"label": "Q2 2024", "start": "2024-04-01", "end": "2024-06-30"},
-    {"label": "Q3 2024", "start": "2024-07-01", "end": "2024-09-30"},
-    {"label": "Q4 2024", "start": "2024-10-01", "end": "2024-12-31"},
-    {"label": "Q1 2025", "start": "2025-01-01", "end": "2025-03-31"},
-    {"label": "Q2 2025", "start": "2025-04-01", "end": "2025-06-30"},
-    {"label": "Q3 2025", "start": "2025-07-01", "end": "2025-09-30"},
-    {"label": "Q4 2025", "start": "2025-10-01", "end": "2025-12-31"},
-    {"label": "Q1 2026", "start": "2026-01-01", "end": "2026-03-31"},
-    {"label": "Q2 2026", "start": "2026-04-01", "end": "2026-06-07"},
+    {"label": "Q1 2023", "start": "2023-01-01", "days": 90},
+    {"label": "Q2 2023", "start": "2023-04-01", "days": 91},
+    {"label": "Q3 2023", "start": "2023-07-01", "days": 92},
+    {"label": "Q4 2023", "start": "2023-10-01", "days": 92},
+    {"label": "Q1 2024", "start": "2024-01-01", "days": 91},
+    {"label": "Q2 2024", "start": "2024-04-01", "days": 91},
+    {"label": "Q3 2024", "start": "2024-07-01", "days": 92},
+    {"label": "Q4 2024", "start": "2024-10-01", "days": 92},
+    {"label": "Q1 2025", "start": "2025-01-01", "days": 90},
+    {"label": "Q2 2025", "start": "2025-04-01", "days": 91},
+    {"label": "Q3 2025", "start": "2025-07-01", "days": 92},
+    {"label": "Q4 2025", "start": "2025-10-01", "days": 92},
+    {"label": "Q1 2026", "start": "2026-01-01", "days": 90},
+    {"label": "Q2 2026", "start": "2026-04-01", "days": 67},
 ]
 
 SYMBOLS = ["BTC", "ETH", "SOL", "HYPE"]
@@ -84,10 +84,11 @@ def run_backtest_quarter(quarter):
             "python", "bot/run.py", "backtest",
             "--symbols", ",".join(SYMBOLS),
             "--start-date", quarter["start"],
-            "--end-date", quarter["end"],
+            "--days", str(quarter["days"]),
             "--llm",
             "--budget", str(BUDGET_PER_QUARTER),
-            "--output", f"backtest_{quarter['label'].replace(' ', '_').lower()}.json"
+            "--output", str(OUTPUT_DIR / f"backtest_{quarter['label'].replace(' ', '_').lower()}.json"),
+            "-y"  # Skip confirmation prompt
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
@@ -167,7 +168,7 @@ def generate_final_report():
 ### Summary
 - **Period**: January 1, 2023 - June 7, 2026 (14 quarters)
 - **Symbols**: BTC, ETH, SOL, HYPE
-- **System**: Full multi-agent LLM pipeline (Regime → Trade → Risk → Critic)
+- **System**: Full multi-agent LLM pipeline (Regime > Trade > Risk > Critic)
 - **Total Trades Analyzed**: 5,000+ (estimated)
 - **Status**: Forensic analysis complete
 
