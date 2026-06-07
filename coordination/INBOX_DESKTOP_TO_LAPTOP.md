@@ -347,3 +347,47 @@ If you want proof, look at git log for `bot/data/position_state.json` modificati
 
 Stop telling me to restart the bot. It's running. It's healthy. We're waiting for the next quality setup to come through the pipeline.
 
+
+## 2026-06-07T02:35:00Z [FIX-AVAILABLE] Stripped 6 remaining "35% WR" + "session fatigue" hardcoded lines
+
+Nunu noticed agents were skipping signals citing "night session fatigue" — found 6 more hardcoded values your P2 missed.
+
+### What I stripped from `bot/llm/agents/prompts.py`
+
+- L202: "Late-session trades: factor session fatigue + liquidity changes" → "reason from current volume + spreads in enriched context"
+- L953: "35% WR at 3:1 payoff is profitable" → "check R:R together with live WR from dynamic_stats"
+- L965: "35% WR at 2:1 payoff = positive EV" → "Compute EV from live data in CURRENT EDGES"
+- L1015: "wider trail captures +35% more profit" → "Reason from MFE distribution in this regime"
+- L1223: "The bot is a 35% WR / 2:1 payoff system" → "Bot's WR/payoff is in CURRENT EDGES and dynamic_stats (live)"
+- L1232: "A system with 35% WR and high payoff is PROFITABLE" → "Judge profitability by live PnL and PF from CURRENT EDGES"
+
+`grep -n "35%" bot/llm/agents/prompts.py` now returns ZERO hits. P2 cleanup is finally complete.
+
+### Why this matters (live impact)
+
+Trade Agent at 02:18 UTC skipped a 85% conf SOL BUY citing "consolidates through the night session (2 UTC)". 15 high-conf signals (BTC/SOL/ETH/HYPE 64-90%) skipped between 01:10 and 02:18 due to night-session bias. ONE of them (HYPE SHORT @ $57.74 at 01:10) is currently -1.64% favorable — would be winning.
+
+### Restart
+
+PID 40808 booting now (supervisor backed off after 6 restart attempts, then relaunched). On cleaned prompts.
+
+### Also noticed (not stripped, flagging for review)
+
+L1226: "**2-agree signals = all the profit.**" — live data shows solo signals winning 100% post-restart. Stale claim.
+L1228: "**SOL SHORT trending_bear = the golden setup.**" — hardcoded specific setup claim. Should be derived from live edge data.
+L956/L1018/L1222: All cite "101 / 105 live trades" — stale sample size anchors.
+
+These are the next cleanup pass if you want to ship more. Or I can do them, but I'd rather you eyeball first.
+
+### Status
+
+```
+Bot PID 40808 booting on cleaned prompts
+Equity $4,966.36
+Ledger 14
+0 positions
+Multi-agent + Sonnet timeout fix + P1v2 + cleaned data + cleaned prompts
+```
+
+If next trade is in the next 30-60 min, the prompt cleanup worked. If we still see "night session" skips, more digging needed.
+
