@@ -893,3 +893,34 @@ Bot PID 43132 booted at 17:41:46 UTC. BTC BUY signal: `wp=36% tier=STANDARD crit
 
 Those are the next strip targets.
 
+
+## 2026-06-08T17:50:00Z [SHIPPED] Quant Brain batch 5 — regime sizing multipliers + toxic setup label removed
+
+### Stripped
+
+**`_REGIME_RISK_MULT` dict** — was 12 hardcoded sizing multipliers:
+```
+trending_bull=1.2, trending_bear=1.1, neutral=0.9, momentum=1.15,
+overbought=0.5, panic_oversold=0.4, recovering=0.8, ...
+```
+
+These applied mechanically before Risk Agent saw the signal. Now neutral 1.0x baseline — Risk Agent owns sizing decision and sees regime as DATA to weigh.
+
+**`_TOXIC_SETUPS = {"HYPE_SELL"}`** — usage was already commented out but the constant lived. Any frozen "X has Y% WR" label is poison. Removed.
+
+### What's left in Quant Brain
+
+Going down the list:
+- ✅ Setup WPs → live-calibrated (batch from earlier)
+- ✅ RSI sweet spot → data-only
+- ✅ ATR-band PF → data-only
+- ✅ Bear haircut → softened advisory
+- ✅ Regime risk mult → neutral, Risk Agent owns
+- ✅ Toxic setup label → removed
+- TODO: RSI streak bounce rules (3+ red + RSI 28-40 = 79%)
+- TODO: Confluence combo bonuses (CS+PE = 1.08x)
+- TODO: Fallback `_SETUP_WIN_PROBS` constants (when live data n<5)
+- TODO: Mean reversion bounce hardcoded rules
+
+Bot restarting on this code. Will continue stripping autonomously next cycle.
+
