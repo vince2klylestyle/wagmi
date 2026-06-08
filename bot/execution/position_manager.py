@@ -594,6 +594,38 @@ class PositionManager:
                             f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
 
+                # ── MFE TELEMETRY (data only — LLM decides) ──
+                # Per principle "everything should provide data and opportunity to our
+                # LLMs to make the most accurate decision" — we COMPUTE the profit-lock
+                # signals here but DO NOT mechanically act on them. The values are
+                # surfaced to the Exit Agent via position metadata so the LLM sees
+                # them in its prompt context and can decide whether to tighten_sl,
+                # partial_close, hold, or full_close based on the full picture
+                # (regime, momentum, alpha-ops, thesis validity, etc).
+                _atr = getattr(pos, "atr", 0) or 0
+                _atr_pct = (_atr / pos.entry) if pos.entry > 0 else 0
+                if is_long:
+                    _mfe_pct_now = (current_price - pos.entry) / pos.entry
+                    _peak_mfe_pct = max(0, (pos.highest_price - pos.entry) / pos.entry) if pos.highest_price else 0
+                else:
+                    _mfe_pct_now = (pos.entry - current_price) / pos.entry
+                    _peak_mfe_pct = max(0, (pos.entry - pos.lowest_price) / pos.entry) if pos.lowest_price else 0
+                _retrace_pct = ((_peak_mfe_pct - _mfe_pct_now) / _peak_mfe_pct) if _peak_mfe_pct > 0 else 0
+                _fee_pct = (self.taker_fee_bps * 2 / 10000.0) + 0.001
+
+                # Stash on position for the Exit Agent prompt-builder to read.
+                # Naming: clear so the agent prompt can reference these.
+                pos.mfe_pct_current = round(_mfe_pct_now, 5)
+                pos.mfe_pct_peak = round(_peak_mfe_pct, 5)
+                pos.mfe_retrace_pct = round(_retrace_pct, 3)
+                pos.atr_pct = round(_atr_pct, 5)
+                pos.fee_pct = round(_fee_pct, 5)
+                # Suggested-but-not-applied breakeven SL the LLM can pick up if it wants.
+                pos.suggested_be_sl = round(
+                    (pos.entry + pos.entry * _fee_pct) if is_long else (pos.entry - pos.entry * _fee_pct),
+                    8
+                )
+
                 # Lock-in trigger (above breakeven)
                 if unrealized_r >= _lock_trigger:
                     if is_long:
@@ -681,14 +713,25 @@ class PositionManager:
                         pass  # deferred — TP1 proximity extended stop, skip close this tick
                     else:
                         _reason = _health.get("reason", "time_expired")
-                        logger.info(
-                            f"[{symbol}] TIME STOP: held {hold_hours:.1f}h >= {_extended_stop:.1f}h "
-                            f"(base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
-                            f"reason={_reason} health={_health_score:.0f}%"
-                        )
-                        event = self._close_position(pos, current_price, "TIME_STOP")
-                        events.append(event)
-                        return events
+                        # 2026-06-07: instead of mechanical close at TIME_STOP, flag the
+                        # position for urgent Exit Agent review. The LLM sees current data
+                        # (regime, momentum, OI/funding, alpha ops) and decides whether to
+                        # close/tighten/hold. Mechanical close cost ~$20 on the BTC LONG
+                        # winner this morning (cut at +$4, would have run to +$25).
+                        # HARD safety: check_hold_limits() at 1.5x max_hold_hours still
+                        # force-closes regardless — Exit Agent isn't allowed to hold forever.
+                        if not getattr(pos, "_time_stop_review_requested", False):
+                            pos._time_stop_review_requested = True
+                            pos._time_stop_age_h = hold_hours
+                            logger.info(
+                                f"[{symbol}] TIME STOP -> EXIT AGENT REVIEW: held {hold_hours:.1f}h "
+                                f">= {_extended_stop:.1f}h (base={time_stop_hours}h + ext={min(_extension, _max_extension):.1f}h) "
+                                f"reason={_reason} health={_health_score:.0f}% — deferring close decision to LLM"
+                            )
+                        # Do NOT mechanically close here. Exit Agent (via
+                        # position_wiring._check_llm_exit_suggestions) will see the
+                        # _time_stop_review_requested flag and act. Hard fallback at
+                        # 1.5x time_stop in check_hold_limits().
                 else:
                     # Position is healthy — log extension and continue
                     if not hasattr(pos, '_extension_logged'):

@@ -698,6 +698,14 @@ class PositionWiringMixin:
                                 "funding_rate": funding_rate,
                                 "strategy": getattr(pos, 'strategy', ''),
                                 "entry_type": getattr(pos, 'entry_type', ''),
+                                # MFE telemetry (computed in position_manager profit-lock
+                                # block). Let the LLM decide what to do with this.
+                                "mfe_pct_current": getattr(pos, 'mfe_pct_current', None),
+                                "mfe_pct_peak": getattr(pos, 'mfe_pct_peak', None),
+                                "mfe_retrace_pct": getattr(pos, 'mfe_retrace_pct', None),
+                                "atr_pct": getattr(pos, 'atr_pct', None),
+                                "fee_pct": getattr(pos, 'fee_pct', None),
+                                "suggested_be_sl": getattr(pos, 'suggested_be_sl', None),
                             }
                             # Pull thesis from position notes if available
                             notes = getattr(pos, 'notes', '') or ''

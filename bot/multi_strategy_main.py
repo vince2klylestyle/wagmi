@@ -3208,7 +3208,13 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             # causing strategy weights frozen at 0.30 across all 6 strategies. Fallback
             # to "ensemble" when event.strategy is empty so the outcome still records.
             if event.action in _FULL_CLOSE:
-                pos = self.pos_mgr.positions.get(symbol)
+                # 2026-06-06: use _captured_pos from line 3149 instead of re-fetching.
+                # For LLM_EXIT_AGENT closes, pos_mgr.positions.get(symbol) was returning
+                # None mid-cycle, causing silent skip of trade_ledger.record_trade
+                # (P1 bug: 4 LLM_EXIT closes missing from CSV) AND counterfactual being
+                # called with entry_price=0 → safety floor 0.01 → -35,868% amplification
+                # (P3 bug). Same root cause, same fix pattern as 5e1489d.
+                pos = _captured_pos
                 total_pnl = pos.realized_pnl if pos else event.pnl
                 _strategy_key = event.strategy if event.strategy else "ensemble"
                 self.weight_mgr.record_outcome(_strategy_key, total_pnl > 0, symbol=symbol)
@@ -4113,9 +4119,16 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             )
 
         # Clean up stale closed positions (prevent memory growth overnight)
+        # 2026-06-06: skip cleanup if there's a pending Exit Agent close event
+        # for that symbol — otherwise the main loop's _captured_pos lookup at
+        # line 3149 returns None and the trade_ledger.record_trade silently
+        # fails, losing the trade row. (P1 bug: 6+ LLM_EXIT_AGENT closes missing
+        # from ledger across the day.) Keep the closed position in dict until
+        # its pending event has been processed.
         from execution.position_state import CLOSED as _CLOSED
+        _pending_syms = {e.symbol for e in getattr(self, '_pending_exit_events', [])}
         stale = [s for s, p in self.pos_mgr.positions.items()
-                 if p.state == _CLOSED and s not in open_pos]
+                 if p.state == _CLOSED and s not in open_pos and s not in _pending_syms]
         for s in stale:
             del self.pos_mgr.positions[s]
 

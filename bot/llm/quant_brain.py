@@ -313,7 +313,88 @@ class QuantBrain:
         # Load recent trade outcomes from trades.csv if available
         self._load_recent_outcomes()
 
+        # 2026-06-07: Live calibrations replace hardcoded constants.
+        # _calibrations holds per-setup base win-probs computed from live trade DNA
+        # (refreshable). _default_wp is the system baseline computed dynamically.
+        # _calibration_overrides is read from bot/data/quant_brain_overrides.json
+        # for manual intervention (e.g. force a specific setup to a known value).
+        self._calibrations: Dict[str, float] = {}
+        self._default_wp: float = _DEFAULT_WIN_PROB  # fallback to constant until refresh
+        self._calibration_overrides: Dict[str, float] = {}
+        self._calibration_last_refresh: float = 0.0
+        self._refresh_calibrations(initial=True)
+
         logger.info("[QUANT-BRAIN] Initialized — rule-based pipeline active (0 API calls)")
+
+    # ── Calibration management ───────────────────────────────────────
+
+    def _refresh_calibrations(self, initial: bool = False) -> None:
+        """Recompute setup-base WPs from live trade DNA + check for overrides.
+
+        Live calibrations replace stale hardcoded `_SETUP_WIN_PROBS`.
+        Override file at `bot/data/quant_brain_overrides.json` always wins —
+        lets operator manually pin a value (e.g. for a known regime).
+
+        Called on init and on demand via `refresh_calibrations()`.
+        """
+        import os, json
+        import time as _t
+        # Step 1: pull live WR per setup from trade DNA if available
+        live: Dict[str, float] = {}
+        try:
+            from llm.deep_memory import get_deep_memory
+            dm = get_deep_memory()
+            setup_wr = dm.trade_dna.get_win_rate_by("setup_type") if hasattr(dm, "trade_dna") else {}
+            for setup, info in (setup_wr or {}).items():
+                if isinstance(info, dict):
+                    n = info.get("n", 0) or info.get("total", 0) or 0
+                    wr = info.get("wr", info.get("win_rate", None))
+                    if wr is not None and n >= 5:
+                        live[setup] = float(wr)
+        except Exception as e:
+            logger.debug(f"[QUANT-BRAIN] live trade DNA unavailable: {e}")
+
+        # Step 2: pull system baseline as the new default_wp
+        try:
+            from llm.agents.dynamic_stats import get_system_baseline
+            base_wr, _ = get_system_baseline()
+            self._default_wp = max(0.20, min(0.80, base_wr))  # safety clamp
+        except Exception as e:
+            logger.debug(f"[QUANT-BRAIN] dynamic baseline unavailable: {e}")
+            self._default_wp = _DEFAULT_WIN_PROB
+
+        # Step 3: blend live with safe hardcoded fallback (60% live / 40% prior)
+        merged = dict(_SETUP_WIN_PROBS)  # start from prior
+        for setup, wr in live.items():
+            prior = _SETUP_WIN_PROBS.get(setup, self._default_wp)
+            merged[setup] = round(0.6 * wr + 0.4 * prior, 3)
+
+        # Step 4: apply overrides (always wins)
+        try:
+            ov_path = os.path.join(os.path.dirname(__file__), "..", "data", "quant_brain_overrides.json")
+            if os.path.exists(ov_path):
+                with open(ov_path) as f:
+                    ov = json.load(f)
+                self._calibration_overrides = {k: float(v) for k, v in ov.get("setup_wp", {}).items()}
+                if "default_wp" in ov:
+                    self._default_wp = float(ov["default_wp"])
+                merged.update(self._calibration_overrides)
+        except Exception as e:
+            logger.warning(f"[QUANT-BRAIN] override file load failed: {e}")
+
+        self._calibrations = merged
+        self._calibration_last_refresh = _t.time()
+        src = "init" if initial else "refresh"
+        logger.info(
+            f"[QUANT-BRAIN] Calibrations {src}: {len(self._calibrations)} setups, "
+            f"default_wp={self._default_wp:.2f}, overrides={len(self._calibration_overrides)}, "
+            f"live_sourced={len(live)}"
+        )
+
+    def refresh_calibrations(self) -> Dict[str, float]:
+        """Public API to force recalibration. Returns current calibration dict."""
+        self._refresh_calibrations(initial=False)
+        return dict(self._calibrations)
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -639,8 +720,11 @@ class QuantBrain:
         # if setup_key in _TOXIC_SETUPS:
         #     return TradeThesis(action="skip_toxic", ...)
 
-        # ── Get base win probability ──
-        base_wp = _SETUP_WIN_PROBS.get(setup_key, _DEFAULT_WIN_PROB)
+        # ── Get base win probability (live calibration, override-aware) ──
+        # 2026-06-07: replaced hardcoded _SETUP_WIN_PROBS with self._calibrations
+        # which is computed from live trade DNA on init + refreshable. Overrides
+        # from bot/data/quant_brain_overrides.json take precedence.
+        base_wp = self._calibrations.get(setup_key, self._default_wp)
 
         # Override with live win_prob if available from signal metadata
         if win_prob_meta is not None and isinstance(win_prob_meta, (int, float)):
@@ -726,21 +810,33 @@ class QuantBrain:
                     vol_adj = -0.08  # Low/normal vol: PF <0.80
                     vol_note = f"BTC low vol (ATR%={atr_pct:.2f}%) — negative EV"
 
-        # ── Bearish market haircut ──
-        # When the regime is bearish (price < EMA20 < EMA50), BUY signals get
-        # a confidence haircut. Buying dips in a bear market is the #1 money loser.
-        # The 2026-03-25 selloff: 3/4 sim trades were HYPE LONG during 8% drop.
+        # ── Bearish market haircut (now data-derived, not hardcoded) ──
+        # 2026-06-08: hardcoded -8%/-12% bear penalties were killing counter-trend
+        # mean-reversion setups. Now we pass the bear/trending_bear regime + side
+        # alignment as a DATA POINT for downstream agents and apply a SMALLER,
+        # softer haircut so the LLM can override based on counter-trend evidence
+        # (RSI divergence, oversold extreme, support hold, etc.).
+        # The full historical penalty data is surfaced in `bear_note` so the LLM
+        # sees WHY this trade is being flagged.
         bear_haircut = 0.0
         bear_note = ""
         if signal.side == "BUY" and regime.bias == "bearish":
-            bear_haircut = -0.08  # -8% WP penalty for buying into bearish regime
-            bear_note = "bearish regime haircut on BUY"
+            # Softened from -8% to -3% — advisory, not destructive
+            bear_haircut = -0.03
+            bear_note = (
+                "BUY into bearish bias — historical -8% penalty applied as -3% advisory. "
+                "Counter-trend BUYs (RSI divergence, support hold) can still have edge."
+            )
             if regime.regime == "trending_bear":
-                bear_haircut = -0.12  # Full bear trend = stronger penalty
-                bear_note = "trending bear: strong haircut on BUY"
+                # Softened from -12% to -5%
+                bear_haircut = -0.05
+                bear_note = (
+                    "BUY into trending_bear — historical -12% penalty applied as -5% advisory. "
+                    "Strong counter-trend evidence required to override."
+                )
         elif signal.side == "SELL" and regime.bias == "bearish":
-            bear_haircut = 0.04  # +4% WP bonus for shorting in bearish regime
-            bear_note = "bearish regime bonus on SELL"
+            bear_haircut = 0.04
+            bear_note = "SELL aligned with bearish bias — +4% confluence bonus"
 
         final_wp = max(0.0, min(1.0, base_wp + rsi_adj + vol_adj + bear_haircut))
 
