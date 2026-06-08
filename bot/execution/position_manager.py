@@ -594,6 +594,40 @@ class PositionManager:
                             f"SL moved to breakeven+buffer {be_sl:.4f}"
                         )
 
+                # ── MFE-ABSOLUTE PROFIT LOCK (2026-06-08) ──
+                # The R-multiple triggers above only fire on positions with TIGHT stops.
+                # For wide-SL positions (like HYPE LONG -5.76% from entry), 1.2R needs
+                # ~7% MFE to trigger — but our typical winners only see 0.25-1% MFE
+                # before reversing. The HYPE LONG -$222 (2026-06-08 08:25) was +$52
+                # winning at 08:02 but never came close to R-multiple BE trigger.
+                #
+                # This MFE-absolute trigger fires on % move regardless of SL distance.
+                # Conservative threshold: 0.3% favorable (covers ~0.08% round-trip fees).
+                # Fires only after 5min hold to avoid microstructure noise.
+                if pos.opened_at:
+                    _age_s = (datetime.now(timezone.utc) - pos.opened_at).total_seconds()
+                    if _age_s > 300:  # >5min, past initial noise
+                        if is_long:
+                            _mfe_pct = (current_price - pos.entry) / pos.entry
+                        else:
+                            _mfe_pct = (pos.entry - current_price) / pos.entry
+                        # 0.3% MFE = covers fees + minimum buffer
+                        if _mfe_pct >= 0.003:
+                            fee_buffer = pos.entry * (self.taker_fee_bps * 2 / 10000.0 + 0.001)
+                            mfe_be_sl = (pos.entry + fee_buffer) if is_long else (pos.entry - fee_buffer)
+                            if is_long and pos.sl < mfe_be_sl:
+                                pos.sl = mfe_be_sl
+                                logger.info(
+                                    f"[{symbol}] MFE PROFIT LOCK: MFE {_mfe_pct*100:.2f}% >= 0.30% "
+                                    f"(age {_age_s/60:.1f}m) -> SL to breakeven+fee {mfe_be_sl:.4f}"
+                                )
+                            elif not is_long and pos.sl > mfe_be_sl:
+                                pos.sl = mfe_be_sl
+                                logger.info(
+                                    f"[{symbol}] MFE PROFIT LOCK: MFE {_mfe_pct*100:.2f}% >= 0.30% "
+                                    f"(age {_age_s/60:.1f}m) -> SL to breakeven+fee {mfe_be_sl:.4f}"
+                                )
+
                 # Lock-in trigger (above breakeven)
                 if unrealized_r >= _lock_trigger:
                     if is_long:

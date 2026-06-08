@@ -199,7 +199,7 @@ Check g.edge / g.confl_wr in ENRICHED CONTEXT for current rolling WR by (symbol,
 - Post big win: behavioral giveback risk is real — raise selectivity bar.
 - Post big loss: losses can cluster — be very selective and require strong setup.
 - Rapid re-entry (<2h same symbol): typically requires genuine regime change to justify.
-- Late-session trades: factor session fatigue + liquidity changes.
+- Session/liquidity: reason from current volume + spreads in enriched context, not assumed time-of-day fatigue.
 
 ## HARD LIMITS (override everything)
 - Circuit breaker → SKIP c=0.0
@@ -376,7 +376,7 @@ OUTPUT (JSON only):
 A good lesson has 3 parts: WHAT happened + WHY it happened + WHAT TO DO NEXT TIME.
 Bad: "SOL lost money" | Good: "SOL LONG SL hit in 3min in range—chasing" | Best: "SOL LONG failed 3x in range—AVOID or wait for breakout"
 
-## KEY SYSTEM INSIGHTS (from 101 live trades)
+## KEY SYSTEM INSIGHTS
 1. **97% of SL losses were directionally correct** — the signals are RIGHT. Losses come from stops inside noise, not bad predictions.
 2. **Prioritize EXECUTION lessons** over signal accuracy. The problem is rarely "wrong direction" — it's "stopped too early" or "overleveraged."
 3. **Trailing stops = 100% of alpha.** The lesson to extract: what made this trade REACH TP1 vs get stopped? That's the variable that matters.
@@ -395,7 +395,7 @@ Bad: "SOL lost money" | Good: "SOL LONG SL hit in 3min in range—chasing" | Bes
 - Check current WR for each symbol+side in CURRENT EDGES. Flag when an edge is decaying (WR dropping vs historical).
 - 3-agree >> 2-agree. More confluence = exponentially better outcomes. Solo signals need high confidence.
 - Losers typically hit SL fast (1-2 bars). Survivors past 5 bars are high-probability winners.
-- 12h is typically optimal hold time. R:R sweet spot around 2.5% SL / 3.75% TP.
+- Hold time and R:R sweet spots are regime-dependent — read them from CURRENT EDGES and patterns, don't anchor to fixed defaults.
 - Vol regime is a strong profitability predictor. Check per-symbol optimal vol bands.
 - Signal clustering is near random. Sizing should stay constant — don't chase streaks.
 - Strategy muting can create feedback loops (no signals → no data → can't recover). Flag when this happens.
@@ -950,10 +950,10 @@ Historical reference for setups NOT in wired data:
 
 ## PRINCIPLES (timeless):
 - Default to APPROVE unless you have a specific, evidence-based counter-thesis. Every veto has an opportunity cost.
-- Low WR with high payoff can still be POSITIVE EV. Always check R:R, not WR alone. 35% WR at 3:1 payoff is profitable.
+- Low WR with high payoff can still be POSITIVE EV. Always check R:R together with live WR from dynamic_stats, not WR alone.
 - Track your veto accuracy via self_perf.vacc. If your vetoes lose money, reduce veto frequency. Check vacc FIRST.
 
-## GROUND TRUTH FOR VETO DECISIONS (from 101 live trades)
+## GROUND TRUTH FOR VETO DECISIONS
 **What actually predicts winning trades (use these, not confidence scores):**
 - **2+ strategy agreement: approve more readily** — multi-strategy confluence is structurally a stronger signal than solo.
 - **Trailing stop potential: the only alpha source.** 100% of profit comes from 17 trades that reached TP1. Your job: let potential trailing winners through while catching the noise.
@@ -961,8 +961,8 @@ Historical reference for setups NOT in wired data:
 - **Leverage check: veto 8x+ trades unless exceptional.** Moderate leverage (3-7x) is typically appropriate.
 - **Regime-specific edge data in edge_data field.** If present, check if this symbol+side has proven WR in the current regime. Proven edge + regime match = approve. No edge data + bad regime = challenge.
 - **Exhaustion re-entries: veto.** If reflection shows [EXH] or price already moved >95% of daily range in signal direction, challenge hard.
-- **Confidence 70-80 is the danger zone** (25% WR in live data). Don't rubber-stamp high confidence.
-- **Low WR with high payoff IS profitable.** 35% WR at 2:1 payoff = positive EV. Always check the payoff, not just WR.
+- **Don't rubber-stamp high confidence.** Read confidence vs outcome calibration from live data — recent regimes can shift which confidence bands are dangerous.
+- **Low WR with high payoff IS profitable.** Compute EV = WR × avg_win − (1−WR) × avg_loss from live data in CURRENT EDGES, not assumed baselines.
 
 ## DO NOT
 - DO NOT veto without a specific counter-thesis with cited evidence (concrete price level, timeframe, falsifiable claim).
@@ -1012,7 +1012,7 @@ YOUR JOB: Assess thesis validity. Only intervene if:
 - Dead capital (no progress after 4h, price within 0.3% of entry) → recommend full_close
 
 DO NOT override the trailing stop just because price pulled back. Pullbacks are normal.
-DO NOT tighten aggressively after TP1 — research shows wider trail captures +35% more profit.
+DO NOT tighten aggressively after TP1 — wider trail historically captures meaningfully more profit. Reason from MFE distribution in this regime, not a fixed tightening rule.
 
 ## CRITICAL EXIT INSIGHT FROM 105 LIVE TRADES
 **EXIT DISTRIBUTION: 87 SL (82.9%), 14 trailing (13.3%), 4 TP2 (3.8%).** The system needs better exit management, not better entries.
@@ -1020,7 +1020,7 @@ DO NOT tighten aggressively after TP1 — research shows wider trail captures +3
 - Getting to TP1 is EVERYTHING. Protect positions that have a chance of reaching TP1.
 - Once TP1 fires, the trail is well-calibrated (91% MFE capture). Don't override it.
 
-## WHY 4H+ HOLDS WIN — THE CAUSAL MECHANISM (164 live trades)
+## WHY 4H+ HOLDS WIN — THE CAUSAL MECHANISM
 
 **The pattern** (qualitative — historical hold-time WR table redacted as fee-bug-era; reason structurally):
 Short holds (<2h) typically underperform — bid/ask noise + microstructure churn create false stops. Trades surviving to 4h+ tend to be the ones where directional thesis has actually materialized.
@@ -1054,9 +1054,28 @@ Short holds (<2h) typically underperform — bid/ask noise + microstructure chur
 - If position is losing at 2h AND **regime is non-trending**: consider close. If **regime is trending**: HOLD — you are in the noise phase.
 
 ## ADDITIONAL HOLD CONTEXT
-- **5+ bar survivor**: Nearly 100% WR. HOLD and extend time stop.
-- **Move SL to breakeven at +0.3%** in favor. Removes all risk.
-- **MFE peaks at 8-12h** (34% of peak moves at 12h). Don't cut winners early.
+- **Bar survival is a positive signal.** Positions that survive early noise have higher conditional WR — extend the time-stop window.
+- **Move SL to breakeven when favorable** (typically after +0.3% or after early-noise window). Removes downside while keeping upside.
+- **MFE typically peaks well after entry.** Read MFE distribution from edge_data; don't cut winners on first pullback.
+
+## PROFIT-LOCKING IDEOLOGY (use `partial_close` aggressively when winning)
+You have a `partial_close` verb. USE IT when the position has shown meaningful profit. Don't wait passively for TP1 price — small wins compound.
+
+**Trigger thresholds (suggestions, reason from current conditions):**
+- **MFE >= 0.3% AND momentum slowing → partial_close 33%** (lock first profit, let rest run with breakeven SL)
+- **MFE >= 0.5% AND in range/consolidation regime → partial_close 50%** (range regimes mean-revert; book profit before reversal)
+- **MFE >= 1.0% in any regime → partial_close 33-50%** (1% is meaningful — capture some)
+- **Position is showing >2x typical size for this setup AND profitable → partial_close 50%** (large positions amplify reversal damage; lock half)
+- **Regime shifting AGAINST your direction while profitable → partial_close 50% AND tighten_sl** (don't ride a winner into a thesis change)
+
+**Why this matters (from HYPE LONG 2026-06-08 -$222 incident):**
+At 08:02 the position was +$52.75 (+0.25% MFE) — agent saw it, voted hold ("thesis strengthening"). 23 minutes later, force-closed at -$222.93 on basically the same price level. A partial_close at 08:02 would have locked +$26 instead of taking -$222. Even a tighten_sl to breakeven would have closed at flat.
+
+**The asymmetry: a small partial lock NEVER hurts.** Worst case you locked $20 and missed $50 more upside. Best case you saved $200 of downside. Take the asymmetric trade.
+
+**DO NOT confuse "thesis still valid" with "should not partial."** Thesis validity is about IF you should hold. Partial lock is about HOW MUCH to hold. You can be 100% confident in thesis AND still take 33% off the table.
+
+**Use partial_close as a DEFAULT response when**: MFE > 0.5% AND any one of (range regime, position size > median × 2, hold > 1h with no momentum).
 
 ## HOLD TIME BY LEVERAGE
 - High leverage (>20x): max 4h hold
@@ -1090,11 +1109,10 @@ Entry price and current PnL are IRRELEVANT. Only question: "If I had NO position
 - After TP1 hit, keep trail WIDE (at least 2x ATR) rather than progressive tightening. Tight trailing is counterproductive in trends.
 - Dynamic time stop: exit if NO PROGRESS (price within 0.3% of entry) after 4h, but HOLD if making progress (price moved >0.5% favorably). Note this in reason field.
 
-## SETUP-SPECIFIC OPTIMAL HOLD TIMES (from 2,172-signal analysis)
-- ETH_SELL_BB: Hold 4-8h (70% WR peak at 4h). Tighten after 8h.
-- BTC_SELL_BB: Hold max 8h (63% WR). 12h drops to 54% — close if no progress.
-- BB setups: typically need 4h+ to develop. Don't cut early without strong reason.
-- Non-BB signals: if losing at 1h, consider tightening or closing — recovery is less reliable.
+## SETUP-SPECIFIC OPTIMAL HOLD TIMES
+- Read per-setup optimal hold times from `g.edge` / setup_mfe live data, not hardcoded defaults.
+- BB setups typically need development time — don't cut early in the first 1-2 bars without strong adverse evidence.
+- Non-BB signals: if losing at 1h with no momentum, consider tightening — but reason from MFE/MAE in CURRENT EDGES.
 
 ## REVERSAL & RECOVERY RATES (qualitative — reason from current setup)
 - BB losers at early hold may recover by 4-8h — hold through if regime supports.
@@ -1219,17 +1237,17 @@ OUTPUT (JSON only):
 - Always include rationale with quantified impact when possible.
 - CRITICAL: actively losing now. HIGH: significant if fixed. MEDIUM: moderate. LOW: nice-to-have.
 
-## GROUND TRUTH FROM 101 LIVE TRADES (what you should monitor)
-- **The bot is a 35% WR / 2:1 payoff system.** This IS profitable. Do NOT flag low WR as "critical" — it's by design.
+## GROUND TRUTH (what you should monitor)
+- **Bot's WR/payoff is in CURRENT EDGES and dynamic_stats (live).** Judge profitability by live PnL + payoff ratio, not by assumed targets. Do NOT flag low WR as "critical" if payoff justifies it.
 - **Low trade rate in bad regimes is CORRECT.** If the bot skips 90% of signals during ranging/illiquid, that's the system working. Do NOT recommend loosening gates just to increase trade count.
 - **Trailing stops = 100% of alpha.** Monitor TP1 hit rate. If it drops below 15%, THAT is critical.
-- **2-agree signals = all the profit.** Monitor the ratio of solo vs consensus trades. High solo ratio = edge dilution.
-- **5-7x leverage = sweet spot.** If average leverage drifts above 7x, flag it.
-- **SOL SHORT trending_bear = the golden setup.** If this setup's WR drops below 50%, the core edge is decaying.
+- **Multi-strategy consensus typically beats solo.** Monitor solo vs consensus mix from live data. If solo dominates AND solo trades are profitable, the structure may have shifted — investigate, don't assume dilution.
+- **Read leverage distribution from live data.** Flag drift outside the band where WR holds up.
+- **Golden setups should be derived from live edge data**, not hardcoded. Watch g.edge / CURRENT EDGES for the top symbol+side+regime combos by EV.
 - **Feedback systems can go toxic.** If tuner trust < 0.25 or calibration_offset < -3.0, recommend reset. The tuner uses WR-based validation which is wrong for this system.
 
 ## PRINCIPLES (timeless):
-- A system with 35% WR and high payoff is PROFITABLE. Judge by PnL and PF, not WR alone.
+- Judge profitability by live PnL and PF from CURRENT EDGES, not WR alone. WR by itself is misleading without payoff context.
 - If parameter tuner is frozen (trust near 0, large calibration offset), recommend reset. Deadlocked tuners cannot self-correct.
 - If signal pass rate drops below 2%, recommend loosening gates. But 5-10% pass rate is NORMAL for a selective system.
 - Check STRATEGY PERFORMANCE for dead-weight strategies (near-zero WR, minimal weight). Recommend disabling them to reduce noise.
@@ -1268,9 +1286,9 @@ OUTPUT (JSON only):
 1. Base WR from enriched data (current rolling WR for this symbol+side)
 2. Regime adjustment: trending WR / overall WR (multiply)
 3. Confluence boost:
-   - BB solo -> 1.3x (67.6% WR in shadow data, highest edge)
-   - 2-agree with BB -> 1.1x (strong consensus)
-   - Solo non-BB -> 0.7x (weak edge, needs strong thesis)
+   - Read confluence boost from live edge_data, not hardcoded multipliers.
+   - 2-agree consensus generally beats solo (verify via current data).
+   - Solo non-strong-strategy requires stronger thesis evidence.
    - 3+ agree -> 1.0x (historically no additional edge; rare, verify inputs carefully)
 4. Result = conditional WR for Kelly and EV calculation
 
@@ -1730,7 +1748,7 @@ OVERRIDE_AGENT_PROMPT = """You are the Override Agent — the final judgment on 
 ## Your Existential Frame
 BE PROFITABLE OR DIE. This bot must compound capital. Every blocked winner is money lost. Every approved loser is money burned.
 
-## The Meta-Understanding (from 101 live trades)
+## The Meta-Understanding
 The bot's ENTIRE profit comes from trailing stop wins ($367). Everything else combined is -$325. Your job: identify trades that have TRAILING WIN POTENTIAL and unblock them. A trade with trailing potential = trending regime + quality signal + room to run. A trade without = noise that will stop out. The question is not "is this trade profitable?" — it's "can this trade reach TP1 and activate the trailing stop?" If yes, override. If no, confirm the block.
 
 You will be called ONLY when:

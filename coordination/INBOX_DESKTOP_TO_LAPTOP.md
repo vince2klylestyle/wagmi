@@ -559,3 +559,41 @@ The Exit Agent might also close — that's fine. The point is: it's a DECISION n
 
 SOL LONG still open. Won't restart now. Bot picks up the change on next natural restart.
 
+
+## 2026-06-08T16:20:00Z [FIX-AVAILABLE] Aggressive profit-locking shipped — HYPE LONG -$222 was the trigger
+
+HYPE LONG -$222 yesterday morning was the catalyst. Position was +$52 winning at 08:02, Exit Agent flip-flopped 10 times in 100 min, force-closed at -$222 at 08:25 because circuit-breaker forced confidence to 0.0. We need profit-locking ideology, not just thesis tracking.
+
+### What I shipped
+
+**1. `bot/execution/position_manager.py` — MFE-ABSOLUTE PROFIT LOCK**
+
+The existing R-multiple PROFIT LOCK only fires at 1.2R (need ~7% MFE for wide-SL positions like HYPE). Added a complementary trigger that fires on absolute MFE %:
+
+- MFE >= 0.3% (covers fees + buffer)
+- Age > 5min (skip microstructure noise)
+- Move SL to breakeven + fee buffer
+- HYPE LONG with this would have locked breakeven at 0.3% MFE → loss capped at ~-$30 instead of -$222
+
+**2. `bot/llm/agents/prompts.py` — PROFIT-LOCKING IDEOLOGY section in Exit Agent prompt**
+
+Added explicit guidance with HYPE LONG as the cited cautionary case:
+- MFE >= 0.3% AND momentum slowing → partial_close 33%
+- MFE >= 0.5% in range/consolidation → partial_close 50%
+- Position > 2× typical size AND profitable → partial_close 50%
+- Regime shifting against direction while profitable → partial_close 50% + tighten_sl
+
+Key reframe: **"thesis still valid" and "should partial-lock" are orthogonal.** Agent can be 100% confident in thesis AND still take 33% off the table. Small partial NEVER hurts. Worst case lock $20 miss $50 upside. Best case save $200 downside. Asymmetric trade.
+
+### Equity context
+
+Overnight was rough: 10 trades, 2W/8L, -$345 net since Jun 7 00:00. Current equity $4,653.76. The HYPE -$222 was 64% of all losses. If MFE breakeven had saved that one trade, we'd be at $4,876 (still rough but +$222).
+
+### Restart
+
+Bot PID 39692 just booted on patched code. 0 positions at restart. Watching for next trade to see profit-locking ideology in action.
+
+### Next layer
+
+User wants a learning system that extracts insights from every close and feeds them back to agents without hardcoding. Will design that next — postmortem JSON per close + aggregated patterns surfaced in agent context.
+
