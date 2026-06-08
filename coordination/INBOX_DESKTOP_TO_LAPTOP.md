@@ -854,3 +854,42 @@ So desktop-overdrive is now durable. The bot reads from working tree which match
 
 43888 alive on full patched code (bear haircut + override fix + all batch 1 & 2 changes).
 
+
+## 2026-06-08T17:45:00Z [SHIPPED] Quant Brain — RSI + ATR-band hardcoded calibrations STRIPPED
+
+Nunu pushed back hard: "isn't Quant Brain just a bunch of hardcoded data?" — and he was right. The bear haircut fix in batch 2 was partial.
+
+### What got stripped this batch
+
+`bot/llm/quant_brain.py` lines 744-818:
+
+**RSI sweet spot** — was +3% WP for 35-65 band, -8% for <30, -10% for >75 (hardcoded). Now: tiny ±0.02 directional hint + descriptive `rsi_note` that explains the band context. LLM decides if RSI band matters in current regime.
+
+**ATR-band PF claims** — was setup-specific:
+- HYPE_BUY 1.40-1.69% ATR = +8% (PF 3.51, WR 73.9%)
+- SOL_SELL 0.80-0.98% ATR = +6% (PF 1.75, WR 61.5%)
+- BTC_BUY 0.92-1.03% ATR = +8% (PF 3.13, WR 66.2%)
+
+All gone. Only 3 setups got special treatment, the rest got nothing. Now ALL setups get an ATR% categorization (LOW / NORMAL / HIGH / VERY HIGH / EXTREME) passed as `vol_note` to LLM. No WP adjustment.
+
+### Architectural direction
+
+Quant Brain should be a FEATURE COMPUTER, not a DECISION MAKER. Going forward:
+- Compute features (RSI, ATR%, funding, OI, regime) — yes
+- Categorize them with context notes — yes
+- Apply hardcoded WP/sizing adjustments — NO
+- Let LLM weigh features against regime + alpha ops — YES
+
+### Verified live
+
+Bot PID 43132 booted at 17:41:46 UTC. BTC BUY signal: `wp=36% tier=STANDARD critic=pass` — without the hidden RSI/ATR boost the wp is lower (closer to true setup baseline). That's the right behavior — agents now see honest probabilities.
+
+### Still hardcoded in Quant Brain (next pass)
+
+- `_REGIME_RISK_MULT` dict (trending_bull=1.2, panic_oversold=0.4)
+- RSI streak bounce rules (3+ red + RSI 28-40 = 79% bounce)
+- Confluence combo bonuses
+- Fallback `_SETUP_WIN_PROBS` dict (when live data unavailable)
+
+Those are the next strip targets.
+
