@@ -924,3 +924,30 @@ Going down the list:
 
 Bot restarting on this code. Will continue stripping autonomously next cycle.
 
+
+## 2026-06-08T18:40:00Z [SHIPPED] Batch 6 — Ensemble combo + consensus hardcoded multipliers stripped
+
+### What got stripped
+
+`bot/strategies/ensemble.py`:
+- `_COMBO_EDGE` dict (5 hardcoded multipliers like CS+PE = 1.08x, BB+CS+PE 3-way = 1.12x). Calibrated to "PF=4+ in 90d" — stale.
+- `_CONSENSUS_MULT` regime × n-agree dict (trending_bull/4-agree = 1.20x, panic/4-agree = 1.03x, redundant 4-agree = 0.92x penalty). Hardcoded grid.
+
+Both replaced with neutral 1.0x. Strategy composition + independent group count are now logged as DATA for the LLM to weigh.
+
+### Why
+
+The combination of strategies firing IS still useful information. The question is WHO weighs it. Hardcoded multipliers froze the calibration in the code; the LLM gets to weigh it with current regime + alpha-ops + live edge data going forward.
+
+### Total strip count today
+
+10 mechanical → LLM-data refactors across 6 batches:
+- batch 1: 5 strategy + signal-pipeline files
+- batch 2: win_prob floor + bear haircut advisory
+- batch 3: quant brain override null-handling
+- batch 4: RSI + ATR-band hardcoded calibrations
+- batch 5: regime risk mult dict + toxic setup label
+- batch 6: combo edge + consensus mult dicts
+
+Bot restarting on batch 6 code. Continuing autonomously.
+
