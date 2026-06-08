@@ -951,3 +951,25 @@ The combination of strategies firing IS still useful information. The question i
 
 Bot restarting on batch 6 code. Continuing autonomously.
 
+
+## 2026-06-08T19:30:00Z [SHIPPED] Batch 7 — Ensemble WP deflation matrix stripped
+
+`bot/strategies/ensemble.py`:
+- `_WP_DEFLATION` 24-value grid removed. Was {n_independent: {regime: factor}} — e.g. 1-strategy/panic = 0.35x.
+- Now: small universal deflation (0.88x solo → 0.95x quad-independent) as a tiny realism haircut.
+
+### Why this mattered
+
+The 1-strategy/panic = 0.35x deflation meant any solo signal in panic regime had its WP cut by 65% mechanically. That made EV systematically negative → downstream gate rejected → trade never happened. Meanwhile the quant_brain WP we just live-calibrated was already the honest number.
+
+The 24-value grid was double-deflating signals.
+
+### Batch tally
+
+- batch 6: combo edge + consensus mult (ensemble.py)
+- batch 7: WP deflation matrix (ensemble.py)
+
+Going to also pass through the rest of ensemble.py for related hardcoded weights I missed, then move to feedback layer (confidence floor, Kelly engine).
+
+Bot restarting. Still 0 positions, equity $4,653.76.
+

@@ -2257,29 +2257,20 @@ class EnsembleStrategy:
         rr_tp1 = abs(entry - best_tp1) / stop_width if stop_width > 0 else 0
         rr_tp2 = abs(entry - best_tp2) / stop_width if stop_width > 0 else 0
         raw_win_prob = combined_conf / 100.0
-        # Win probability deflation: regime-aware calibration.
-        # Trending regimes have empirically higher WR (58-86%), so deflate less.
-        # High-vol/range regimes have lower WR, so deflate more.
-        # Format: {n_independent: {regime: deflation_factor}}
-        # CRITICAL FIX: Use n_independent (methodology groups) not n_agree (raw count).
-        # 3 strategies from 3 independent methodologies = high-quality signal, less deflation.
-        # 3 strategies from 1 methodology = redundant signal, more deflation.
-        _WP_DEFLATION = {
-            4: {"trending_bull": 0.93, "trending_bear": 0.90, "consolidation": 0.92,
-                "range": 0.85, "high_volatility": 0.80, "panic": 0.75},
-            3: {"trending_bull": 0.85, "trending_bear": 0.82, "consolidation": 0.88,
-                "range": 0.78, "high_volatility": 0.72, "panic": 0.68},
-            2: {"trending_bull": 0.75, "trending_bear": 0.72, "consolidation": 0.70,
-                "range": 0.65, "high_volatility": 0.60, "panic": 0.55},
-            1: {"trending_bull": 0.55, "trending_bear": 0.52, "consolidation": 0.50,
-                "range": 0.45, "high_volatility": 0.40, "panic": 0.35},
-        }
-        _DEFAULT_DEFLATION = {4: 0.88, 3: 0.80, 2: 0.65, 1: 0.50}
+        # 2026-06-08: hardcoded _WP_DEFLATION matrix removed (24 grid values).
+        # The deflation values (e.g. 1-strategy / panic = 0.35x) were calibrated
+        # to specific historical regimes. Applying them mechanically meant the
+        # EV calculation downstream was systematically pessimistic for solo
+        # signals in non-trending regimes — which silently rejected many trades
+        # via the negative-EV gate.
+        # Now: minimal deflation (0.90x) as a small caution-toward-realism
+        # haircut. The honest WP from quant_brain (already live-calibrated)
+        # is more accurate than these stale multipliers. LLM decides downstream.
         _regime_ev = self._current_regime.get(symbol, "unknown")
         _indep_key = min(n_independent, 4)
-        _deflation = _WP_DEFLATION.get(_indep_key, {}).get(
-            _regime_ev, _DEFAULT_DEFLATION.get(_indep_key, 0.65)
-        )
+        # Tiny universal deflation acknowledging confidence > WR mismatch in noise.
+        # Stronger consensus (more independent groups) deflates slightly less.
+        _deflation = {4: 0.95, 3: 0.93, 2: 0.90, 1: 0.88}.get(_indep_key, 0.90)
 
         # Setup-specific edges from shadow ledger analysis (2026-04-15).
         # Finding 11 rewrite: the old `_PROVEN_SETUP_FLOOR` collapsed the
