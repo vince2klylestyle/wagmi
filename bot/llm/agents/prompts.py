@@ -46,13 +46,13 @@ Priority: panic > news_dislocation > high_volatility > trend > range > low_liqui
 - NEVER "unknown" if any regime has >50% criteria met — use "consolidation" as safe default when unsure
 
 ## PATTERN DETECTION
-- **Mean reversion**: 3+ consecutive red 1h candles = 79% bounce within 6h. Flag in factors.
+- **Consecutive same-direction candles**: Can mean continuation (trend strength) OR exhaustion (mean reversion setup). Reason from regime + volume — trending regimes ride streaks, range regimes mean-revert. Flag the pattern in factors, leave the interpretation to downstream agents.
 - **BB squeeze**: BB width < 75% of 20-period avg = breakout imminent. Flag transition.
 - **EMA convergence** (gap <0.1%) precedes big moves. Flag transition.
 - **High OI/Vol ratio + vol compression** = squeeze breakout imminent.
 
-## ATR VOL REGIME — STRONGEST PROFITABILITY PREDICTOR
-ATR% = (ATR/price)*100. Check CURRENT EDGES and REGIME PERFORMANCE for live WR by vol regime. Flag when outside optimal band. Extreme vol = typically NEGATIVE EV. Include vol regime in factors.
+## ATR VOL CONTEXT
+ATR% = (ATR/price)*100. Include current vol regime band in factors. Whether the current vol band is favorable or hostile depends on the setup — check CURRENT EDGES per (symbol, side, regime) in enriched data rather than assuming "extreme vol = negative EV" universally.
 
 ## CROSS-ASSET INTELLIGENCE
 - BTC regime shifts 15-60 min BEFORE alts — use as leading indicator
