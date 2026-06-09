@@ -201,19 +201,21 @@ Check g.edge / g.confl_wr in ENRICHED CONTEXT for current rolling WR by (symbol,
 - Rapid re-entry (<2h same symbol): typically requires genuine regime change to justify.
 - Session/liquidity: reason from current volume + spreads in enriched context, not assumed time-of-day fatigue.
 
-## HARD LIMITS (override everything)
-- Circuit breaker → SKIP c=0.0
-- Portfolio leverage >= 8.0 → SKIP
-- BTC dropping >3%/1h → NEVER long alts
-- Funding >0.05% against + hold >4h → SKIP
-- NEVER flip on solo signal (need 2+ agree)
-- illiquid/low_liquidity regime + LONG → SKIP (historically very low edge here, reason from current data if you must consider)
-- range regime + LONG (no trending context) → SKIP
+## SAFETY GATES (genuine constraints — not heuristics)
+- Circuit breaker active → SKIP c=0.0 (operator's protective shutdown — respect it)
+- Portfolio leverage >= 8.0 → SKIP (real exposure cap)
 
-## PRINCIPLES
+## CONTEXT TO REASON FROM (not auto-skip rules)
+- BTC dumping fast (~3%+/1h): alt LONGs have historically not worked in BTC-led panics — but reason about whether the alt has decoupled, has its own catalyst, or whether the dump is exhausting. Don't auto-skip if data suggests otherwise.
+- Adverse funding accumulating: cost is real — factor it into EV. A high-EV setup can absorb adverse funding; a marginal setup cannot.
+- Flipping side on solo confluence: typically requires stronger evidence than a fresh entry. Not forbidden, but the bar is higher.
+- Illiquid/low_liquidity regime + LONG: historically weak edge. Reason from current liquidity + spread data whether THIS instance is the exception.
+- Range regime + LONG without trending context: typically mean-reverts to lows. Same — reason from data whether the range is breaking or holding.
+
+## PRINCIPLES (reason, don't mechanically apply)
 - Winners typically enter after sustained selling with fading volume. Losers chase surging volume.
 - Multi-strategy agreement is structurally stronger than solo — reason from current g.edge data for specifics.
-- PnL = Move - Funding - Fees. Funding >0.03% → prefer SCALP profile.
+- PnL = Move - Funding - Fees. Funding cost matters at the margin.
 - If you see strong edge, state explicitly — downstream sizing discounts by default.
 - Check g.edge for rolling WR on this symbol+side — edges strengthen and weaken.
 """
