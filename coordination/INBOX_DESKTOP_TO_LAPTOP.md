@@ -973,3 +973,38 @@ Going to also pass through the rest of ensemble.py for related hardcoded weights
 
 Bot restarting. Still 0 positions, equity $4,653.76.
 
+
+## 2026-06-09T04:15:00Z [SHIPPED] Batch 8 — confidence floor + rate limit relief
+
+### Changes
+
+**`bot/feedback/adaptive_confidence.py`** — floors lowered:
+- ABSOLUTE_MIN_FLOOR: 50.0 → 20.0
+- DEFAULT_FLOOR: 55.0 → 30.0
+
+Was: adaptive system would block signals below 50% absolute. The LLM never got to see them.
+Now: adaptive system provides advisory data only. ENSEMBLE_CONFIDENCE_FLOOR env (20%) is the actual emission floor. Lower-confidence signals reach the LLM.
+
+**`bot/.env`** (gitignored, local-only) — SCAN_INTERVAL_S 30s → 180s
+- 6x reduction in agent-call rate
+- Addresses the Claude session-limit errors Nunu's been hitting today
+- Takes effect on next natural restart (currently holding BTC SHORT, won't restart till close)
+
+### Open position context
+
+BTC SHORT @ $63,691.50 from 21:09 UTC. MFE profit-lock SL fired and moved SL to $63,564 (~0.2% below entry → profit-lock zone). Lowest price hit $62,442 (-2% favorable peak). Currently managing.
+
+### Why we're hitting rate limits
+
+The multi-agent pipeline fires 5-7 Claude calls per signal:
+- Regime (Haiku, cached 25min usually)
+- Trade (Sonnet — expensive)
+- Risk (Haiku)
+- Critic (Sonnet — expensive)
+- Exit (Haiku, runs on EVERY open position EVERY cycle)
+- Scout (Haiku, idle-time)
+
+At 30s scan interval × 4 symbols × 5-7 calls = 40-56 calls/minute. Claude subscription limits ~ 250 messages/5hr for Pro/Max tier. Plus user's own sessions burn from same pool.
+
+Reducing scan to 180s = 6.6 calls/minute peak. Much safer.
+
