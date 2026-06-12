@@ -1,15 +1,15 @@
 {
-  "last_run": "2026-06-12T15:04:00+00:00",
-  "run_number": 51,
+  "last_run": "2026-06-12T17:04:00+00:00",
+  "run_number": 53,
   "date": "2026-06-12",
-  "generated_at": "2026-06-12T15:04:00+00:00",
-  "bot_status": "OFFLINE — day 50.66",
+  "generated_at": "2026-06-12T17:04:00+00:00",
+  "bot_status": "OFFLINE — day 51.70",
   "today_trades": 0,
   "today_pnl": 0.0,
   "today_wr": null,
-  "current_tod": "AFTERNOON (15:04 UTC) — EVENING SESSION OPENS IN 56 MIN (16:00 UTC). WARM-UP DEADLINE 15:30 UTC (26 MIN). W37 FULLY CLOSED 12:00 UTC (3.07h ago).",
+  "current_tod": "EVENING (17:04 UTC) — EVENING SESSION 1H IN (16:00-22:00 UTC, 4.93H LEFT). W37 FULLY CLOSED 12:00 UTC (5.07h ago). 3RD CONSECUTIVE EVENING MISS IN PROGRESS.",
   "trading_now": false,
-  "anomalies_found": 13,
+  "anomalies_found": 14,
   "report_generated": false,
   "end_of_day_report_pending": true,
   "eod_report_time": "22:00 UTC",
@@ -19,41 +19,42 @@
   "w37_peak_missed": true,
   "w37_nonpeak_missed": true,
   "w37_peak_miss_number": 39,
-  "w37_closed_h_ago": 3.07,
-  "t_evening_session_h": 0.93,
-  "t_w38_deadline_h": 14.43,
+  "w37_closed_h_ago": 5.07,
+  "t_evening_session_h": 4.93,
+  "t_w38_deadline_h": 12.43,
   "cadence_hit": true,
   "cadence_gap_h": 1.0,
-  "cadence_consecutive_hits": 1,
+  "cadence_consecutive_hits": 2,
   "consecutive_morning_misses": 39,
   "consecutive_peak_window_misses": 39,
-  "cumulative_ev_loss_usd": 241.59,
+  "cumulative_ev_loss_usd": 243.53,
   "ev_delta_this_run": 0.97,
   "ev_rate_per_hour": 0.97,
-  "ev_milestone_next": "$250 at T+8.67h if bot stays offline (Jun 12 23:41 UTC)",
+  "ev_milestone_next": "$250 at T+6.67h if bot stays offline (Jun 12 23:41 UTC)",
   "critical_anomalies": [
-    "EVENING_SESSION_JUN12_OPENS_IN_56_MIN_16:00_UTC_WARMUP_DEADLINE_15:30_UTC_26_MIN",
+    "3RD_CONSECUTIVE_EVENING_MISS_IN_PROGRESS — BOT_OFFLINE_1H_INTO_JUN12_EVENING_SESSION (17:04 UTC, 4.93h left)",
     "W37_FULLY_CLOSED_PEAK_AND_NONPEAK_BOTH_MISSED_39TH_CONSECUTIVE",
-    "EV_241.59_RATE_0.97_PER_HOUR_250_MILESTONE_IN_8.67H",
-    "BOT_OFFLINE_DAY50.66",
-    "SOL_SHORT_CONFLICT_UNRESOLVED_423.01H_17.6_DAYS"
+    "EV_243.53_RATE_0.97_PER_HOUR_250_MILESTONE_IN_6.67H",
+    "BOT_OFFLINE_DAY51.70",
+    "SOL_SHORT_CONFLICT_UNRESOLVED_425.01H_17.71_DAYS"
   ],
   "high_anomalies": [
-    "W38_DEADLINE_JUN13_05:30_UTC_T+14.43H",
-    "AB_TRACKER_BROKEN_DAY50.66_20_RULES_FROZEN",
-    "ETH_SELL_REGIME_TREND_WR23PCT_DEMOTION_CANDIDATE_STALE_50D",
-    "CADENCE_NOW_1.0H_HITTING_TARGET_BUT_EVENING_SESSION_IMMINENT"
+    "W38_DEADLINE_JUN13_05:30_UTC_T+12.43H_40TH_MISS_RISK",
+    "AB_TRACKER_BROKEN_DAY51.70_20_RULES_FROZEN",
+    "ETH_SELL_REGIME_TREND_WR23PCT_DEMOTION_CANDIDATE_STALE_51D",
+    "CADENCE_NOW_1.0H_HITTING_TARGET_BUT_3RD_EVENING_MISS_ACCUMULATING"
   ],
   "medium_anomalies": [
-    "SLIPPAGE_TRACKING_BLIND_DAY50.66",
-    "SMALL_N_EDGE_STALENESS_DAY50.66_ETH_SHORT_PROTECT_N5_HYPE_PROBE_N6",
+    "SLIPPAGE_TRACKING_BLIND_DAY51.70",
+    "SMALL_N_EDGE_STALENESS_DAY51.70_ETH_SHORT_PROTECT_N5_HYPE_PROBE_N6",
     "HIGH_VOL_REGIME_BOOST_BORDERLINE_GATE50",
-    "EV_MILESTONE_250_APPROACHING_T+8.67H"
+    "EV_MILESTONE_250_APPROACHING_T+6.67H",
+    "EVENING_SESSION_WARM_UP_MISSED_94MIN_AGO"
   ],
   "positive_developments": [
-    "CADENCE_HIT_1.0H_TARGET_RUN50_TO_RUN51_IMPROVEMENT",
-    "EVENING_SESSION_JUN12_VIABLE_WR65PCT_OPENS_IN_56_MIN",
-    "W38_PRIME_T+15.93H_NEXT_FULL_MORNING_CAPTURE",
+    "CADENCE_HIT_1.0H_TARGET_RUN52_TO_RUN53",
+    "EVENING_SESSION_JUN12_4.93H_REMAINING_STILL_CAPTURABLE",
+    "W38_PRIME_T+12.43H_NEXT_FULL_MORNING_CAPTURE",
     "116_RULES_CODIFIED_87_ACTIVE_STRONG_FOUNDATION"
   ],
   "daily_summary": {
@@ -67,12 +68,12 @@
     "today_wr_vs_baseline": "N/A — no trades"
   },
   "today_opportunities_remaining": {
-    "evening_session": "16:00-22:00 UTC Jun 12 (T+0.93h — 56 MIN) — WARM-UP DEADLINE 15:30 UTC (26 MIN). EVENING_session_boost WR=65% + BB goldens WR 67-70%. DO NOT MISS 3RD CONSECUTIVE EVENING.",
-    "morning_missed": "W37 FULLY CLOSED at 12:00 UTC (3.07h ago). Both peak (07:00-10:00) and non-peak (10:03-12:00) missed.",
-    "status": "RECOVERY_WINDOW_ACTIVE — Evening session only remaining opportunity today. Start bot NOW."
+    "evening_session": "16:00-22:00 UTC Jun 12 (1H IN at 17:04 UTC, 4.93h left). EVENING_session_boost WR=65% + BB goldens WR 67-70% ACTIVE. Bot offline — 3RD CONSECUTIVE MISS. Start bot NOW for remaining 4.93h.",
+    "morning_missed": "W37 FULLY CLOSED at 12:00 UTC (5.07h ago). Both peak (07:00-10:00) and non-peak (10:03-12:00) missed.",
+    "status": "MISS_IN_PROGRESS — Evening session 1h in. Bot not running. Do not complete 3rd consecutive evening miss."
   },
   "tomorrow_focus": {
-    "primary": "W38 deadline Jun 13 05:30 UTC (T+14.43h). Start bot by 05:30 UTC Jun 13. Open 06:00, peak 07:00-10:00.",
+    "primary": "W38 deadline Jun 13 05:30 UTC (T+12.43h). Start bot by 05:30 UTC Jun 13. Open 06:00, peak 07:00-10:00.",
     "symbols_priority": ["ETH", "BTC", "HYPE"],
     "regimes_priority": ["trending"],
     "rules_primed": [
@@ -80,7 +81,7 @@
       "ETH_SHORT_BB_golden WR=70% (gate=80%)",
       "BTC_BUY_BB_golden WR=69% (gate=80%)",
       "SOL_BUY_BB_golden WR=67% (gate=80%)",
-      "EVENING_session_boost WR=65% (gate=20%) — ACTIVE TODAY 16:00-22:00 UTC"
+      "EVENING_session_boost WR=65% (gate=20%) — ACTIVE TODAY 17:04-22:00 UTC (4.93h left)"
     ],
     "avoid": [
       "SOL_SHORT (conflict, gate=100)",
@@ -90,5 +91,5 @@
     ],
     "dev_p0": "AB tracker fix in bot/feedback/loop.py (~2h) — unlocks 20 rules incl BB_solo_signal_boost (n=2172, conf=95%)"
   },
-  "new_finding_run51": "CADENCE HIT 1.0H TARGET (Run 50→51). EV $241.59 (+$0.97). EVENING SESSION OPENS IN 56 MIN (16:00 UTC). Warm-up deadline 15:30 UTC (26 min). START BOT NOW or miss 3rd consecutive evening. W38 deadline Jun 13 05:30 UTC (T+14.43h). SOL_SHORT conflict 423.01h+."
+  "new_finding_run53": "3RD CONSECUTIVE EVENING MISS IN PROGRESS — bot offline 1h into Jun 12 session (17:04 UTC, 4.93h left). EV $243.53 (+$0.97). W38 deadline Jun 13 05:30 UTC (T+12.43h). SOL_SHORT conflict 425.01h+. Cadence ON TARGET (Run 52→53 = 1.0h gap)."
 }
