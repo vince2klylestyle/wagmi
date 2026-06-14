@@ -1,69 +1,65 @@
 {
-  "last_run": "2026-06-04T01:16:00.000000+00:00",
-  "run_number": 39,
+  "last_run": "2026-06-14T15:02:53+00:00",
+  "run_number": 59,
   "fixes_applied_this_run": 0,
   "total_applied_all_time": 69,
-  "gates_active": 66,
+  "gates_active": 87,
   "new_audit_files_this_run": 0,
   "new_trades_this_run": 0,
-  "elapsed_since_last_run_h": 48.0,
-  "engine_gap_note": "48h gap since Run 38 (2026-06-02 01:13 UTC). W26 (June 2) + W27 (June 3) elapsed during gap. Two additional morning misses confirmed.",
+  "elapsed_since_last_run_h": 14.95,
+  "cadence_note": "RUN 59: 14.95h gap (Run58 00:05 Jun14 → Run59 15:02 Jun14 UTC). LONGEST GAP IN SEQUENCE. W39 morning MISSED (41st consecutive) during this gap. W39 evening opens in T+0.97h (16:00 UTC Jun14). EV $275 and $280 both crossed this run. SOL_SHORT governance now 471.02h (19.63 days) unresolved.",
   "fixes_applied": [],
+  "sol_short_19d_governance_crossed": true,
+  "sol_short_conflict_age_h": 471.02,
+  "sol_short_conflict_age_days": 19.63,
+  "sol_short_governance_crossed_at_utc": "2026-06-14T00:01:00+00:00",
+  "sol_short_governance_age_since_crossed_h": 15.03,
+  "sol_short_governance_action": "19-DAY MILESTONE CROSSED (15.03h ago). Human decision OVERDUE: reduce SOL_SHORT_full_block gate 100→80 to allow reversal probe. SOL SHORT candidate WR=63.7% if unblocked. Deadline passed — governance review is now DELINQUENT.",
+  "milestones_crossed_this_run": [
+    "EV_$275 — crossed ~01:30 UTC Jun14 (T+1.44h from Run58)",
+    "EV_$280 — crossed ~06:41 UTC Jun14 (T+6.6h from Run58)",
+    "W39_MORNING_MISSED — 41st consecutive miss confirmed (07:00-10:00 UTC Jun14 passed)",
+    "RUN_GAP_RECORD — 14.95h gap (longest in sequence, all prior gaps 1-2h)"
+  ],
   "blockers": [
-    "AB_tracker broken Day 42 — 20 rules cannot graduate (outcome callback still wired)",
-    "SOL_SHORT_full_block=100 blocks SOL_SHORT_suspension_reversal_probe escalation",
-    "ETH_SHORT_protect n=5, HYPE_PROBE n=6 — below 10-sample graduation threshold (no new trades)",
-    "RULE_CONFLICT_SOL_SHORT pending human review (unresolved 254h+)",
+    "AB_tracker broken Day 55.3 — 20 rules cannot graduate (outcome callback unwired in bot/feedback/loop.py)",
+    "SOL_SHORT_full_block=100 GOVERNANCE DELINQUENT (471.02h / 19.63 days) — 15.03h since milestone crossed, no human action yet",
+    "ETH_SHORT_protect n=5, HYPE_PROBE n=6 — below 10-sample graduation threshold (no new trades, stale 55.3 days)",
+    "RULE_CONFLICT_SOL_SHORT pending human review (unresolved 471.02h / 19.63 days)",
     "F1_sniper_pending_safety_review — conf=90%, needs human sign-off",
     "HIGH_CONF_CALIBRATION_DRIFT — conf=88%, needs human review before applying",
-    "7 gate=0 rules appear actionable but require code-level verification",
-    "AFTERNOON_SESSION_BLOCK: gate=0 DISABLED since Run 23 — stale alert persists in paper report (known)"
+    "7 gate=0 rules require code-level verification before escalation"
   ],
   "escalation_candidates_blocked": 20,
-  "near_threshold_watch": [
-    "HYPE_UNKNOWN_REGIME_PROBE: needs n=6->10 to graduate gate=20->50 (4 more trades — unchanged, bot offline)",
-    "ETH_SHORT_protect_from_bias: needs n=5->10 to graduate gate=50->80 (5 more trades — unchanged, bot offline)",
-    "SOL_SHORT_suspension_reversal_probe: BLOCKED by SOL_SHORT_full_block (unchanged, pending human decision)"
-  ],
-  "actionable_gate0_rules": 7,
-  "new_finding_run39": "48h engine gap. No new trades (bot offline Day 42). No new auto-fixes possible. Two additional morning windows (W26 June 2, W27 June 3) confirmed missed during gap.",
-  "human_actions_pending": [
-    {
-      "action": "RULE_CONFLICT_SOL_SHORT: choose gate=100->80 (allow probe) OR merge exception. EV at stake: $5807+ historical edge. Pending 254h+.",
-      "priority": "HIGH",
-      "stale_hours": 254
-    },
-    {
-      "action": "F1_sniper_safety_review: sign off or reject conf=90% sniper filter. Unlocks ~$2-5/trade EV improvement.",
-      "priority": "MEDIUM"
-    },
-    {
-      "action": "HIGH_CONF_CALIBRATION_DRIFT: review conf=88% calibration fix. Apply or reject.",
-      "priority": "MEDIUM"
-    }
-  ],
-  "dev_actions_pending": [
-    {
-      "action": "P0: Wire update_times_correct() in bot/feedback/loop.py (~2h). Unblocks 20 frozen graduations.",
-      "priority": "CRITICAL",
-      "blocked_rules": 20,
-      "blocked_since_days": 42
-    }
-  ],
-  "stale_alert_confirmed": {
-    "rule": "AFTERNOON_SESSION_BLOCK",
-    "current_gate": 0,
-    "status": "DISABLED_AB_TRACKER_BROKEN",
-    "disabled_at": "2026-05-28T01:11:55.956257+00:00",
-    "paper_report_alert": "STALE — confirmed disabled at Run 23. No conflict. Paper report should suppress this."
-  },
   "gate_distribution": {
-    "0": 29,
+    "0": 27,
     "5": 1,
     "20": 19,
     "35": 1,
     "50": 18,
     "80": 28,
-    "100": 20
-  }
+    "100": 20,
+    "unknown": 2
+  },
+  "graduated_rules_total": 116,
+  "high_conf_escalation_candidates": 94,
+  "auto_fix_opportunity_if_tracker_fixed": {
+    "rule": "btc_trend_long_counter_v1",
+    "current_gate": 20,
+    "recommended_gate": 50,
+    "confidence": 0.92,
+    "wr": 0.18,
+    "n": 17,
+    "rationale": "High-confidence (92%) rule at gate=20 — should be gate=50 given n=17 and WR=0.18. Blocked by AB tracker."
+  },
+  "new_finding_run59": "14.95h gap — LONGEST RUN GAP. W39 morning MISSED (41st). EV $275 + $280 both crossed this run (+$14.50 → $288.10 total). W39 EVENING OPENS IN 58 MIN (16:00 UTC Jun14). SOL_SHORT governance delinquent 15.03h since 19d milestone. Bot offline Day 55.3.",
+  "next_action_on_repair": "When AB tracker fixed: HIGH_CONF_UPPER_BIN_CALIBRATION_PROBE gate=5→20 (conf=88%), then btc_trend_long_counter_v1 gate=20→50 (conf=92%). BB_solo_signal_boost (gate=80%) escalates first given n=2172 conf=95%.",
+  "status": "EVENING_CRITICAL — W39 evening T+0.97h (16:00 UTC Jun14). SOL_SHORT governance delinquent. AB tracker broken. No new trades Day 55.3. LONGEST GAP (14.95h).",
+  "priority_dev_tasks": [
+    "P0-URGENT: START BOT NOW — W39 evening opens in 58 min (16:00 UTC Jun14). Must start before 16:00 to avoid 5th consecutive evening miss (WR=65%).",
+    "P0: SOL_SHORT governance decision — 19.63d (471.02h). 15.03h DELINQUENT. Reduce gate=100→80 or ratify block.",
+    "P1: AB tracker fix in bot/feedback/loop.py (~2h) — unlocks 20 frozen rules incl BB_solo_signal_boost (n=2172, conf=95%)",
+    "P2: snapshot_entry column restore to trades.csv — enables slippage tracking",
+    "P3: LOOP CADENCE DEGRADED — 14.95h gap is 7.5x the normal 2h target. Check hourly loop health."
+  ]
 }
