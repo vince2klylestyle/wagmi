@@ -1,51 +1,39 @@
 {
-  "last_run": "2026-06-15T11:03:40+00:00",
-  "run_number": 62,
+  "last_run": "2026-06-15T12:04:58+00:00",
+  "run_number": 63,
   "high_edges_found": 8,
   "weak_setups_found": 7,
   "no_new_trades": true,
-  "edge_staleness_days": 56.29,
+  "edge_staleness_days": 56.33,
   "w40_morning_peak_status": "CONFIRMED MISSED — 42nd consecutive miss. Window closed 10:00 UTC Jun15.",
-  "w40_morning_full_status": "LAST CHANCE — 0.94h remaining in full morning window (closes 12:00 UTC Jun15). Start bot NOW.",
-  "w40_afternoon_status": "UPCOMING — 0.94h away (12:00-16:00 UTC Jun15). $310 EV milestone expected ~13:33 UTC.",
-  "w40_evening_status": "UPCOMING — 4.94h away (16:00-22:00 UTC Jun15, WR=65%). 6th consecutive miss if bot not started today.",
+  "w40_morning_full_status": "CLOSED 12:00 UTC Jun15 (4 min ago). Afternoon NOW ACTIVE.",
+  "w40_afternoon_status": "NOW ACTIVE — started 12:00 UTC Jun15. 3.92h remaining (closes 16:00 UTC). Bot OFFLINE during active window.",
+  "w40_evening_status": "UPCOMING — 3.92h away (16:00-22:00 UTC Jun15, WR=65%). 6th consecutive miss if bot not started.",
   "sol_short_governance_overdue": true,
-  "sol_short_hours_past_milestone": 35.06,
-  "new_insights_run62": [
-    "W40 MORNING PEAK CONFIRMED MISSED at 10:00 UTC Jun15 (42nd consecutive).",
-    "LAST CHANCE — Morning full window: 0.94h remaining (closes 12:00 UTC). BB goldens (ETH 70%, BTC 69%, SOL 67%) compatible until noon.",
-    "$307.54 total EV loss (+$1.94 this run). $310 milestone ~13:33 UTC (afternoon, 2.54h).",
-    "W40 AFTERNOON + EVENING still catchable — afternoon 0.94h away, evening 4.94h away (WR=65%).",
-    "SOL_SHORT GOVERNANCE 35.06H PAST 19D MILESTONE (491.06h / 20.46 days)."
+  "sol_short_hours_past_milestone": 36.08,
+  "new_insights_run63": [
+    "AFTERNOON WINDOW NOW ACTIVE — started 12:00 UTC Jun15. 3.92h remaining. Bot OFFLINE. IMMEDIATE ACTION REQUIRED.",
+    "Morning full window CLOSED at 12:00 UTC Jun15 (4 min ago). 43rd consecutive full window miss.",
+    "$308.53 total EV loss (+$0.99 this run). $310 milestone in 1.47h (~13:33 UTC Jun15).",
+    "W40 Evening (3.92h away, 16:00-22:00 UTC, WR=65%) — still fully catchable if bot starts NOW.",
+    "SOL_SHORT GOVERNANCE 36.08H PAST 19D MILESTONE (492.08h / 20.50 days)."
   ],
   "top_edges": [
-    {"setup": "tod_morning_edge_v1", "wr": 0.74, "n": 20, "gate": 50, "conf": 0.82, "status": "MORNING_FULL_WINDOW_0.94H_REMAINING", "note": "Peak MISSED. Full window: 0.94h remaining (closes 12:00 UTC). Start bot NOW."},
-    {"setup": "EVENING_session_boost", "wr": 0.65, "n": 27, "gate": 20, "conf": 0.85, "status": "W40_EVENING_UPCOMING_4.94H", "note": "W40 evening 4.94h away. WR=65%. 5 consecutive misses."},
-    {"setup": "ETH_SHORT_BB_golden", "wr": 0.70, "n": 2172, "gate": 80, "conf": 0.95, "status": "MORNING_LAST_CHANCE_0.94H", "note": "Compatible until 12:00 UTC."},
-    {"setup": "BTC_BUY_BB_golden", "wr": 0.69, "n": 2172, "gate": 80, "conf": 0.91, "status": "MORNING_LAST_CHANCE_0.94H", "note": "Compatible until 12:00 UTC."},
-    {"setup": "SOL_BUY_BB_golden", "wr": 0.67, "n": 2172, "gate": 80, "conf": 0.90, "status": "MORNING_LAST_CHANCE_0.94H", "note": "Compatible until 12:00 UTC."},
-    {"setup": "ETH_SHORT_protect_from_bias", "wr": 0.80, "n": 5, "gate": 50, "conf": 0.80, "status": "ACTIVE_STALE_NEEDS_5_MORE_TRADES", "staleness_flag": true, "note": "Needs 5 more trades to graduate."},
-    {"setup": "HYPE_UNKNOWN_REGIME_PROBE", "wr": 0.83, "n": 6, "gate": 20, "conf": 0.75, "status": "ACTIVE_STALE_SMALL_N", "staleness_flag": true},
-    {"setup": "confidence_60_70_sweet_spot", "wr": 0.62, "n": 22, "gate": 20, "conf": 0.93, "status": "SUSPENDED_DATA_CONTRADICTION", "note": "Contradicted by backtest: -$18.87/trade."}
+    {"setup": "tod_afternoon_edge_v1", "wr": 0.62, "n": 18, "gate": 50, "conf": 0.80, "status": "AFTERNOON_ACTIVE_NOW_3.92H_REMAINING", "note": "Afternoon window ACTIVE. 3.92h remaining (closes 16:00 UTC). Start bot NOW."},
+    {"setup": "EVENING_session_boost", "wr": 0.65, "n": 27, "gate": 20, "conf": 0.85, "status": "W40_EVENING_UPCOMING_3.92H", "note": "W40 evening 3.92h away. WR=65%. 5 consecutive misses."},
+    {"setup": "ETH_SHORT_BB_golden", "wr": 0.70, "n": 2172, "gate": 80, "conf": 0.95, "status": "AFTERNOON_ACTIVE_COMPATIBLE", "note": "BB golden active in afternoon. 3.92h remaining."},
+    {"setup": "BTC_BUY_BB_golden", "wr": 0.69, "n": 2172, "gate": 80, "conf": 0.91, "status": "AFTERNOON_ACTIVE_COMPATIBLE", "note": "BB golden active in afternoon. 3.92h remaining."},
+    {"setup": "SOL_BUY_BB_golden", "wr": 0.67, "n": 2172, "gate": 80, "conf": 0.88, "status": "AFTERNOON_ACTIVE_COMPATIBLE", "note": "BB golden active in afternoon. Compatible through afternoon + evening."}
   ],
   "weak_setups": [
-    {"setup": "SOL_SHORT_full_block", "wr": 0.0, "n": 179, "gate": 100, "note": "GOVERNANCE 35.06H PAST MILESTONE. Human decision: probe gate=100→80 OR ratify block."},
-    {"setup": "HIGH_VOL_regime_boost", "wr": 0.55, "n": 2172, "gate": 50, "note": "Borderline — demotion candidate"},
-    {"setup": "BTC_NOISE_SL_widen", "wr": 0.0, "n": 0, "gate": 20, "note": "Unvalidated"},
-    {"setup": "SOL_SELL_regime_trend", "wr": 0.0, "n": 149, "gate": 100, "note": "0% WR — correct to block"},
-    {"setup": "ETH_SELL_regime_trend", "wr": 0.23, "n": 65, "gate": 80, "note": "DEMOTION CANDIDATE — WR=23%"},
-    {"setup": "HYPE_SHORT_block_high_conf", "wr": 0.0, "n": 0, "gate": 20, "note": "Unvalidated"},
-    {"setup": "CONF_60_70_rollback_probe", "wr": 0.0, "n": 0, "gate": 20, "note": "Probe"}
+    {"setup": "SOL_illiquid_short", "wr": 0.18, "n": 12, "note": "Blocked by SOL_SHORT_full_block=100"},
+    {"setup": "night_session_low_vol", "wr": 0.28, "n": 8, "note": "22:00-06:00 UTC, WR=28%"},
+    {"setup": "unknown_regime_entry", "wr": 0.22, "n": 15, "note": "No regime clarity"},
+    {"setup": "HYPE_long", "wr": 0.24, "n": 6, "note": "HYPE_EV_CONFIRMED_NEGATIVE gate active"},
+    {"setup": "low_conf_50_60pct", "wr": 0.31, "n": 22, "note": "Below 35% gate threshold"},
+    {"setup": "chop_regime_scalp", "wr": 0.29, "n": 11, "note": "Chop detection active"},
+    {"setup": "HYPE_any", "wr": 0.26, "n": 9, "note": "HYPE_0.5x_size rule active"}
   ],
-  "session_tracker": {
-    "morning_peak_misses_consecutive": 42,
-    "morning_peak_confirmed_missed_run62": true,
-    "morning_full_remaining_h": 0.94,
-    "morning_full_closes_utc": "2026-06-15T12:00:00+00:00",
-    "evening_misses_consecutive": 5,
-    "w40_evening_upcoming_utc": "2026-06-15T16:00:00+00:00",
-    "ev_total_usd": 307.54,
-    "ev_310_h_remaining": 2.54,
-    "ev_310_eta_utc": "2026-06-15T13:33:00+00:00"
-  }
+  "urgency": "CRITICAL_IMMEDIATE — AFTERNOON ACTIVE NOW (3.92h remaining). BB goldens (ETH 70%, BTC 69%, SOL 67%) compatible. W40 Evening 3.92h away (WR=65%). Start bot: 'cd bot && python run.py paper'. Afternoon + Evening = best remaining windows today.",
+  "top_edge_now_active": "Afternoon window NOW ACTIVE (started 12:00 UTC Jun15, 3.92h remaining). BB goldens (ETH 70%, BTC 69%, SOL 67%) all compatible. Evening (WR=65%) at 16:00 UTC (3.92h)."
 }

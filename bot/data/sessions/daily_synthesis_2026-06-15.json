@@ -1,11 +1,11 @@
 {
-  "last_run": "2026-06-15T11:03:40+00:00",
-  "run_number": 62,
+  "last_run": "2026-06-15T12:04:58+00:00",
+  "run_number": 63,
   "date": "2026-06-15",
-  "bot_status": "OFFLINE — day 56.3",
+  "bot_status": "OFFLINE — day 56.33",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "anomalies_found": 8,
+  "anomalies_found": 9,
   "report_generated": false,
   "eod_report_pending": true,
   "eod_report_eta_utc": "2026-06-15T22:00:00+00:00",
@@ -13,35 +13,45 @@
     "date": "2026-06-15",
     "trades": 0,
     "pnl_usd": 0.0,
-    "ev_loss_today_usd": 10.67,
+    "ev_loss_today_usd": 9.93,
     "ev_rate_per_hour": 0.97,
-    "ev_milestones_crossed_today": ["$300 (~03:14 UTC)", "$305 (~08:26 UTC)", "$307 (~10:32 UTC estimated)"],
-    "ev_total_cumulative": 307.54,
+    "ev_milestones_crossed_today": [
+      "$300 (~03:14 UTC)",
+      "$305 (~08:26 UTC)",
+      "$307 (~10:32 UTC)",
+      "$310 expected ~13:33 UTC (1.47h away)"
+    ],
+    "ev_total_cumulative": 308.53,
     "session_windows": {
       "morning_peak": "07:00-10:00 UTC — CONFIRMED MISSED (42nd consecutive, closed 10:00 UTC)",
-      "morning_full": "06:00-12:00 UTC — LAST CHANCE (0.94h remaining) — START BOT NOW",
-      "afternoon": "12:00-16:00 UTC — UPCOMING (0.94h away, $310 milestone ~13:33 UTC)",
-      "evening": "16:00-22:00 UTC — UPCOMING (4.94h away, WR=65%) — 6th miss if bot not started"
+      "morning_full": "06:00-12:00 UTC — CLOSED (4 min ago). 43rd consecutive full-window miss.",
+      "afternoon": "12:00-16:00 UTC — NOW ACTIVE (3.92h remaining). Bot OFFLINE.",
+      "evening": "16:00-22:00 UTC — UPCOMING (3.92h away, WR=65%). 6th miss if bot not started."
     }
   },
   "critical_anomalies": [
-    "W40_MORNING_PEAK_CONFIRMED_MISSED — 42nd consecutive. Window closed 10:00 UTC Jun15. Morning full: 0.94h remaining (LAST CHANCE, closes 12:00 UTC).",
-    "$307.54_EV_TOTAL — $307 milestone crossed ~10:32 UTC. $310 eta: ~13:33 UTC (afternoon, 2.54h). Rate: $23.28/day.",
-    "W40_FULL_AFTERNOON_EVENING_STILL_AVAILABLE — Afternoon (0.94h, 12:00-16:00) + Evening (4.94h, 16:00-22:00, WR=65%)."
+    "AFTERNOON_ACTIVE_BOT_OFFLINE — Afternoon window started 12:00 UTC Jun15. 3.92h remaining. Bot OFFLINE. Losing afternoon edge REAL-TIME.",
+    "MORNING_FULL_CLOSED_4MIN_AGO — 12:00 UTC Jun15. 43rd consecutive full-window miss.",
+    "$308.53_EV_TOTAL — $310 milestone in 1.47h. Rate: $23.28/day. Day 56.33 offline."
   ],
   "high_anomalies": [
-    "SOL_SHORT_GOVERNANCE_35H_OVERDUE — 491.06h (20.46 days). 35h past 19d milestone.",
-    "42ND_CONSECUTIVE_MORNING_PEAK_MISS — peak closed 10:00 UTC Jun15. Morning full: 0.94h remaining.",
-    "AB_TRACKER_BROKEN_DAY56.3 — 20 rules frozen. BB_solo_signal_boost (n=2172, conf=95%) blocked."
+    "SOL_SHORT_GOVERNANCE_36.08H_OVERDUE — 492.08h (20.50 days). 36.08h past 19d milestone.",
+    "43RD_CONSECUTIVE_MORNING_MISS — Morning full closed 12:00 UTC Jun15.",
+    "AB_TRACKER_BROKEN_DAY_56.33 — 20 rules frozen. BB_solo_signal_boost (n=2172, conf=95%) blocked.",
+    "W40_EVENING_6TH_MISS_IMMINENT — 3.92h away. 6th consecutive miss if bot not started.",
+    "$310_EV_MILESTONE_IN_1.47H — During afternoon window (~13:33 UTC Jun15).",
+    "$315_EV_MILESTONE_ETA_18:46_UTC — During W40 evening window."
   ],
   "today_focus": {
-    "immediate_p0": "START BOT NOW (11:03 UTC Jun15) — 0.94h morning full remaining + afternoon (12:00-16:00) + W40 evening (16:00-22:00, WR=65%).",
-    "governance_p0": "SOL_SHORT governance — 35H OVERDUE. Reduce gate=100→80 OR ratify block.",
+    "immediate_p0": "START BOT NOW (12:04 UTC Jun15) — 3.92h afternoon remaining + W40 evening (3.92h away, WR=65%).",
+    "governance_p0": "SOL_SHORT governance — 36.08H OVERDUE. Reduce gate=100→80 OR ratify block.",
     "dev_p1": "AB tracker fix in bot/feedback/loop.py (~2h) — unlocks 20 frozen rules"
   },
   "consecutive_morning_peak_misses": 42,
+  "consecutive_morning_full_misses": 43,
   "consecutive_evening_misses": 5,
-  "cumulative_ev_loss_usd": 307.54,
-  "bot_offline_days": 56.29,
-  "run62_summary": "W40 MORNING PEAK CONFIRMED MISSED (42nd, closed 10:00 UTC). Morning full: 0.94h LAST CHANCE. $307.54 EV (+$1.94). $310 in 2.54h (afternoon). Afternoon (0.94h) + Evening (4.94h, WR=65%) catchable. SOL_SHORT 35.06h overdue. Bot offline Day 56.3."
+  "cumulative_ev_loss_usd": 308.53,
+  "bot_offline_days": 56.33,
+  "new_anomaly_run63": "AFTERNOON ACTIVE (3.92h remaining) — bot OFFLINE. Morning full closed 12:00 UTC (4 min ago). EV $308.53 (+$0.99). $310 in 1.47h. Evening 3.92h away (WR=65%). SOL_SHORT 36.08h overdue.",
+  "run63_summary": "Morning full CLOSED 12:00 UTC Jun15 (4 min ago). AFTERNOON NOW ACTIVE (3.92h). Bot OFFLINE. $308.53 EV (+$0.99). $310 in 1.47h. Evening 3.92h (WR=65%). SOL_SHORT 36.08h overdue."
 }
