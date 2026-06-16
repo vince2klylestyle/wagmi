@@ -1,13 +1,13 @@
 {
-  "last_run": "2026-06-16T14:05:00+00:00",
-  "run_number": 65,
+  "last_run": "2026-06-16T04:03:47+00:00",
+  "run_number": 66,
   "date": "2026-06-16",
   "bot_status": "OFFLINE — day 57.42",
   "today_trades": 0,
   "today_pnl": 0.0,
   "anomalies_found": 12,
-  "report_generated": false,
-  "eod_report_pending": true,
+  "report_generated": true,
+  "eod_report_pending": false,
   "eod_report_eta_utc": "2026-06-16T22:00:00+00:00",
   "daily_summary": {
     "date": "2026-06-16",
