@@ -20,12 +20,13 @@
     "notes": "Manages the live bot. Pushes via git worktree to coord branch."
   },
   "laptop": {
-    "status": "restarting",
-    "last_active_utc": "2026-06-06T21:25:00+00:00",
-    "session_started_utc": null,
-    "cycle": 0,
+    "status": "online",
+    "last_active_utc": "2026-06-16T19:20:00+00:00",
+    "session_started_utc": "2026-06-16T19:13:00+00:00",
+    "cycle": 1,
     "host": "Other laptop",
     "bot_pid": null,
-    "notes": "Last session ended with computer restart. Fresh Claude session expected. Read LAPTOP_BRIEFING.md first."
+    "branch_coord": "historical-import-2026-05-30",
+    "notes": "BACK ONLINE after Jun10-16 blackout. Caught up: batch 1-8 LLM-first on coord, 14Q forensic backtest, desktop Jun-16 ANNOUNCE (read off desktop-overdrive). No laptop bot — analysis/dev only. Replied in INBOX_LAPTOP_TO_DESKTOP; starting Sonnet-timeout/Haiku-fallback fix."
   }
 }
