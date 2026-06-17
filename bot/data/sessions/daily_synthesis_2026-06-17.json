@@ -1,11 +1,11 @@
 {
-  "last_run": "2026-06-17T09:04:00+00:00",
+  "last_run": "2026-06-17T09:04:50+00:00",
   "run_number": 68,
   "date": "2026-06-17",
   "bot_status": "OFFLINE — day 58.87",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "anomalies_found": 11,
+  "anomalies_found": 10,
   "report_generated": true,
   "eod_report_pending": true,
   "eod_report_eta_utc": "2026-06-17T22:00:00+00:00",
@@ -13,44 +13,44 @@
     "date": "2026-06-17",
     "trades": 0,
     "pnl_usd": 0.0,
-    "ev_loss_today_usd": 7.76,
+    "ev_loss_today_usd": 9.70,
     "ev_rate_per_hour": 0.97,
-    "ev_milestones_crossed_since_run66": [
-      "$335 (~05:21 UTC Jun16 — pre-morning)",
-      "$340 (~10:30 UTC Jun16 — morning peak window)",
-      "$345 (~15:39 UTC Jun16 — afternoon window)",
-      "$350 (~20:48 UTC Jun16 — evening window, confirmed by paper report Run#201)",
-      "$355 (~01:58 UTC Jun17 — overnight)",
-      "$360 (~07:07 UTC Jun17 — 57min before Run67)"
+    "ev_milestones_crossed_since_run67": [],
+    "ev_milestones_approaching_today": [
+      "$365 ETA ~12:16 UTC Jun17 (3.2h away, afternoon window)",
+      "$370 ETA ~17:26 UTC Jun17 (8.4h away, evening window)"
     ],
     "ev_total_cumulative": 361.89,
-    "loop_gap_note": "28h gap — Run66 (04:03 Jun16) → Run67 (08:04 Jun17). Still not hourly.",
+    "loop_cadence_note": "RUN 68: FIRST HOURLY LOOP — 1.003h gap (vs 28h in Run67). Loop cadence RESTORED.",
     "session_windows_jun17": {
-      "morning_peak": "07:00-10:00 UTC — CLOSING IN 56MIN (Run203 09:04 UTC). 45th miss imminent.",
-      "morning_full": "06:00-12:00 UTC — ACTIVE (2.92h remaining).",
+      "morning_peak": "07:00-10:00 UTC — CLOSING IN 56MIN (09:04 UTC). 45th miss imminent. START BOT NOW.",
+      "morning_full": "06:00-12:00 UTC — ACTIVE (2.93h remaining). 3.07h already lost.",
       "afternoon": "12:00-16:00 UTC — UPCOMING (3.12h away). $365 ETA 12:16 UTC.",
-      "evening": "16:00-22:00 UTC — UPCOMING (8.92h away, WR=65%). $370 ETA 17:26 UTC."
+      "evening": "16:00-22:00 UTC — UPCOMING (6.93h away, WR=65%). $370 ETA 17:26 UTC."
     }
   },
+  "positive_anomalies": [
+    "LOOP_CADENCE_RESTORED — Run68 fired 1.003h after Run67. First hourly cadence in recorded history (previous: 25h, 28h gaps). Cadence improvement: 28h → 1h."
+  ],
   "critical_anomalies": [
-    "MORNING_PEAK_CLOSING_56MIN — 07:00-10:00 UTC Jun17. 56min remaining. Bot offline. 45th miss imminent.",
-    "$360_EV_MILESTONE_CROSSED — ~07:07 UTC Jun17. Total EV $361.89 at $0.97/h.",
-    "LOOP_CADENCE_28H — Run66 (04:03 Jun16) → Run67 (08:04 Jun17). Still not hourly. 27 missed cycles."
+    "MORNING_PEAK_CLOSING_56MIN — 07:00-10:00 UTC Jun17. 56min remaining. Bot offline. 45th miss imminent. START NOW: 'cd bot && python run.py paper'.",
+    "$365_EV_ETA_3.2H — $361.89 total. $365 ETA 12:16 UTC (~3.2h). $370 ETA 17:26 UTC.",
+    "LOOP_CADENCE_RESTORED — Run67 (08:04) → Run68 (09:04) = 1h gap. First hourly cadence ever."
   ],
   "high_anomalies": [
-    "SOL_SHORT_GOVERNANCE_91H_OVERDUE — 91h+ past 19d milestone.",
-    "45TH_CONSECUTIVE_MORNING_PEAK_MISS_AT_10:00 UTC — 56min remaining.",
+    "SOL_SHORT_GOVERNANCE_91.09H_OVERDUE — 547.09h (22.80 days). +1h since Run67.",
+    "45TH_CONSECUTIVE_MORNING_MISS_IMMINENT — Closes 10:00 UTC Jun17. 3.07h already lost.",
     "AB_TRACKER_BROKEN_DAY_58.87 — 20 rules frozen (BB_solo_signal_boost n=2172, conf=95%).",
-    "W40_EVENING_8TH_MISS_PENDING — 16:00-22:00 UTC Jun17 (WR=65%).",
-    "$365_EV_MILESTONE_ETA — ~12:16 UTC Jun17 (3.2h). During afternoon window.",
-    "$370_EV_MILESTONE_ETA — ~17:26 UTC Jun17 (8.4h). During evening window.",
+    "W40_EVENING_8TH_MISS_PENDING — 16:00-22:00 UTC Jun17 (WR=65%). 6.93h away.",
+    "$365_EV_MILESTONE_ETA — ~12:16 UTC Jun17 (3.12h). During afternoon window.",
+    "$370_EV_MILESTONE_ETA — ~17:26 UTC Jun17 (8.93h). During evening window.",
     "58.87_DAYS_OFFLINE — EV $361.89 total ($23.28/day)."
   ],
   "today_focus": {
-    "IMMEDIATE_P0": "START BOT NOW — 'cd bot && python run.py paper'. Morning peak CLOSING in 56min (10:00 UTC).",
+    "IMMEDIATE_P0": "START BOT NOW — 'cd bot && python run.py paper'. Morning peak CLOSING in 56min (10:00 UTC). Save the tail end of the window.",
     "IMMEDIATE_P1": "SOL_SHORT governance 91h overdue — decide: (A) reduce gate=100→80 or (B) ratify block.",
     "DEV_P1": "AB tracker fix in bot/feedback/loop.py (~2h) — unlocks 20 frozen rules",
-    "LOOP_FIX": "Investigate loop scheduler — 28h gap (27 missed cycles, cadence worsening)"
+    "WIN": "Loop cadence RESTORED (1h gap). Keep it running — next run expected ~10:04 UTC Jun17."
   },
   "consecutive_morning_peak_misses": 45,
   "consecutive_morning_full_misses": 45,
@@ -59,9 +59,10 @@
   "bot_offline_days": 58.87,
   "milestones_crossed_this_run": [],
   "run68_new_findings": [
-    "MORNING_PEAK_FINAL_HOUR — 09:04 UTC, window closes 10:00 UTC. 45th miss locks in at 10:00.",
-    "EV cumulative updated to $361.89 (+$0.97 since Run67).",
-    "$365 milestone ETA confirmed ~12:16 UTC Jun17 (3.12h from now).",
-    "Loop cadence: Run67 (08:04 Jun17) → Run68 (09:04 Jun17) = 1h gap. Hourly cadence restored for this cycle."
+    "LOOP RESTORED — 1.003h gap (first hourly cadence ever). Cadence: 25h (Run65→66) → 28h (Run66→67) → 1h (Run67→68). Major positive.",
+    "Morning peak CLOSING at 09:04 UTC — 56 min remaining (closes 10:00). 45th consecutive miss locks in at 10:00 UTC.",
+    "EV $361.89 (+$0.97 this run, 1h). No new milestones (next: $365 at 12:16 UTC, $370 at 17:26 UTC).",
+    "SOL_SHORT governance: 91.09h overdue (+1h). Still blocked at gate=100.",
+    "10 anomalies Jun17 (down from 11 at Run67 — loop cadence now positive)."
   ]
 }
