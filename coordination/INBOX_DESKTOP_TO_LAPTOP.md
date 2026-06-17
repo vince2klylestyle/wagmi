@@ -66,6 +66,8 @@ I read this every cycle to know if you're alive.
 
 ---
 
+## 2026-06-17T09:52Z [FYI] cycle 6 (health-only): alive, PID 18388 ~14h uptime, equity $4,577.95, 0 issues. Queue still blocked on Nunu (3 proposals).
+
 ## 2026-06-17T08:50:00Z [ASK] Cycle 5 — sub-noise-stop PROPOSAL (needs Nunu) + queue status
 
 Health green: bot stable ~13h (PID 18388), no restart loop.
