@@ -3355,14 +3355,29 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 try:
                     from llm.graduated_rules import get_graduated_rules_engine
                     _gr_hr = pos.open_time.hour if pos and getattr(pos, "open_time", None) else -1
-                    _gr_er = (pos.entry_reasons or {}) if pos and getattr(pos, "entry_reasons", None) else {}
-                    _gr_strats = _gr_er.get("strategies_agree", [])
-                    _gr_num = len(_gr_strats) or _gr_er.get("num_agree", 0)
-                    _gr_conf = _gr_er.get("llm_confidence") or _gr_er.get("win_prob_deflated") or 0.0
+                    # 2026-06-16: entry_reasons can be a dict OR a list (trade_profile path
+                    # sets it to strategies_agree). The old `.get()` threw on lists, so the
+                    # bare except silently skipped record_outcome for those trades — a hidden
+                    # cause of times_correct=0. Handle both shapes.
+                    _gr_er_raw = getattr(pos, "entry_reasons", None) if pos else None
+                    _gr_er = _gr_er_raw if isinstance(_gr_er_raw, dict) else {}
+                    _gr_strats = _gr_er.get("strategies_agree") or (
+                        _gr_er_raw if isinstance(_gr_er_raw, list) else [])
+                    _gr_num = (len(_gr_strats) if _gr_strats else 0) or _gr_er.get("num_agree", 0)
+                    # evaluate_signal matches confidence on a 0-100 scale; the old code passed
+                    # llm_confidence (0-1, e.g. 0.52) so every confidence-banded rule failed to
+                    # match at close. Prefer the entry ensemble confidence; normalize 0-1 -> 0-100.
+                    _gr_conf = (_gr_er.get("confidence") or _gr_er.get("llm_confidence")
+                                or _gr_er.get("win_prob_deflated") or 0.0)
+                    _gr_conf = float(_gr_conf) if _gr_conf else 0.0
+                    if 0.0 < _gr_conf <= 1.0:
+                        _gr_conf *= 100.0
+                    # Use the ENTRY regime (what evaluate_signal saw), not the close-time regime.
+                    _gr_regime = _gr_er.get("regime") or _rg_fb
                     get_graduated_rules_engine().record_outcome(
-                        symbol=symbol, regime=_rg_fb, side=event.side, won=total_pnl > 0,
+                        symbol=symbol, regime=_gr_regime, side=event.side, won=total_pnl > 0,
                         hour_utc=_gr_hr, strategies_active=_gr_strats,
-                        num_agree=_gr_num, confidence=float(_gr_conf) if _gr_conf else 0.0,
+                        num_agree=_gr_num, confidence=_gr_conf,
                     )
                 except Exception:
                     pass

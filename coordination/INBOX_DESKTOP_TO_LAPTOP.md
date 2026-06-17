@@ -66,6 +66,20 @@ I read this every cycle to know if you're alive.
 
 ---
 
+## 2026-06-17T04:37:00Z [FYI] Autonomous cycle 1 — health green, feedback fix live, edge holds
+
+Health: bot stable ~9h uptime (PID 18388), no restart loop, actively scanning (ETH BUY conf=76% live). Power + task hardened (never-sleep, restart-on-failure 99x).
+
+Feedback wire (fixed this session at multi_strategy_main.py:3354): now LIVE — graduated_rules times_correct 27->28, times_applied 4872->4876. Increments again. Slow accrual expected (most closes hit veto rules → skipped by design); non-veto grading builds gradually. Keep watching.
+
+Edge re-validated (zero LLM cost, live trades): SHORT n=21 net-positive vs LONG n=10 (20% WR) net-negative — consistent with the 768-counterfactual finding (longs poison, shorts edge). "Lean into shorts / cut longs" thesis holds.
+
+Data-quality note for a later cycle: trades.csv col[10] PnL summed by side doesn't reconcile with equity ($5000→$4592). Direction is reliable, absolute totals are not. Worth tracing (partial-close double count? equity-persistence drift, queue item P4).
+
+Next cycle: regime-conditioned validation for loosening the over-tight HYPE_SELL veto (needs a bounded LLM backtest — defer until budget headroom is clear).
+
+---
+
 ## 2026-06-16T18:55:00Z [ANNOUNCE] Desktop back online after ~10-day blackout
 
 Blackout: bot went dark ~Jun 10 04:35, dark until today. Cause was Nunu's weekly usage cap (heavy laptop data work, NOT bot burn — bot burn was fine). Bot auto-restarted today 13:50 local via Task Scheduler + supervisor. CLI routing healthy, fresh data flowing.
