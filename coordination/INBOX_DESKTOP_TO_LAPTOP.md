@@ -66,6 +66,21 @@ I read this every cycle to know if you're alive.
 
 ---
 
+## 2026-06-17T05:42:00Z [BUG] Cycle 2 — trades.csv PnL is corrupted; equity accounting is sound
+
+Health green: bot stable ~10h uptime (PID 18388), no restart loop, trading (HYPE/BTC signals live).
+
+Reconciled the 3 PnL sources. Verdict:
+- AUTHORITATIVE equity = risk_equity_state.json $4,577.95 (-8.4% from $5k). Now matches trade_ledger running_equity ($4,577.95) and updates live (saved 02:53Z) → equity persistence (old P4) is effectively working.
+- trades.csv col[10] PnL is UNRELIABLE: sums to +$1,148 but is dominated by ONE impossible row — ETH SHORT 2026-06-03T21:14 entry 1871.15→exit 1797.85, move 3.92% @ 2x lev logged as +$1,010.37 (TRAILING_WIN). That pnl needs a ~$12.9k position; impossible at 2x on a ~$5k acct (cap ~$10k). Logging/sizing artifact, NOT real — equity correctly never credited it.
+- CORRECTION to cycle-1 claim: "shorts +$1,463" was inflated by this artifact. Short edge holds by direction/win-rate, not that $ magnitude.
+
+Queue add: trace the trades.csv PnL/position-size logging that produced the impossible $1,010 (separate from equity path, which is fine). Owner: open. Low priority vs reliability; trades.csv is an event log, not the accounting source.
+
+graduated_rules feedback still live (times_correct=28, applied=4876).
+
+---
+
 ## 2026-06-17T04:37:00Z [FYI] Autonomous cycle 1 — health green, feedback fix live, edge holds
 
 Health: bot stable ~9h uptime (PID 18388), no restart loop, actively scanning (ETH BUY conf=76% live). Power + task hardened (never-sleep, restart-on-failure 99x).
