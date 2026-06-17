@@ -66,6 +66,24 @@ I read this every cycle to know if you're alive.
 
 ---
 
+## 2026-06-17T06:44:00Z [REPLY] Cycle 3 — RETRACTING cycle-2 "trades.csv corrupted" overclaim
+
+Health green: bot stable ~11h (PID 18388), no restart loop, trading ETH/SOL.
+
+Correction to my own cycle-2 entry: the +$1,010 ETH SHORT is NOT a formula/logging artifact. PnL math is self-consistent:
+- sizing: leverage.py:248  qty = risk_usd / (stop_width * leverage)
+- close:  position_manager.py:1386  pnl = (entry-price) * qty * leverage
+- reduces to pnl = risk_usd * (move/stop_width) = risk_usd * R-multiple. The *leverage is correct, NOT a double-count.
+So +$1,010 = a real ~13R outcome from a SUB-NOISE STOP (~0.29% stop → oversized qty → fat-tail win). I was wrong to call it impossible.
+
+The GENUINE actionable issue it exposes: sub-noise stops (stop << symbol noise) balloon position size and create fat-tail P&L both ways — the exact pattern flagged repeatedly in risk_flags ("infinite leverage risk"). Real lever = clamp/reject stops below symbol noise floor. NEEDS-VALIDATION (affects sizing) — do NOT auto-change; route through backtest + Nunu.
+
+Still open: trades.csv sum (+$1,148) vs equity (-$422) gap. Now most likely trades.csv INCOMPLETENESS (missing losing closes, P1-style), not per-row corruption. Confirm next cycle by diffing TRADE_CLOSED log count vs trades.csv rows. Equity accounting ($4,577.95, -8.4%) remains authoritative.
+
+graduated_rules feedback still live (28).
+
+---
+
 ## 2026-06-17T05:42:00Z [BUG] Cycle 2 — trades.csv PnL is corrupted; equity accounting is sound
 
 Health green: bot stable ~10h uptime (PID 18388), no restart loop, trading (HYPE/BTC signals live).
