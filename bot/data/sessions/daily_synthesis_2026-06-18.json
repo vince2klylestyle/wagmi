@@ -1,11 +1,11 @@
 {
-  "last_run": "2026-06-18T10:03:39+00:00",
-  "run_number": 71,
+  "last_run": "2026-06-18T13:03:27+00:00",
+  "run_number": 72,
   "date": "2026-06-18",
-  "bot_status": "OFFLINE — day 59.88",
+  "bot_status": "OFFLINE — Day 60 (round milestone)",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "anomalies_found": 11,
+  "anomalies_found": 12,
   "report_generated": true,
   "eod_report_pending": true,
   "eod_report_eta_utc": "2026-06-18T22:00:00+00:00",
@@ -13,103 +13,100 @@
     "date": "2026-06-18",
     "trades": 0,
     "pnl_usd": 0.0,
-    "ev_loss_today_usd": 9.72,
+    "ev_loss_today_usd": 12.61,
     "ev_rate_per_hour": 0.97,
     "ev_milestones_crossed_today": [
-      "$385 crossed ~08:54 UTC Jun18 (during morning peak, bot offline)",
-      "46th consecutive morning miss CONFIRMED at 10:00 UTC Jun18"
+      "$385 crossed ~08:54 UTC Jun18 (morning peak, bot offline)",
+      "46th consecutive morning miss CONFIRMED at 10:00 UTC Jun18",
+      "$388 crossed ~11:09 UTC Jun18 (between runs)",
+      "60 DAYS OFFLINE — milestone at 13:03 UTC Jun18 (Run72)"
     ],
     "ev_milestones_approaching_today": [
-      "$390 ETA ~14:03 UTC Jun18 (~3.97h away, afternoon window) — SOL_SHORT 120h mark same time",
-      "$395 ETA ~19:09 UTC Jun18 (~9.1h away, evening window)"
+      "$390 ETA ~14:04 UTC Jun18 (~1.01h, same time as SOL_SHORT 120h governance mark)",
+      "$395 ETA ~19:10 UTC Jun18 (~6.1h, evening window)"
     ],
-    "ev_total_cumulative": 386.12,
-    "loop_cadence_note": "RUN 71: 1.02h gap (Run70 09:02 → Run71 10:03). BEST GAP YET. 3rd sub-2h gap in last 4 runs. History: 25h→28h→1h→22h→1.97h→1.02h.",
+    "ev_total_cumulative": 389.02,
+    "loop_cadence_note": "RUN 72: 2.99h gap (Run71 09:02 → Run72 13:03). REGRESSION from 1.02h best. History: 25h→28h→1h→22h→1.97h→1.02h→2.99h. Volatile. Run73 target sub-2h.",
     "session_windows_jun18": {
       "morning_peak": "07:00-10:00 UTC — CLOSED. 46th CONSECUTIVE MISS CONFIRMED at 10:03 UTC.",
-      "morning_full": "06:00-12:00 UTC — CLOSING in 1.93h (closes 12:00 UTC). 4h already lost (06:00-10:03).",
-      "afternoon": "12:00-16:00 UTC — UPCOMING (~1.93h away). $390 ETA 14:03 UTC. SOL_SHORT 120h governance same time.",
-      "evening": "16:00-22:00 UTC — UPCOMING (~5.93h away, WR=65%). 9th consecutive miss pending."
+      "morning_full": "06:00-12:00 UTC — CLOSED at 12:00 UTC.",
+      "afternoon": "12:00-16:00 UTC — ACTIVE NOW (13:03 UTC). 1.05h elapsed, 2.97h remaining. Bot OFFLINE — being missed.",
+      "evening": "16:00-22:00 UTC — UPCOMING (~2.97h away, WR=65%). 9th consecutive miss pending."
     }
   },
   "consecutive_loss_detection": {
     "status": "NO_DATA",
-    "reason": "trades.csv absent — bot offline 59.88 days",
+    "reason": "trades.csv absent — bot offline 60 days",
     "threshold": 5,
-    "consecutive_losses_today": 0,
-    "note": "Cannot detect consecutive losses without active trades"
+    "consecutive_losses_today": 0
   },
   "wr_swing_detection": {
     "status": "NO_DATA",
     "reason": "trades.csv absent",
     "7day_avg_wr_cached": 0.337,
     "today_wr": null,
-    "swing_threshold_pct": 20,
     "swing_detected": false
   },
   "leverage_anomaly_detection": {
     "status": "NO_DATA",
     "threshold_x": 7,
-    "max_observed_leverage": null,
     "anomaly": false,
-    "note": "Bot offline — no leverage data available. Last known anomaly: Mar 30 blowup at 9.7x (sniper bypass)"
+    "note": "Bot offline. Last known anomaly: Mar 30 blowup at 9.7x (sniper bypass)."
   },
   "time_of_day_dominance": {
     "status": "CACHED_ANALYSIS",
-    "threshold_pct": 70,
     "dominance_detected": true,
     "dominant_window": "MORNING_06_12",
     "dominant_window_wr": 0.68,
-    "dominant_window_share_of_wins": 0.68,
-    "note": "Morning window dominates at 68% WR. tod_morning_edge_v1 gate=50 active. Afternoon and evening secondary edges."
+    "afternoon_window_secondary": 0.62,
+    "evening_window_secondary": 0.65
   },
-  "positive_anomalies": [
-    "CADENCE_BEST_YET — Run71 fired 1.02h after Run70 (best gap in history). 3rd sub-2h gap in 4 runs. Trend solidifying.",
-    "$385_MILESTONE_CONFIRMED — $385.13 crossed at 08:54 UTC Jun18 (confirmed from Run70)."
-  ],
-  "critical_anomalies": [
-    "46TH_MORNING_MISS_CONFIRMED — 10:03 UTC Jun18. Window closed 10:00 UTC. 46 consecutive morning peaks missed.",
-    "$390_ETA_3.97H — $386.12 total. $390 at 14:03 UTC Jun18 (afternoon window, SOL_SHORT 120h governance same time).",
-    "MORNING_FULL_WINDOW_CLOSING_1.93H — 06:00-12:00 UTC, closes 12:00 UTC. 4h of 6h morning window already lost."
-  ],
-  "high_anomalies": [
-    "SOL_SHORT_GOVERNANCE_116.07H_OVERDUE — 572.07h (23.84 days). 120h mark at ~14:03 UTC TODAY (same as $390 ETA). DECIDE NOW.",
-    "9TH_CONSECUTIVE_EVENING_MISS_PENDING — 16:00-22:00 UTC Jun18 (WR=65%). 5.93h away.",
-    "AB_TRACKER_BROKEN_DAY_59.88 — 20 rules frozen. Cannot graduate without fix.",
-    "$395_EV_MILESTONE_9.1H_AWAY — ~19:09 UTC Jun18 (during evening window).",
-    "CADENCE_IMPROVING_NOT_YET_STABLE — Pattern 25h→28h→1h→22h→1.97h→1.02h. Improving but still manual restarts suspected.",
-    "59.88_DAYS_OFFLINE — EV $386.12 total ($23.28/day). Accelerating toward $400 milestone.",
-    "BOT_INACTIVE_ALERT_RULE — conf=100%, gate=0, status=PENDING_HUMAN_REVIEW. 'Bot inactive' acknowledged but no restart triggered."
-  ],
+  "anomaly_summary": {
+    "critical": [
+      "SOL_SHORT_120H_GOVERNANCE_56MIN — 119.06h past 19-day milestone. 120h mark ~14:00 UTC TODAY. ~56 minutes. DECIDE NOW.",
+      "$390_ETA_1H_DUAL_CONVERGENCE — $389.02 total. $390 at 14:04 UTC = same time as SOL_SHORT 120h mark.",
+      "AFTERNOON_WINDOW_LIVE_BOT_OFFLINE — 12:00-16:00 UTC window NOW ACTIVE. 63 min missed. $1.02 EV lost this window. ~$2.86 saveable.",
+      "60_DAYS_OFFLINE_MILESTONE — Bot offline exactly 60 days (13:03 UTC Jun18). Round milestone. $389.02 cumulative EV loss."
+    ],
+    "high": [
+      "CADENCE_REGRESSION_2.99H — Run72 fired 2.99h after Run71 best (1.02h). Pattern: 25→28→1→22→1.97→1.02→2.99. Volatile.",
+      "9TH_CONSECUTIVE_EVENING_MISS_PENDING — 16:00-22:00 UTC in ~3h (WR=65%). 8 consecutive misses already.",
+      "AB_TRACKER_BROKEN_DAY_60 — 20 rules frozen. 1440h without fix.",
+      "$395_EV_MILESTONE_6.1H_AWAY — ~19:10 UTC Jun18 (evening window).",
+      "F1_SNIPER_PENDING_HUMAN_REVIEW_DAY_60 — conf=90%, still blocked."
+    ]
+  },
   "today_focus": {
-    "IMMEDIATE_P0": "START BOT — 'cd bot && python run.py paper'. Afternoon window 12:00-16:00 UTC (~2h). $390 ETA 14:03 UTC (same time as SOL_SHORT 120h governance mark).",
-    "IMMEDIATE_P1": "SOL_SHORT governance 116h overdue — 120h mark at 14:03 UTC TODAY. Decide: (A) reduce gate=100→80 for probe, or (B) ratify block.",
+    "IMMEDIATE_P0_56MIN": "SOL_SHORT governance — 119.06h overdue, 120h mark 14:00 UTC TODAY. Decide: (A) gate=100→80 probe OR (B) ratify permanent block.",
+    "IMMEDIATE_P0_NOW": "START BOT — 'cd bot && python run.py paper'. Afternoon 12:00-16:00 UTC LIVE (1.05h gone, 2.95h remain). Evening 16:00-22:00 UTC also at stake.",
     "DEV_P1": "AB tracker fix in bot/feedback/loop.py (~2h) — unlocks 20 frozen rules",
     "DEV_P2": "Restore snapshot_entry column in trades.csv — enables slippage forensics",
-    "AFTERNOON": "Afternoon window 12:00-16:00 UTC (~2h away, WR=62%). $390 ETA 14:03 UTC.",
-    "EVENING": "Evening window 16:00-22:00 UTC (~5.93h, WR=65%). 9th consecutive miss pending."
+    "AFTERNOON": "~$2.86 EV saveable if bot starts NOW. $390 ETA 14:04 UTC (1h).",
+    "EVENING": "Evening window 16:00-22:00 UTC (~3h, WR=65%). 9th consecutive miss pending."
   },
   "consecutive_morning_peak_misses": 46,
-  "consecutive_morning_peak_misses_note": "46th miss CONFIRMED — window closed 10:00 UTC Jun18",
   "consecutive_morning_full_misses": 46,
   "consecutive_evening_misses": 8,
   "consecutive_evening_misses_9th_pending": true,
-  "cumulative_ev_loss_usd": 386.12,
-  "bot_offline_days": 59.88,
+  "cumulative_ev_loss_usd": 389.02,
+  "bot_offline_days": 60.00,
   "milestones_crossed_today": [
     "$385 at ~08:54 UTC (morning peak)",
-    "46th consecutive morning miss CONFIRMED at 10:00 UTC"
+    "46th consecutive morning miss CONFIRMED at 10:00 UTC",
+    "$388 at ~11:09 UTC (between runs)",
+    "60 DAYS OFFLINE — at 13:03 UTC Run72"
   ],
   "milestones_approaching_today": [
-    "$390 ETA 14:03 UTC (afternoon window, SOL_SHORT 120h governance same time)",
-    "$395 ETA 19:09 UTC (evening window)"
+    "$390 ETA 14:04 UTC (SOL_SHORT 120h convergence, ~1h)",
+    "$395 ETA 19:10 UTC (evening window, ~6.1h)"
   ],
-  "run71_new_findings": [
-    "46TH MORNING MISS CONFIRMED — 10:03 UTC Jun18 (window closed 10:00 UTC). 46 consecutive misses.",
-    "$386.12 EV total (+$0.99 since Run70, 1.02h gap). Small accrual.",
-    "Cadence 1.02h gap — BEST YET. 3rd sub-2h gap in 4 runs. Pattern strengthening.",
-    "SOL_SHORT governance: 116.07h overdue (+1.02h from Run70). 120h mark ETA ~14:03 UTC TODAY.",
-    "$390 ETA 14:03 UTC — same time as SOL_SHORT 120h governance deadline. Dual P0 convergence.",
-    "11 anomalies Jun18 (2 positive: cadence best + $385 milestone)."
+  "run72_new_findings": [
+    "60_DAYS_OFFLINE — round milestone. $389.02 EV (+$2.90, 2.99h gap).",
+    "SOL_SHORT_119.06H — 120h mark in 56 MINUTES (~14:00 UTC). DECISION WINDOW CLOSING.",
+    "$390_ETA_1.01H — dual convergence with SOL_SHORT at 14:04 UTC.",
+    "AFTERNOON_WINDOW_LIVE — 12:00-16:00 UTC active now. 63 min already missed. $1.02 gone, $2.86 saveable.",
+    "CADENCE_REGRESSION_2.99H — after best 1.02h (Run71). Pattern volatile.",
+    "9TH_EVENING_MISS_PENDING — 16:00 UTC in ~3h. WR=65%.",
+    "12 anomalies Jun18 (4 critical, 5 high, 3 medium/low)."
   ]
 }
