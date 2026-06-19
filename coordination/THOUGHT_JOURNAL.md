@@ -6,6 +6,22 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-19 ~20:30Z — DEEP DIVE: why is it barely trading? (Nunu: "trade A LOT to find edge")
+
+**OBSERVED:** New daily log bot_20260619.log (earlier cycles read the stale Jun-16 file). Today's funnel: 187 RAW signals, ~209 reached LLM funnel, **LLM go=0 / skip=38** — it's rejecting ~everything. Skip reasons all regime-based ("trend regime 0%", "consolidation+range regime", "drifts lower"). Suppressive health framing pre vs post the 17:40 calibration restart: BEFORE {8.5%:3, classifier_acc:1, critical_health:1, loss_streak:4, cb:2}; AFTER {loss_streak:6, cb:2} — i.e. the calibration fix WORKED (8.5%/classifier/critical-health framing → ZERO post-restart). BUT agents still cited "16-loss streak" post-restart (18:19/19:22/19:56) while circuit_breaker says only 5 consecutive. Found source: active_learning.py:288-298 reported max_streak (all-time worst in window) as the active weakness. And system_health="critical" (active_learning.py:301, triggered by wr_10<0.25) is injected to ALL agents (coordinator.py:2516) → they skip.
+
+**REASONED:** Three suppressors, layered: (1) false calibration "8.5%" [FIXED, confirmed gone]. (2) max-streak-as-active misframing → "16-loss streak active, critical" [fixing now]. (3) CORE death-spiral: wr_10<0.25 → system_health critical → injected → agents skip → no new trades → wr_10 stays <0.25. #3 is framing/context-driven (not a hard gate), so removing the false inputs (#1,#2) reduces the scare but the wr_10 trigger persists. To actually "trade a lot to find edge" we likely need explicit EXPLORATION (trade through the bad patch to gather data) — matches [[exploration_and_symbol_expansion]] + overdrive philosophy.
+
+**DECIDED (executed):** Fixed #2 — active_learning.py now reports current trailing streak (current_loss_streak), keeps max as an info metric only. py_compile OK. Restarted PID 11024 (vetoes intact). Now BOTH calibration + streak fixes live; observe combined effect on go-rate.
+
+**RULED-OUT:** gutting the health/critical assessment (legit signal — recent WR really is poor); risky agent-prompt surgery stacked in the same turn as 2 other live fixes; implementing exploration before observing whether #1+#2 already unclamp (don't over-change then can't attribute).
+
+**OPEN-QUESTIONS:** Does LLM go-rate rise now that 8.5%+16-streak framing are gone? If go stays ~0 once trades accrue, the wr_10→critical→skip core needs breaking via exploration: when health=critical AND trade volume is very low (paralysis), allow a bounded epsilon of exploratory trades (catastrophic patterns still gated by the long vetoes) to gather fresh data — OR soften critical→skip into critical→reduce-size-but-still-take. That is the principled unlock for data-gathering.
+
+**NEXT:** observe funnel go-rate over coming cycles; if still paralyzed, implement bounded exploration mode (validated+reversible, paper only) — that's the most direct path to "trade a lot → find edge".
+
+---
+
 ## 2026-06-19 ~19:45Z — Cycle: still accruing (budget-light, no deep analysis)
 
 **OBSERVED:** Healthy (PID 22352, heartbeat ~25s, vetoes active=True, no restart loop). Since 17:40Z restart (~130min): only 5 risk decisions, 0 trade closes, calibration buckets still 0.

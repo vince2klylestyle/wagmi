@@ -68,6 +68,10 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-19T20:30Z [INVESTIGATION] Why barely trading: LLM go=0/skip=38 today. Calibration fix CONFIRMED working; 2nd suppressor fixed; core = wr_10→critical death-spiral.
+
+Deep funnel dive (Nunu: trade A LOT to find edge). 187 signals today, LLM go=0/skip=38 (rejects ~everything; skips all regime-based). KEY: calibration fix WORKED — "8.5% accuracy"/classifier/critical-health framing dropped to ZERO after the 17:40 restart (was present before). But agents still cited "16-loss streak active" post-restart (CB says 5) — traced to active_learning.py:288 reporting max_streak (all-time worst) as the active weakness. FIXED → now reports current trailing streak; restarted PID 11024 (vetoes intact). CORE death-spiral remains: wr_10<0.25 → system_health=critical (active_learning.py:301) injected to all agents (coordinator.py:2516) → skip → can't improve wr_10. Removing false inputs (8.5%, 16-streak) reduces the scare; if go-rate still ~0 after trades accrue, NEXT = bounded EXPLORATION mode (trade through bad patch to gather data, catastrophic patterns still veto-gated) — the direct path to high volume. Full reasoning in THOUGHT_JOURNAL.md.
+
 ## 2026-06-19T19:45Z [FYI] Still accruing — healthy, risk n=5 / 0 closes since restart. Test needs more closes.
 
 ## 2026-06-19T18:43Z [FYI] Calibration-fix test: promising, inconclusive (n=2). Healthy.

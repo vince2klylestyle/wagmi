@@ -285,6 +285,10 @@ class ActiveLearningEngine:
                 weaknesses.append(f"Gate '{top_gate}' blocking {metrics['gate_rejections'][top_gate]} signals")
 
         # -- Consecutive loss detection --
+        # 2026-06-19: report the CURRENT (trailing) streak as the active weakness, not the
+        # all-time max in the window. Presenting the historical worst (e.g. 16) as if it were
+        # "active" falsely framed health as critical and drove agents to skip everything —
+        # a self-fulfilling death-spiral. max_streak kept as an informational metric only.
         streak = 0
         max_streak = 0
         for t in recent_trades:
@@ -293,8 +297,11 @@ class ActiveLearningEngine:
                 max_streak = max(max_streak, streak)
             else:
                 streak = 0
-        if max_streak >= 4:
-            weaknesses.append(f"Max loss streak: {max_streak} consecutive")
+        current_streak = streak  # trailing consecutive losses as of the most recent trade
+        metrics["max_loss_streak_window"] = max_streak
+        metrics["current_loss_streak"] = current_streak
+        if current_streak >= 4:
+            weaknesses.append(f"Active loss streak: {current_streak} consecutive")
             root_causes.append("loss_streak_regime_mismatch")
 
         # -- Determine overall health --
