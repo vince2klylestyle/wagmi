@@ -68,6 +68,10 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-19T22:40Z [BUG-FOUND] ABANDONED exploration override — real killer is the EXIT agent guillotining trades (0/10)
+
+Data killed the override premise. Current loss streak=24, wr_10=0/10. Last 15 closes ALL by LLM_EXIT_AGENT (15/15), holds 0.5-2.1h, 8/15 scratches <$1, sum −$346. The Exit Agent force-closes every position prematurely (citing "critical health" + "thesis confidence=0 auto-invalidation"), overriding its own 2h-HOLD guard (prompts.py:1142) → manufactures the 0/10 → reinforces critical → spiral. Forcing more ENTRIES (exploration) would just feed the guillotine. The one position NOT panic-closed (open HYPE_LONG) is GREEN → entries aren't the problem, exits are. ABANDONED override (risk-adding into 0/10). NEXT focused cycle: stop the premature exits — pin + disable the thesis auto-invalidation under critical-health/streak; enforce the 2h-HOLD guard; let positions run to real SL/TP/invalidation. Risk-REDUCING. Full reasoning in THOUGHT_JOURNAL.md.
+
 ## 2026-06-19T21:35Z [WORKING-ON-X] Paralysis persists (go=0); safe fixes insufficient; exploration override is next.
 
 Since 20:30 restart: go=0/skip=10. False scares gone (8.5%=0, streak-framing fixed) but health=critical still fires — structural: wr_10 = last-10-CLOSED-trades WR (all bleed) → stuck <0.25 → permanent critical → skip → can't recover. Shipped (code, not yet live) a health-honesty gate: critical-from-stale-wr_10 now requires an ACTIVE streak (current_streak>=3) so the trap isn't permanent (smoke-tested). Did NOT restart (won't unclamp now, streak high). NEXT focused cycle: bounded EXPLORATION override (env-flag, reversible) — when paralyzed + signal passes ALL catastrophic gates, epsilon~0.2 convert skip→reduced-size exploratory go to gather data; smoke test must prove it never fires on veto/poison/duplicate/CB signals. Full plan in THOUGHT_JOURNAL.md.

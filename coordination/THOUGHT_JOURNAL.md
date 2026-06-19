@@ -6,6 +6,24 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-19 ~22:40Z — MAJOR PIVOT: abandoned exploration override; the killer is the EXIT agent, not entries
+
+**OBSERVED:** No existing exploration mechanism to enable. Current trailing loss streak = **24**, wr_10 = **0/10**. Last 15 closes were **ALL by LLM_EXIT_AGENT (15/15)** — short holds (0.5–2.1h), 8/15 scratches (<$1), sum −$346. Exit prompt ALREADY has a "if hold_time<2h you're in the noise phase, default HOLD, require explicit invalidation" guard (prompts.py:1142) — yet it's closing at 0.5–2h anyway. Exit reasoning (seen earlier): "Thesis confidence=0.0 (automatic invalidation). System in critical health…". 121 exit-invalidation mentions in today's log.
+
+**REASONED:** The exploration-override PREMISE IS CONTRADICTED. The death-spiral story assumed the bot would WIN if it weren't too scared to enter. But 0/10 means when it DOES trade it loses — and the loss mechanism is the **Exit Agent force-closing every position prematurely** (driven by injected "critical health" + "thesis confidence=0 auto-invalidation"), overriding its own 2h-HOLD guard. That manufactures the 0/10 → reinforces critical → spiral. Forcing MORE entries (exploration) would just feed the guillotine = manufacture losses. Tell: the ONE position NOT being panic-closed (the open HYPE_LONG) is GREEN — entries aren't all bad; exits are killing them.
+
+**DECIDED:** ABANDONED the exploration override (would be risk-ADDING into a 0/10, against capital + against finding real edge). Pivoted to the correct, risk-REDUCING fix: stop the Exit Agent's premature closing. Did NOT restart (no code change shipped this cycle; the prior health-honesty fix still pending next restart).
+
+**RULED-OUT:** forced-entry exploration (feeds the guillotine); rushing an exit-logic change at the tail of a very long session (high blast radius — exits decide realized P&L).
+
+**EXIT-FIX PLAN (next focused cycle):** (1) pin the thesis auto-invalidation source — what sets thesis_confidence=0 (likely thesis_tracker / brain_wiring / a health- or streak-driven decay). (2) Stop it auto-zeroing theses under critical-health/loss-streak — let positions live to their REAL invalidation (SL/TP/regime-shift/BTC-reversal), per the existing prompt rules. (3) Enforce the 2h-noise HOLD guard so critical-health context can't override it. Goal: positions breathe → premature-close rate drops → 0/10 breaks. Validate + smoke test + restart; verify avg hold-time rises and LLM_EXIT_AGENT scratch-closes fall. Reversible.
+
+**OPEN-QUESTIONS:** Are entries ALSO weak? Unknowable while exits guillotine everything — fix exits FIRST, then re-measure entry quality with trades that are allowed to play out. (Green open HYPE_LONG suggests entries are at least partly fine.)
+
+**NEXT:** implement the exit-fix (focused cycle). This is the true path to "trade a lot AND find edge" — trades that actually run to their thesis generate real edge signal; guillotined scratches generate only fee-drag noise.
+
+---
+
 ## 2026-06-19 ~21:35Z — Verdict: paralysis persists; safe fixes insufficient; override is the lever (planned next cycle)
 
 **OBSERVED:** Since the 20:30 restart (~1h): RAW=31, LLM go=0, skip=10 — still paralyzed. Framing since restart: 8.5%=0 (calibration fix holding), loss_streak mentions=1 (streak fix holding), but health_critical still fired 5×. Root structural trap: wr_10 = win-rate over the last 10 CLOSED trades (active_learning.py:124) — all from the bleed — so it's stuck <0.25 → permanent health=critical → agents skip → no new closes → wr_10 frozen. current_streak is genuinely elevated (last ~5-9 closes were all losses).
