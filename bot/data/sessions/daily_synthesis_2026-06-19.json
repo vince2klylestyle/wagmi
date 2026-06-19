@@ -1,45 +1,48 @@
 {
-  "last_run": "2026-06-19T20:10:00Z",
-  "run_number": 86,
+  "last_run": "2026-06-19T22:10:00Z",
+  "run_number": 87,
   "date": "2026-06-19",
   "bot_status": "OFFLINE — Day 63.84",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "ev_total_cumulative": 429.82,
+  "ev_total_cumulative": 431.60,
   "ev_rate_per_hour": 0.97,
-  "anomalies_found": 12,
+  "anomalies_found": 13,
   "anomalies": [
     {"id": "BOT_OFFLINE_63.84D", "severity": "CRITICAL", "ev_accrued_usd": 429.82, "action": "P0: cd bot && python run.py paper"},
     {"id": "MORNING_WINDOW_MISS", "severity": "HIGH", "description": "06-12 UTC (68% WR) missed."},
     {"id": "AFTERNOON_WINDOW_MISS", "severity": "HIGH", "description": "12-16 UTC (62% WR) closed at 16:00 UTC."},
-    {"id": "EVENING_WINDOW_CLOSING", "severity": "HIGH", "description": "16-22 UTC (65% WR) ~1h50m remaining. $1.78 EV capturable."},
-    {"id": "TRAILING_WR_FRAMING_CORRECTION", "severity": "HIGH", "description": "Run86 NEW: TP1+trailing path WR=64% avg=+$10.03 (n=160). Prior -$0.34 was TRAILING_STOP close_reason only."},
-    {"id": "INSIGHT_CONTRADICTION_TRIPLET", "severity": "HIGH", "description": "Insights 3, 7, 9 contradict on leverage/WR (57% vs 36% vs 58%). All ACTIVE. No conflict detection."},
+    {"id": "EVENING_WINDOW_CLOSED_OFFLINE", "severity": "HIGH", "description": "Evening window (16-22 UTC, 65% WR) closed without bot running. $1.78 EV missed.", "detected_run": 87},
+    {"id": "TRAILING_WR_FRAMING_CORRECTION", "severity": "HIGH", "description": "TP1+trailing path WR=64% avg=+$10.03. Prior -$0.34 was TRAILING_STOP close_reason only."},
+    {"id": "INSIGHT_CONTRADICTION_TRIPLET", "severity": "HIGH", "description": "Insights 3, 7, 9 contradict on leverage/WR. APPLIED META_LEARNING_CONFLICT_DETECTION_V1 gate=20%."},
     {"id": "DURATION_H_BROKEN", "severity": "HIGH", "description": "All trades in both CSVs show duration_h<=0. Hold-time rules cannot be validated."},
-    {"id": "BTC_LONG_VETO_REC", "severity": "HIGH", "description": "BTC_LONG WR=32% (n=41). Inverse confidence effect (80+ conf = 19% WR). Gate=80% veto recommended."},
+    {"id": "BTC_LONG_VETO_REC", "severity": "HIGH", "description": "BTC_LONG WR=32%. Inverse confidence effect (80+ conf = 19% WR). Monitoring — 72% conf below threshold."},
     {"id": "DATASET_CONFLICT_SYSTEMIC", "severity": "HIGH", "description": "10d (57% WR) vs 100d (44.5% WR). 12/17 active rules from 10d."},
-    {"id": "TIMES_CORRECT_BLIND", "severity": "HIGH", "description": "times_correct=0 across all 17 graduated rules. Tracking bug."},
+    {"id": "TIMES_CORRECT_BLIND", "severity": "HIGH", "description": "times_correct=0 across all graduated rules. Tracking bug."},
     {"id": "SOL_SHORT_RULE_CONFLICT", "severity": "MEDIUM", "description": "SOL_SHORT gate=100% blocks best 10d edge (64% WR)."},
-    {"id": "AB_TRACKER_STALLED", "severity": "MEDIUM", "description": "38 A/B tracker rules stalled."}
+    {"id": "AB_TRACKER_STALLED", "severity": "MEDIUM", "description": "38 A/B tracker rules stalled."},
+    {"id": "FULL_DAY_OFFLINE_EV_LOSS", "severity": "HIGH", "description": "Full trading day missed. $6.98 EV across morning+afternoon+evening windows.", "detected_run": 87}
   ],
   "session_windows_today": {
     "night_00_06": {"status": "CLOSED — blocked", "wr": 0.19},
     "morning_06_12": {"status": "CLOSED — missed", "wr": 0.68},
     "afternoon_12_16": {"status": "CLOSED — missed", "wr": 0.62},
-    "evening_16_22": {"status": "OPEN — ~1h50m remaining", "wr": 0.65, "ev_remaining": 1.78},
-    "late_22_24": {"status": "NOT YET — low edge", "wr": 0.38}
+    "evening_16_22": {"status": "CLOSED — ended ~22:00 UTC. Bot offline.", "wr": 0.65, "ev_missed": 1.78},
+    "late_22_24": {"status": "OPEN — low edge (38% WR). Bot offline. Not worth chasing.", "wr": 0.38}
+  },
+  "ev_total_missed_today": {
+    "morning_06_12": 2.72,
+    "afternoon_12_16": 2.48,
+    "evening_16_22": 1.78,
+    "total": 6.98,
+    "note": "Full trading day missed. 3 of 4 high-edge windows closed without bot running."
   },
   "tomorrows_focus": {
     "priority_1": "Start bot before 06:00 UTC — morning window 68% WR",
     "priority_2": "Implement TRAILING_STOP_LOCK (position_manager.py:1244)",
     "priority_3": "Implement TP1_CUMULATIVE_PNL_INSTRUMENTATION",
-    "priority_4": "Add btc_long_veto_v1 gate=80% to graduated_rules.json",
-    "priority_5": "Add conflict detection to meta_learning insight insertion"
+    "priority_4": "BTC_LONG_VETO watch — if conf hits 75%, apply gate=80%",
+    "priority_5": "Implement META_LEARNING_CONFLICT_DETECTION_V1 code change"
   },
-  "new_findings_run86": [
-    "TRAILING_WR_FRAMING_CORRECTION: TP1+trailing path WR=64% avg=+$10.03, not -$0.34 (prior was TRAILING_STOP close_reason only)",
-    "INSIGHT_CONTRADICTION_TRIPLET: Insights 3, 7, 9 all contradict each other on leverage/WR. All ACTIVE.",
-    "DURATION_H_BROKEN: All trades in both CSVs show duration_h=0 or negative. Hold-time analysis blind.",
-    "BTC_LONG_VETO_REC: WR=32%, all sub-conditions negative, inverse confidence effect worst here. Veto at gate=80% recommended."
-  ]
+  "run87_update": "Evening window CLOSED. Total day EV missed: $6.98. Fix applied: META_LEARNING_CONFLICT_DETECTION_V1 gate=20%."
 }
