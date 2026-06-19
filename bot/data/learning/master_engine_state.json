@@ -9,8 +9,8 @@
   "ev_rate_per_hour": 0.97,
   "github_push_status": {
     "git_status": "PUSHED via GitHub MCP",
-    "last_known_commit": "[RUN84] Perpetual improvement loop",
-    "note": "4 files updated: graduated_rules.json (gate escalation), auto_fix_state.json, daily_synthesis, master_engine_state."
+    "last_known_commit": "01e732e [RUN84] Perpetual improvement loop",
+    "note": "4 files updated: graduated_rules.json (gate escalation), auto_fix_state.json, daily_synthesis, master_engine_state. Local proxy 503 — content confirmed on remote via MCP."
   },
   "subsystems": {
     "auto_fix": {
@@ -25,7 +25,7 @@
           "gate_before": 20,
           "gate_after": 50,
           "confidence": 0.88,
-          "reason": "100d backtest graduation criterion met: WR=36.1%<45%, n=36>=15 for 80-85% sub-bucket. Full 80-90% bin: 40% WR on n=120 further confirms anti-correlation. Doubling penalty coverage from probe(20%) to half-deploy(50%).",
+          "reason": "100d backtest graduation criterion met: WR=36.1%<45%, n=36>=15 for 80-85% sub-bucket. Full 80-90% bin: 40% WR on n=120 further confirms. Doubling penalty coverage from probe(20%) to half-deploy(50%).",
           "applied_at": "2026-06-19T16:00:00Z"
         }
       ],
