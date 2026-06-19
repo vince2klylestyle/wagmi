@@ -1,27 +1,28 @@
 {
-  "last_run": "2026-06-19T14:00:00Z",
-  "run_number": 83,
+  "last_run": "2026-06-19T16:00:00Z",
+  "run_number": 84,
   "date": "2026-06-19",
-  "bot_status": "OFFLINE — Day 63.0",
+  "bot_status": "OFFLINE — Day 63.33",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "ev_total_cumulative": 423.94,
+  "ev_total_cumulative": 425.88,
   "ev_rate_per_hour": 0.97,
-  "anomalies_found": 7,
+  "anomalies_found": 8,
   "report_generated": true,
   "anomaly_checks": {
-    "consecutive_losses_gt5": "SKIPPED — no live trades (bot offline 63.0d)",
+    "consecutive_losses_gt5": "SKIPPED — no live trades (bot offline 63.33d)",
     "wr_swing_gt20pct_7day": "SKIPPED — no live trades",
     "leverage_gt7x_sustained": "SKIPPED — no live positions",
     "time_of_day_dominance_gt70pct": {
-      "result": "HISTORICAL: morning_06_12 (68% WR) shows 10d dominance. TOD rules deactivated Run81.",
+      "result": "HISTORICAL: morning_06_12 (68% WR) + evening_16_22 (65% WR) show dominance. TOD rules deactivated Run81.",
       "active_rules": "None (deactivated)"
     }
   },
   "anomalies": [
-    {"id": "BOT_OFFLINE_63D", "type": "BOT_OFFLINE", "severity": "CRITICAL", "description": "Bot offline 63.0 days. $423.94 cumulative EV not captured. Rate: $0.97/h.", "action": "P0: cd bot && python run.py paper", "ev_accrued_usd": 423.94},
-    {"id": "MORNING_WINDOW_MISS_JUN19", "type": "SESSION_MISS", "severity": "HIGH", "description": "Morning window 06-12 UTC (68% WR) closed without trade. Consecutive miss streak continues.", "action": "Start bot before 06:00 UTC tomorrow"},
-    {"id": "AFTERNOON_WINDOW_OPEN", "type": "OPPORTUNITY", "severity": "HIGH", "description": "Afternoon window 12-16 UTC (62% WR) OPEN — 2h remaining from 14:00 UTC.", "window_closes_utc": "2026-06-19T16:00:00Z", "ev_capturable_usd": 1.94},
+    {"id": "BOT_OFFLINE_63D", "type": "BOT_OFFLINE", "severity": "CRITICAL", "description": "Bot offline 63.33 days. $425.88 cumulative EV not captured. Rate: $0.97/h.", "action": "P0: cd bot && python run.py paper", "ev_accrued_usd": 425.88},
+    {"id": "MORNING_WINDOW_MISS_JUN19", "type": "SESSION_MISS", "severity": "HIGH", "description": "Morning window 06-12 UTC (68% WR) closed without trade. Third consecutive day missed.", "action": "Start bot before 06:00 UTC tomorrow"},
+    {"id": "AFTERNOON_WINDOW_CLOSED", "type": "SESSION_MISS", "severity": "HIGH", "description": "Afternoon window 12-16 UTC (62% WR) CLOSED at 16:00 UTC. Bot missed second window of the day.", "closed_utc": "2026-06-19T16:00:00Z"},
+    {"id": "EVENING_WINDOW_OPEN_NOW", "type": "OPPORTUNITY", "severity": "HIGH", "description": "Evening window 16:00-22:00 UTC (65% WR) NOW OPEN. 6h window with second-highest historical WR. Bot offline — opportunity being missed in real time.", "window_opens_utc": "2026-06-19T16:00:00Z", "window_closes_utc": "2026-06-19T22:00:00Z", "ev_capturable_usd": 5.82},
     {"id": "DATASET_CONFLICT_SYSTEMIC", "type": "DATA_QUALITY", "severity": "HIGH", "description": "10d (57% WR, +$905) vs 100d (44.5% WR, -$8,174). 12 of 17 active rules built from 10d — may misfire in live mixed-regime conditions.", "action": "Before restart: reduce gate on rules with 10d-only evidence"},
     {"id": "TIMES_CORRECT_BLIND", "type": "FEEDBACK_GAP", "severity": "HIGH", "description": "times_correct=0 across 24+ primary rules. Fix committed (724673e) but unverifiable until bot restart.", "action": "Verify on first live trade post-restart"},
     {"id": "SOL_SHORT_RULE_CONFLICT", "type": "RULE_CONFLICT", "severity": "MEDIUM", "description": "SOL_SHORT_full_block (gate=100%) blocks best 10d edge (64% WR). 100d shows 45% — conflict unresolved.", "action": "Post-restart: collect 30+ live SOL SHORT trades"},
@@ -30,8 +31,9 @@
   "session_windows_today": {
     "night_00_06": {"status": "CLOSED — blocked", "wr": 0.19},
     "morning_06_12": {"status": "CLOSED — missed (bot offline)", "wr": 0.68},
-    "afternoon_12_16": {"status": "OPEN (~2h remaining from 14:00 UTC)", "wr": 0.62},
-    "evening_16_22": {"status": "NOT YET — opens 16:00 UTC", "wr": 0.65},
+    "afternoon_12_16": {"status": "CLOSED — missed (bot offline)", "wr": 0.62},
+    "evening_16_22": {"status": "OPEN NOW — bot offline (6h window, WR=65%)", "wr": 0.65},
     "late_22_24": {"status": "NOT YET — low edge", "wr": 0.38}
-  }
+  },
+  "run84_fix_applied": "high_conf_80_85_penalty_v1 gate 20%->50% (auto-escalation, conf=88%)"
 }
