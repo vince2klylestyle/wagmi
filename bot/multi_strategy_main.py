@@ -3636,12 +3636,23 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                             # Wire lesson into all learning systems (deep_memory, knowledge_base, calibration, etc.)
                             try:
                                 from llm.agents.learning_integration import process_agent_lesson
+                                # 2026-06-19: add RAW price move % (entry->exit) so regime
+                                # calibration can score predicted-vs-actual instead of mirroring
+                                # the trade win/loss. Signed: +up / -down.
+                                _entry_px = pos.entry if (pos and getattr(pos, "entry", 0)) else 0.0
+                                try:
+                                    _price_move_pct = ((_exit_price_close - _entry_px) / _entry_px * 100.0) if _entry_px else 0.0
+                                except Exception:
+                                    _price_move_pct = 0.0
                                 _trade_data_for_learning = {
                                     "symbol": symbol,
                                     "side": event.side,
                                     "outcome": "WIN" if total_pnl > 0 else "LOSS",
                                     "pnl": total_pnl,
                                     "pnl_pct": (total_pnl / self.risk_mgr.equity * 100) if self.risk_mgr.equity > 0 else 0,
+                                    "entry_price": _entry_px,
+                                    "exit_price": _exit_price_close,
+                                    "price_move_pct": _price_move_pct,
                                     "confidence": pos.confidence if pos else 0,
                                     "regime": _rg_fb,
                                     "strategy": event.strategy,

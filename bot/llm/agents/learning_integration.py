@@ -364,6 +364,34 @@ def _propose_improvement(lesson: str, category: str, trade_data: Dict):
         logger.debug(f"[AGENT-LEARN] Improvement proposal error: {e}")
 
 
+def _regime_was_correct(regime: str, move_pct: float) -> bool:
+    """Was the regime classification right, judged vs ACTUAL price behavior — NOT
+    whether our trade won. move_pct is the signed raw entry->exit price move %.
+    (Mirrors performance_tracker._regime_matches_outcome; decouples regime accuracy
+    from trade outcome — fixes the 2026-06-19 mismeasurement that made regime
+    'accuracy' == trade win-rate and drove the bot's self-distrust death-spiral.)"""
+    r = (regime or "").lower()
+    up = move_pct >= 0
+    am = abs(move_pct)
+    if r in ("trend", "trending"):
+        return am > 0.5                      # trend = a real directional move happened
+    if r == "trending_bull":
+        return up and am > 0.3
+    if r == "trending_bear":
+        return (not up) and am > 0.3
+    if r in ("range", "consolidation"):
+        return am < 1.5                      # range/consol correct if move stayed contained
+    if r in ("high_volatility", "high_vol"):
+        return am > 1.0
+    if r in ("low_liquidity", "low_liq", "illiquid"):
+        return am < 1.0
+    if r == "panic":
+        return (not up) and am > 2.0
+    if r == "unknown":
+        return False
+    return True
+
+
 def _record_agent_calibration(trade_data: Dict, thesis_correct: bool) -> None:
     """Record trade outcome into the per-agent calibration ledger."""
     try:
@@ -386,18 +414,19 @@ def _record_agent_calibration(trade_data: Dict, thesis_correct: bool) -> None:
         # what that regime predicts. Trending regime + winning trend trade = correct.
         # Range regime + losing breakout trade = correct classification.
         if regime and regime != "unknown":
-            from llm.agents.shared_context import STRATEGY_REGIME_FIT
-            strategy = trade_data.get("strategy", "")
-            regime_fit = STRATEGY_REGIME_FIT.get(regime, {}).get(strategy, 0.5)
-            # High regime fit + win = regime was correct
-            # Low regime fit + loss = regime was also correct (predicted poor fit)
-            # High regime fit + loss = regime may have been wrong
-            # Low regime fit + win = regime may have been wrong
-            regime_correct = (
-                (regime_fit >= 0.5 and thesis_correct) or
-                (regime_fit < 0.5 and not thesis_correct)
-            )
-            ledger.record_outcome("regime", regime, regime_correct, regime_fit)
+            # 2026-06-19 FIX: score the regime vs ACTUAL price behavior, not trade win.
+            # Old code derived regime_correct from thesis_correct * regime_fit(default 0.5),
+            # so regime "accuracy" just mirrored trade win-rate (~0%) → false self-distrust.
+            move_pct = trade_data.get("price_move_pct")
+            if move_pct is None:
+                # fallback: derive direction from side+pnl (magnitude unknown → small)
+                side = (trade_data.get("side") or "").upper()
+                pnl = trade_data.get("pnl", 0) or 0
+                is_long = side in ("BUY", "LONG")
+                price_up = (is_long and pnl > 0) or ((not is_long) and pnl < 0)
+                move_pct = 0.6 if price_up else -0.6
+            regime_correct = _regime_was_correct(regime, float(move_pct))
+            ledger.record_outcome("regime", regime, regime_correct, 0.5)
 
         # Risk Agent override tracking: was the override correct?
         # skip+loss = correct (avoided a loser), skip+win = wrong (missed a winner)

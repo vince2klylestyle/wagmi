@@ -6,6 +6,22 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-19 ~17:40Z — Cycle: fixed the calibration mismeasurement (death-spiral root)
+
+**OBSERVED:** Bot healthy (PID 26588, vetoes active). agent_calibration.json showed ~0% accuracy in nearly every regime. Confirmed root cause at learning_integration.py:396: regime_correct = (regime_fit>=0.5 and thesis_correct) with regime_fit defaulting to 0.5 (strategy key usually empty) → regime "accuracy" ≡ trade win-rate. trade_data passed to calibration (_trade_data_for_learning, multi_strategy_main.py:3638) had pnl/pnl_pct/side/regime but NOT raw price move %; exit_price + pos.entry ARE available at that call site.
+
+**REASONED:** Regime correctness must be judged vs ACTUAL price behavior (did price move the way the regime implies), independent of whether OUR trade won. A short can win in a 'trending_bull' (regime wrong, trade right) — the old metric couldn't see that. Need signed raw move %; can compute (exit-entry)/entry at the close site. performance_tracker.py:482 _regime_matches_outcome already encodes the right thresholds — borrow them.
+
+**DECIDED (executed, validated, reversible):** (1) Added entry_price/exit_price/price_move_pct to _trade_data_for_learning (additive, low-risk). (2) Added module fn _regime_was_correct(regime, move_pct) mirroring the performance_tracker thresholds; rewrote ONLY the regime block to use it — decoupled from thesis_correct. (3) Reset poisoned agent_calibration.json to {} (backup .bak.20260619T173918Z) so the bot stops reacting to garbage history. (4) Validated: py_compile OK + smoke test proving regime_correct decouples (trending_bull+down=False even though a short would WIN; trending_bear+down=True even if a long lost; trend+tiny-move=False; range+small=True). (5) Restarted → PID 22352, clean, vetoes still active.
+
+**RULED-OUT:** using pnl_pct as the move proxy (leverage-distorted, unreliable); skipping non-directional regimes entirely (loses 90% of data); touching trade/critic calibration (thesis_correct IS the right metric for a directional thesis — not broken); doing it without a restart (needed to load new code + fresh calibration); rushing without the smoke test (high blast radius: calibration→confidence→prompts→decisions).
+
+**OPEN-QUESTIONS (falsifiable test of the whole death-spiral theory):** Now that regime accuracy is honest + reset, does the bot's self-distrust lift over coming cycles — Risk size=0/skip rate drops from 81%, Exit force-close from 82%, trade-rate rises, loss-streak language fades? If yes, this measurement-spine bug WAS the root. If the bot still over-skips, the regime classifier itself (not just the metric) may be weak — would need predicted-vs-actual classifier accuracy measured cleanly. Also: regime confidence still logged 0.5 (Brier imperfect, accuracy is what matters for now).
+
+**NEXT:** monitor Risk-skip-rate / trade-rate over next 1-3 cycles as the test above; if death-spiral lifts, move to sub-noise-stop clamp backtest; if not, measure true regime-classifier accuracy. Keep long vetoes active.
+
+---
+
 ## 2026-06-19 ~16:45Z — Session seed (full reasoning trail to date)
 
 **Mission (Nunu's words):** truly be the profitable quant alpha machine; truly understand the market and our decisions; log everything to improve; full autonomy, don't wait for his go.
