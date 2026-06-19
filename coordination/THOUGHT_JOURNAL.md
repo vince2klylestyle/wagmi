@@ -6,6 +6,24 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-19 ~21:35Z — Verdict: paralysis persists; safe fixes insufficient; override is the lever (planned next cycle)
+
+**OBSERVED:** Since the 20:30 restart (~1h): RAW=31, LLM go=0, skip=10 — still paralyzed. Framing since restart: 8.5%=0 (calibration fix holding), loss_streak mentions=1 (streak fix holding), but health_critical still fired 5×. Root structural trap: wr_10 = win-rate over the last 10 CLOSED trades (active_learning.py:124) — all from the bleed — so it's stuck <0.25 → permanent health=critical → agents skip → no new closes → wr_10 frozen. current_streak is genuinely elevated (last ~5-9 closes were all losses).
+
+**REASONED:** Removing false inputs (8.5%, 16-streak) was necessary, not sufficient. The wr_10→critical trap is structural (stale data). Two-layer fix: (a) health-honesty so the trap isn't PERMANENT — done; (b) a forced bounded-exploration override to break the CURRENT paralysis and gather fresh data. (b) is "override the trader" — the biggest-risk change — but it's exactly Nunu's explicit, repeated ask ("trade A LOT to find edge"), it's PAPER, reduced-size, and all catastrophic patterns stay gated. So it's authorized; it just needs a focused, carefully-validated cycle, not a rushed tail.
+
+**DECIDED:** Shipped (a) as CODE: active_learning.py now gates the stale-wr_10→critical path on an ACTIVE loss streak (current_streak>=3); smoke-tested (stale-low-WR+streak1 → degrading [unclamps]; active streak5 → critical [protects]; weaknesses>=4 → critical [multi-factor]). Did NOT restart this cycle — it won't unclamp now (streak high) and a restart for it alone is churn; it goes live with the override next cycle. DEFERRED the override to a focused cycle.
+
+**RULED-OUT:** rushing the override into live decision code at the end of an already-huge turn (high risk of a bad injection that could bypass a safety gate); restarting just for the health-softening (no immediate effect).
+
+**OVERRIDE PLAN (next cycle, focused):** locate the LLM-first skip finalization in multi_strategy_main.py (where final action is set after the agent pipeline). Add an EXPLORATION_MODE (env-flag, default on, reversible): IF final decision == skip AND paralysis detected (recent LLM go-rate ~0 over last N decisions) AND the signal passes ALL catastrophic gates (hype_long_veto/sol_long_veto NOT firing, not a duplicate, circuit breaker NOT tripped, stop_width >= symbol noise) → with epsilon≈0.2 convert to a REDUCED-SIZE (sz≈0.2) exploratory 'go', tagged EXPLORATION. Smoke test MUST prove: never fires on a vetoed/poison/duplicate/CB signal; epsilon-bounded; size capped. Restart, verify go-rate rises AND zero poison opens. Fully reversible (flag off).
+
+**OPEN-QUESTIONS:** does gentle forced exploration reveal edge or just generate small paper losses? Either way it's the DATA we need (acceptable in paper). Watch edge-by-regime once volume exists.
+
+**NEXT:** implement the exploration override (focused cycle), validate hard, restart, measure go-rate + confirm no poison opens.
+
+---
+
 ## 2026-06-19 ~20:30Z — DEEP DIVE: why is it barely trading? (Nunu: "trade A LOT to find edge")
 
 **OBSERVED:** New daily log bot_20260619.log (earlier cycles read the stale Jun-16 file). Today's funnel: 187 RAW signals, ~209 reached LLM funnel, **LLM go=0 / skip=38** — it's rejecting ~everything. Skip reasons all regime-based ("trend regime 0%", "consolidation+range regime", "drifts lower"). Suppressive health framing pre vs post the 17:40 calibration restart: BEFORE {8.5%:3, classifier_acc:1, critical_health:1, loss_streak:4, cb:2}; AFTER {loss_streak:6, cb:2} — i.e. the calibration fix WORKED (8.5%/classifier/critical-health framing → ZERO post-restart). BUT agents still cited "16-loss streak" post-restart (18:19/19:22/19:56) while circuit_breaker says only 5 consecutive. Found source: active_learning.py:288-298 reported max_streak (all-time worst in window) as the active weakness. And system_health="critical" (active_learning.py:301, triggered by wr_10<0.25) is injected to ALL agents (coordinator.py:2516) → they skip.

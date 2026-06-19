@@ -305,7 +305,14 @@ class ActiveLearningEngine:
             root_causes.append("loss_streak_regime_mismatch")
 
         # -- Determine overall health --
-        if len(weaknesses) >= 4 or wr_10 < 0.25:
+        # 2026-06-19: "critical" must mean ACTIVELY bleeding, not "had a bad run historically".
+        # wr_10 is computed over the last 10 CLOSED trades (line ~124); after a bleed it stays
+        # <0.25 and permanently forced health=critical → agents skip → no new trades → wr_10
+        # never recovers (death-spiral / total paralysis). Gate the stale-wr_10 path on an ACTIVE
+        # loss streak so the bot can resume trading and gather data once a bleed has stabilized.
+        # Catastrophic patterns stay hard-blocked by vetoes + circuit breaker regardless.
+        actively_bleeding = current_streak >= 3
+        if len(weaknesses) >= 4 or (wr_10 < 0.25 and actively_bleeding):
             health = "critical"
             urgency = "high"
         elif len(weaknesses) >= 2 or wr_10 < 0.40:
