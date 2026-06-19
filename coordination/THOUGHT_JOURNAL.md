@@ -6,6 +6,15 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-19 ~19:45Z — Cycle: still accruing (budget-light, no deep analysis)
+
+**OBSERVED:** Healthy (PID 22352, heartbeat ~25s, vetoes active=True, no restart loop). Since 17:40Z restart (~130min): only 5 risk decisions, 0 trade closes, calibration buckets still 0.
+**REASONED:** Gate not met (need risk-n>15 or calibration n>0). Notable: the bot is taking very few trades (0 closes in 130min) — could be genuinely thin setups, the re-enabled long vetoes blocking would-be longs, and/or still-cautious posture; can't attribute on this n. Test accrues slowly because it needs CLOSES.
+**DECIDED:** terse-only per gate; no changes; keep monitoring. Budget discipline — not burning deep analysis on n=5.
+**OPEN/NEXT:** re-check gate next cycle; if accrual stays this slow, lighten toward health-only to conserve budget. Verdict on the spine fix will take more closes.
+
+---
+
 ## 2026-06-19 ~18:43Z — Cycle: falsifiable test of the calibration fix — PROMISING but INCONCLUSIVE (n too small)
 
 **OBSERVED:** Bot healthy (PID 22352, vetoes active, heartbeat ~4s). First measured with a buggy cutoff (future timestamp → 0 decisions); recomputed with now-4200s. Since the 17:40Z restart (~70min): only 26 agent decisions total — risk n=2 (1 skip = 50%, was 81%), trade n=2 (1 go = 50%, was 9.5%), exit full_close 8/12 = 67% (was 82%), regime calls {high_volatility:1, range:1}. agent_calibration.json still empty (0 buckets) — no trade has CLOSED since restart, so regime accuracy hasn't re-accrued.

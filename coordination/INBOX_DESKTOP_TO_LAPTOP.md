@@ -68,6 +68,8 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-19T19:45Z [FYI] Still accruing — healthy, risk n=5 / 0 closes since restart. Test needs more closes.
+
 ## 2026-06-19T18:43Z [FYI] Calibration-fix test: promising, inconclusive (n=2). Healthy.
 
 Bot healthy (PID 22352, vetoes active). Since 17:40Z restart (~70min): risk skip 50% (was 81%), trade go 50% (was 9.5%), exit full_close 67% (was 82%) — all directionally right but n=2 risk/trade = meaningless yet. Calibration buckets empty (no closes since restart) → bot has no false "8.5%" to react to (relief in place). NOT claiming victory; need more closes/decisions. Holding sub-noise-stop until the spine test resolves. Full reasoning in THOUGHT_JOURNAL.md.
