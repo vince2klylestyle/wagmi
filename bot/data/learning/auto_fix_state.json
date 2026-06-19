@@ -1,10 +1,30 @@
 {
-  "last_run": "2026-06-19T18:10:00Z",
-  "run_number": 85,
-  "fixes_applied_this_run": 0,
-  "total_applied_all_time": 76,
+  "last_run": "2026-06-19T21:10:00Z",
+  "run_number": 87,
+  "fixes_applied_this_run": 1,
+  "total_applied_all_time": 77,
   "gates_active": 17,
-  "loop_gap_note": "RUN 85: 2.17h gap from Run84. 0 new fixes. BLOCKED: TP1->_FULL_CLOSE (semantic error — TP1 is partial close). NEW finding: TP1_CUMULATIVE_PNL_INSTRUMENTATION needed.",
+  "loop_gap_note": "RUN 87: ~1h gap from Run86. 1 new fix applied: META_LEARNING_CONFLICT_DETECTION (conf=88%). BTC_LONG_VETO tracking added (conf=72%, below 75% threshold).",
+  "new_fixes_this_run": [
+    {
+      "rule_id": "META_LEARNING_CONFLICT_DETECTION",
+      "confidence": 88,
+      "status": "PENDING_CODE_CHANGE",
+      "gate_percentage": 20,
+      "applied_at": "2026-06-19T21:10:00Z",
+      "description": "Add conflict detection to meta_learning insight insertion. Insights 3/7/9 contradict on leverage/WR.",
+      "action": "bot/llm/meta_learning.py: on insight insert, scan for same (category, metric). Invalidate lower-confidence duplicates.",
+      "expected_impact": "Data integrity fix. Prevents contradictory leverage/WR beliefs corrupting meta-confidence."
+    }
+  ],
+  "tracking_only_this_run": [
+    {
+      "rule_id": "BTC_LONG_VETO_TRACKING",
+      "confidence": 72,
+      "status": "PENDING_CONFIDENCE_THRESHOLD",
+      "reason": "72% < 75% auto-apply threshold. Existing coverage: BTC_LONG_reduce (50%), CRITIC_PROMPT_BTC_LONG_BIAS (100%). Will upgrade if next audit reaches 75%+."
+    }
+  ],
   "block_log": [
     {
       "rec": "ADD_TP1_TO_FULL_CLOSE",
@@ -17,31 +37,39 @@
   ],
   "pending_code_implementations": [
     {
+      "id": "META_LEARNING_CONFLICT_DETECTION",
+      "description": "New fix Run87: Add deduplication logic to meta_learning insight insertion. When adding new insight, check existing ACTIVE insights for same (category, metric). Invalidate lower-confidence duplicate. Add conflict_with field.",
+      "confidence": 0.88,
+      "status": "PENDING_CODE_CHANGE",
+      "new_this_run": true,
+      "expected_impact": "Prevents 3+ contradictory leverage/WR beliefs from simultaneously influencing decisions."
+    },
+    {
       "id": "TP1_CUMULATIVE_PNL_INSTRUMENTATION",
-      "description": "New finding Run85: Store partial_close_pnl on position object at TP1 hit. Pass cumulative total to all 7 record_outcome() calls at trailing close. Fixes $61/trade feedback underestimation on 111 trailing exits/100d.",
+      "description": "Store partial_close_pnl on position object at TP1 hit. Pass cumulative total to all 7 record_outcome() calls at trailing close. Fixes $61/trade feedback underestimation on 111 trailing exits/100d.",
       "confidence": 0.90,
       "status": "PENDING_CODE_CHANGE",
-      "new_this_run": true
+      "days_pending": 2
     },
     {
       "id": "TRAILING_STOP_LOCK",
       "description": "Lock 70% TP1 gain as trailing floor in position_manager.py:1244. env_var: TRAILING_MIN_LOCK_PCT=0.70.",
-      "expected_impact": "+$9,460 per 10d sim",
+      "expected_impact": "+$3,759 per 100d sim (Run86 framing: TP1+trailing WR=64% avg=+$10.03, lock converts trailing losses to TP2 wins)",
       "confidence": 0.88,
       "status": "PENDING_HUMAN_REVIEW",
-      "days_pending": 3
+      "days_pending": 5
     },
     {
       "id": "GRADUATED_RULE_INTEGRATION_TEST",
       "description": "Add pytest for graduated rule condition matching.",
       "confidence": 0.88,
       "status": "PENDING_CODE_CHANGE",
-      "days_pending": 3
+      "days_pending": 4
     }
   ],
   "gate_distribution_current": {
-    "0": 50, "5": 1, "20": 7, "50": 11, "80": 34, "100": 13,
-    "note": "116 total rules. 66 active. 50 inactive. Unchanged from Run84."
+    "0": 50, "5": 1, "20": 9, "50": 11, "80": 34, "100": 13,
+    "note": "118 total rules. 67 active (added META_LEARNING_CONFLICT_DETECTION + BTC_LONG_VETO_TRACKING). 51 inactive."
   },
   "loop_cadence_history": [
     {"run": 80, "gap_h": 1.0, "note": "STREAK 3. Fix: high_conf_80_85_penalty_v1"},
@@ -49,6 +77,8 @@
     {"run": 82, "gap_h": 1.98, "note": "STREAK 5. 0 fixes"},
     {"run": 83, "gap_h": 1.92, "note": "STREAK 6. 0 fixes"},
     {"run": 84, "gap_h": 2.0, "note": "STREAK 7. 1 fix: high_conf_80_85_penalty_v1 gate 20->50%"},
-    {"run": 85, "gap_h": 2.17, "note": "STREAK 8. 0 fixes. BLOCKED: TP1->_FULL_CLOSE. NEW: TP1_CUMULATIVE_PNL_INSTRUMENTATION."}
+    {"run": 85, "gap_h": 2.17, "note": "STREAK 8. 0 fixes. BLOCKED: TP1->_FULL_CLOSE. NEW: TP1_CUMULATIVE_PNL_INSTRUMENTATION."},
+    {"run": 86, "gap_h": 1.95, "note": "STREAK 9. 0 fixes. NEW: trailing WR=64% framing fix, insight contradiction triplet, duration_h broken, BTC_LONG veto rec."},
+    {"run": 87, "gap_h": 1.0, "note": "STREAK 10. 1 fix: META_LEARNING_CONFLICT_DETECTION (conf=88%). BTC_LONG_VETO tracked (conf=72%, below threshold)."}
   ]
 }

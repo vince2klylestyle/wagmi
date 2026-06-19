@@ -41,5 +41,17 @@
     "INSIGHT_CONTRADICTION_TRIPLET: Insights 3, 7, 9 all contradict each other on leverage/WR. All ACTIVE.",
     "DURATION_H_BROKEN: All trades in both CSVs show duration_h=0 or negative. Hold-time analysis blind.",
     "BTC_LONG_VETO_REC: WR=32%, all sub-conditions negative, inverse confidence effect worst here. Veto at gate=80% recommended."
-  ]
+  ],
+  "run87_update": {
+    "run_at": "2026-06-19T21:10:00Z",
+    "run_number": 87,
+    "bot_status": "OFFLINE — Day 63.92",
+    "ev_total_cumulative": 430.79,
+    "session_window_status": "Late window (22-24 UTC, 38% WR) open — low edge. Evening (65% WR) closed at 22:00 UTC.",
+    "fixes_applied": 1,
+    "fixes": ["META_LEARNING_CONFLICT_DETECTION (conf=88%) — added to graduated_rules.json gate=20%. Code change pending for meta_learning.py."],
+    "tracking_added": ["BTC_LONG_VETO_TRACKING (conf=72%, below 75% threshold) — tracking only."],
+    "cadence_streak": 10,
+    "tomorrow_priority": "Start bot before 06:00 UTC Jun 20 — morning window 68% WR. Then: TRAILING_STOP_LOCK (Day 5 pending)."
+  }
 }
