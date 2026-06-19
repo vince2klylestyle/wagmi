@@ -6,5 +6,127 @@
   "loop_cadence_status": "CADENCE STREAK 9 — Run86 1.95h after Run85",
   "bot_offline_days": 63.84,
   "ev_accrued_usd": 429.82,
-  "ev_rate_per_hour": 0.97
+  "ev_rate_per_hour": 0.97,
+  "subsystems": {
+    "auto_fix": {
+      "fixes_applied": 0,
+      "gates_active": 17,
+      "total_applied_all_time": 76,
+      "graduated_rules_total": 24,
+      "new_fixes_this_run": [],
+      "recs_processed": 3,
+      "recs_applied": 0,
+      "recs_blocked": 1,
+      "recs_pending_human": 2,
+      "block_details": {
+        "rec": "ADD_TP1_TO_FULL_CLOSE",
+        "confidence": 0.95,
+        "status": "BLOCKED_SEMANTIC_ERROR",
+        "reason": "TP1 is a PARTIAL close (tp1_close_pct=0.5 per position_manager.py:73). Adding TP1 to _FULL_CLOSE would record a full-close outcome for a still-open trailing position, corrupting all 7 feedback signals.",
+        "correct_fix": "Accumulate partial_close_pnl in position object at TP1 hit, pass total P&L (TP1_partial + trailing_close) to record_outcome() at trailing close."
+      }
+    },
+    "execution_forensics": {
+      "data_source": "backtest_100d.csv (589 trades) — bot offline Day 63.84",
+      "avg_slippage": "UNAVAILABLE — no live trades",
+      "noise_stop_rate_illiquid": 0.719,
+      "trailing_stop_ev_gap": {
+        "trailing_avg_pnl_100d": -0.34,
+        "tp2_avg_pnl_100d": 33.53,
+        "ev_gap_total_100d": 3759,
+        "fix": "position_manager.py:1244 — TRAILING_STOP_LOCK",
+        "status": "PENDING_HUMAN_REVIEW",
+        "days_pending": 4
+      },
+      "tp1_partial_close_insight": {
+        "description": "TP1+trailing path (all 160 trades) has WR=64% avg=+$10.03. Prior -$0.34 figure was TRAILING_STOP close_reason only (111 losing trades). Framing corrected Run86.",
+        "impact": "TRAILING_STOP_LOCK still valuable: converts trailing losses to TP2 wins"
+      },
+      "new_findings_run86": {
+        "trailing_wr_correction": "TP1_HIT->TRAILING->CLOSED path: WR=64% avg=+$10.03 (n=160). Not -$0.34.",
+        "insight_contradiction_triplet": "Insights 3, 7, 9 contradict each other on leverage/WR. All ACTIVE. No conflict detection.",
+        "duration_h_broken": "All trades in both CSVs show duration_h<=0. Hold-time rules unvalidatable.",
+        "btc_long_veto_rec": "BTC_LONG WR=32%, inverse confidence effect, all sub-conditions negative. Gate=80% veto recommended."
+      }
+    },
+    "live_injection": {
+      "data_source": "backtest_100d.csv (589) — bot offline Day 63.84",
+      "high_edges_found": 3,
+      "weak_setups_found": 2,
+      "current_window": {
+        "window": "evening_16_22_UTC",
+        "wr": 0.65,
+        "elapsed_h": 4.17,
+        "remaining_h": 1.83,
+        "ev_remaining_usd": 1.78,
+        "status": "OPEN — ~1h50m remaining. Bot offline."
+      }
+    },
+    "daily_synthesis": {
+      "date": "2026-06-19",
+      "anomalies_found": 12,
+      "today_trades": 0,
+      "today_pnl": 0.0,
+      "report_generated": true
+    },
+    "model_optimization": {
+      "status": "SKIPPED — cost_tracker.json absent (bot offline)",
+      "model_swaps_recommended": 0,
+      "potential_savings": "$0.00"
+    }
+  },
+  "high_priority_findings": [
+    {
+      "subsystem": "daily_synthesis",
+      "severity": "CRITICAL",
+      "finding": "Bot offline Day 63.84. $429.82 EV accrued. Evening window CLOSING (~1h50m left, 65% WR).",
+      "action": "P0: cd bot && python run.py paper"
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "HIGH",
+      "finding": "TRAILING_STOP_LOCK: Day 4 pending. $3,759 foregone per 100d.",
+      "action": "Implement TRAILING_MIN_LOCK_PCT=0.70 in position_manager.py:1244.",
+      "expected_impact_usd": 3759
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "TP1_CUMULATIVE_PNL_INSTRUMENTATION: accumulate partial P&L at TP1 hit, pass total to record_outcome() at trailing close. Fixes $61/trade feedback underestimation.",
+      "action": "Code change in multi_strategy_main.py + position object.",
+      "applied": false
+    },
+    {
+      "subsystem": "meta_learning",
+      "severity": "MEDIUM",
+      "finding": "Insights 3, 7, 9 form contradictory triplet on leverage/WR. All ACTIVE conf>=0.75. No conflict detection.",
+      "action": "Add deduplication logic to meta_learning insight insertion."
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "MEDIUM",
+      "finding": "BTC_LONG WR=32% (n=41), inverse confidence effect (80+ conf = 19% WR). All sub-conditions negative.",
+      "action": "Add btc_long_veto_v1 gate=80% to graduated_rules.json."
+    }
+  ],
+  "run_summary": {
+    "run_number": 86,
+    "fixes_applied_this_run": 0,
+    "subsystems_executed": 5,
+    "key_status": "Day 63.84. $429.82 EV. 0 fixes. STREAK 9. 3 new findings.",
+    "most_impactful_pending": "TRAILING_STOP_LOCK — $3,759. position_manager.py:1244. Day 4.",
+    "most_important_new_finding": "TP1+trailing path WR=64% (not -$0.34). Trailing lock still worth doing but framing was wrong.",
+    "cadence_streak": 9,
+    "total_graduated_rules": 24,
+    "active_rules_count": 17
+  },
+  "loop_cadence_history": [
+    {"run": 80, "gap_h": 1.0, "note": "STREAK 3. Fix: high_conf_80_85_penalty_v1"},
+    {"run": 81, "gap_h": 1.98, "note": "STREAK 4. 4 fixes: SOL SHORT + 3 TOD rules"},
+    {"run": 82, "gap_h": 1.98, "note": "STREAK 5. 0 fixes"},
+    {"run": 83, "gap_h": 1.92, "note": "STREAK 6. 0 fixes"},
+    {"run": 84, "gap_h": 2.0, "note": "STREAK 7. 1 fix: high_conf_80_85_penalty_v1 gate 20->50%"},
+    {"run": 85, "gap_h": 2.17, "note": "STREAK 8. 0 fixes. BLOCKED: TP1->_FULL_CLOSE. NEW: TP1_CUMULATIVE_PNL_INSTRUMENTATION."},
+    {"run": 86, "gap_h": 1.95, "note": "STREAK 9. 0 fixes. NEW: trailing WR=64% framing fix, insight contradiction triplet, duration_h broken, BTC_LONG veto rec."}
+  ]
 }
