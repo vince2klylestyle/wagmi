@@ -1,116 +1,156 @@
 {
-  "last_run": "2026-06-19T12:05:22Z",
-  "run_number": 82,
-  "current_utc": "2026-06-19 12:05 UTC",
-  "elapsed_since_last_run_h": 1.98,
-  "loop_cadence_status": "CADENCE STREAK 5 — Run82 1.98h after Run81",
-  "bot_offline_days": 62.50,
+  "last_run": "2026-06-19T14:00:00Z",
+  "run_number": 83,
+  "current_utc": "2026-06-19 14:00 UTC",
+  "elapsed_since_last_run_h": 1.92,
+  "loop_cadence_status": "CADENCE STREAK 6 — Run83 1.92h after Run82",
+  "bot_offline_days": 63.0,
+  "ev_accrued_usd": 423.94,
+  "ev_rate_per_hour": 0.97,
   "github_push_status": {
-    "git_status": "CLEAN — no uncommitted or unpushed changes detected",
-    "last_commit": "15576e6 chore(run81): update master_engine_state with Run 81 completion status",
-    "prior_pending_push_resolved": "ensemble.py + multi_strategy_main.py — git status clean, likely pushed in prior session. times_correct tracking fix considered fully deployed.",
-    "note": "If times_correct still 0 after restart, re-verify ensemble.py caller (lines 602-607)"
+    "git_status": "PUSHED via GitHub MCP — local git proxy 503",
+    "last_known_commit": "ca3604e [RUN83] Perpetual improvement loop",
+    "note": "Local git push failed 503. Files pushed via mcp__github__push_files."
   },
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 0,
       "gates_active": 17,
       "total_applied_all_time": 75,
-      "graduated_rules_total": 24,
+      "graduated_rules_total": 116,
       "new_fixes_this_run": [],
-      "note": "All Run81 audit recommendations applied. No new conf>=75% rules identified. Trailing stop fix requires code change (pending human review)."
+      "source_audit": "autonomous_audit_2026-06-19T12-05-34Z.md",
+      "recs_processed": 3,
+      "recs_qualifying_conf75": 0,
+      "recs_already_satisfied": 1,
+      "no_fix_reason": "Rec#1 (btc_short_90plus demotion, conf=72%): BELOW 75% threshold. Rec#2 (integration test, conf=88%): Code task. Rec#3 (btc_short_conf70_80 gate 100->50, conf=82%): ALREADY SATISFIED at gate=50%."
     },
     "execution_forensics": {
-      "avg_slippage": "UNKNOWN — no live trades (bot offline Day 62.50)",
-      "noise_stops": "87% — cached Apr 19, 62.50d stale",
-      "ev_loss_total_usd": 422.98,
-      "ev_loss_rate_per_hour": 0.97,
-      "trailing_stop_finding": "CONFIRMED: +$8.86/trade vs TP2 +$71.10 → $9,460 foregone on 152 trades. Fix at position_manager.py:1244.",
-      "morning_window_status": {
-        "status": "CLOSED at 12:00 UTC — miss confirmed. 06-12 UTC window (WR=68%) gone.",
-        "consecutive_miss_count": "50+ (exact count since bot offline Apr 19)"
+      "data_source": "backtest_100d.csv (589 trades)",
+      "avg_slippage": "UNAVAILABLE — no live trades",
+      "fill_rate": "N/A",
+      "sl_rate_100d": 0.457,
+      "sl_avg_pnl_100d": -108.92,
+      "sl_total_drag_100d": -29300,
+      "noise_stop_rate_illiquid": 0.719,
+      "trailing_stop_ev_gap": {
+        "trailing_avg_pnl_100d": -0.34,
+        "tp2_avg_pnl_100d": 33.53,
+        "ev_gap_per_trade_100d": 33.87,
+        "ev_gap_total_100d": 3759,
+        "ev_gap_total_10d": 9460,
+        "fix": "position_manager.py:1244 — TRAILING_STOP_LOCK",
+        "status": "PENDING_HUMAN_REVIEW"
       },
-      "afternoon_window_status": {
-        "status": "OPEN NOW — 12:05 UTC. WR=62%. 3h55m remaining to 16:00 UTC.",
-        "ev_capturable_usd": 2.40,
-        "minutes_remaining": 235
-      }
+      "worst_cases": [
+        {"symbol": "HYPE", "side": "SHORT", "avg_pnl_100d": -29.22, "total_pnl_100d": -4587, "veto_status": "HYPE_SHORT_hard_block gate=80% ACTIVE"},
+        {"symbol": "SOL", "side": "LONG", "avg_pnl_100d": -16.74, "total_pnl_100d": -971, "veto_status": "SOL_LONG_hard_block gate=100% ACTIVE"},
+        {"symbol": "BTC", "side": "LONG", "avg_pnl_100d": -13.42, "total_pnl_100d": -550, "veto_status": "BTC_LONG_reduce + directional_correction active"}
+      ],
+      "hold_time_bug": {"negative_duration_trades": 52, "priority": "MEDIUM"},
+      "dataset_conflict": {"10d_wr": 0.57, "100d_wr": 0.445, "severity": "CRITICAL", "note": "10d cherry-picked favorable regime. 100d more representative."}
     },
     "live_injection": {
-      "high_edges": 3,
-      "weak_setups": 2,
-      "update_note": "Updated from Run77 stale data to correct 10d sim data. SOL SHORT status corrected (freed Run81). Removed invalidated TOD edges from high_edges list.",
-      "top_edges": [
-        {"setup": "SOL_SHORT", "wr": 0.64, "n": 179, "avg_pnl": 32.44, "status": "BEST EDGE — now free (Run81 deactivated penalty)"},
-        {"setup": "BTC_LONG", "wr": 0.64, "n": 72, "avg_pnl": 25.55, "status": "SECOND-BEST — no block"},
-        {"setup": "BTC_SHORT_90plus", "wr": 0.67, "n": 43, "avg_pnl": 102.92, "status": "HIGHEST RETURN — boost active gate=100"}
+      "data_source": "backtest_100d.csv (589) + trades_10d.csv (965)",
+      "high_edges_found": 3,
+      "weak_setups_found": 2,
+      "top_edges_10d": [
+        {"setup": "BTC_LONG", "wr": 0.64, "n": 72, "avg_pnl": 25.55, "conflict": "100d shows 32% WR"},
+        {"setup": "SOL_SHORT", "wr": 0.64, "n": 179, "avg_pnl": 32.44, "conflict": "100d shows 45%; blocked by SOL_SHORT_full_block gate=100%"},
+        {"setup": "BTC_SHORT_90plus", "wr": 0.67, "n": 43, "avg_pnl": 102.92, "conflict": "100d shows 50% WR; BTC_HIGH_CONF_90plus gate=20% probe"}
       ],
-      "top_weak": [
-        {"setup": "BTC_SHORT_70_79pct", "wr": 0.44, "avg_pnl": -91.87, "status": "BLOCKED gate=100%"},
-        {"setup": "CONF_60_70", "wr": 0.46, "avg_pnl": -18.87, "status": "conf_floor_70_v1 inactive — confidence floor logic handles this"}
-      ]
+      "top_weak_setups": [
+        {"setup": "NIGHT_00_06_UTC", "wr": 0.19, "n": 13, "status": "BLOCKED correctly"},
+        {"setup": "BTC_SHORT_70_79pct", "wr_10d": 0.44, "avg_pnl_10d": -91.87, "wr_100d": "neutral -$0.54/trade", "status": "OVER-PENALIZED at gate=50%?"}
+      ],
+      "win_rates_by_confidence_bin_100d": {
+        "60_70": {"wr": 0.49, "avg_pnl": -7.15},
+        "70_80": {"wr": 0.45, "avg_pnl": -8.54},
+        "80_90": {"wr": 0.4, "avg_pnl": -33.04, "alert": "INVERSE confidence-WR relationship in 100d"},
+        "90_plus": {"wr": 0.41, "avg_pnl": -18.23, "alert": "Contradicts 10d claim of 67% WR"}
+      },
+      "time_of_day_analysis": {
+        "00_06": {"wr": 0.19, "status": "BLOCKED"},
+        "06_12": {"wr": 0.68, "status": "MISSED today — TOD rule deactivated"},
+        "12_18": {"wr": 0.62, "status": "OPEN NOW (~2h remaining)"},
+        "18_24": {"wr": 0.65, "status": "NOT YET — opens 16:00 UTC"}
+      }
     },
     "daily_synthesis": {
-      "anomalies_found": 28,
-      "new_anomalies_this_run": 2,
       "date": "2026-06-19",
+      "anomalies_found": 7,
       "today_trades": 0,
-      "report_generated": false,
-      "new_anomalies": [
-        "MORNING_WINDOW_MISS_CONFIRMED — 12:00 UTC, 52nd+ miss, WR=68% window gone",
-        "AFTERNOON_WINDOW_OPEN — 12:05 UTC, 3h55m remaining, WR=62%, $2.40 EV capturable"
+      "today_pnl": 0.0,
+      "report_generated": true,
+      "critical_anomalies": [
+        "BOT_OFFLINE_63D — $423.94 EV accrued. P0: start bot.",
+        "MORNING_WINDOW_MISS — 06-12 UTC closed without trade.",
+        "AFTERNOON_WINDOW_OPEN — 12-16 UTC, ~2h remaining.",
+        "DATASET_CONFLICT_SYSTEMIC — 10d vs 100d contradictory.",
+        "TIMES_CORRECT_BLIND — tracking fix unverifiable offline.",
+        "SOL_SHORT_RULE_CONFLICT — best 10d edge blocked.",
+        "AB_TRACKER_STALLED — 38 experiments stalled."
       ]
     },
     "model_optimization": {
-      "skipped": true,
-      "reason": "cost_tracker.json absent — bot offline, no API calls to track"
+      "status": "LIMITED — cost_tracker.json absent (bot offline 63.0d)",
+      "model_routing": {
+        "regime_agent": "haiku ($0.0001/call)",
+        "trade_agent": "sonnet ($0.003/call)",
+        "risk_agent": "haiku ($0.0001/call)",
+        "critic_agent": "sonnet ($0.003/call)",
+        "learning_agent": "haiku ($0.0001/call)",
+        "exit_agent": "haiku ($0.0001/call)",
+        "scout_agent": "haiku ($0.0001/call)",
+        "total_per_decision_cycle": "$0.0072"
+      },
+      "known_routing_fix_status": "confidence_60_70_ROUTING_FIX APPLIED — Opus restored for >80% conf signals",
+      "swap_opportunities": "DEFERRED — no live cost/accuracy data available"
     }
   },
   "high_priority_findings": [
-    {
-      "subsystem": "daily_synthesis",
-      "severity": "CRITICAL",
-      "finding": "Bot offline Day 62.50. $422.98 EV loss accumulating. Afternoon window NOW OPEN (12:05 UTC, WR=62%, 3h55m remaining, ~$2.40 capturable). Morning window just closed (68% WR, gone for today).",
-      "action": "P0: cd bot && python run.py paper"
-    },
-    {
-      "subsystem": "execution_forensics",
-      "severity": "HIGH",
-      "finding": "Trailing stop: +$8.86/trade on 152 exits vs TP2 +$71.10/trade. $9,460 foregone EV per 10d sim. Root: near-breakeven floor fires after TP1 reversal. Fix confirmed in position_manager.py:1244.",
-      "action": "Implement TRAILING_MIN_LOCK_PCT=0.70 in position_manager.py:_update_trailing_stop line 1244. Test in paper mode."
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "MEDIUM",
-      "finding": "Run82: 0 new fixes. All 75 total applied fixes current. 17/24 rules active. System is in steady state — no degraded or invalidated rules remain in active state.",
-      "action": "Monitor — next new rules require 50+ live trades to re-establish edges post-restart."
-    },
-    {
-      "subsystem": "live_injection",
-      "severity": "MEDIUM",
-      "finding": "live_edge_data.json refreshed from stale Run77 data (stale SOL SHORT status) to current 10d sim data. 3 high edges confirmed. SOL SHORT correctly shown as FREED.",
-      "action": "No action needed — data file updated this run."
-    }
+    {"subsystem": "daily_synthesis", "severity": "CRITICAL", "finding": "Bot offline Day 63.0. $423.94 EV accrued. Afternoon window OPEN NOW (14:00 UTC, WR=62%, ~2h remaining). Evening window opens 16:00 UTC (WR=65%).", "action": "P0: cd bot && python run.py paper"},
+    {"subsystem": "execution_forensics", "severity": "HIGH", "finding": "TRAILING_STOP_LOCK: trailing exits at -$0.34 avg (100d) vs TP2 +$33.53. $3,759 foregone per 100d. 10d shows $9,460. Fix at position_manager.py:1244.", "action": "Implement TRAILING_MIN_LOCK_PCT=0.70 in position_manager.py:_update_trailing_stop line 1244. Test in paper mode.", "expected_impact_usd": 3759},
+    {"subsystem": "execution_forensics", "severity": "HIGH", "finding": "DATASET CONFLICT: 10d (57% WR, +$905) vs 100d (44.5% WR, -$8,174). 100d shows ALL symbol×side combinations net-negative. 12 of 17 active rules built from 10d data may misfire.", "action": "Before restart: audit rules with 10d-only evidence. Post-restart: compare live WR vs both datasets."},
+    {"subsystem": "auto_fix", "severity": "MEDIUM", "finding": "0 new auto-fixes this run. All Run82 audit recs below threshold or already satisfied. System in steady state. 75 total historical fixes applied.", "action": "Monitor — post-restart live trades needed to generate new high-confidence rules."},
+    {"subsystem": "live_injection", "severity": "MEDIUM", "finding": "SOL_SHORT_full_block (gate=100%) blocking best 10d edge (64% WR, +$32.44/trade). 100d shows only 45% WR. Conflict unresolved — need 30+ live trades.", "action": "Post-restart: monitor first 30 SOL SHORT outcomes to determine correct gate."},
+    {"subsystem": "model_optimization", "severity": "LOW", "finding": "No cost data available. Model routing: haiku for Regime/Risk/Learning/Exit/Scout; sonnet for Trade/Critic. Total $0.0072/decision-cycle.", "action": "Enable cost tracking on restart."}
   ],
   "run_summary": {
-    "run_number": 82,
+    "run_number": 83,
     "fixes_applied_this_run": 0,
     "new_rules_added": 0,
     "rules_deactivated": 0,
     "subsystems_executed": 5,
-    "key_status": "Day 62.50. $422.98 EV. 0 new fixes (all Run81 recs processed). STREAK 5. Afternoon window OPEN NOW. Data files refreshed.",
-    "ev_total": "$422.98 at $0.97/h",
-    "ev_next_milestone": "$425 in ~2.1h (~14:11 UTC)",
-    "most_impactful_pending": "TRAILING_STOP_LOCK — $9,460 expected recovery per 10d. Code change in position_manager.py:1244.",
-    "active_rules_count": 17,
-    "disabled_rules_count": 7,
-    "cadence_streak": 5,
+    "key_status": "Day 63.0. $423.94 EV. 0 new fixes (all recs satisfied or below threshold). STREAK 6. Afternoon window OPEN NOW.",
+    "ev_total": "$423.94 at $0.97/h",
+    "ev_next_milestone": "$425 in ~1.1h (~15:06 UTC)",
+    "most_impactful_pending": "TRAILING_STOP_LOCK — $3,759-$9,460 expected recovery per period. Code change in position_manager.py:1244.",
+    "active_rules_count": 66,
+    "inactive_rules_count": 50,
+    "total_rules": 116,
+    "cadence_streak": 6,
     "data_files_updated_this_run": [
+      "bot/data/learning/auto_fix_state.json",
       "bot/data/learning/execution_forensics.json",
       "bot/data/learning/live_edge_data.json",
       "bot/data/sessions/daily_synthesis_2026-06-19.json",
-      "bot/data/learning/auto_fix_state.json",
       "bot/data/learning/master_engine_state.json"
+    ]
+  },
+  "run82_vs_run83_delta": {
+    "new_findings": [
+      "Confirmed BTC_SHORT_CONF70_80_BLOCK already at gate=50% (Run82 audit Rec#3 was already satisfied in the file)",
+      "Confirmed BTC_HIGH_CONF_90plus at gate=20% (not 100% as Run82 audit implied — the 100%->20% demotion the audit claimed was already the state)",
+      "100d dataset primary finding: trailing stop EV gap $3,759 per 100d (not just $9,460 from 10d sim)",
+      "All symbol×side combos net-negative in 100d — systemic loss/win asymmetry"
+    ],
+    "unchanged": [
+      "0 new fixes (both runs: 0)",
+      "75 total applied all time",
+      "17 active gates (primary graduated rules)",
+      "TRAILING_STOP_LOCK still PENDING_HUMAN_REVIEW",
+      "38 A/B tracker rules stalled"
     ]
   }
 }

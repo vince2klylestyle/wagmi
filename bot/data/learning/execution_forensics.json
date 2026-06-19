@@ -1,59 +1,71 @@
 {
-  "last_updated": "2026-06-19T12:05:22Z",
-  "run_number": 82,
-  "data_source": "10d simulation (trades_10d.csv, 965 trades) — bot offline Day 62.50, no live trades",
-  "avg_slippage": "UNKNOWN — no live trades (bot offline Day 62.50)",
-  "noise_stop_problem": "87% early SL hits (<2h) in non-trending regimes [cached, last live session Apr 19 — 62.50d stale]",
-  "data_available": false,
-  "trades_csv_present": false,
-  "findings": [
-    {
-      "severity": "HIGH",
-      "finding": "Trailing stop mean exit: +$8.86/trade (152 exits). TP2 mean: +$71.10/trade (145 exits). Gap: $62.24/trade = $9,460 foregone EV across 152 trailing exits in 10d sim.",
-      "root_cause": "Trailing stop activates at TP1 with near-breakeven floor. Reversal after TP1 catches trailing stop before meaningful extension toward TP2.",
-      "proposed_fix": "Lock 70% of TP1 gain as trailing floor in position_manager.py:_update_trailing_stop (line 1244-1251). Change `entry + fee_buffer` to `entry + (tp1-entry) * 0.70` for LONG; `entry - (entry-tp1) * 0.70` for SHORT.",
-      "code_file": "bot/execution/position_manager.py",
-      "code_line": 1244,
-      "env_var_suggestion": "TRAILING_MIN_LOCK_PCT=0.70",
-      "confidence": 0.88,
-      "expected_impact": "+$9,460 per 10d sim period (152 trades x $62.24 avg improvement)",
-      "status": "PENDING_CODE_CHANGE — requires paper trading validation before deploy"
-    },
-    {
-      "severity": "HIGH",
-      "finding": "SL rate 38.3% (370/965 trades). Avg SL loss: -$224.63. Total SL drag: -$83,113 per 10d sim. System earns +$0.94/trade net — fragile margin, sensitive to WR drift.",
-      "root_cause": "SL hit rate may indicate too-tight stops relative to current market noise.",
-      "proposed_fix": "Monitor SL hit rate post-restart. If SL% > 40% over 50 live trades, increase ATR multiplier by 10%.",
-      "confidence": 0.72,
-      "status": "MONITOR_POST_RESTART"
-    },
-    {
-      "severity": "MEDIUM",
-      "finding": "BTC SHORT 70-79% conf: -$91.87/trade, 98 trades. Rule btc_short_conf70_80_penalize_v1 at gate=100% active. Needs live verification post-restart (times_applied=3, times_correct=0).",
-      "confidence": 0.90,
-      "status": "RULE_ACTIVE_NEEDS_LIVE_VERIFICATION"
-    }
-  ],
-  "close_reason_breakdown": {
-    "SL": {"count": 370, "rate": 0.383, "avg_pnl": -224.63, "total_pnl": -83113},
-    "TP1": {"count": 297, "rate": 0.308, "avg_pnl": 243.84, "total_pnl": 72420},
-    "TP2": {"count": 145, "rate": 0.150, "avg_pnl": 71.10, "total_pnl": 10310},
-    "TRAILING_STOP": {"count": 152, "rate": 0.157, "avg_pnl": 8.86, "total_pnl": 1347}
+  "last_updated": "2026-06-19T14:00:00Z",
+  "run_number": 83,
+  "data_source": "backtest_100d.csv (589 trades) — bot offline Day 63.0, no live trades.csv",
+  "data_freshness_days_stale": 63.0,
+  "avg_slippage": "UNAVAILABLE — no live trades (bot offline Day 63.0)",
+  "fill_rate": "N/A — no live execution",
+  "noise_stop_problem": {
+    "illiquid_regime_rate": 0.719,
+    "ranging_regime_rate": 0.72,
+    "trending_regime_rate": 0.13,
+    "note": "Stale from 2026-04-19 live session — 63.0d old. Rule illiquid_regime_penalize_v1 gate=100% active."
+  },
+  "close_reason_breakdown_100d": {
+    "SL": {"count": 269, "rate": 0.457, "avg_pnl": -108.92, "total_pnl": -29300, "note": "Primary loss driver. 45.7% SL rate vs 38.3% in 10d. Stop too tight for 100d conditions."},
+    "TP1": {"count": 160, "rate": 0.272, "avg_pnl": 122.01, "total_pnl": 19521},
+    "TRAILING_STOP": {"count": 111, "rate": 0.188, "avg_pnl": -0.34, "total_pnl": -37, "note": "Near-breakeven. EV gap vs TP2: $33.87/trade. $3,759 foregone per 100d."},
+    "TP2": {"count": 49, "rate": 0.083, "avg_pnl": 33.53, "total_pnl": 1643}
   },
   "trailing_stop_detail": {
-    "avg_pnl_trailing": 8.86,
-    "avg_pnl_tp2": 71.10,
-    "count_trailing": 152,
-    "count_tp2": 145,
-    "ev_gap_per_trade": 62.24,
-    "ev_gap_total": 9460.0,
-    "proposed_lock_pct": 0.70,
+    "avg_pnl_trailing": -0.34,
+    "avg_pnl_tp2": 33.53,
+    "count_trailing": 111,
+    "count_tp2": 49,
+    "ev_gap_per_trade": 33.87,
+    "ev_gap_total_100d": 3759,
+    "note": "10d dataset shows higher gap: $62.24/trade, $9,460 total on 152 trailing exits",
+    "proposed_lock_pct": 0.7,
     "fix_file": "bot/execution/position_manager.py",
-    "fix_line": 1244
+    "fix_line": 1244,
+    "status": "PENDING_HUMAN_REVIEW"
   },
+  "worst_cases_by_symbol_100d": [
+    {"symbol": "HYPE", "side": "SHORT", "count": 157, "wr": 0.48, "avg_pnl": -29.22, "total_pnl": -4587, "note": "WORST absolute loss. HYPE_SHORT_hard_block gate=80% active. Full block needed."},
+    {"symbol": "SOL", "side": "LONG", "count": 58, "wr": 0.33, "avg_pnl": -16.74, "total_pnl": -971, "note": "SOL_LONG_hard_block gate=100% — correctly deployed."},
+    {"symbol": "BTC", "side": "LONG", "count": 41, "wr": 0.32, "avg_pnl": -13.42, "total_pnl": -550, "note": "32% WR. BTC_LONG_reduce gate=50% + BTC_directional_correction active."},
+    {"symbol": "HYPE", "side": "LONG", "count": 68, "wr": 0.5, "avg_pnl": -14.36, "total_pnl": -977, "note": "HYPE_LONG_hard_block gate=100% — correctly deployed."}
+  ],
+  "dataset_conflict": {
+    "10d_wr": 0.57, "10d_pnl": 905, "10d_trades": 965,
+    "100d_wr": 0.445, "100d_pnl": -8174, "100d_trades": 589,
+    "severity": "CRITICAL",
+    "interpretation": "10d captured favorable bear-trending regime. 100d reflects mixed conditions. 12 of 17 active rules built from 10d need live validation."
+  },
+  "hold_time_bug": {
+    "negative_duration_trades": 52, "inflated_wr": 1.0, "inflated_avg_pnl": 219.99,
+    "root_cause": "close_time before opened_at for fast TP1 hits — timestamp calculation bug",
+    "priority": "MEDIUM"
+  },
+  "top_5_wins_100d": [
+    {"symbol": "SOL", "side": "SHORT", "conf": 79.7, "pnl": 713.84, "reason": "TP1"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 87.5, "pnl": 598.26, "reason": "TP1"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 71.1, "pnl": 494.33, "reason": "TP1"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 69.0, "pnl": 452.54, "reason": "TP1"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 72.1, "pnl": 425.95, "reason": "TP1"}
+  ],
+  "top_5_losses_100d": [
+    {"symbol": "HYPE", "side": "SHORT", "conf": 70.4, "pnl": -520.86, "reason": "SL"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 87.5, "pnl": -516.46, "reason": "SL"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 81.5, "pnl": -512.22, "reason": "SL"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 71.3, "pnl": -511.2, "reason": "SL"},
+    {"symbol": "HYPE", "side": "SHORT", "conf": 85.4, "pnl": -451.13, "reason": "SL"}
+  ],
   "noise_regime_active_rules": [
-    "illiquid_regime_penalize_v1 (gate=100, conf=0.78)",
-    "ranging_regime_penalize_v1 (gate=50, conf=0.76)",
-    "night_session_block_v1 (gate=100, conf=0.88)"
-  ]
+    "illiquid_regime_penalize_v1 gate=100, conf=78%",
+    "ranging_regime_penalize_v1 gate=50, conf=76%",
+    "night_session_block_v1 gate=100, conf=80%",
+    "NOISE_STOP_WIDEN_illiquid gate=100, conf=82%"
+  ],
+  "pending_fix_high_priority": "TRAILING_STOP_LOCK — position_manager.py:1244 — lock 70% TP1 gain as trailing floor. $3,759-$9,460 expected recovery."
 }

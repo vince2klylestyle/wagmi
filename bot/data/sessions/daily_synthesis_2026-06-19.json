@@ -1,93 +1,37 @@
 {
-  "last_run": "2026-06-19T12:05:22Z",
-  "run_number": 82,
+  "last_run": "2026-06-19T14:00:00Z",
+  "run_number": 83,
   "date": "2026-06-19",
-  "bot_status": "OFFLINE — Day 62.50",
+  "bot_status": "OFFLINE — Day 63.0",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "anomalies_found": 28,
-  "report_generated": false,
-  "eod_report_pending": true,
-  "eod_report_eta_utc": "2026-06-19T22:00:00Z",
-  "daily_summary": {
-    "date": "2026-06-19",
-    "trades": 0,
-    "pnl_usd": 0.0,
-    "ev_total_cumulative": 422.98,
-    "ev_rate_per_hour": 0.97,
-    "session_windows_jun19": {
-      "morning_06_12": "CLOSED — 12:00 UTC. MISS CONFIRMED (consecutive miss streak). WR=68%. $1.84 capturable since Run81. Gone.",
-      "afternoon_12_16": "ACTIVE NOW — 12:05 UTC. WR=62%. ~3h55m remaining. ~$2.40 capturable EV. 3:55pm closes window.",
-      "evening_16_22": "NOT YET — opens 16:00 UTC. WR=65%. ~$5.80 capturable EV."
+  "ev_total_cumulative": 423.94,
+  "ev_rate_per_hour": 0.97,
+  "anomalies_found": 7,
+  "report_generated": true,
+  "anomaly_checks": {
+    "consecutive_losses_gt5": "SKIPPED — no live trades (bot offline 63.0d)",
+    "wr_swing_gt20pct_7day": "SKIPPED — no live trades",
+    "leverage_gt7x_sustained": "SKIPPED — no live positions",
+    "time_of_day_dominance_gt70pct": {
+      "result": "HISTORICAL: morning_06_12 (68% WR) shows 10d dominance. TOD rules deactivated Run81.",
+      "active_rules": "None (deactivated)"
     }
   },
   "anomalies": [
-    {
-      "type": "BOT_OFFLINE_62.50D",
-      "severity": "CRITICAL",
-      "description": "Bot offline for 62.50 days. $422.98 cumulative EV not captured. Requires manual restart: cd bot && python run.py paper",
-      "days_outstanding": 62,
-      "action": "P0: cd bot && python run.py paper"
-    },
-    {
-      "type": "MORNING_WINDOW_MISS_CONFIRMED",
-      "severity": "HIGH",
-      "description": "Morning window (06-12 UTC WR=68%) closed at 12:00 UTC without a trade. Another consecutive miss.",
-      "action": "Start bot before 06:00 UTC tomorrow"
-    },
-    {
-      "type": "AFTERNOON_WINDOW_OPEN",
-      "severity": "INFO",
-      "description": "Afternoon window (12-16 UTC WR=62%) NOW OPEN. 3h55m remaining. ~$2.40 EV capturable.",
-      "action": "P0: Start bot NOW for afternoon session"
-    },
-    {
-      "type": "TRAILING_STOP_UNDERPERFORMANCE",
-      "severity": "HIGH",
-      "description": "+$8.86/trade on 152 trailing exits vs +$71.10 TP2. $9,460 foregone EV in 10d sim. Fix: lock 70% TP1 gain as trailing floor.",
-      "code_fix": "position_manager.py:1244 — change breakeven floor to entry + (tp1-entry)*0.70"
-    },
-    {
-      "type": "TIMES_CORRECT_TRACKING_PARTIAL_DEPLOY",
-      "severity": "HIGH",
-      "description": "times_correct fix pushed for graduated_rules.py + feedback/loop.py (commit 724673e). But ensemble.py + multi_strategy_main.py caller changes may not have been pushed. All 24 rules still show times_correct=0.",
-      "action": "Verify ensemble.py + multi_strategy_main.py callers are deployed post-restart"
-    },
-    {
-      "type": "AB_TRACKER_38_STALLED",
-      "severity": "HIGH",
-      "description": "38 A/B tracker rules stalled — outcome callback broken. Rule governance cannot self-correct.",
-      "action": "Fix outcome callback in feedback loop post-restart"
-    },
-    {
-      "type": "LLM_REGIME_CAPTURE_GAP",
-      "severity": "MEDIUM",
-      "description": "All 965 trades have empty llm_regime field. Regime learning loop is blind. Verify llm_integration.py:221 on first live trade.",
-      "action": "Post-restart: check first 5 trades for non-empty llm_regime"
-    },
-    {
-      "type": "HIGH_CONF_CONFIDENCE_DATA_CONFLICT",
-      "severity": "MEDIUM",
-      "description": "10d sim: 90%+ conf = 56% WR +$32.33/trade. 100d backtest: 90%+ conf = 40.5% WR -$18.23/trade. Opposite signals. high_conf_80_85_penalty_v1 active at gate=20% as arbiter probe.",
-      "action": "Collect 50+ live trades at 80-90% conf, compare WR to both datasets to resolve conflict."
-    }
+    {"id": "BOT_OFFLINE_63D", "type": "BOT_OFFLINE", "severity": "CRITICAL", "description": "Bot offline 63.0 days. $423.94 cumulative EV not captured. Rate: $0.97/h.", "action": "P0: cd bot && python run.py paper", "ev_accrued_usd": 423.94},
+    {"id": "MORNING_WINDOW_MISS_JUN19", "type": "SESSION_MISS", "severity": "HIGH", "description": "Morning window 06-12 UTC (68% WR) closed without trade. Consecutive miss streak continues.", "action": "Start bot before 06:00 UTC tomorrow"},
+    {"id": "AFTERNOON_WINDOW_OPEN", "type": "OPPORTUNITY", "severity": "HIGH", "description": "Afternoon window 12-16 UTC (62% WR) OPEN — 2h remaining from 14:00 UTC.", "window_closes_utc": "2026-06-19T16:00:00Z", "ev_capturable_usd": 1.94},
+    {"id": "DATASET_CONFLICT_SYSTEMIC", "type": "DATA_QUALITY", "severity": "HIGH", "description": "10d (57% WR, +$905) vs 100d (44.5% WR, -$8,174). 12 of 17 active rules built from 10d — may misfire in live mixed-regime conditions.", "action": "Before restart: reduce gate on rules with 10d-only evidence"},
+    {"id": "TIMES_CORRECT_BLIND", "type": "FEEDBACK_GAP", "severity": "HIGH", "description": "times_correct=0 across 24+ primary rules. Fix committed (724673e) but unverifiable until bot restart.", "action": "Verify on first live trade post-restart"},
+    {"id": "SOL_SHORT_RULE_CONFLICT", "type": "RULE_CONFLICT", "severity": "MEDIUM", "description": "SOL_SHORT_full_block (gate=100%) blocks best 10d edge (64% WR). 100d shows 45% — conflict unresolved.", "action": "Post-restart: collect 30+ live SOL SHORT trades"},
+    {"id": "AB_TRACKER_STALLED", "type": "SYSTEM_HEALTH", "severity": "MEDIUM", "description": "38 A/B tracker rules stalled — outcome callback broken. No experiment can self-correct.", "action": "Fix outcome callback in feedback loop post-restart"}
   ],
-  "rules_state_snapshot": {
-    "total_rules": 24,
-    "active_gate_gt0": 17,
-    "inactive_gate0": 7,
-    "key_deactivations_run81": [
-      "sol_short_penalize_v1 — FREED best edge (64% WR n=179)",
-      "tod_evening_edge_v1 — INVALIDATED data",
-      "tod_afternoon_edge_v1 — INVALIDATED data",
-      "tod_morning_edge_v1 — INVALIDATED data"
-    ]
-  },
-  "run82_subsystem_outputs": {
-    "auto_fix": {"fixes_applied": 0, "gates_active": 17, "note": "All Run81 recs applied. No new conf>=75% rules found."},
-    "execution_forensics": {"avg_slippage": "UNKNOWN", "noise_stops": "87% stale", "trailing_stop_ev_gap": 9460},
-    "live_injection": {"high_edges_found": 3, "weak_setups_found": 2},
-    "daily_synthesis": {"anomalies_found": 28, "report_generated": false},
-    "model_optimization": {"skipped": true, "reason": "cost_tracker.json absent"}
+  "session_windows_today": {
+    "night_00_06": {"status": "CLOSED — blocked", "wr": 0.19},
+    "morning_06_12": {"status": "CLOSED — missed (bot offline)", "wr": 0.68},
+    "afternoon_12_16": {"status": "OPEN (~2h remaining from 14:00 UTC)", "wr": 0.62},
+    "evening_16_22": {"status": "NOT YET — opens 16:00 UTC", "wr": 0.65},
+    "late_22_24": {"status": "NOT YET — low edge", "wr": 0.38}
   }
 }

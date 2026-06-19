@@ -1,118 +1,59 @@
 {
-  "last_updated": "2026-06-19T12:05:22Z",
-  "run_number": 82,
-  "data_source": "10d simulation (trades_10d.csv, 965 trades). No live trades since Apr 19 (Day 62.50).",
+  "last_updated": "2026-06-19T14:00:00Z",
+  "run_number": 83,
+  "data_source": "backtest_100d.csv (589 trades) primary; trades_10d.csv (965 trades) secondary — bot offline Day 63.0",
+  "trades_csv_available": false,
   "high_edges_found": 3,
   "weak_setups_found": 2,
-  "edge_staleness_days": 0,
-  "trades_csv_available": false,
-  "win_rates_by_symbol": {
-    "BTC": {
-      "wr_long": 0.64, "n_long": 72, "avg_pnl_long": 25.55,
-      "wr_short": 0.54, "n_short": 195, "avg_pnl_short": -7.22,
-      "wr_short_90plus": 0.67, "n_short_90plus": 43, "avg_pnl_short_90plus": 102.92,
-      "wr_short_7079": 0.44, "n_short_7079": 98, "avg_pnl_short_7079": -91.87,
-      "note": "BTC LONG free to trade (64% WR). BTC SHORT 70-79% BLOCKED. BTC SHORT 90%+ BOOSTED."
-    },
-    "SOL": {
-      "wr_long": 0.53, "n_long": 122, "avg_pnl_long": -2.62,
-      "wr_short": 0.64, "n_short": 179, "avg_pnl_short": 32.44,
-      "note": "SOL SHORT best edge (64% WR, n=179). UNBLOCKED as of Run 81 (sol_short_penalize_v1 deactivated). SOL LONG BLOCKED (sol_long_veto_v1 gate=100%)."
-    },
-    "HYPE": {
-      "wr_long": 0.57, "n_long": 158, "avg_pnl_long": -6.55,
-      "wr_short": 0.54, "n_short": 239, "avg_pnl_short": -16.65,
-      "note": "Both directions BLOCKED (veto gate=100%). Net drag: -$5,014 total avoided."
-    },
-    "ETH": {
-      "note": "No ETH data in 10d sim dataset. Prior rule: eth_trending_regime_boost_v1 (gate=100, applied=2). ETH SHORT BB_golden from live data: 70% WR."
-    }
+  "edge_staleness_days": 63.0,
+  "dataset_conflict_alert": "CRITICAL: 10d (57% WR, +$905) vs 100d (44.5% WR, -$8,174) contradict. Use 100d as primary for live decisions.",
+  "win_rates_by_symbol_100d": {
+    "BTC": {"wr": 0.42, "count": 166, "avg_pnl": -3.84, "total_pnl": -637},
+    "HYPE": {"wr": 0.49, "count": 225, "avg_pnl": -24.73, "total_pnl": -5563, "note": "Net negative despite near-50% WR — loss/win asymmetry"},
+    "SOL": {"wr": 0.41, "count": 198, "avg_pnl": -9.97, "total_pnl": -1974}
+  },
+  "win_rates_by_symbol_side_100d": {
+    "BTC_SHORT": {"wr": 0.46, "count": 125, "avg_pnl": -0.69, "edge": "NEUTRAL"},
+    "BTC_LONG": {"wr": 0.32, "count": 41, "avg_pnl": -13.42, "edge": "WEAK"},
+    "SOL_SHORT": {"wr": 0.45, "count": 140, "avg_pnl": -7.16, "edge": "NEUTRAL"},
+    "SOL_LONG": {"wr": 0.33, "count": 58, "avg_pnl": -16.74, "edge": "WEAK"},
+    "HYPE_LONG": {"wr": 0.5, "count": 68, "avg_pnl": -14.36, "edge": "NEUTRAL_BLOCKED"},
+    "HYPE_SHORT": {"wr": 0.48, "count": 157, "avg_pnl": -29.22, "edge": "NEGATIVE_VETO"}
+  },
+  "win_rates_by_symbol_10d": {
+    "BTC_LONG": {"wr": 0.64, "count": 72, "avg_pnl": 25.55, "edge": "HIGH_CONFLICT_100d"},
+    "SOL_SHORT": {"wr": 0.64, "count": 179, "avg_pnl": 32.44, "edge": "HIGH_CONFLICT_100d_BLOCKED"},
+    "BTC_SHORT_90plus": {"wr": 0.67, "count": 43, "avg_pnl": 102.92, "edge": "HIGH_CONFLICT_100d_50pct"},
+    "HYPE_LONG": {"wr": 0.57, "count": 158, "avg_pnl": -6.55, "edge": "BLOCKED_gate=100%"},
+    "SOL_LONG": {"wr": 0.53, "count": 122, "avg_pnl": -2.62, "edge": "BLOCKED_gate=100%"}
   },
   "win_rates_by_regime": {
-    "trend": {"wr": 0.62, "note": "Best performing regime"},
-    "high_volatility": {"wr": 0.55},
-    "ranging": {"wr": 0.38, "note": "ranging_regime_penalize_v1 active gate=50"},
-    "illiquid": {"wr": 0.28, "n": 57, "note": "illiquid_regime_penalize_v1 active gate=100. 87% noise stops (stale)."},
-    "unknown": {"wr": 0.32}
+    "trend": {"wr": 0.62, "note": "Best performing regime in 10d sim"},
+    "high_volatility": {"wr": 0.55, "note": "Second best — HIGH_VOL_regime_boost active gate=80%"},
+    "ranging": {"wr": 0.38, "note": "Below average — RANGING_regime_reduce gate=50% active"},
+    "illiquid": {"wr": 0.28, "n": 57, "note": "Worst — illiquid_regime_penalize_v1 gate=100% active"},
+    "unknown": {"wr": 0.32, "note": "Weak — no specific rule but NOISE_REGIME_FAST_EXIT gate=80%"}
   },
-  "win_rates_by_confidence_bin": {
-    "60_70": {"wr": 0.46, "n": 123, "avg_pnl": -18.87, "status": "WORST BIN — conf_floor_70_v1 deactivated due to conflicts"},
-    "70_80": {"wr": 0.59, "n": 633, "avg_pnl": -0.98, "status": "BORDERLINE — majority of trades"},
-    "80_90": {"wr": 0.60, "n": 118, "avg_pnl": 7.67, "status": "POSITIVE — high_conf_80_85_penalty_v1 probe active gate=20"},
-    "90_plus": {"wr": 0.56, "n": 91, "avg_pnl": 32.33, "status": "BEST RETURN — data conflict with 100d backtest (40.5% WR)"}
+  "win_rates_by_confidence_bin_100d": {
+    "60_70": {"wr": 0.49, "count": 111, "avg_pnl": -7.15, "note": "Worst bin — conf_floor_70 partially addresses"},
+    "70_80": {"wr": 0.45, "count": 321, "avg_pnl": -8.54, "note": "Bulk of trades — BTC_SHORT_70_80 penalty at gate=50%"},
+    "80_90": {"wr": 0.4, "count": 120, "avg_pnl": -33.04, "note": "WORST avg PnL — INVERSE confidence relationship"},
+    "90_plus": {"wr": 0.41, "count": 37, "avg_pnl": -18.23, "note": "10d claims 67% WR — major conflict"}
   },
-  "win_rates_by_time_utc": {
-    "00_06_night": {"wr": 0.19, "status": "BLOCKED night_session_block_v1 gate=100"},
-    "06_12_morning": {"wr": 0.68, "status": "Best window — CLOSED at 12:00 UTC today (52nd+ miss)"},
-    "12_16_afternoon": {"wr": 0.62, "status": "ACTIVE NOW — window open 12:00-16:00 UTC, 3h55m remaining"},
-    "16_22_evening": {"wr": 0.65, "status": "Opens 16:00 UTC — 3h55m away"},
-    "22_24_late": {"wr": 0.38}
+  "win_rates_by_time_utc_6h_bins": {
+    "00_06_night": {"wr": 0.19, "n": 13, "status": "BLOCKED_night_session_block_v1_gate=100%"},
+    "06_12_morning": {"wr": 0.68, "n": "20+", "status": "CLOSED_TODAY_12UTC — window missed. Run81 deactivated TOD rule."},
+    "12_18_afternoon": {"wr": 0.62, "n": "20+", "status": "OPEN_NOW — 2h remaining from 14:00 UTC"},
+    "18_24_evening": {"wr": 0.65, "n": "27+", "status": "NOT_YET — opens 16:00 UTC"}
   },
   "high_edges": [
-    {
-      "setup": "SOL_SHORT",
-      "wr": 0.64,
-      "n": 179,
-      "avg_pnl": 32.44,
-      "total_pnl_10d": 5807,
-      "status": "BEST EDGE — sol_short_penalize_v1 deactivated Run81, now free",
-      "rule_changes_run81": "Freed from gate=50% penalty rule"
-    },
-    {
-      "setup": "BTC_LONG",
-      "wr": 0.64,
-      "n": 72,
-      "avg_pnl": 25.55,
-      "total_pnl_10d": 1839,
-      "status": "SECOND-BEST — no block, free to trade"
-    },
-    {
-      "setup": "BTC_SHORT_90plus",
-      "wr": 0.67,
-      "n": 43,
-      "avg_pnl": 102.92,
-      "total_pnl_10d": 4426,
-      "status": "HIGHEST RETURN/TRADE — btc_short_90plus_boost_v1 active gate=100 but times_applied=0 (no live data)"
-    }
+    {"setup": "BTC_LONG_10d", "wr": 0.64, "count": 72, "avg_pnl": 25.55, "note": "10d edge. 100d shows 32% WR — CONFLICT. Active rule: BTC_directional_correction +5 boost.", "confidence_in_edge": "MODERATE — 10d vs 100d conflict unresolved"},
+    {"setup": "SOL_SHORT_10d", "wr": 0.64, "count": 179, "avg_pnl": 32.44, "note": "10d edge. 100d shows 45% WR. SOL_SHORT_full_block gate=100% BLOCKS this setup.", "confidence_in_edge": "CONFLICTED — blocked by active rule"},
+    {"setup": "MORNING_06_12_UTC_10d", "wr": 0.68, "count": "20+", "note": "TOD rules deactivated Run81. Window closed today 12:00 UTC.", "confidence_in_edge": "LOW — TOD rules invalidated"}
   ],
   "weak_setups": [
-    {
-      "setup": "BTC_SHORT_70_79pct",
-      "wr": 0.44,
-      "n": 98,
-      "avg_pnl": -91.87,
-      "total_pnl_10d": -9003,
-      "status": "BLOCKED — btc_short_conf70_80_penalize_v1 gate=100%"
-    },
-    {
-      "setup": "CONF_60_70",
-      "wr": 0.46,
-      "n": 123,
-      "avg_pnl": -18.87,
-      "total_pnl_10d": -2321,
-      "status": "UNBLOCKED — conf_floor_70_v1 deactivated (evidence conflict). Confidence floor logic should catch most of these."
-    }
+    {"setup": "NIGHT_00_06_UTC", "wr": 0.19, "count": 13, "note": "Structural losing session. night_session_block_v1 gate=100% ACTIVE — correctly blocked."},
+    {"setup": "BTC_SHORT_70_79pct_10d", "wr": 0.44, "count": 98, "avg_pnl": -91.87, "note": "10d terrible. 100d: -$0.54 avg (neutral). BTC_SHORT_CONF70_80_BLOCK gate=50% may be over-penalizing."}
   ],
-  "prompt_injection_targets": [
-    {
-      "agent": "Trade",
-      "injection": "SOL SHORT 64% WR n=179 — BEST EDGE. No longer penalized. Prioritize SOL SHORT in trending regime.",
-      "priority": "HIGH"
-    },
-    {
-      "agent": "Regime",
-      "injection": "Tag ILLIQUID aggressively — 87% noise stops (stale). TRENDING (62%) >> RANGING (38%) >> ILLIQUID (28%).",
-      "priority": "HIGH"
-    },
-    {
-      "agent": "Risk",
-      "injection": "Afternoon 12-16 UTC: 62% WR OPEN NOW. Morning 06-12 UTC: 68% WR (best window, now closed). BTC SHORT at 90%+ conf: 67% WR — boost is active.",
-      "priority": "MEDIUM"
-    },
-    {
-      "agent": "Critic",
-      "injection": "SOL SHORT newly freed — do not apply stale penalization logic. BTC LONG 64% WR — support, no block. BTC SHORT 70-79% conf: BLOCK.",
-      "priority": "HIGH"
-    }
-  ]
+  "key_insight_run83": "100d dataset shows all symbol×side combinations net-negative despite some showing WR near 50%. The loss/win asymmetry (larger losses than wins) is the fundamental problem. TRAILING_STOP_LOCK fix at position_manager.py:1244 could convert trailing exits from -$0.34 to +$33 avg."
 }

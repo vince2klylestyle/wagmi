@@ -1,37 +1,37 @@
 {
-  "last_run": "2026-06-19T12:05:22Z",
-  "run_number": 82,
+  "last_run": "2026-06-19T14:00:00Z",
+  "run_number": 83,
   "fixes_applied_this_run": 0,
   "governance_actions_this_run": 0,
   "total_applied_all_time": 75,
   "gates_active": 17,
   "new_audit_files_this_run": 0,
-  "elapsed_since_last_run_h": 1.98,
-  "loop_gap_note": "RUN 82: 1.98h gap from Run81. 0 new fixes — all Run81 audit recs already applied.",
+  "elapsed_since_last_run_h": 1.92,
+  "loop_gap_note": "RUN 83: 1.92h gap from Run82. 0 new fixes — all Run82 audit recs below 75% threshold or already satisfied.",
   "governance_actions": [],
   "fixes_applied": [],
-  "source_audit_file": "autonomous_audit_2026-06-19T10-06-43Z.md",
+  "source_audit_file": "autonomous_audit_2026-06-19T12-05-34Z.md",
   "session_recs_processed": 3,
   "session_recs_qualifying_conf75": 0,
-  "session_recs_already_applied": 3,
-  "session_recs_pending_human": 3,
+  "session_recs_already_applied": 1,
+  "session_recs_pending_human": 2,
   "session_recs_new_rules": 0,
-  "no_fix_reason": "All 3 Run81 audit recommendations already applied in Run81. No new audit since then. conf_floor_70_v1 remains inactive (deactivated 2026-05-23 due to evidence conflict + CONSERVATIVE mode deadlock). BTC_LONG general boost deferred (10d vs 100d data conflict).",
-  "recommendations_from_audit_run81": [
+  "no_fix_reason": "Rec#1 (btc_short_90plus gate demotion, conf=72%): BELOW 75% threshold. Actual rule BTC_HIGH_CONF_90plus already at probe gate=20%. Rec#2 (integration test, conf=88%): Code task — not a JSON/config auto-fix. Rec#3 (btc_short_conf70_80 gate 100->50, conf=82%): BTC_SHORT_CONF70_80_BLOCK ALREADY at gate=50% in graduated_rules.json — SATISFIED. No new audit file since Run82. Steady state.",
+  "recommendations_from_audit_run82": [
     {
-      "rec": "SOL_SHORT_PENALIZE_DEACTIVATE",
-      "conf": 80,
-      "status": "APPLIED Run81 — gate=50→0, active=false"
+      "rec": "BTC_SHORT_90PLUS_DEMOTION",
+      "conf": 72,
+      "status": "BELOW 75% threshold — not auto-applied. BTC_HIGH_CONF_90plus already gate=20%."
     },
     {
-      "rec": "THREE_TOD_RULES_DEACTIVATE",
-      "conf": 95,
-      "status": "APPLIED Run81 — all 3 set gate=0, active=false"
+      "rec": "GRADUATED_RULE_INTEGRATION_TEST",
+      "conf": 88,
+      "status": "CODE TASK — pending developer action (add pytest test for rule condition matching)"
     },
     {
-      "rec": "TIMES_CORRECT_TRACKING_FIX",
-      "conf": 90,
-      "status": "CODE PUSHED Run81 — graduated_rules.py + feedback/loop.py in commit 724673e. Git status clean = likely full deploy."
+      "rec": "BTC_SHORT_CONF70_80_GATE_REDUCE_100_TO_50",
+      "conf": 82,
+      "status": "ALREADY SATISFIED — BTC_SHORT_CONF70_80_BLOCK is gate=50% in graduated_rules.json"
     }
   ],
   "pending_code_implementations": [
@@ -44,16 +44,24 @@
       "code_line": 1244,
       "env_var": "TRAILING_MIN_LOCK_PCT=0.70",
       "status": "PENDING_HUMAN_REVIEW",
-      "days_pending": 0
+      "days_pending": 1
+    },
+    {
+      "id": "GRADUATED_RULE_INTEGRATION_TEST",
+      "description": "Add pytest: load graduated_rules.json, create mock signal {symbol:BTC, side:SELL, confidence:92}, run through graduated rule applier, assert rule fires.",
+      "confidence": 0.88,
+      "code_file": "bot/tests/",
+      "status": "PENDING_CODE_CHANGE",
+      "days_pending": 1
     },
     {
       "id": "LLM_REGIME_CAPTURE_FIX_VERIFY",
-      "description": "Verify llm_integration.py:221 correctly populates llm_regime on live trades. Backtest path may differ from live path.",
+      "description": "Verify llm_integration.py:221 correctly populates llm_regime on live trades.",
       "confidence": 0.95,
       "code_file": "bot/llm/llm_integration.py",
       "code_line": 221,
       "status": "PENDING_VERIFICATION_POST_RESTART",
-      "days_pending": 62
+      "days_pending": 63
     }
   ],
   "pending_human_recs": [
@@ -61,40 +69,42 @@
       "finding": "BOT_RESTART",
       "confidence": 100,
       "status": "PENDING_HUMAN_REVIEW",
-      "days_pending": 62,
-      "description": "cd bot && python run.py paper — $422.98 EV accrued since Apr 19 shutdown. Afternoon window OPEN NOW (12:05 UTC, 3h55m remaining, WR=62%)."
+      "days_pending": 63,
+      "description": "cd bot && python run.py paper — $423.94 EV accrued since Apr 19 shutdown."
     },
     {
       "finding": "TRAILING_STOP_LOCK",
       "confidence": 88,
       "status": "PENDING_CODE_CHANGE",
-      "days_pending": 0,
-      "description": "position_manager.py:1244 — change trailing floor from breakeven to 70% TP1 gain. $9,460 expected recovery per 10d."
+      "days_pending": 1,
+      "description": "position_manager.py:1244 — change trailing floor from breakeven to 70% TP1 gain. $9,460 expected recovery per 10d (100d shows $3,759)."
     },
     {
       "finding": "F1_sniper_re-enable",
       "confidence": 90,
       "status": "PENDING_HUMAN_REVIEW",
-      "days_pending": 65,
+      "days_pending": 66,
       "description": "Re-enable SNIPER_AUTO_EXECUTE with 5x leverage cap + $50/trade loss ceiling."
     }
   ],
   "gate_distribution_current": {
-    "0": 7,
-    "20": 3,
-    "50": 3,
-    "100": 8,
-    "note": "17 active rules (gate>0). 7 inactive (gate=0). Total: 24 rules."
+    "0": 50,
+    "5": 1,
+    "20": 8,
+    "50": 10,
+    "80": 34,
+    "100": 13,
+    "note": "116 total rules. 66 active (gate>0). 50 inactive (gate=0)."
   },
-  "graduated_rules_total": 24,
+  "graduated_rules_total": 116,
   "ab_tracker_stalled_rules": 38,
   "loop_cadence_history": [
-    {"run": 77, "gap_h": 24.0, "note": "STREAK BROKEN"},
     {"run": 78, "gap_h": 1.05, "note": "CADENCE RESTORED"},
     {"run": 79, "gap_h": 1.0, "note": "STREAK 2"},
     {"run": 80, "gap_h": 1.0, "note": "STREAK 3. Fix: high_conf_80_85_penalty_v1"},
-    {"run": 81, "gap_h": 1.98, "note": "STREAK 4 (1.98h). 4 fixes: SOL SHORT + 3 TOD rules"},
-    {"run": 82, "gap_h": 1.98, "note": "STREAK 5 (1.98h). 0 fixes — clean run, all recs processed."}
+    {"run": 81, "gap_h": 1.98, "note": "STREAK 4. 4 fixes: SOL SHORT + 3 TOD rules"},
+    {"run": 82, "gap_h": 1.98, "note": "STREAK 5. 0 fixes — all recs processed"},
+    {"run": 83, "gap_h": 1.92, "note": "STREAK 6. 0 fixes — all recs satisfied or below threshold"}
   ],
   "new_fixes_this_run": []
 }
