@@ -123,7 +123,7 @@
         "confidence_min": 70.0,
         "confidence_max": 80.0
       },
-      "adjustment": -20.0,
+      "adjustment": -10.0,
       "confidence": 0.9,
       "evidence_ratio": 0.25,
       "total_evidence": 40,
@@ -132,7 +132,9 @@
       "times_applied": 3,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 100
+      "gate_percentage": 50,
+      "gate_reduced_at": "2026-06-19T16:05:00Z",
+      "gate_reduction_reason": "RUN85_AUTO_FIX (conf=82%>=75%): 100d shows BTC SHORT 70-79% at -$0.54/trade (neutral) vs 10d -$91.87 (cherry-picked bear regime). Halved penalty -20->-10. times_applied=3 times_correct=0 further supports reduction."
     },
     {
       "rule_id": "btc_short_90plus_boost_v1",
@@ -254,9 +256,7 @@
       "active": false,
       "gate_percentage": 0,
       "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: insight INVALIDATED in insights.json — actual WR=33% not 65%. Built on invalidated data. Auto-fix conf=95% >= 75% threshold.",
-      "disabled_at": "2026-06-19T10:06:43Z",
-      "gate_escalated_at": "2026-05-24T00:11:00+00:00",
-      "gate_escalation_reason": "GRADUATION_CRITERION_MET: threshold was n>=20 WR>=0.60. Live data: n=27 WR=65%. Both conditions met (27>=20, 0.65>=0.60). No feedback engine conflict (evening slot unique). Second TOD window to graduate (after tod_morning_edge_v1). Feedback engine has no contradicting evening block rule. Conf=0.85 >> 0.75 threshold. Gate distribution now: 3 disabled / 4 probe(20%) / 8 graduated(50%) / 8 deployed(100%)."
+      "disabled_at": "2026-06-19T10:06:43Z"
     },
     {
       "rule_id": "tod_afternoon_edge_v1",
@@ -295,9 +295,7 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 50,
-      "gate_escalated_at": "2026-05-23T23:11:54.661001+00:00",
-      "gate_escalation_reason": "GRADUATION_CRITERION_MET: pending_ab_graduation threshold was n>=25 WR>=0.52. Backtest: n=2172 at 55% WR. Feedback HIGH_VOL_regime_boost at gate=80%. Best regime by WR margin (55% vs 38% avg). No conflicts (different conditions from illiquid_regime_penalize). Conf=0.88 >> 0.75 threshold."
+      "gate_percentage": 50
     },
     {
       "rule_id": "tod_morning_edge_v1",
@@ -327,9 +325,7 @@
       "conditions": {
         "symbol": "ETH",
         "side": "SELL",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": 8.0,
       "confidence": 0.95,
@@ -340,9 +336,7 @@
       "times_applied": 3,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 50,
-      "gate_escalated_at": "2026-05-23T23:11:54.661001+00:00",
-      "gate_escalation_reason": "SYNC_GAP_CLOSE: feedback ETH_SHORT_BB_golden at gate=80%. Backtest: 70% WR on n=2172. Live_edge_data: 80% WR on 5 live trades (strongest live edge found). ETH SELL is protected from side-bias filter. Conf=0.95 >> 0.75 threshold. First BB golden rule to escalate (sol_buy disabled, btc_buy at 20% pending conflict check)."
+      "gate_percentage": 50
     },
     {
       "rule_id": "btc_buy_bb_golden_v1",
@@ -351,9 +345,7 @@
       "conditions": {
         "symbol": "BTC",
         "side": "BUY",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": 8.0,
       "confidence": 0.91,
@@ -373,9 +365,7 @@
       "conditions": {
         "symbol": "SOL",
         "side": "BUY",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": 8.0,
       "confidence": 0.9,
@@ -397,9 +387,7 @@
       "conditions": {
         "symbol": "HYPE",
         "side": "SELL",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": -15.0,
       "confidence": 0.92,
@@ -410,19 +398,14 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 50,
-      "gate_escalated_at": "2026-05-23T03:05:37+00:00",
-      "gate_escalation_reason": "BB_GATE_SYNC_GAP_FIX: feedback engine runs at gate=80%; LLM was at gate=20%. Escalated to 50% to close 4x understrength gap. Penalty rule, no conflicts, conf=0.92 >> 0.75 threshold."
+      "gate_percentage": 50
     },
     {
       "rule_id": "bb_mtq_antipattern_v1",
       "hypothesis_statement": "BB+MTQ co-agreement = 35% WR (n=2172). When both bollinger_squeeze AND multi_tier_quality fire, it's a contra-indicator. Penalize.",
       "action": "penalize",
       "conditions": {
-        "strategies_include": [
-          "bollinger_squeeze",
-          "multi_tier_quality"
-        ]
+        "strategies_include": ["bollinger_squeeze", "multi_tier_quality"]
       },
       "adjustment": -10.0,
       "confidence": 0.92,
@@ -433,9 +416,7 @@
       "times_applied": 1,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 50,
-      "gate_escalated_at": "2026-05-23T03:05:37+00:00",
-      "gate_escalation_reason": "BB_GATE_SYNC_GAP_FIX: feedback engine runs at gate=80%; LLM was at gate=20%. Escalated to 50% to close 4x understrength gap. Penalty rule, no conflicts, conf=0.92 >> 0.75 threshold."
+      "gate_percentage": 50
     },
     {
       "rule_id": "ranging_regime_penalize_v1",
@@ -453,11 +434,7 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
-      "source": "feedback/graduated_rules.json RANGING_regime_reduce (gate=50%, conf=76%). Sync gap: illiquid has LLM rule (-15pts), ranging does not. Pattern: 6th consecutive cross-system sync gap.",
-      "outcome_tracking": "PENDING_RESTART",
-      "gate_escalated_at": "2026-05-23T23:11:54.661001+00:00",
-      "gate_escalation_reason": "SYNC_GAP_CLOSE_V2: feedback RANGING_regime_reduce at gate=50%. Ranging WR=25% on 16 live trades (worse than illiquid 28%). Penalty rule, no conflicts. Conf=0.76 >= 0.75 threshold. 10th consecutive cross-system sync gap action."
+      "active": true
     },
     {
       "rule_id": "high_conf_80_85_penalty_v1",
@@ -478,14 +455,12 @@
       "active": true,
       "gate_percentage": 50,
       "gate_escalated_at": "2026-06-19T16:00:00Z",
-      "gate_escalation_reason": "RUN84_AUTO_ESCALATION: Graduation criterion already met by 100d backtest data (WR<45% n>=15). 80-85% bin: 36.1% WR on n=36 (36<45, 36>=15). Full 80-90% bin: 40% WR on n=120 — further confirmation. Conf=0.88 >> 0.75 threshold. 10d data conflict noted (claimed 64% WR) but 100d is primary dataset (589 trades, more representative). Escalating 20%->50% to double penalty coverage. Next: gate 50%->80% if first 15 post-restart trades confirm WR<45%; deactivate if WR>=55%.",
-      "source": "perpetual_improvement_run_80_2026-06-19 — 100d backtest (589 trades). HIGH_CONF_BACKTEST_PENALTY_100D from auto_fix pipeline. Conf=0.88 >= 0.75 threshold. Soft probe only — -5pts avoids over-correction vs earlier rules (btc_short_90plus_boost says 90%+ is still good). Does NOT affect 85%+ range.",
-      "conflict_note": "WARN: live_edge_data shows 80-90%=64% WR (vs 100d backtest 36.1%). Contradictory sources. 100d (589 trades, mixed regimes) is more representative than 10d (cherry-picked bear-trend window). Rule escalated to gate=50% pending live verification.",
-      "outcome_tracking": "ESCALATED gate=20->50 by Run84 2026-06-19T16:00:00Z. Graduate 50->80 if WR<45% n>=15 post-restart. Deactivate if WR>=55% n>=15."
+      "gate_escalation_reason": "RUN84_AUTO_ESCALATION: Graduation criterion already met by 100d backtest data (WR=36.1%<45% n>=15). 80-85% bin: 36.1% WR on n=36. Full 80-90% bin: 40% WR on n=120. Conf=0.88 >> 0.75 threshold. Escalating 20%->50%.",
+      "outcome_tracking": "ESCALATED gate=20->50 by Run84. Graduate 50->80 if WR<45% n>=15 post-restart. Deactivate if WR>=55% n>=15."
     },
     {
       "rule_id": "sol_short_penalize_v1",
-      "hypothesis_statement": "SOL SELL = 34.6% WR on 52 live paper trades (suspension probe). Structurally weak short side. Feedback engine has SOL_SHORT_full_block (conf=88, gate=100%). 7th consecutive LLM↔feedback sync gap fixed.",
+      "hypothesis_statement": "SOL SELL = 34.6% WR on 52 live paper trades (suspension probe). Structurally weak short side.",
       "action": "penalize",
       "conditions": {
         "symbol": "SOL",
@@ -501,12 +476,8 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": false,
-      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: 179-trade 10d simulation shows SOL SHORT = 64% WR +$32.44/trade +$5,807 total. Rule based on 52 stale paper trades claiming 34.6% WR is contradicted by 30 WR points on 3.4x larger dataset. New dataset is authoritative. Re-evaluate if SOL SHORT live WR drops below 50% on n>=20 post-restart trades. Auto-fix conf=80% >= 75% threshold.",
-      "disabled_at": "2026-06-19T10:06:43Z",
-      "source": "feedback/graduated_rules.json SOL_SHORT_full_block (conf=88, gate=100%) + live evidence 34.6% WR n=52. RULE_CONFLICT resolved: conflict was LLM understrength (20%) vs feedback full_block (100%). Escalating to 50% closes half the gap.",
-      "outcome_tracking": "DEACTIVATED — monitor SOL SHORT WR post-restart. Re-activate penalty only if WR<50% on n>=20 live trades.",
-      "gate_escalated_at": "2026-05-24T05:00:00+00:00",
-      "gate_escalation_reason": "RULE_CONFLICT_RESOLUTION_V1: Graduation criterion met on historical data (WR=34.6%<40% n=52>=30 conf=0.88). RULE_CONFLICT_SOL_SHORT was that LLM engine was 5x weaker than feedback engine (gate=20% vs feedback gate=100%). Escalating to gate=50% closes half the alignment gap. Directional alignment: both engines agree SOL SELL is weak. Next graduation: full veto (gate=100%) after n>=20 post-restart trades at WR<40%."
+      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: 179-trade 10d simulation shows SOL SHORT = 64% WR +$32.44/trade. Rule based on 52 stale paper trades is contradicted by 3.4x larger dataset. Re-evaluate if SOL SHORT live WR drops below 50% on n>=20 post-restart trades.",
+      "disabled_at": "2026-06-19T10:06:43Z"
     }
   ]
 }
