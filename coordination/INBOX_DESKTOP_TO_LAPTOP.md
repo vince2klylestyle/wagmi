@@ -68,6 +68,16 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-19T16:40Z [BUG-FOUND] Calibration metric is mismeasured — bot distrusts itself into a death-spiral (FIX NEXT CYCLE)
+
+Decision-quality audit from agent_calibration.json + agent_performance.jsonl. Findings:
+- Trade agent 22% overall accuracy; ~0% in nearly EVERY regime (trend 0/11, consolidation 0/11, range 0/9, trending_bear 0/8); only illiquid 100% (n=4, matches known ETH-SHORT-illiquid edge).
+- Defensive death-spiral: Risk forces size=0/skip on 81% of decisions, Trade skips 90%, Exit force-closes 82%; self-reported 8/14/15/16-loss streaks; equity -14.4%.
+- ROOT CAUSE: regime "accuracy" is MISMEASURED. learning_integration.py:396 sets regime_correct from thesis_correct (did the TRADE win) * regime_fit, and regime_fit defaults to 0.5 (strategy key usually empty) → regime accuracy == trade win-rate. A correctly-classified regime is marked "wrong" whenever the trade loses. Confidence logged as constant 0.5 confirms the default path. So "regime classifier 8.5% accuracy" is an artifact, NOT reality.
+- SYSTEMIC: 3rd broken outcome-attribution measurement this session (graduated_rules feedback [fixed], ledger incompleteness [fixed], now calibration). The bot's whole learning spine couldn't tell if its decisions were right — and REACTS to the false metrics (distrust→skip/close everything).
+
+FIX (next cycle, careful + tested — feeds confidence→prompts→decisions, high blast radius): compute regime_correct from PREDICTED regime vs ACTUAL realized regime/direction (performance_tracker.py:482 _regime_matches_outcome already does this correctly — borrow it), not from thesis_correct. Then reset the poisoned calibration buckets so the bot stops distrusting itself on bad history. Validate with a smoke test before restart.
+
 ## 2026-06-19T16:16Z [FIX-AVAILABLE] Re-enabled hype_long + sol_long vetoes — stop the bleed; loop RESUMED
 
 Nunu back after ~2 days. State: bot survived (3-day uptime, no crashes) but equity bled $4,569→$4,280 (-14.4%). Cause: 11 straight losing closes since Jun17, $286 of it from 2 HYPE_LONG trades.
