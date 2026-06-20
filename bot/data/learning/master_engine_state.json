@@ -1,28 +1,118 @@
 {
-  "last_run": "2026-06-20T02:07:00Z",
-  "run_number": 91,
-  "bot_offline_days": 64.1,
+  "last_run": "2026-06-20T06:00:00Z",
+  "run_number": 92,
+  "bot_offline_days": 64.25,
   "ev_accrued_usd": 434.03,
-  "cadence_streak": 13,
-  "morning_window_opens_utc": "2026-06-20 06:00 UTC",
-  "morning_window_hours_away": 3.9,
+  "cadence_streak": 14,
+  "morning_window_status": "OPEN NOW — 06:00-12:00 UTC (68-71% WR). Bot OFFLINE. Critical alpha window bleeding.",
   "subsystems": {
-    "auto_fix": {"fixes_applied": 2, "gates_active": 20, "total_applied_all_time": 82},
-    "execution_forensics": {"avg_slippage": "UNAVAILABLE", "trailing_stop_ev_gap_100d": 3759, "days_pending": 7},
-    "live_injection": {"high_edges_found": 3, "weak_setups_found": 4},
-    "daily_synthesis": {"anomalies_found": 5, "today_trades": 0, "report_generated": true},
-    "model_optimization": {"status": "SKIPPED", "model_swaps_recommended": 0}
+    "auto_fix": {
+      "fixes_applied": 0,
+      "gates_active": 20,
+      "total_applied_all_time": 82,
+      "note": "Run92: 0 new fixes. All pending recs are code changes (TRAILING_STOP_LOCK, CSV_REGIME_FIX) or below 75% threshold (afternoon/evening=72%). No data change to trigger new confidence promotions.",
+      "pending_code_changes": [
+        {"id": "TRAILING_STOP_LOCK", "confidence": 0.88, "impact": "+$3759/100d", "days_pending": 7, "file": "position_manager.py:1244"},
+        {"id": "TP1_CUMULATIVE_PNL_INSTRUMENTATION", "confidence": 0.90, "impact": "data capture", "days_pending": 6},
+        {"id": "CSV_REGIME_FIELD_FIX", "confidence": 0.98, "impact": "unlocks rule lifecycle", "days_pending": 2}
+      ],
+      "pending_watch": [
+        {"id": "AFTERNOON_SESSION_PENALIZE_V1", "confidence": 0.72, "watch_run": 2, "watch_max": 2, "note": "Watch cycle complete. Propose rule when confidence reaches 75%."},
+        {"id": "EVENING_SESSION_PENALIZE_V1", "confidence": 0.72, "watch_run": 2, "watch_max": 2, "note": "Watch cycle complete. Propose rule when confidence reaches 75%."}
+      ]
+    },
+    "execution_forensics": {
+      "avg_slippage": "UNAVAILABLE — bot offline Day 64.25",
+      "trailing_stop_ev_gap_100d": 3759,
+      "trailing_stop_ev_per_day": 37.59,
+      "days_pending": 7,
+      "noise_stop_rate_illiquid": 0.719,
+      "noise_stop_rate_ranging": 0.72,
+      "partial_fills": "UNAVAILABLE — no live trades",
+      "worst_cases": {
+        "HYPE_SHORT_high_conf": "avg -$53.36 (80%+ conf, 100d), 48% WR",
+        "BTC_LONG_all_bins": "all confidence bins negative avg PnL (100d)"
+      }
+    },
+    "live_injection": {
+      "high_edges_found": 3,
+      "weak_setups_found": 4,
+      "data_source": "10d backtest (n=965) — bot offline, no new live data",
+      "high_edges": [
+        {"setup": "BTC_BUY_BB_golden", "wr": 0.69, "count": 2172, "gate": "50% (promoted Run90)"},
+        {"setup": "SOL_LONG_70_80pct_10d", "wr": 0.62, "count": 208, "status": "CONFLICTED with sol_long_veto gate=100%"},
+        {"setup": "MORNING_06_12_UTC", "wr": 0.68, "status": "OPEN NOW — bot offline, missed"}
+      ],
+      "weak_setups": [
+        {"setup": "NIGHT_00_06_UTC", "wr": 0.19, "gate": "gate=100% CORRECT"},
+        {"setup": "AFTERNOON_12_18_UTC", "wr": 0.27, "n": 15, "watch_run": 2, "gate": "NO GATE — propose at 75% conf"},
+        {"setup": "EVENING_18_24_UTC", "wr": 0.29, "n": 14, "watch_run": 2, "gate": "NO GATE — propose at 75% conf"},
+        {"setup": "ALL_HYPE", "wr": 0.48, "avg_pnl": -24.73, "gate": "vetoed 100%"}
+      ],
+      "afternoon_evening_status": "Watch cycle 2/2 COMPLETE. Data: afternoon=27% WR (n=15), evening=29% WR (n=14). Both post-dedup confirmed. Next step: propose penalize rules when confidence reaches 75% (currently 72%)."
+    },
+    "daily_synthesis": {
+      "anomalies_found": 6,
+      "today_trades": 0,
+      "today_pnl": 0.0,
+      "report_generated": true,
+      "anomalies": [
+        {"type": "CRITICAL", "description": "MORNING WINDOW OPEN (06:00-12:00 UTC, 68-71% WR) — bot OFFLINE Day 64.25. Highest-alpha window NOW BLEEDING.", "severity": "P0"},
+        {"type": "HIGH", "description": "TRAILING_STOP_LOCK Day 7. $37.59/day EV gap. position_manager.py:1244.", "severity": "P1"},
+        {"type": "HIGH", "description": "graduated_rules times_correct=0 on all 25 rules. Rule lifecycle blind. CSV llm_regime field empty in all 965 records.", "severity": "P1"},
+        {"type": "MEDIUM", "description": "5/7 feedback state files missing. Cold start on restart.", "severity": "P2"},
+        {"type": "MEDIUM", "description": "Afternoon/evening penalize watch cycle complete (2/2). Rules not yet gated.", "severity": "P2"},
+        {"type": "INFO", "description": "BTC_LONG veto (gate=80%) waiting for live post-restart trades. 10d/100d in fundamental disagreement.", "severity": "P3"}
+      ]
+    },
+    "model_optimization": {
+      "status": "SKIPPED",
+      "reason": "No cost_tracker.json found at bot/llm/cost_tracker.json",
+      "model_swaps_recommended": 0,
+      "potential_savings": 0.0
+    }
   },
   "high_priority_findings": [
-    {"subsystem": "daily_synthesis", "severity": "CRITICAL", "finding": "Bot offline Day 64.1. Morning window opens 06:00 UTC (~3.9h). EV accrued: $434.03.", "action": "cd bot && python run.py paper — START BEFORE 06:00 UTC"},
-    {"subsystem": "execution_forensics", "severity": "HIGH", "finding": "TRAILING_STOP_LOCK Day 7. $3,759/100d gap. position_manager.py:1244.", "action": "Implement TRAILING_MIN_LOCK_PCT=0.70"},
-    {"subsystem": "auto_fix", "severity": "HIGH_RESOLVED", "finding": "SIZE_CONTRADICTION_ARCHIVE_V2: 4 insights archived. Active: 10/19.", "applied": true},
-    {"subsystem": "auto_fix", "severity": "MEDIUM_RESOLVED", "finding": "ENSEMBLE_STALENESS_INVALIDATION_V1: stale 30% WR claim removed.", "applied": true},
-    {"subsystem": "live_injection", "severity": "MEDIUM_WATCH", "finding": "Afternoon (27% WR) and evening (29% WR) structurally weak post-dedup. No gate rules exist. Watch 1/2.", "confidence": 0.72, "proposed_rules": ["afternoon_session_penalize_v1 gate=50%", "evening_session_penalize_v1 gate=50%"]}
+    {
+      "subsystem": "daily_synthesis",
+      "severity": "P0_CRITICAL",
+      "finding": "Morning window (06:00-12:00 UTC, 68-71% WR) is NOW OPEN. Bot offline Day 64.25. Highest-probability trading window is bleeding. SOL_SHORT, ETH BB squeeze, BTC SHORT >=90% — all unreachable.",
+      "action": "cd bot && python run.py paper — IMMEDIATE"
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "P1_HIGH",
+      "finding": "TRAILING_STOP_LOCK Day 7. 111 TRAILING_STOP exits avg -$0.34/trade vs TP2 +$33.53. $3,759 EV forgone per 100d window ($37.59/day). Implementation at position_manager.py:1244.",
+      "action": "Implement TRAILING_MIN_LOCK_PCT=0.70 env var. A/B gate 50 paper trades."
+    },
+    {
+      "subsystem": "live_injection",
+      "severity": "P2_MEDIUM",
+      "finding": "Afternoon (27% WR, n=15) + Evening (29% WR, n=14) weakness watch cycle 2/2 complete. Both post-dedup confirmed structural underperformers. No gate rules exist. Confidence at 72% (threshold 75%).",
+      "action": "Add graduated rules: afternoon_session_penalize_v1 and evening_session_penalize_v1 at gate=20% once confidence reaches 75% with live trade confirmation."
+    },
+    {
+      "subsystem": "live_injection",
+      "severity": "P2_MEDIUM_NEW",
+      "finding": "EVENING_session_boost rule direction WRONG: current rule adds +8pt confidence to 18:00-24:00 UTC window confirmed at 29% WR post-dedup. Rule was de-escalated from 80% to 20% probe but direction is inverted.",
+      "action": "Flip EVENING_session_boost direction: change +8pt boost to -8pt penalty at gate=20%. Apply when live confirmation pushes confidence to 75%."
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "P2_MEDIUM",
+      "finding": "CSV_REGIME_FIELD_FIX: 965/965 trade records empty llm_regime. 25/25 graduated rules have times_correct=0. Auto-promotion/demotion blind. Confidence 98%. Pending engineering.",
+      "action": "Wire decision_result.regime -> csv_row['llm_regime'] in bot/data/storage/csv_logger.py"
+    }
   ],
   "run_summary": {
-    "run_number": 91, "cadence_streak": 13, "active_insights_count": 10, "active_rules_count": 18,
-    "most_impactful_pending": "TRAILING_STOP_LOCK — $3,759. position_manager.py:1244. Day 7.",
-    "most_important_new_finding": "Afternoon/evening 27-29% WR post-dedup (no gate rules). Watch 1/2 for penalize rules."
+    "run_number": 92,
+    "cadence_streak": 14,
+    "active_insights_count": 10,
+    "active_rules_count": 18,
+    "fixes_applied_this_run": 0,
+    "morning_window_alert": "OPEN NOW — P0 action required",
+    "most_impactful_pending": "START BOT (morning window) > TRAILING_STOP_LOCK ($3,759/100d) > CSV_REGIME_FIX (rule lifecycle)",
+    "insight_state": {"total": 19, "active": 10, "invalidated": 3, "archived": 6},
+    "graduated_rules_state": {"total": 25, "active": 18, "deactivated": 7, "times_correct_nonzero": 0}
   }
 }

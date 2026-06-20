@@ -1,18 +1,92 @@
 {
-  "last_updated": "2026-06-20T02:07:00Z",
-  "run_number": 91,
-  "high_edges_found": 3, "weak_setups_found": 4,
+  "last_updated": "2026-06-20T06:00:00Z",
+  "run_number": 92,
+  "high_edges_found": 3,
+  "weak_setups_found": 4,
+  "data_source": "10d backtest (n=965) + 100d backtest (n=589) — bot offline, no live data",
   "high_edges": [
-    {"setup": "BTC_BUY_BB_golden", "wr": 0.69, "count": 2172, "note": "gate=50% (Run90). HIGH confidence."},
-    {"setup": "SOL_LONG_70_80pct_10d", "wr": 0.62, "count": 208, "avg_pnl": 20.88, "note": "Unblocked (Insight5 Run90). sol_long_veto gate=100% still blocks. CONFLICTED."},
-    {"setup": "MORNING_06_12_UTC", "wr": 0.68, "note": "Opens in ~4h. Bot offline."}
+    {
+      "setup": "BTC_BUY_BB_golden",
+      "wr": 0.69,
+      "count": 2172,
+      "avg_pnl": null,
+      "note": "gate=50% (promoted Run90). TIER-1 golden setup.",
+      "status": "GATED_ACTIVE"
+    },
+    {
+      "setup": "SOL_LONG_70_80pct_10d",
+      "wr": 0.62,
+      "count": 208,
+      "avg_pnl": 20.88,
+      "note": "sol_long_veto gate=100% still blocks. CONFLICTED — 10d edge can't fire.",
+      "status": "BLOCKED_BY_VETO"
+    },
+    {
+      "setup": "MORNING_06_12_UTC",
+      "wr": 0.68,
+      "count": null,
+      "note": "Window OPEN NOW (06:00-12:00 UTC). Bot offline — MISSED.",
+      "status": "WINDOW_OPEN_BOT_OFFLINE"
+    }
   ],
   "weak_setups": [
-    {"setup": "NIGHT_00_06_UTC", "wr": 0.19, "note": "gate=100% CORRECT."},
-    {"setup": "AFTERNOON_12_18_UTC", "wr": 0.27, "n": 15, "note": "Post-dedup confirmed weak. No gate rule yet."},
-    {"setup": "EVENING_18_24_UTC", "wr": 0.29, "n": 14, "note": "Post-dedup confirmed weak. No gate rule yet."},
-    {"setup": "ALL_HYPE", "wr": 0.48, "avg_pnl": -24.73, "note": "All HYPE vetoed gate=100%."}
+    {
+      "setup": "NIGHT_00_06_UTC",
+      "wr": 0.19,
+      "n": 13,
+      "note": "gate=100% CORRECT. Night block enforced.",
+      "gate_rule": "NIGHT_session_pause gate=100%",
+      "status": "GATED_CORRECT"
+    },
+    {
+      "setup": "AFTERNOON_12_18_UTC",
+      "wr": 0.27,
+      "n": 15,
+      "note": "Post-dedup confirmed weak. Watch cycle 2/2 COMPLETE. Propose penalize rule at 75% confidence.",
+      "gate_rule": "NONE — ungated",
+      "status": "WATCH_COMPLETE_UNGATED",
+      "watch_run": 2,
+      "watch_max": 2,
+      "proposed_rule": "afternoon_session_penalize_v1",
+      "proposed_gate": 20,
+      "proposed_action": "Reduce confidence by -8pt for trades in 12:00-18:00 UTC window",
+      "confidence": 0.72,
+      "confidence_needed_to_apply": 0.75
+    },
+    {
+      "setup": "EVENING_18_24_UTC",
+      "wr": 0.29,
+      "n": 14,
+      "note": "Post-dedup confirmed weak (down from claimed 62-65% pre-dedup). Watch cycle 2/2 COMPLETE.",
+      "gate_rule": "EVENING_session_boost gate=20% (WRONG DIRECTION — this boosted evening, now confirmed weak)",
+      "status": "WATCH_COMPLETE_WRONG_DIRECTION_RULE",
+      "watch_run": 2,
+      "watch_max": 2,
+      "proposed_rule": "evening_session_penalize_v1",
+      "proposed_gate": 20,
+      "proposed_action": "De-escalate EVENING_session_boost from gate=20% boost to gate=20% penalty. Confidence -8pt for 18:00-24:00 UTC.",
+      "confidence": 0.72,
+      "confidence_needed_to_apply": 0.75,
+      "note_on_existing_rule": "EVENING_session_boost was de-escalated from 80% to 20% probe. Now confirmed weak (29% WR post-dedup). EVENING_session_boost rule direction is WRONG — should penalize, not boost."
+    },
+    {
+      "setup": "ALL_HYPE",
+      "wr": 0.48,
+      "avg_pnl": -24.73,
+      "note": "HYPE EV confirmed negative. gate=100% veto CORRECT.",
+      "gate_rule": "HYPE_EV_CONFIRMED_NEGATIVE gate=100%",
+      "status": "GATED_CORRECT"
+    }
   ],
-  "run91_update": "SIZE_CONTRADICTION_ARCHIVE_V2 archived 4 insight pairs. ENSEMBLE_STALENESS_INVALIDATION_V1 applied. Afternoon/evening downgraded from AVAILABLE to WEAK.",
-  "afternoon_evening_watch_run": 1
+  "run92_update": "Watch cycle 2/2 complete for afternoon/evening weakness. Both confirmed post-dedup. EVENING_session_boost rule direction is WRONG (boosts a weak window). Propose penalize rules when confidence reaches 75%. Morning window OPEN NOW — bot offline.",
+  "afternoon_evening_watch_run": 2,
+  "evening_rule_direction_error": {
+    "rule_id": "EVENING_session_boost",
+    "current_direction": "BOOST (+8pt confidence)",
+    "evidence_direction": "PENALIZE (29% WR post-dedup)",
+    "current_gate": 20,
+    "recommendation": "FLIP rule direction: change from +8pt boost to -8pt penalty. Rename to evening_session_penalize_v1.",
+    "confidence": 0.72,
+    "severity": "MEDIUM"
+  }
 }

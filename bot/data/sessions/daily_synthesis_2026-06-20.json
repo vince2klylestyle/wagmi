@@ -1,25 +1,24 @@
 {
-  "last_run": "2026-06-20T02:07:00Z",
-  "run_number": 91,
+  "last_run": "2026-06-20T06:00:00Z",
+  "run_number": 92,
   "date": "2026-06-20",
-  "bot_status": "OFFLINE — Day 64.1",
+  "bot_status": "OFFLINE — Day 64.25",
   "today_trades": 0, "today_pnl": 0.0,
   "ev_total_cumulative": 434.03,
-  "morning_window_alert": "CRITICAL: Morning window (06:00-12:00 UTC, 68-71% WR) opens in ~4h. Bot OFFLINE.",
-  "anomalies_found": 5,
-  "run91_fixes_applied": [
-    {"rule_id": "SIZE_CONTRADICTION_ARCHIVE_V2", "confidence": 0.82, "gate": 20},
-    {"rule_id": "ENSEMBLE_STALENESS_INVALIDATION_V1", "confidence": 0.80, "gate": 20}
-  ],
-  "new_finding_run91": {
-    "finding": "AFTERNOON/EVENING WEAKNESS CONFIRMED (post-dedup): afternoon=27% WR (n=15), evening=29% WR (n=14). No gate rules exist. Watch 1/2.",
-    "confidence": 0.72, "status": "WATCH_RUN_1_OF_2"
+  "morning_window_alert": "P0 CRITICAL: Morning window (06:00-12:00 UTC, 68-71% WR) IS NOW OPEN. Bot still OFFLINE. Alpha bleeding.",
+  "anomalies_found": 6,
+  "run92_fixes_applied": [],
+  "run92_new_finding": {
+    "finding": "EVENING_session_boost rule direction is WRONG: boosts (+8pt) a window confirmed at 29% WR post-dedup. Watch 2/2 complete for afternoon/evening weakness.",
+    "confidence": 0.72,
+    "status": "WATCH_COMPLETE_RULE_FIX_PENDING"
   },
   "todays_focus": {
-    "priority_1": "START BOT before 06:00 UTC: cd bot && python run.py paper",
-    "priority_2": "TRAILING_MIN_LOCK_PCT=0.70 at position_manager.py:1244 (Day 7)",
-    "priority_3": "TP1_CUMULATIVE_PNL_INSTRUMENTATION (Day 5)",
-    "priority_4": "CSV_REGIME_FIELD_FIX — populate llm_regime in CSV logger"
+    "priority_1": "START BOT NOW — morning window OPEN (06:00-12:00 UTC, 68-71% WR): cd bot && python run.py paper",
+    "priority_2": "TRAILING_MIN_LOCK_PCT=0.70 at position_manager.py:1244 (Day 7, $3,759/100d gap)",
+    "priority_3": "CSV_REGIME_FIELD_FIX — populate llm_regime in CSV logger (unlocks 25 rules)",
+    "priority_4": "TP1_CUMULATIVE_PNL_INSTRUMENTATION (Day 6)",
+    "priority_5": "EVENING_session_boost direction fix: change +8pt boost to -8pt penalty when confidence >= 75%"
   },
-  "cadence_streak": 13, "active_insights_count": 10, "total_fixes_all_time": 82
+  "cadence_streak": 14, "active_insights_count": 10, "total_fixes_all_time": 82
 }
