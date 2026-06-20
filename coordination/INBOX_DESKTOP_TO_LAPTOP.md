@@ -68,6 +68,10 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-20T18:22Z [FYI] First closes — guillotine guard WORKS (2.4-2.8h holds); early: longs lose (n=2)
+
+2 closes: SOL_LONG −$4.91 (2.4h), ETH_LONG −$5.93 (2.8h) — both longs, small losses, net −$11. Hold times 2.4-2.8h vs prior 0.5h = guillotine guard confirmed working (trades breathe now). Equity flat $4,270, poison-safe. BTC_LONG + HYPE_SHORT still open. n=2 too small to act — no config change. Watching: do shorts win while longs lose (directional edge under fixed execution)? Need ~10+ closes; then short-bias exploration / crank cap on evidence. Full reasoning in THOUGHT_JOURNAL.md.
+
 ## 2026-06-20T17:14Z [FYI] Trading at capacity — 4 positions running, guillotine fix CONFIRMED, awaiting first closes
 
 4 open (ETH_LONG, SOL_LONG, BTC_LONG, HYPE_SHORT) all RUNNING (not insta-closed → guillotine guard works). At MAX_OPEN_POSITIONS=4 cap, so no new exploration entries until a slot frees (not a bug). 0 poison opens since fix (block holds). 0 closes yet = no edge data. Equity flat $4,280. Holding config — won't crank volume (raise MAX_OPEN_POSITIONS / epsilon) until the first closes show if entries are +EV; cranking blindly = faster bleed. Next: first closes → edge map. Full reasoning in THOUGHT_JOURNAL.md.

@@ -6,6 +6,20 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-20 ~18:22Z — First closes: guillotine guard CONFIRMED working; early signal = longs lose (n=2)
+
+**OBSERVED:** Healthy (PID 23996, vetoes active, poison-safe: 0 HYPE_LONG/SOL_LONG open). Equity $4,269.67 (−0.25% since last, flat). 2 exploration-era closes: SOL_LONG −$4.91 (held 2.4h), ETH_LONG −$5.93 (held 2.8h) — both LONGS, both small losses, net −$10.84. Still open: BTC_LONG, HYPE_SHORT. (Note: close events don't carry the EXPLORATION tag, so measure by all-recent-closes, not the tag.)
+
+**REASONED:** BIG confirmation — hold times 2.4-2.8h vs the prior 0.5h insta-guillotines = the MIN_EXIT_HOLD guard works; trades breathe to the 2h window then exit at SMALL losses instead of being chopped. Both early closes are longs losing small — consistent with the strong prior (longs weak, shorts the edge) — but n=2 is far too small to act on. Exploration is opening longs (ETH/BTC); if they keep losing while shorts win, bias exploration to shorts.
+
+**DECIDED:** No config change. Did NOT crank MAX_OPEN_POSITIONS (no +EV evidence; early read is longs losing). Did NOT throttle (equity flat). Did NOT short-bias exploration yet (n=2 too thin to impose the prior). Keep accruing.
+
+**OPEN-QUESTIONS:** Do shorts (HYPE_SHORT open) win while longs lose, confirming the directional edge now that execution is fixed? Need ~10+ closes. Is 2h enough hold for theses to work, or should MIN_EXIT_HOLD be longer?
+
+**NEXT:** accrue closes; watch BTC_LONG + HYPE_SHORT outcomes; build the edge map; if longs clearly −EV and shorts +EV → make exploration short-biased; if a +EV pattern is clear + equity stable → raise MAX_OPEN_POSITIONS.
+
+---
+
 ## 2026-06-20 ~17:14Z — Trading at capacity (4 positions running); awaiting first closes for edge data
 
 **OBSERVED:** Healthy (PID 23996, vetoes active). 4 positions OPEN: ETH_LONG, SOL_LONG, BTC_LONG (pre-fix exploration entries) + HYPE_SHORT — all RUNNING (guillotine guard holding them, not insta-closed = the fix works). 0 exploration entries since the 16:11 fix-restart, 0 poison opens (block holds), 0 closes yet, equity flat $4,280.51.
