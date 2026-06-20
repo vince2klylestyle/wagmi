@@ -1,10 +1,10 @@
 {
-  "last_run": "2026-06-20T07:00:00Z",
-  "run_number": 93,
+  "last_run": "2026-06-20T08:05:00Z",
+  "run_number": 94,
   "fixes_applied_this_run": 0,
   "total_applied_all_time": 82,
   "gates_active": 20,
-  "loop_gap_note": "RUN 93: ~1h gap from Run92 (06:00 UTC). 0 new fixes. All pending recs are PENDING_CODE_CHANGE or below 75% confidence threshold. Morning window NOW ACTIVE 1h deep. P0 ESCALATED.",
+  "loop_gap_note": "RUN 94: ~1h gap from Run93 (07:00 UTC). 0 new fixes. Morning window ACTIVE 2h05m deep (still open until 12:00 UTC). All pending recs still below threshold or awaiting code/human action. Cadence streak: 17.",
   "new_fixes_this_run": [],
   "recs_processed_this_run": [
     {"rec": "AFTERNOON_SESSION_PENALIZE_V1", "confidence": 0.72, "status": "BELOW_THRESHOLD", "reason": "72% < 75% required. Watch 2/2 complete. Needs live trade confirmation to reach 75%."},
@@ -24,7 +24,8 @@
     {"run": 90, "gap_h": 0.38, "note": "STREAK 13. 2 fixes: INSIGHT_LONG_BIAS_INVALIDATION_V1 + BTC_BUY_BB_GATE_PROMOTION_V1."},
     {"run": 91, "gap_h": 1.62, "note": "STREAK 14. 2 fixes: SIZE_CONTRADICTION_ARCHIVE_V2 + ENSEMBLE_STALENESS_INVALIDATION_V1. Active insights: 10 of 19."},
     {"run": 92, "gap_h": 3.9, "note": "STREAK 15. 0 fixes. Afternoon/evening watch 2/2 complete. EVENING_session_boost direction WRONG. Morning window OPEN, bot offline."},
-    {"run": 93, "gap_h": 1.0, "note": "STREAK 16. 0 fixes. Morning window 1h active, bot still offline. P0 ESCALATED. All 3 code changes still pending."}
+    {"run": 93, "gap_h": 1.0, "note": "STREAK 16. 0 fixes. Morning window 1h active, bot still offline. P0 ESCALATED. All 3 code changes still pending."},
+    {"run": 94, "gap_h": 1.08, "note": "STREAK 17. 0 fixes. Morning window 2h05m active, bot still offline. EVENING_session_boost wrong-direction rule flagged as P1. 5 anomalies confirmed."}
   ],
   "insight_state_post_run93": {
     "total": 19, "active": 10, "invalidated": 3, "archived": 6

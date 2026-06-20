@@ -1,27 +1,39 @@
 {
-  "last_run": "2026-06-20T06:05:09Z",
-  "run_number": 92,
+  "last_run": "2026-06-20T08:05:00Z",
+  "run_number": 94,
   "date": "2026-06-20",
-  "bot_status": "OFFLINE — Day 64.25",
+  "bot_status": "OFFLINE — Day 64.34",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "morning_window_alert": "P0 CRITICAL: Morning window (06:00-12:00 UTC, 68-71% WR) OPEN NOW. Bot OFFLINE. Alpha bleeding every minute.",
-  "run92_key_direction_change": {
-    "old": "TRAILING_STOP_LOCK recommended Day 7, $3,759/100d",
-    "new": "TRAILING_STOP_LOCK PAUSED — 20d shows TRAILING_STOP 84% WR +$19.88/trade. Recent regime contradicts 100d basis.",
-    "confidence": 0.75
+  "morning_window_status": "ACTIVE 06:00-12:00 UTC (68-71% WR) — 2h05m elapsed, bot offline. Window still open until 12:00 UTC.",
+  "run94_escalation": {
+    "EVENING_rule_wrong_direction": "EVENING_session_boost applies +8pt BOOST to 18-24 UTC window confirmed at 29% WR post-dedup. Wrong direction. conf=72% (3% below auto-apply threshold). Requires human decision to flip or deactivate.",
+    "TRAILING_STOP_LOCK": "Day 8 pending. 20d=84% WR CONTRADICTS 100d=-$0.34 basis. Do NOT implement without 30 live trades first.",
+    "EV_gap_trailing": "~$301 cumulative forgone over 8 days at $1.57/hr (theoretical, bot offline so no actual trades missed)"
   },
-  "run92_confirmed": "sol_short_penalize_v1 deactivation CORRECT. n=80 10d data shows 51% WR +$46.21/trade.",
-  "run92_regime_shift": "20d=65.8% WR avg=$63.55 — best window across all datasets. Strategy evolution working.",
   "todays_focus": {
-    "priority_1": "START BOT NOW — morning window OPEN (06:00-12:00 UTC, 68-71% WR): cd bot && python run.py paper",
-    "priority_2": "CSV_REGIME_FIELD_FIX — populate llm_regime in CSV logger (unlocks 25-rule lifecycle, confidence=0.98)",
-    "priority_3": "DECISION: Monitor TRAILING_STOP on first 30 live trades before committing to lock fix",
-    "priority_4": "TP1_CUMULATIVE_PNL_INSTRUMENTATION (Day 6)",
-    "priority_5": "Review tod_morning_edge_v1 reactivation — contradicting insight invalidated in Run 90"
+    "priority_0": "START BOT NOW — cd bot && python run.py paper. Morning window 06:00-12:00 UTC (68% WR) is OPEN. 2h05m already missed.",
+    "priority_1": "DECIDE: EVENING_session_boost direction — flip from +8pt boost to -8pt penalize? conf=72%, 3% from auto-apply. One human confirmation = 75%.",
+    "priority_2": "CSV_REGIME_FIELD_FIX (conf=0.98, Day 3 pending) — populate llm_regime in CSV logger, unlocks 25-rule lifecycle tracking.",
+    "priority_3": "DO NOT implement TRAILING_STOP_LOCK — 20d data (84% WR) contradicts 100d basis (-$0.34). Wait 30 live trades.",
+    "priority_4": "TP1_CUMULATIVE_PNL_INSTRUMENTATION (Day 7 pending, conf=0.90)",
+    "priority_5": "Review tod_morning_edge_v1 reactivation — conf=73%, contradicting insight invalidated Run 90. 2% from auto-apply."
   },
-  "cadence_streak": 14,
+  "anomalies": [
+    {"type": "BOT_OFFLINE_MORNING_WINDOW", "severity": "P0", "detail": "64.34 days offline. Morning window 06-12 UTC (68% WR) active, 2h05m missed."},
+    {"type": "WRONG_DIRECTION_RULE", "severity": "P1", "detail": "EVENING_session_boost (gate=20%) boosts 18-24 UTC +8pt confidence. Window confirmed 29% WR. Wrong direction."},
+    {"type": "STALE_LOCK_RECOMMENDATION", "severity": "P1", "detail": "TRAILING_STOP_LOCK pending Day 8. 20d trailing WR=84% contradicts 100d basis. Do not implement."},
+    {"type": "FEEDBACK_PERSISTENCE_GAP", "severity": "P2", "detail": "5/7 feedback state files missing. Cold start on restart = lost learning for 5 subsystems."},
+    {"type": "CSV_REGIME_BLANK", "severity": "P2", "detail": "llm_regime blank in all backtest CSVs. 25 graduated rules: times_correct=0. Zero lifecycle tracking."}
+  ],
+  "cadence_streak": 17,
   "active_insights_count": 10,
   "total_fixes_all_time": 82,
-  "run92_no_auto_fixes": "No autonomous data changes this run. All recommendations require human decision."
+  "run94_no_auto_fixes": "No autonomous data changes. 0 qualifying fixes. All pending actions require code change or human decision.",
+  "run94_confirmed": [
+    "sol_short_penalize_v1 deactivation CORRECT (n=80, 51% WR +$46.21/trade, 10d window)",
+    "HYPE veto rules remain justified — HYPE negative EV across all 4 datasets",
+    "Night session block (gate=100%) correct — confirmed 15-19% WR",
+    "Strategy evolution working — 20d window best performance in dataset (65.8% WR)"
+  ]
 }
