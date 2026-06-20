@@ -40,7 +40,7 @@
     },
     {
       "rule_id": "sol_long_veto_v1",
-      "hypothesis_statement": "SOL BUY is a net-negative setup: 24% WR on 34 live trades, -$21.89 total loss",
+      "hypothesis_statement": "SOL BUY was net-negative on old data (24% WR, 34 live trades) but 10d_v3 backtest shows 100% WR (8/8 trades, +$1,895). PROBE MODE: gate reduced 100->20 to allow SOL LONG through at 20% rate. Graduate to gate=0 (deactivate) if live WR>=55% on n>=15 trades. Re-escalate to gate=100 if WR<35% on n>=15 trades.",
       "action": "veto",
       "conditions": {
         "symbol": "SOL",
@@ -55,7 +55,9 @@
       "times_applied": 1,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 100
+      "gate_percentage": 20,
+      "gate_reduced_at": "2026-06-20T18:03:41Z",
+      "gate_reduction_reason": "RUN100_AUTO_FIX (conf=75%>=75%): 10d_v3 backtest shows SOL LONG 100% WR (8/8, +$1895). Run98 claimed to apply this fix but never wrote to file. Actually applying now. PROBE MODE: 20% pass-through. +$237/trade expected EV on allowed trades."
     },
     {
       "rule_id": "night_session_block_v1",
@@ -504,6 +506,52 @@
       "expected_impact": "+$443/100d (33 avoided trades x $13.42 avg loss)",
       "conflict_note": "btc_buy_bb_golden_v1 (gate=20%) still active for BB-specific BTC LONGs. btc_trend_long_counter_v1 (gate=50%) covers trend regime. This rule adds general-purpose veto at 80% gate.",
       "graduate_criteria": "Escalate to gate=100% if BTC_LONG WR<30% on n>=30 live trades post-restart. Deactivate if 10d BTC_LONG WR>=55% on n>=30 live trades."
+    },
+    {
+      "rule_id": "short_direction_veto_v1",
+      "hypothesis_statement": "SHORT direction across all symbols: 18% WR (2/11 trades, -$2,104 net) in 10d_v3 backtest. SHORT SL losses 2.65x LONG SL losses. HYPE SHORT 100d: 48.4% WR but -$4,587 total (massive loss magnitude). SOL SHORT 100d: 45% WR, -$1,003. BTC SHORT 100d: 45.6% WR, -$87 (near breakeven). PROBE MODE: gate=20 to allow some SHORT exposure for regime testing.",
+      "action": "veto",
+      "conditions": {
+        "side": "SELL"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.82,
+      "evidence_ratio": 0.18,
+      "total_evidence": 11,
+      "created_at": 1781978621.0,
+      "last_applied": null,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "gate_percentage": 20,
+      "applied_by": "perpetual_improvement_run100_2026-06-20T18:03Z",
+      "source_audit": "Runs 95-99 forensics: 10d SHORT catastrophic, 100d payoff ratio 0.91 dominated by SL losses on SHORTS",
+      "expected_impact": "Blocks 80% of SHORT trades. At 18% WR, avoiding 8/10 SHORT trades saves ~$152/10 trades.",
+      "conflict_note": "hype_short_veto_v1 (gate=100%) already blocks HYPE SELL. This adds broader SHORT veto. DOES NOT conflict with btc_short_90plus_boost_v1 at gate=20 — both gates apply sequentially.",
+      "graduate_criteria": "Reduce gate to 0 (deactivate) if SHORT WR>=50% on n>=30 live trades. Escalate to gate=50 if SHORT WR<25% on n>=15 live trades."
+    },
+    {
+      "rule_id": "confidence_paradox_sizing_v1",
+      "hypothesis_statement": "80-90% confidence bin: 40% WR, 53.3% SL rate, avg -$33.04/trade on n=120 trades (100d backtest). PARADOX: higher confidence correlates with WORSE outcomes. High-confidence signals may be entering at overextended levels OR CONF_SIZING_tiered_leverage amplifies absolute loss. Penalize to counteract overconfidence entry sizing.",
+      "action": "penalize",
+      "conditions": {
+        "confidence_min": 85.0,
+        "confidence_max": 90.0
+      },
+      "adjustment": -5.0,
+      "confidence": 0.82,
+      "evidence_ratio": 0.40,
+      "total_evidence": 120,
+      "created_at": 1781978621.0,
+      "last_applied": null,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true,
+      "gate_percentage": 20,
+      "applied_by": "perpetual_improvement_run100_2026-06-20T18:03Z",
+      "source_audit": "Run99 audit (2026-06-20T16:06:05Z): confidence paradox confirmed at n=589 statistical significance",
+      "expected_impact": "Reduce avg loss in 85-90% bin. Complements high_conf_80_85_penalty_v1 (gate=50) which covers 80-85%.",
+      "graduate_criteria": "Escalate gate to 50% if 85-90% WR remains <45% on n>=30 live trades. Deactivate if WR>=55% on n>=30."
     }
   ]
 }
