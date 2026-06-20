@@ -2,26 +2,26 @@
   "last_run": "2026-06-20T16:00:00Z",
   "run_number": 98,
   "date": "2026-06-20",
-  "bot_status": "OFFLINE \u2014 Day 65.67",
+  "bot_status": "OFFLINE — Day 65.67",
   "today_trades": 0,
   "today_pnl": 0.0,
-  "morning_window_status": "CLOSED at 12:00 UTC \u2014 MISSED (bot offline Day 65.67). Est. missed EV: $127-190.",
+  "morning_window_status": "CLOSED at 12:00 UTC — MISSED (bot offline Day 65.67). Est. missed EV: $127-190.",
   "anomaly_checks": {
     "consecutive_losses_gt5": {
       "result": false,
       "value": 0,
-      "note": "N/A \u2014 bot offline, no live trades"
+      "note": "N/A — bot offline, no live trades"
     },
     "wr_swing_gt20pct": {
       "result": true,
       "value": 21.3,
       "note": "20d WR=65.8% vs 100d=44.5% = 21.3% swing. Exceeds 20% threshold. Regime shift confirmed.",
-      "severity": "INFORMATIONAL \u2014 regime shift tracked, no immediate action"
+      "severity": "INFORMATIONAL — regime shift tracked, no immediate action"
     },
     "leverage_gt7x_sustained": {
       "result": false,
       "value": 0,
-      "note": "N/A \u2014 bot offline"
+      "note": "N/A — bot offline"
     },
     "time_of_day_dominance_gt70pct": {
       "result": true,
@@ -36,7 +36,7 @@
       "severity": "P0",
       "days_active": 65,
       "detail": "Bot OFFLINE Day 65.67. No live trades. No learning occurring. All analysis on stale backtest data.",
-      "action": "cd bot && python run.py paper \u2014 IMMEDIATELY"
+      "action": "cd bot && python run.py paper — IMMEDIATELY"
     },
     {
       "type": "VETO_RULE_INVERTED_SOL_LONG",
@@ -63,7 +63,7 @@
       "type": "FEEDBACK_PERSISTENCE_GAP",
       "severity": "P2",
       "days_active": 15,
-      "detail": "5/7 feedback state files missing. On restart, 5 subsystems init from zero \u2014 pre-shutdown learning lost.",
+      "detail": "5/7 feedback state files missing. On restart, 5 subsystems init from zero — pre-shutdown learning lost.",
       "action": "CODE FIX PENDING: Flush-on-shutdown for 5 missing state files."
     },
     {
@@ -95,7 +95,7 @@
       "wr": 0.658,
       "avg_pnl": 63.55,
       "total_pnl": 7054,
-      "note": "BEST WINDOW \u2014 regime shift"
+      "note": "BEST WINDOW — regime shift"
     },
     "60d": {
       "n": 802,
@@ -111,12 +111,12 @@
     }
   },
   "priority_actions": [
-    "P0: START BOT \u2014 cd bot && python run.py paper",
+    "P0: START BOT — cd bot && python run.py paper",
     "P0 APPLIED: SOL_LONG probe mode gate=20 (RUN 98)",
     "P0 APPLIED: short_direction_veto_v1 gate=20 (RUN 98)",
-    "P1: Human decision \u2014 reactivate tod_morning_edge_v1 gate=50%",
-    "P2: Code fix \u2014 CSV regime field (conf=0.98, Day 6)",
-    "P2: Code fix \u2014 Feedback persistence (5 missing state files)"
+    "P1: Human decision — reactivate tod_morning_edge_v1 gate=50%",
+    "P2: Code fix — CSV regime field (conf=0.98, Day 6)",
+    "P2: Code fix — Feedback persistence (5 missing state files)"
   ],
   "last_updated": "2026-06-20T16:00:00Z"
 }

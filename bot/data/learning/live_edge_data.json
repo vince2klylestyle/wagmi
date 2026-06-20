@@ -1,7 +1,7 @@
 {
   "last_updated": "2026-06-20T16:00:00Z",
   "run_number": 98,
-  "data_source": "10d_v3 backtest (n=32), 20d (n=111), 60d (n=802), 100d (n=589), adaptive_risk_state.json (n=125) \u2014 bot offline Day 65.58",
+  "data_source": "10d_v3 backtest (n=32), 20d (n=111), 60d (n=802), 100d (n=589), adaptive_risk_state.json (n=125) — bot offline Day 65.58",
   "high_edges_found": 4,
   "weak_setups_found": 4,
   "win_rates_by_symbol": {
@@ -12,7 +12,7 @@
       "100d_wr": 0.32,
       "10d_n": 8,
       "net_pnl_10d": -720.94,
-      "verdict": "MIXED \u2014 gated at 80% confidence. 20d improving but insufficient to lift veto."
+      "verdict": "MIXED — gated at 80% confidence. 20d improving but insufficient to lift veto."
     },
     "BTC_SHORT": {
       "10d_wr": 0.2,
@@ -27,13 +27,13 @@
       "10d_wr": 0.33,
       "net_pnl_10d": -215.73,
       "10d_n": 3,
-      "verdict": "VETOED gate=100% \u2014 correct. EV negative all windows."
+      "verdict": "VETOED gate=100% — correct. EV negative all windows."
     },
     "HYPE_SHORT": {
       "10d_wr": 0.33,
       "net_pnl_10d": -215.73,
       "10d_n": 3,
-      "verdict": "VETOED gate=100% \u2014 correct. -$24 to -$39/trade avg."
+      "verdict": "VETOED gate=100% — correct. -$24 to -$39/trade avg."
     },
     "SOL_LONG": {
       "10d_wr": 1.0,
@@ -42,7 +42,7 @@
       "100d_wr": 0.24,
       "10d_n": 8,
       "net_pnl_10d": 1895.0,
-      "verdict": "10d PERFECT (100% WR +$1895) \u2014 now in PROBE MODE (gate 100->20, Run 98 fix). Monitor next 20 trades."
+      "verdict": "10d PERFECT (100% WR +$1895) — now in PROBE MODE (gate 100->20, Run 98 fix). Monitor next 20 trades."
     },
     "SOL_SHORT": {
       "10d_wr": 0.17,
@@ -59,7 +59,7 @@
       "wr": 0.519,
       "n": 52,
       "dataset": "adaptive_risk_state (100d)",
-      "verdict": "CORE EDGE \u2014 preserve"
+      "verdict": "CORE EDGE — preserve"
     },
     "illiquid": {
       "wr": 0.281,
@@ -79,7 +79,7 @@
       "10d_wr": 0.14,
       "10d_n": 7,
       "net_pnl_10d": -920.45,
-      "verdict": "WORST BIN \u2014 gate=100 active (CONF_60_70_all_block). Confirmed correct."
+      "verdict": "WORST BIN — gate=100 active (CONF_60_70_all_block). Confirmed correct."
     },
     "70-80": {
       "10d_wr": 0.58,
@@ -104,22 +104,22 @@
     "00-06": {
       "wr": 0.15,
       "n": 13,
-      "verdict": "WEAK \u2014 gated gate=100% NIGHT_session_pause. Correct."
+      "verdict": "WEAK — gated gate=100% NIGHT_session_pause. Correct."
     },
     "06-12": {
       "wr": 0.695,
       "n": 20,
-      "verdict": "HIGH EDGE \u2014 tod_morning_edge_v1 deactivated. Reactivation justified (Run90 contradiction invalidated)."
+      "verdict": "HIGH EDGE — tod_morning_edge_v1 deactivated. Reactivation justified (Run90 contradiction invalidated)."
     },
     "12-18": {
       "wr": 0.27,
       "n": 15,
-      "verdict": "WEAK \u2014 AFTERNOON_SESSION_BLOCK gate=0. Needs enforcement."
+      "verdict": "WEAK — AFTERNOON_SESSION_BLOCK gate=0. Needs enforcement."
     },
     "18-24": {
       "wr": 0.29,
       "n": 14,
-      "verdict": "WEAK \u2014 EVENING_session_boost gate=20 applies WRONG direction boost. Structural error."
+      "verdict": "WEAK — EVENING_session_boost gate=20 applies WRONG direction boost. Structural error."
     }
   },
   "high_edges": [
@@ -129,7 +129,7 @@
       "count": 8,
       "net_pnl": 1895.0,
       "gate_pct": 20,
-      "status": "PROBE_MODE_ACTIVE \u2014 RUN 98 FIX applied (gate 100->20)",
+      "status": "PROBE_MODE_ACTIVE — RUN 98 FIX applied (gate 100->20)",
       "note": "Best setup in book. 20d WR=73% confirms trend. Probe 20 trades before gate escalation."
     },
     {
@@ -145,7 +145,7 @@
       "wr": 0.695,
       "count": 20,
       "gate_pct": null,
-      "status": "UNGATED \u2014 tod_morning_edge_v1 deactivated. Reactivation P1.",
+      "status": "UNGATED — tod_morning_edge_v1 deactivated. Reactivation P1.",
       "note": "Run90 contradiction invalidated. todmorning_edge_v1 pending reactivation (human decision)."
     },
     {
@@ -153,7 +153,7 @@
       "wr": 0.8,
       "count": null,
       "gate_pct": "partial",
-      "status": "PARTIAL \u2014 20d best edge partially gated at 70-80% conf",
+      "status": "PARTIAL — 20d best edge partially gated at 70-80% conf",
       "note": "Now also has short_direction_veto_v1 (gate=20%) from Run 98 fix. Watch."
     }
   ],
@@ -163,7 +163,7 @@
       "wr": 0.18,
       "n": 11,
       "net_pnl": -2104.09,
-      "status": "VETO_PROBE_ACTIVE \u2014 short_direction_veto_v1 added Run 98 (gate=20)",
+      "status": "VETO_PROBE_ACTIVE — short_direction_veto_v1 added Run 98 (gate=20)",
       "note": "SOL SHORT 17%, BTC SHORT 20%. SL losses 2.65x LONG. Probe veto added."
     },
     {
@@ -171,14 +171,14 @@
       "wr": 0.14,
       "n": 7,
       "net_pnl": -920.45,
-      "status": "GATED_CORRECT \u2014 CONF_60_70_all_block gate=100",
+      "status": "GATED_CORRECT — CONF_60_70_all_block gate=100",
       "note": "Worst confidence bin. Gate confirmed at maximum."
     },
     {
       "setup": "EVENING_18_24_UTC",
       "wr": 0.29,
       "n": 14,
-      "status": "WRONG_DIRECTION_BOOST (gate=20) \u2014 deescalation in progress",
+      "status": "WRONG_DIRECTION_BOOST (gate=20) — deescalation in progress",
       "note": "EVENING_session_boost applies +8pt boost but evidence is -penalty. Structural error."
     },
     {
@@ -186,7 +186,7 @@
       "wr": 0.33,
       "n": 6,
       "net_pnl": -215.73,
-      "status": "VETOED_CORRECT \u2014 HYPE_EV_CONFIRMED_NEGATIVE gate=100",
+      "status": "VETOED_CORRECT — HYPE_EV_CONFIRMED_NEGATIVE gate=100",
       "note": "Both HYPE_LONG and HYPE_SHORT gated correctly."
     }
   ],

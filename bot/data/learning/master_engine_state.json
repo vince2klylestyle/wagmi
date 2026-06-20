@@ -52,9 +52,9 @@
       "status": "COMPLETED",
       "data_available": false,
       "trades_csv_lines": 0,
-      "avg_slippage": "UNAVAILABLE \u2014 bot offline Day 65.67",
+      "avg_slippage": "UNAVAILABLE — bot offline Day 65.67",
       "noise_stop_problem": {
-        "description": "SHORT SL losses 2.65x LONG SL losses \u2014 stops placed too wide vs bull-regime volatility",
+        "description": "SHORT SL losses 2.65x LONG SL losses — stops placed too wide vs bull-regime volatility",
         "illiquid_sl_rate": 0.719,
         "ranging_sl_rate": 0.72,
         "fix_status": "GATED: illiquid gate=100%, ranging gate=80%",
@@ -66,7 +66,7 @@
           "loss": -768
         }
       },
-      "fill_rate": "UNAVAILABLE \u2014 bot offline"
+      "fill_rate": "UNAVAILABLE — bot offline"
     },
     "live_injection": {
       "status": "COMPLETED",
@@ -90,13 +90,13 @@
           "edge": "MORNING_06-12_UTC",
           "wr": 0.695,
           "n": 20,
-          "rule_status": "UNGATED \u2014 pending human reactivation"
+          "rule_status": "UNGATED — pending human reactivation"
         },
         {
           "edge": "BTC_SHORT_20d",
           "wr": 0.8,
           "n_est": "30+",
-          "rule_status": "PARTIAL \u2014 now affected by short_direction_veto probe"
+          "rule_status": "PARTIAL — now affected by short_direction_veto probe"
         }
       ],
       "weak_setups": [
@@ -116,7 +116,7 @@
           "setup": "EVENING_18-24_UTC",
           "wr": 0.29,
           "n": 14,
-          "rule_status": "WRONG_DIR_BOOST \u2014 structural error"
+          "rule_status": "WRONG_DIR_BOOST — structural error"
         },
         {
           "setup": "HYPE_all",
@@ -135,8 +135,8 @@
       "report_generated": true,
       "anomaly_types": [
         "BOT_OFFLINE_DAY65 (P0)",
-        "VETO_RULE_INVERTED_SOL_LONG (P0 \u2014 APPLIED probe fix)",
-        "SHORT_DIRECTION_UNPROTECTED (P0 \u2014 APPLIED probe veto)",
+        "VETO_RULE_INVERTED_SOL_LONG (P0 — APPLIED probe fix)",
+        "SHORT_DIRECTION_UNPROTECTED (P0 — APPLIED probe veto)",
         "MORNING_WINDOW_MISSED_DAY65 (P1)",
         "CSV_REGIME_BLANK (P2)",
         "FEEDBACK_PERSISTENCE_GAP (P2)",
@@ -148,7 +148,7 @@
       "cost_tracker_json_exists": false,
       "model_swaps_recommended": 0,
       "potential_savings_usd": 0.0,
-      "routing": "5\u00d7Haiku + 2\u00d7Sonnet \u2014 OPTIMAL. Cost ~$0.0062/cycle, 1.2% of $25 budget.",
+      "routing": "5×Haiku + 2×Sonnet — OPTIMAL. Cost ~$0.0062/cycle, 1.2% of $25 budget.",
       "verdict": "No swaps recommended. Current routing is cost-optimal for quality requirements."
     }
   },
@@ -174,7 +174,7 @@
       "severity": "P0",
       "subsystem": "daily_synthesis",
       "finding": "Bot OFFLINE Day 65.67. Morning window closed. ~$127-190 EV missed today.",
-      "action": "cd bot && python run.py paper \u2014 START IMMEDIATELY",
+      "action": "cd bot && python run.py paper — START IMMEDIATELY",
       "confidence": 1.0
     },
     {

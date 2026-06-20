@@ -1,13 +1,13 @@
 {
   "last_updated": "2026-06-20T16:00:00Z",
   "run_number": 98,
-  "data_source": "10d_v3 backtest (n=32 trades) + 100d backtest (n=589) + adaptive_risk_state.json \u2014 bot offline, no live trades.csv",
+  "data_source": "10d_v3 backtest (n=32 trades) + 100d backtest (n=589) + adaptive_risk_state.json — bot offline, no live trades.csv",
   "trades_csv_available": false,
-  "trades_csv_note": "trades.csv not present \u2014 bot offline Day 65.58. All metrics from backtest cross-reference.",
-  "avg_slippage": "UNAVAILABLE \u2014 bot offline Day 65.58, no live fills",
-  "fill_rate": "UNAVAILABLE \u2014 bot offline",
+  "trades_csv_note": "trades.csv not present — bot offline Day 65.58. All metrics from backtest cross-reference.",
+  "avg_slippage": "UNAVAILABLE — bot offline Day 65.58, no live fills",
+  "fill_rate": "UNAVAILABLE — bot offline",
   "noise_stop_problem": {
-    "description": "71.9% of SL hits in illiquid regime, 72.0% in ranging \u2014 BOTH CORRECTLY GATED",
+    "description": "71.9% of SL hits in illiquid regime, 72.0% in ranging — BOTH CORRECTLY GATED",
     "illiquid_regime_sl_rate": 0.719,
     "ranging_regime_sl_rate": 0.72,
     "fix_status": "GATED: NOISE_STOP_WIDEN_illiquid gate=100%, NOISE_REGIME_FAST_EXIT gate=80%",
@@ -18,7 +18,7 @@
     "backtest_proxy": {
       "note": "Backtest assumes zero slippage. Live slippage estimates from prior paper sessions (now 65 days stale).",
       "prior_avg_slippage_est": "0.05-0.15% per trade",
-      "worst_cases_prior": "HYPE and SOL in illiquid regimes \u2014 spread widening up to 0.3%"
+      "worst_cases_prior": "HYPE and SOL in illiquid regimes — spread widening up to 0.3%"
     }
   },
   "close_reason_breakdown": {

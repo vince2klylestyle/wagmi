@@ -41,7 +41,7 @@
       "rec": "CONF_60_70_all_block escalate",
       "confidence": 0.95,
       "status": "ALREADY_ACTIVE",
-      "note": "gate=100 already maximum \u2014 no change needed"
+      "note": "gate=100 already maximum — no change needed"
     },
     {
       "rec": "CSV_REGIME_FIELD_FIX",
