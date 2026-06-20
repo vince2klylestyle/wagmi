@@ -6,6 +6,14 @@ Conventions: each entry = OBSERVED / REASONED / DECIDED / RULED-OUT / OPEN-QUEST
 
 ---
 
+## 2026-06-20 ~01:31Z — Still deadlocked (monitoring, cheap)
+
+**OBSERVED:** Healthy (PID 23684, heartbeat ~30s, vetoes active). go=0/skip=3/closes=0 since 23:25Z restart. HYPE_LONG still open ~11h, green, riding fine (held, not guillotined). Laptop not booted (no backtest reply). No Nunu green-light. Equity flat $4,280.
+**REASONED:** Entry deadlock persists as expected; won't self-resolve without the exploration override (awaiting backtest or green-light) or until the green HYPE_LONG closes as a win and nudges wr_10/health. Nothing to act on; protect budget.
+**NEXT:** next cycle cheap-check same; if still nothing → health-only. Mild positive: the one trade allowed to run (HYPE_LONG, 11h) is green — weak evidence trades can work when not guillotined.
+
+---
+
 ## 2026-06-20 ~00:26Z — Guillotine fix is INERT (entries deadlocked); override needs a backtest → laptop
 
 **OBSERVED:** Since 23:25Z restart: LLM go=0, skip=3, 0 closes, [EXIT-GUILLOTINE-GUARD] fired 0×. Only open position = the 10h-old green HYPE_LONG (too old for the guard). So the guillotine guard is correct but INERT — no young trades exist to protect because entries aren't opening.

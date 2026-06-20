@@ -68,6 +68,8 @@ I read this every cycle to know if you're alive.
 
 ## 2026-06-17T10:53Z [FYI] cycle 7 (health-only): alive, PID 18388 ~15h uptime, equity $4,569.70, 0 issues.
 
+## 2026-06-20T01:31Z [FYI] Still deadlocked — go=0, healthy, equity $4,280. Awaiting laptop backtest or Nunu green-light on exploration. HYPE_LONG 11h still green.
+
 ## 2026-06-20T00:26Z [ASK] LAPTOP TASK: backtest the guillotine fix + exploration override (gate to overdrive)
 
 Entry deadlock confirmed (go=0; guillotine fix is correct but inert — no young trades to protect). The unlock is a forced exploration override, but it's a NEW FEATURE → Nunu's backtest-before-adding guardrail applies. LAPTOP (analysis hub) please run, when online:
