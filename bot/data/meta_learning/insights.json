@@ -99,7 +99,10 @@
       "confidence": 0.65,
       "evidence_count": 6,
       "actionable_suggestion": "Reduce weight for 'sniper_premium' in ensemble.",
-      "timestamp": 1775495907.6601598
+      "timestamp": 1775495907.6601598,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T23:30:00Z",
+      "invalidated_reason": "RUN106_STALE_DATA (conf=96% from Run104 REC3): Run104 audit Phase3 Hypothesis4 — zero sniper_premium trades in 10d_v3 (n=32) or 20d (n=111) windows. n=6 sample is from early trading period (May 2026). Strategy is not active in current ensemble — 100% ensemble concentration confirms sniper_premium not generating signals. Run104 REC3 (conf=96%) explicitly named both morning edge (done Run105) AND sniper_premium stale data for invalidation. This completes the partially-applied Run105 REC3 fix. No active rules depend on this insight."
     },
     {
       "category": "edge",
@@ -197,6 +200,6 @@
   ],
   "last_dedup_at": "2026-05-18T22:06:12.775083+00:00",
   "dedup_note": "Pruned from 108 to 19 by perpetual_improvement_loop (removed 89 duplicates, kept most-recent per insight category/bucket)",
-  "last_invalidation_run": "Run105_2026-06-20T22:30:00Z",
-  "invalidation_note": "Run105: insight[0] (morning 71% WR) INVALIDATED — live WR=28% on 18 real trades. Second confirmed meta_learning unreliability case (first: SOL_SHORT). All meta_learning insights require live-trade confirmation (n>=20) before acting."
+  "last_invalidation_run": "Run106_2026-06-20T23:30:00Z",
+  "invalidation_note": "Run91: 9 invalidated (8 SIZE + 1 stale ensemble). Run90: 2 (LONG bias stale, morning-14% contradiction). Run105: 1 (morning 71% live contradiction). Run106: 1 (sniper_premium stale n=6). Active valid insights: 4 of 19 (night weakness, evening weakness, afternoon weakness, ensemble concentration)."
 }

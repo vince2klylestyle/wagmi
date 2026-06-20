@@ -1,20 +1,21 @@
 {
-  "last_run": "2026-06-20T22:30:00Z",
-  "run_number": 105,
-  "cadence_streak": 27,
-  "bot_offline_days": 66.59,
-  "source_audit": "autonomous_audit_2026-06-20T22:07:20Z (Run104) — processed by master_engine Run105",
-  "session_run": "master_engine_subsystem_run105",
+  "last_run": "2026-06-20T23:30:00Z",
+  "run_number": 106,
+  "cadence_streak": 28,
+  "bot_offline_days": 67.0,
+  "source_audit": "autonomous_audit_2026-06-20T22:07:20Z (Run104) — Run105 applied all 3 recs. Run106 completed missed partial fix from Run105 REC3.",
+  "session_run": "master_engine_subsystem_run106",
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETED — 3 fixes applied",
-      "fixes_applied": 3,
-      "gates_active": 20,
-      "fixes_detail": [
-        {"rule_id": "high_conf_80_85_penalty_v1", "action": "DEACTIVATED", "confidence_pct": 88, "reason": "80-90% bin = 66.7% WR (10d, +$1,535) and 81.8% WR (20d). BEST confidence tier.", "expected_daily_impact": "+$109/day"},
-        {"rule_id": "conf_floor_70_v1", "action": "REACTIVATED gate=20", "confidence_pct": 75, "reason": "60-70% conf = 14.3% WR (1/7 trades) in 10d_v3. Complete collapse.", "expected_daily_impact": "+$52/day"},
-        {"rule_id": "morning_insight_index_0", "action": "INVALIDATED in insights.json", "confidence_pct": 96, "reason": "Live morning 06-12 UTC = 28% WR (18 real trades, -$76.94). Second meta_learning unreliability case.", "expected_impact": "Risk prevention — blocks ~$8-12K false morning activation"}
-      ],
+      "status": "COMPLETED — 1 fix applied (Run106 completes Run105 REC3 partial fix)",
+      "fixes_applied": 1,
+      "fix_detail": {
+        "rule_id": "sniper_premium_insight_stale",
+        "action": "insights.json[9] INVALIDATED",
+        "confidence_pct": 96,
+        "reason": "Run104 REC3 (conf=96%) explicitly named both morning edge (done Run105) AND sniper_premium stale data for invalidation. Zero sniper_premium trades in 10d/20d confirms strategy not generating signals.",
+        "expected_impact": "Risk prevention — prevents stale n=6 insight driving future recommendations"
+      },
       "rule_integrity_check": {
         "sol_long_veto_v1": "INACTIVE gate=0 (Run101)",
         "btc_long_veto_v1": "INACTIVE gate=0 (Run101)",
@@ -25,40 +26,52 @@
         "hype_short_veto_v1": "ACTIVE gate=100",
         "high_conf_80_85_penalty_v1": "INACTIVE gate=0 (DEACTIVATED Run105)",
         "conf_floor_70_v1": "ACTIVE gate=20 (REACTIVATED Run105)",
-        "tod_morning_edge_v1": "INACTIVE gate=0 (insight invalidated Run105)"
+        "tod_morning_edge_v1": "INACTIVE gate=0 (insight invalidated Run105)",
+        "confidence_paradox_sizing_v1": "ACTIVE gate=20 (probe — insufficient 10d data to confirm recovery)"
       },
       "graduated_rules_total": 28,
       "graduated_rules_active": 20,
       "graduated_rules_inactive": 8,
-      "total_applied_all_time": 95,
-      "output": {"fixes_applied": 3, "gates_active": 20}
+      "total_applied_all_time": 96,
+      "insights_valid_active": 4,
+      "insights_invalidated": 15,
+      "insights_total": 19,
+      "output": {"fixes_applied": 1, "gates_active": 20}
     },
     "execution_forensics": {
-      "status": "COMPLETED — bot offline, backtest proxies used",
+      "status": "COMPLETED — bot offline Day 67, no new findings vs Run105",
       "trades_csv_available": false,
       "avg_slippage": "UNAVAILABLE — bot offline",
       "noise_stop_problem": {"illiquid_regime_sl_rate": 0.719, "ranging_regime_sl_rate": 0.72, "fix_status": "GATED"},
-      "new_finding_run105": {
+      "trailing_stop_degradation": {
         "type": "TRAILING_STOP_DEGRADATION",
         "severity": "P2",
         "value": {"10d_avg_pnl": -2.0, "20d_avg_pnl": 20.0, "10d_wr": 0.50, "20d_wr": 0.842},
-        "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%."
+        "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%.",
+        "status": "MONITORING — awaiting bot restart for live data"
       },
-      "output": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "noise_stop_problem": "71.9% illiquid / 72.0% ranging gated. New: trailing stop degraded 10d avg -$2/trade."}
+      "feedback_persistence_finding": {
+        "finding": "SignalQualityScorer saves every 10 trades (threshold), AdaptiveConfidenceFloor saves conditionally. HoldTimeRuleManager persists correctly. RegimeFeedbackManager/ParameterTuner/FeedbackLoop: need further investigation. Root cause: early restart before threshold = data loss.",
+        "severity": "P1",
+        "action": "Reduce save threshold in SignalQualityScorer to 1 (save every trade) or add shutdown hook",
+        "status": "INVESTIGATION_COMPLETE — fix deferred pending safe implementation"
+      },
+      "output": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "trailing_stop": "P2 degraded 10d avg -$2/trade. Persistence bug investigation completed."}
     },
     "live_injection": {
-      "status": "COMPLETED",
+      "status": "NO_CHANGE — live_edge_data.json current from Run105",
       "high_edges_found": 5,
       "weak_setups_found": 6,
+      "note": "Same backtest datasets. No new edge data since Run105.",
       "output": {"high_edges_found": 5, "weak_setups_found": 6}
     },
     "daily_synthesis": {
-      "status": "COMPLETED",
+      "status": "NO_CHANGE — daily_synthesis_2026-06-20.json complete from Run105",
       "date": "2026-06-20",
       "today_trades": 0,
       "today_pnl": 0.0,
       "anomalies_found": 9,
-      "report_generated": true,
+      "note": "Same day. 0 new trades. No updates required.",
       "output": {"anomalies_found": 9, "report_generated": true}
     },
     "model_optimization": {
@@ -68,33 +81,36 @@
     }
   },
   "high_priority_findings": [
-    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "HIGH_CONF_80_85_PENALTY DEACTIVATED — was penalizing best tier (66.7% WR 10d)", "action": "COMPLETED +$109/day est.", "status": "RESOLVED"},
-    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "CONF_FLOOR_70 REACTIVATED gate=20 — 60-70% conf collapsed to 14.3% WR", "action": "COMPLETED +$52/day est.", "status": "RESOLVED"},
-    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "MORNING EDGE INSIGHT INVALIDATED — live WR=28% vs backtest 71%", "action": "COMPLETED — prevents $8-12K false activation", "status": "RESOLVED"},
-    {"subsystem": "execution_forensics", "severity": "MEDIUM", "finding": "TRAILING_STOP_DEGRADATION: 10d avg -$2/trade vs 20d +$20/trade", "action": "Monitor 30 live trailing-stop trades.", "status": "MONITORING"},
-    {"subsystem": "auto_fix", "severity": "CRITICAL", "finding": "BOT STILL OFFLINE — Day 66.59. All rules ready, no live validation possible.", "action": "P0: cd bot && python run.py paper", "status": "UNRESOLVED"},
-    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "PAYOFF_RATIO CODE FIX PENDING: TP1_MULTIPLIER=1.07 not in trading_config.py. -$1,383/100 trades.", "action": "Human: add TP1_MULTIPLIER=1.07 to trading_config.py", "status": "PENDING_CODE_CHANGE"}
+    {"subsystem": "auto_fix", "severity": "MEDIUM", "finding": "SNIPER_PREMIUM INSIGHT INVALIDATED — stale n=6 data from early May 2026. Strategy not generating signals in 10d/20d.", "action": "COMPLETED Run106 — completes Run105 REC3 partial fix.", "status": "RESOLVED"},
+    {"subsystem": "execution_forensics", "severity": "MEDIUM", "finding": "FEEDBACK_PERSISTENCE_BUG: SignalQualityScorer saves every 10 trades — data lost if restart before threshold. Fix: reduce save threshold to 1 or add shutdown hook.", "action": "Deferred — safe implementation requires testing with offline bot", "status": "INVESTIGATION_COMPLETE"},
+    {"subsystem": "execution_forensics", "severity": "MEDIUM", "finding": "TRAILING_STOP_DEGRADATION: 10d avg -$2/trade vs 20d +$20/trade", "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%.", "status": "MONITORING"},
+    {"subsystem": "auto_fix", "severity": "CRITICAL", "finding": "BOT STILL OFFLINE — Day 67.0. All rules ready, EV improvements accumulated but not live-tested.", "action": "P0: cd bot && python run.py paper", "status": "UNRESOLVED"},
+    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "PAYOFF_RATIO CODE FIX PENDING: TP1_MULTIPLIER=1.07 requires audit of all strategy TP calc paths in trading_config.py. -$1,383/100 trades structural loss.", "action": "Human: audit regime_trend_tp1_mult/tp_sl_rr1/multi_tier_tp1_ratio paths, add global TP1 boost multiplier.", "status": "PENDING_CODE_CHANGE"}
   ],
   "cumulative_stats": {
     "total_rules_llm": 28,
     "active_rules_llm": 20,
     "inactive_rules_llm": 8,
-    "cadence_streak": 27,
-    "total_fixes_all_time": 95,
+    "cadence_streak": 28,
+    "total_fixes_all_time": 96,
     "code_fixes_pending": 3,
+    "insights_total": 19,
+    "insights_valid_active": 4,
+    "insights_invalidated": 15,
     "estimated_daily_ev_when_live": "+$293/day (SOL $124 + BTC $8 + high_conf_penalty $109 + conf_floor $52)"
   },
   "next_run_focus": {
-    "priority_1": "Start bot: cd bot && python run.py paper",
-    "priority_2": "Apply TP1_MULTIPLIER=1.07 in trading_config.py",
-    "priority_3": "Monitor first SOL LONG + BTC LONG trades — verify rule changes took effect",
-    "priority_4": "Monitor 80-85% conf trades — confirm deactivated penalty not firing"
+    "priority_1": "Start bot: cd bot && python run.py paper (P0 — Day 67+ offline)",
+    "priority_2": "Apply TP1_MULTIPLIER: audit regime_trend_tp1_mult, tp_sl_rr1, multi_tier_tp1_ratio paths — then add 1.07x global TP1 boost",
+    "priority_3": "If bot running: capture first SOL LONG + BTC LONG trades — verify rule changes took effect",
+    "priority_4": "If bot running: monitor 80-85% conf trades — confirm deactivated penalty not firing",
+    "priority_5": "Fix SignalQualityScorer save threshold: change `if total % 10 == 0` to `always save` or add shutdown hook"
   },
   "subsystem_outputs_summary": {
-    "auto_fix": {"fixes_applied": 3, "gates_active": 20},
-    "execution_forensics": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "noise_stop_problem": "71.9% illiquid / 72.0% ranging gated. Trailing stop degraded 10d -$2/trade."},
+    "auto_fix": {"fixes_applied": 1, "gates_active": 20, "insights_invalidated_this_run": 1},
+    "execution_forensics": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "persistence_bug": "SignalQualityScorer saves every 10 trades — partial data loss risk on early restart"},
     "live_injection": {"high_edges_found": 5, "weak_setups_found": 6},
-    "daily_synthesis": {"anomalies_found": 9, "report_generated": true, "resolved_this_run": 3},
+    "daily_synthesis": {"anomalies_found": 9, "no_change": true},
     "model_optimization": {"model_swaps_recommended": 0, "potential_savings": "$0.00"}
   }
 }

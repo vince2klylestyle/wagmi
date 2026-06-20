@@ -1,11 +1,22 @@
 {
-  "last_run": "2026-06-20T22:30:00Z",
-  "run_number": 105,
-  "cadence_streak": 27,
-  "fixes_applied_this_run": 3,
+  "last_run": "2026-06-20T23:30:00Z",
+  "run_number": 106,
+  "cadence_streak": 28,
+  "fixes_applied_this_run": 1,
   "gates_active": 82,
-  "total_applied_all_time": 95,
+  "total_applied_all_time": 96,
   "new_fixes_this_run": [
+    {
+      "rule_id": "sniper_premium_insight_stale",
+      "change": "insights.json[9] INVALIDATED (sniper_premium stale)",
+      "reason": "RUN106_STALE_DATA (conf=96% from Run104 REC3): Zero sniper_premium trades in 10d_v3 (n=32) or 20d (n=111). Strategy not active in current ensemble. Run104 REC3 (conf=96%) named both morning edge (done Run105) AND sniper_premium stale. Completing partially-applied Run105 fix.",
+      "confidence": 96,
+      "expected_impact": "Risk prevention — prevents false sniper_premium recommendation acting on stale n=6 data",
+      "applied": "2026-06-20T23:30:00Z",
+      "verified": true
+    }
+  ],
+  "run105_fixes": [
     {
       "rule_id": "high_conf_80_85_penalty_v1",
       "change": "active=true gate=50 -> active=false gate=0 (DEACTIVATED)",
@@ -35,16 +46,20 @@
     }
   ],
   "recs_pending_code_change": [
-    {"rec": "PAYOFF_RATIO_TP1_BOOST", "confidence": 0.82, "status": "PENDING — TP1_MULTIPLIER=1.07 in trading_config.py"},
-    {"rec": "FEEDBACK_PERSISTENCE_FIX", "confidence": 0.95, "status": "PARTIAL — SignalQualityScorer + ParameterTuner missing _save()"},
+    {"rec": "PAYOFF_RATIO_TP1_BOOST", "confidence": 0.82, "status": "PENDING — TP1_MULTIPLIER=1.07 requires code audit of all strategy TP calculations before safe implementation"},
+    {"rec": "FEEDBACK_PERSISTENCE_FIX", "confidence": 0.95, "status": "PARTIAL — SignalQualityScorer saves every 10 trades (loses data on early restart); AdaptiveConfidenceFloor saves conditionally. HoldTimeRuleManager saves correctly. RegimeFeedbackManager/ParameterTuner/FeedbackLoop need investigation."},
     {"rec": "HOLD_TIME_TRACKING_FIX", "confidence": 0.95, "status": "PENDING — duration_h = 0 in all backtest rows"}
   ],
   "rules_count": {
     "total": 28,
     "active": 20,
     "inactive": 8,
+    "run106_insight_invalidated": ["insights.json[9] sniper_premium stale n=6"],
     "run105_deactivated": ["high_conf_80_85_penalty_v1"],
     "run105_reactivated": ["conf_floor_70_v1"],
-    "run105_insight_invalidated": ["insights.json[0] morning 71% WR"]
+    "run105_insight_invalidated": ["insights.json[0] morning 71% WR"],
+    "insights_valid_active": 4,
+    "insights_total": 19,
+    "insights_invalidated": 15
   }
 }
