@@ -6,7 +6,10 @@
       "confidence": 0.7333333333333334,
       "evidence_count": 20,
       "actionable_suggestion": "Boost confidence for trades during morning (6:00-12:00 UTC). Consider raising confidence floor during night by 5-10%.",
-      "timestamp": 1776987543.8175309
+      "timestamp": 1776987543.8175309,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "MORNING_TOD_CONTRADICTION: claims morning (6:00-12:00 UTC) = 71% WR (n=20). Directly contradicted by insight[5] claiming morning = 14% WR (n=7). Both low-evidence. tod_morning_edge_v1 rule was already DEACTIVATED Run81 due to this contradiction. No active rule depends on this insight. Both morning insights invalidated to prevent re-proposal. Invalidated Run90."
     },
     {
       "category": "weakness",
@@ -22,7 +25,10 @@
       "confidence": 0.75,
       "evidence_count": 50,
       "actionable_suggestion": "High-conviction sizing is working. Consider increasing sizes on high-confidence setups and further reducing sizes on low-confidence ones.",
-      "timestamp": 1776987543.8175309
+      "timestamp": 1776987543.8175309,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_CONTRADICTION_TRIPLET: claims >5.0x=57% WR (n=50). Directly contradicted by insight[6] claiming >5.0x=36% WR (n=50) \u2014 identical threshold, same evidence count, OPPOSITE conclusions. 100d n=589 baseline shows no leverage-WR relationship. Loss driver is dollar asymmetry (-$109 avg loss vs +$122 avg win at SL), not size. Invalidated Run90."
     },
     {
       "category": "pattern",
@@ -49,7 +55,10 @@
       "confidence": 0.675,
       "evidence_count": 7,
       "actionable_suggestion": "Consider pausing trading or raising confidence floor to 75%+ during morning (6:00-12:00 UTC).",
-      "timestamp": 1776346399.1892202
+      "timestamp": 1776346399.1892202,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "MORNING_TOD_CONTRADICTION: claims morning (6:00-12:00 UTC) = 14% WR (n=7). LOW_EVIDENCE (n=7). Directly contradicted by insight[0] claiming morning = 71% WR (n=20). tod_morning_edge_v1 already DEACTIVATED Run81. Both morning insights invalidated to prevent conflicting rule proposals. Invalidated Run90."
     },
     {
       "category": "bias",
@@ -57,7 +66,10 @@
       "confidence": 0.8,
       "evidence_count": 50,
       "actionable_suggestion": "Reduce position sizes \u2014 larger positions are losing more often. Consider capping leverage or adding a size penalty to the confidence calculation.",
-      "timestamp": 1776301658.6094482
+      "timestamp": 1776301658.6094482,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_CONTRADICTION_TRIPLET: claims >5.0x=36% WR (n=50). Directly contradicted by insight[2] claiming >5.0x=57% WR (n=50) \u2014 identical threshold, same evidence count, OPPOSITE conclusions. 100d n=589 baseline shows no leverage-WR relationship. Loss driver is dollar asymmetry, not size. Invalidated Run90."
     },
     {
       "category": "bias",
@@ -73,7 +85,10 @@
       "confidence": 0.75,
       "evidence_count": 50,
       "actionable_suggestion": "High-conviction sizing is working. Consider increasing sizes on high-confidence setups and further reducing sizes on low-confidence ones.",
-      "timestamp": 1775517082.443973
+      "timestamp": 1775517082.443973,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_CONTRADICTION_CLUSTER: claims >6.0x=58% WR (n=50). Contradicts insight[6] (>5.0x=36% WR). Higher threshold cannot have higher WR if >5x is only 36%. 100d n=589 baseline shows no leverage-WR relationship. Cluster invalidated Run90."
     },
     {
       "category": "weakness",
@@ -89,7 +104,10 @@
       "confidence": 0.75,
       "evidence_count": 50,
       "actionable_suggestion": "High-conviction sizing is working. Consider increasing sizes on high-confidence setups and further reducing sizes on low-confidence ones.",
-      "timestamp": 1775495907.6601598
+      "timestamp": 1775495907.6601598,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_CONTRADICTION_CLUSTER: claims >7.0x=59% WR (n=50). Contradicts insight[6] (>5.0x=36% WR). Progressive escalation pattern (57\u219258\u219259%) is data artifact from different time windows. 100d n=589 baseline shows no leverage-WR relationship. Cluster invalidated Run90."
     },
     {
       "category": "pattern",
@@ -132,7 +150,10 @@
       "confidence": 0.8,
       "evidence_count": 50,
       "actionable_suggestion": "Reduce position sizes \u2014 larger positions are losing more often. Consider capping leverage or adding a size penalty to the confidence calculation.",
-      "timestamp": 1775095748.2047987
+      "timestamp": 1775095748.2047987,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_CONTRADICTION_CLUSTER: claims >2.1x=44% WR (n=50). Contradicts insight[16] (>2.0x=76% WR n=34) \u2014 virtually identical threshold, wildly different WR (44% vs 76%). Different-window artifacts. 100d baseline: no leverage-WR relationship. Invalidated Run90."
     },
     {
       "category": "edge",
@@ -140,7 +161,10 @@
       "confidence": 0.75,
       "evidence_count": 34,
       "actionable_suggestion": "High-conviction sizing is working. Consider increasing sizes on high-confidence setups and further reducing sizes on low-confidence ones.",
-      "timestamp": 1775005067.1790636
+      "timestamp": 1775005067.1790636,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_LOW_EVIDENCE_CONTRADICTION: claims >2.0x=76% WR (n=34). LOW_EVIDENCE (n=34 < n=50 threshold). Contradicts insight[15] (>2.1x=44% WR n=50). Same threshold range, opposite conclusion. 100d n=589 shows structural dollar asymmetry is the problem. Invalidated Run90."
     },
     {
       "category": "edge",
@@ -148,7 +172,10 @@
       "confidence": 0.75,
       "evidence_count": 23,
       "actionable_suggestion": "High-conviction sizing is working. Consider increasing sizes on high-confidence setups and further reducing sizes on low-confidence ones.",
-      "timestamp": 1774782093.8768063
+      "timestamp": 1774782093.8768063,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_LOW_EVIDENCE: claims >1.5x=73% WR (n=23). LOW_EVIDENCE (n=23 < 30 minimum). Contradicts insight[18] (>1.5x=50% WR n=16) \u2014 identical threshold, different WR. Both are early small-window artifacts. 100d n=589 baseline shows no leverage-WR relationship. Invalidated Run90."
     },
     {
       "category": "bias",
@@ -156,11 +183,24 @@
       "confidence": 0.6666666666666667,
       "evidence_count": 16,
       "actionable_suggestion": "Reduce position sizes \u2014 larger positions are losing more often. Consider capping leverage or adding a size penalty to the confidence calculation.",
-      "timestamp": 1774458397.3132286
+      "timestamp": 1774458397.3132286,
+      "invalidated": true,
+      "invalidated_at": "2026-06-20T02:04:00.000000+00:00",
+      "invalidation_reason": "SIZE_LOW_EVIDENCE_CONTRADICTION: claims >1.5x=50% WR (n=16). LOW_EVIDENCE (n=16 < 20 minimum). Contradicts insight[17] (>1.5x=73% WR n=23) \u2014 identical threshold, different WR. Early-window artifact. 100d n=589 baseline shows no leverage-WR relationship. Invalidated Run90."
+    },
+    {
+      "category": "structural",
+      "description": "Leverage size (1.5x-7x) does NOT predict win rate. 100d n=589: WR is 40-49% across all size tiers. Structural loss driver is dollar asymmetry: avg SL loss -$108.92 >> avg TP1 win +$122.01. Fix exit mechanics (TRAILING_STOP_LOCK at position_manager.py:1244), not position sizing.",
+      "confidence": 0.92,
+      "evidence_count": 589,
+      "actionable_suggestion": "Do NOT adjust position sizes based on leverage tier. Implement TRAILING_STOP_LOCK to convert trailing-loss exits to TP2 wins (+$3,759/100d EV). Focus on entry quality (regime, side, strategy) not size.",
+      "timestamp": 1750378800.0,
+      "added_by": "perpetual_improvement_run_90_2026-06-20T02:04Z",
+      "replaces_cluster": "SIZE_CONTRADICTION_CLUSTER (10 insights, indices 0,2,5,6,8,10,15,16,17,18)"
     }
   ],
   "last_dedup_at": "2026-05-18T22:06:12.775083+00:00",
   "dedup_note": "Pruned from 108 to 19 by perpetual_improvement_loop (removed 89 duplicates, kept most-recent per insight category/bucket)",
-  "last_invalidation_run": "2026-05-19T02:04:26.010467+00:00",
-  "invalidation_note": "Perpetual deep-dive 2026-05-19T02:07 marked 2 inverted time-of-day insights."
+  "last_invalidation_run": "2026-06-20T02:04:00.000000+00:00",
+  "invalidation_note": "Run90 2026-06-20T02:04:00Z: SIZE_CONTRADICTION_CLUSTER and MORNING_TOD_CONTRADICTION invalidated. 10 insights marked invalid. Canonical size rule added (conf=0.92, n=589). Active insights: 8 of 20."
 }

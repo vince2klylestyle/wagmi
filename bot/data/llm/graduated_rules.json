@@ -156,7 +156,7 @@
       "active": true,
       "gate_percentage": 20,
       "gate_demoted_at": "2026-06-19T12:05:34Z",
-      "gate_demotion_reason": "DEMOTED Run82 2026-06-19T12:05:34Z: 10d evidence (67% WR, n=43) contradicted by 100d backtest (50% WR, -$3.48/trade, n=10). Rule has times_applied=0 — possibly broken condition match. Reducing gate=100%->20% (probe mode) pending live verification. Graduate back to 50% if WR>=60% n>=15; deactivate if WR<45% n>=15."
+      "gate_demotion_reason": "DEMOTED Run82 2026-06-19T12:05:34Z: 10d evidence (67% WR, n=43) contradicted by 100d backtest (50% WR, -$3.48/trade, n=10). Rule has times_applied=0 \u2014 possibly broken condition match. Reducing gate=100%->20% (probe mode) pending live verification. Graduate back to 50% if WR>=60% n>=15; deactivate if WR<45% n>=15."
     },
     {
       "rule_id": "eth_trending_regime_boost_v1",
@@ -179,7 +179,7 @@
     },
     {
       "rule_id": "hype_unknown_regime_probe_v1",
-      "hypothesis_statement": "HYPE in UNKNOWN regime achieves 83% WR, +$6.56/trade (n=6). Highest-WR setup found across all symbol×regime combinations. Possible regime-transition breakout signal. SIDE-AGNOSTIC probe — does not conflict with HYPE_LONG/HYPE_SHORT vetoes since this targets unknown regime only.",
+      "hypothesis_statement": "HYPE in UNKNOWN regime achieves 83% WR, +$6.56/trade (n=6). Highest-WR setup found across all symbol\u00d7regime combinations. Possible regime-transition breakout signal. SIDE-AGNOSTIC probe \u2014 does not conflict with HYPE_LONG/HYPE_SHORT vetoes since this targets unknown regime only.",
       "action": "boost",
       "conditions": {
         "symbol": "HYPE",
@@ -198,7 +198,7 @@
     },
     {
       "rule_id": "conf_floor_70_v1",
-      "hypothesis_statement": "Signals with 60-70% confidence are net-negative: 46.3% WR on 123 trades, -$2321 total PnL. Worst performing confidence bin across all symbols and regimes. GATED (2026-05-17): adjustment reduced -20→-5 to break compounding deadlock with self_tuning CONSERVATIVE mode. Evidence conflict: insight_journal (67 trades) shows +$2.19/trade EV in this bin; rule built on older 123-trade window. -5pts preserves caution without total block. Gate: 20%.",
+      "hypothesis_statement": "Signals with 60-70% confidence are net-negative: 46.3% WR on 123 trades, -$2321 total PnL. Worst performing confidence bin across all symbols and regimes. GATED (2026-05-17): adjustment reduced -20\u2192-5 to break compounding deadlock with self_tuning CONSERVATIVE mode. Evidence conflict: insight_journal (67 trades) shows +$2.19/trade EV in this bin; rule built on older 123-trade window. -5pts preserves caution without total block. Gate: 20%.",
       "action": "penalize",
       "conditions": {
         "confidence_min": 60.0,
@@ -255,7 +255,7 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: insight INVALIDATED in insights.json — actual WR=33% not 65%. Built on invalidated data. Auto-fix conf=95% >= 75% threshold.",
+      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: insight INVALIDATED in insights.json \u2014 actual WR=33% not 65%. Built on invalidated data. Auto-fix conf=95% >= 75% threshold.",
       "disabled_at": "2026-06-19T10:06:43Z"
     },
     {
@@ -276,12 +276,12 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: insight INVALIDATED in insights.json — actual WR=27% not 64%. Built on invalidated data. Auto-fix conf=95% >= 75% threshold.",
+      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: insight INVALIDATED in insights.json \u2014 actual WR=27% not 64%. Built on invalidated data. Auto-fix conf=95% >= 75% threshold.",
       "disabled_at": "2026-06-19T10:06:43Z"
     },
     {
       "rule_id": "high_vol_regime_boost_v1",
-      "hypothesis_statement": "high_volatility regime = 55% WR vs 38% avg across all regimes. Best regime for trading by WR margin. Feedback engine: gate=80%, n=2172, conf=88%. LLM engine was missing this rule — sync gap detected 2026-05-22T01:06 UTC. Exempt from illiquid penalty stacking (different regime). Graduate: escalate gate 20%→50% at n>=25 obs with WR>=0.52.",
+      "hypothesis_statement": "high_volatility regime = 55% WR vs 38% avg across all regimes. Best regime for trading by WR margin. Feedback engine: gate=80%, n=2172, conf=88%. LLM engine was missing this rule \u2014 sync gap detected 2026-05-22T01:06 UTC. Exempt from illiquid penalty stacking (different regime). Graduate: escalate gate 20%\u219250% at n>=25 obs with WR>=0.52.",
       "action": "boost",
       "conditions": {
         "regime": "high_volatility"
@@ -299,7 +299,7 @@
     },
     {
       "rule_id": "tod_morning_edge_v1",
-      "hypothesis_statement": "Morning session 06:00-12:00 UTC = 74% WR on 7 insight_journal trades. BEST TOD window by WR (74% vs 65% evening, 64% afternoon, 19% night). Composite edge: ETH+BTC+trending+morning = confirmed alpha. Missing from LLM engine despite being tracked in feedback/graduated_rules.json (A/B_ACTIVE gate=50%) — write-consistency bug detected 2026-05-21T23:06 UTC. Graduate: escalate gate 50%→100% at n>=15 obs with WR>=0.65.",
+      "hypothesis_statement": "Morning session 06:00-12:00 UTC = 74% WR on 7 insight_journal trades. BEST TOD window by WR (74% vs 65% evening, 64% afternoon, 19% night). Composite edge: ETH+BTC+trending+morning = confirmed alpha. Missing from LLM engine despite being tracked in feedback/graduated_rules.json (A/B_ACTIVE gate=50%) \u2014 write-consistency bug detected 2026-05-21T23:06 UTC. Graduate: escalate gate 50%\u2192100% at n>=15 obs with WR>=0.65.",
       "action": "boost",
       "conditions": {
         "hour_utc_min": 6,
@@ -315,7 +315,7 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: n=7 insufficient evidence (below n=15 graduation threshold). insight_journal insight #6 directly contradicts with 14% WR for same session window. Two active insights give 74% vs 14% — conflicted data cannot support an active rule. Auto-fix conf=95% >= 75% threshold.",
+      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: n=7 insufficient evidence (below n=15 graduation threshold). insight_journal insight #6 directly contradicts with 14% WR for same session window. Two active insights give 74% vs 14% \u2014 conflicted data cannot support an active rule. Auto-fix conf=95% >= 75% threshold.",
       "disabled_at": "2026-06-19T10:06:43Z"
     },
     {
@@ -325,7 +325,9 @@
       "conditions": {
         "symbol": "ETH",
         "side": "SELL",
-        "strategies_include": ["bollinger_squeeze"]
+        "strategies_include": [
+          "bollinger_squeeze"
+        ]
       },
       "adjustment": 8.0,
       "confidence": 0.95,
@@ -345,7 +347,9 @@
       "conditions": {
         "symbol": "BTC",
         "side": "BUY",
-        "strategies_include": ["bollinger_squeeze"]
+        "strategies_include": [
+          "bollinger_squeeze"
+        ]
       },
       "adjustment": 8.0,
       "confidence": 0.91,
@@ -356,7 +360,9 @@
       "times_applied": 1,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 20
+      "gate_percentage": 50,
+      "gate_escalated_at": "2026-06-20T02:04:00Z",
+      "gate_escalation_reason": "RUN90_AUTO_ESCALATION (conf=0.91>=0.75): btc_buy_bb_golden_v1 graduated gate=20%\u219250%. Evidence: BTC BUY + bollinger_squeeze = 69% WR on n=2,172 shadow signals (highest-evidence edge in system). btc_long_veto_v1 (gate=80%) preserves 20% BTC BUY pass-through; this boost activates on the quality subset (BB signals). Gate 20%\u219250% doubles the activation rate on our best-validated BTC setup. Graduate 50%\u219280% if WR>=65% n>=15 live trades post-restart. Demote back to 20% if WR<55% n>=15 live trades."
     },
     {
       "rule_id": "sol_buy_bb_golden_v1",
@@ -365,7 +371,9 @@
       "conditions": {
         "symbol": "SOL",
         "side": "BUY",
-        "strategies_include": ["bollinger_squeeze"]
+        "strategies_include": [
+          "bollinger_squeeze"
+        ]
       },
       "adjustment": 8.0,
       "confidence": 0.9,
@@ -387,7 +395,9 @@
       "conditions": {
         "symbol": "HYPE",
         "side": "SELL",
-        "strategies_include": ["bollinger_squeeze"]
+        "strategies_include": [
+          "bollinger_squeeze"
+        ]
       },
       "adjustment": -15.0,
       "confidence": 0.92,
@@ -405,7 +415,10 @@
       "hypothesis_statement": "BB+MTQ co-agreement = 35% WR (n=2172). When both bollinger_squeeze AND multi_tier_quality fire, it's a contra-indicator. Penalize.",
       "action": "penalize",
       "conditions": {
-        "strategies_include": ["bollinger_squeeze", "multi_tier_quality"]
+        "strategies_include": [
+          "bollinger_squeeze",
+          "multi_tier_quality"
+        ]
       },
       "adjustment": -10.0,
       "confidence": 0.92,
@@ -481,7 +494,7 @@
     },
     {
       "rule_id": "btc_long_veto_v1",
-      "hypothesis_statement": "BTC LONG (BUY) is net-negative: 32% WR on 41 backtest trades (100d), avg -$13.42/trade, total -$550. Inverse confidence effect: 80%+ conf BTC LONGs = 19% WR. 10d shows 64% WR (n=72, conflict) — gate=80% preserves 20% pass-through for potential regime shift and BTC_BUY_BB_golden (69% WR) optionality.",
+      "hypothesis_statement": "BTC LONG (BUY) is net-negative: 32% WR on 41 backtest trades (100d), avg -$13.42/trade, total -$550. Inverse confidence effect: 80%+ conf BTC LONGs = 19% WR. 10d shows 64% WR (n=72, conflict) \u2014 gate=80% preserves 20% pass-through for potential regime shift and BTC_BUY_BB_golden (69% WR) optionality.",
       "action": "veto",
       "conditions": {
         "symbol": "BTC",
