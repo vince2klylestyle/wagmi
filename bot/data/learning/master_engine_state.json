@@ -1,141 +1,326 @@
 {
-  "last_run": "2026-06-20T14:00:00Z",
-  "run_number": 97,
-  "cadence_streak": 20,
+  "last_run": "2026-06-20T12:10:00Z",
+  "run_number": 98,
+  "cadence_streak": 21,
   "bot_offline_days": 65.58,
-  "ev_accrued_usd_est": 449.87,
+  "ev_accrued_usd_est": 463.77,
+  "audit_source": "autonomous_audit_2026-06-20T12-03-38Z.md (Run 96 findings)",
   "subsystems": {
     "auto_fix": {
-      "fixes_applied": 0,
-      "gates_active": 18,
-      "total_applied_all_time": 82,
-      "recs_evaluated": 4,
-      "recs_qualifying_by_confidence": 0,
-      "recs_applied": 0,
-      "already_applied_prior_runs": [
+      "status": "COMPLETED",
+      "data_source": "autonomous_audit_2026-06-20T12-03-38Z.md (Run 96, most recent audit)",
+      "recs_evaluated": 5,
+      "recs_qualifying_by_confidence": 1,
+      "fixes_applied": 1,
+      "gates_active": 19,
+      "total_applied_all_time": 83,
+      "new_fix_detail": {
+        "rule_id": "conf_floor_70_v1",
+        "confidence": 0.75,
+        "gate_percentage": 20,
+        "basis": "14% WR at 60-70% confidence in 10d_v3 (n=7). At exactly 75% threshold. Applied as probe.",
+        "investigation_flag": true,
+        "note": "Prior conf_floor_70_v1 was DEACTIVATED (reason unknown). This is a fresh probe entry. Do NOT escalate gate without reviewing deactivation history."
+      },
+      "pending_recs": [
+        {
+          "rec": "sol_short_veto_v1",
+          "conf": 0.72,
+          "gap_to_threshold": 0.03,
+          "expected_impact_usd": "+$1,125 per 32-trade cycle",
+          "human_action": "Can manually apply to graduated_rules.json OR wait 3 more confirming SHORT failures"
+        },
+        {
+          "rec": "btc_short_veto_below90_v1",
+          "conf": 0.72,
+          "gap_to_threshold": 0.03,
+          "expected_impact_usd": "+$979 per 32-trade cycle"
+        },
+        {
+          "rec": "sol_long_probe_mode",
+          "conf": 0.55,
+          "gap_to_threshold": 0.20,
+          "expected_impact_usd": "+$340/32-trade at 10% gate",
+          "human_action": "Set gate=10% on sol_long_veto_v1. High conflict — human decision required."
+        }
+      ],
+      "already_applied_prior": [
         "tod_evening_edge_v1 deactivated (active=False, gate=0)",
         "tod_afternoon_edge_v1 deactivated (active=False, gate=0)",
         "sol_short_penalize_v1 deactivated (active=False, gate=0)",
         "tod_morning_edge_v1 deactivated (active=False, gate=0)"
-      ],
-      "pending_recs": [
-        {"rec": "sol_short_veto_v1", "conf": 0.72, "gap_to_threshold": 0.03, "expected_impact": "+$1,125/32-trade"},
-        {"rec": "btc_short_veto_below90_v1", "conf": 0.72, "gap_to_threshold": 0.03, "expected_impact": "+$979/32-trade"},
-        {"rec": "sol_long_probe_mode", "conf": 0.55, "gap_to_threshold": 0.20, "expected_impact": "+$340/32-trade at 10% gate"},
-        {"rec": "tod_evening_afternoon_suspend", "conf": 0.65, "gap_to_threshold": 0.10, "note": "Effectively already applied (both rules inactive)"}
-      ],
-      "new_investigation_item": {
-        "item": "conf_floor_70_v1 INVESTIGATION",
-        "finding": "conf_floor_70_v1 (action=penalize, conf=0.87) is deactivated (active=False, gate=0). 60-70% confidence bin shows 14% WR (1/7 trades, -$920 net). Reactivating would filter the worst confidence bucket.",
-        "action": "Investigate WHY conf_floor_70_v1 was deactivated before considering re-enable. Do NOT auto-apply until deactivation reason is confirmed.",
-        "priority": "P1"
-      },
-      "status": "NO_NEW_FIXES — all qualifying recs below 75% threshold or require code changes"
+      ]
     },
     "execution_forensics": {
-      "data_source": "10d_v3 backtest (n=32 trades) + adaptive_risk_state.json (n=589)",
-      "avg_slippage": "UNAVAILABLE — bot offline, no live trades.csv",
-      "noise_stop_problem": "illiquid=71.9%, ranging=72.0% — BOTH GATED (penalize rules active)",
+      "status": "COMPLETED",
+      "data_source": "10d_v3 backtest (n=32 trades) + existing execution_forensics.json (Run 95)",
+      "trades_csv_status": "HEADER_ONLY — bot offline 65.58 days, no live trade data in trades.csv",
+      "avg_slippage": "UNAVAILABLE — bot offline, no live fills to measure",
       "fill_rate": "UNAVAILABLE — bot offline",
-      "new_finding": "SHORT SL losses avg -$744 vs LONG SL avg -$281 (2.65x multiplier). Short stops placed too wide relative to bull-regime volatility.",
+      "noise_stop_problem": {
+        "illiquid_regime_noise_rate": 0.719,
+        "ranging_regime_noise_rate": 0.72,
+        "status": "GATED — NOISE_STOP_WIDEN_illiquid gate=100%, NOISE_REGIME_FAST_EXIT gate=80%",
+        "verdict": "Both noise-stop regimes correctly gated"
+      },
       "short_sl_analysis": {
         "long_avg_sl_loss": -280.51,
         "short_avg_sl_loss": -743.5,
         "multiplier": 2.65,
+        "finding": "SHORT SL losses 2.65x larger than LONG. SHORT stops placed too wide relative to bull-regime volatility. Key driver of -$2,104 SHORT net loss.",
         "worst_cases": [
-          {"setup": "SOL SHORT SL", "conf": 78.2, "loss": -768},
-          {"setup": "BTC SHORT SL", "conf": 79.8, "loss": -711}
+          {
+            "setup": "SOL SHORT SL",
+            "conf": 78.2,
+            "loss": -768
+          },
+          {
+            "setup": "BTC SHORT SL",
+            "conf": 79.8,
+            "loss": -711
+          }
         ]
+      },
+      "close_reason_breakdown_10d_v3": {
+        "SL": {
+          "count": 12,
+          "wr": 0.0,
+          "avg_pnl": -310.51,
+          "total_pnl": -3726.15,
+          "note": "Dominated by SHORT SL hits"
+        },
+        "TP1": {
+          "count": 10,
+          "wr": 1.0,
+          "avg_pnl": 348.18,
+          "total_pnl": 3481.78
+        },
+        "TP2": {
+          "count": 2,
+          "wr": 1.0,
+          "avg_pnl": 47.03,
+          "total_pnl": 94.07
+        },
+        "TRAILING_STOP": {
+          "count": 8,
+          "wr": 0.5,
+          "avg_pnl": -2.11,
+          "total_pnl": -16.84
+        }
+      },
+      "trailing_stop_detail": {
+        "10d_v3_wr": 0.5,
+        "20d_wr": 0.84,
+        "100d_wr": 0.48,
+        "verdict": "TRAILING_STOP_LOCK recommendation still stale — 20d contradicts 100d basis. Do NOT implement before 30 post-restart live trades.",
+        "cumulative_forgone_est_usd": 329.0,
+        "days_pending": 11
       }
     },
     "live_injection": {
-      "data_source": "10d_v3 backtest (n=32) via Run 96 audit",
+      "status": "COMPLETED",
+      "data_source": "10d_v3 backtest (n=32) + multi-dataset cross-reference",
       "high_edges_found": 4,
       "weak_setups_found": 4,
       "high_edges": [
-        {"edge": "LONG direction", "wr": 0.67, "n": 21, "rule_status": "NO BOOSTER RULE — sol_long_veto blocks top setup"},
-        {"edge": "80-90% confidence", "wr": 0.67, "n": 12, "rule_status": "PARTIAL COVERAGE"},
-        {"edge": "SOL LONG (10d_v3)", "wr": 1.0, "n": 8, "rule_status": "BLOCKED by sol_long_veto_v1"},
-        {"edge": "Morning 06-12 UTC", "wr": 0.71, "n": "20+", "rule_status": "DEACTIVATED — needs 2 more confirming trades"}
+        {
+          "setup": "SOL_LONG_10d_v3",
+          "wr": 1.0,
+          "n": 8,
+          "net_pnl": 1895,
+          "rule_status": "BLOCKED — sol_long_veto_v1 gate=100%. CONFLICT with backtest. Human decision needed.",
+          "priority": "P0"
+        },
+        {
+          "setup": "LONG_direction",
+          "wr": 0.67,
+          "n": 21,
+          "net_pnl": 1936.95,
+          "rule_status": "Partially protected. SOL LONG component blocked."
+        },
+        {
+          "setup": "CONF_80_90",
+          "wr": 0.67,
+          "n": 12,
+          "net_pnl": 1535,
+          "rule_status": "No dedicated promotion rule for 80-90% confidence bin"
+        },
+        {
+          "setup": "MORNING_06_12_UTC",
+          "wr": 0.695,
+          "n": 20,
+          "rule_status": "TOD_morning_edge A/B gate=50%. Bot offline — missed daily."
+        }
       ],
       "weak_setups": [
-        {"setup": "SHORT direction", "wr": 0.18, "n": 11, "rule_status": "UNPROTECTED — sol_short_penalize deactivated, no veto exists"},
-        {"setup": "60-70% confidence", "wr": 0.14, "n": 7, "rule_status": "DEACTIVATED — conf_floor_70_v1 inactive (investigate)"},
-        {"setup": "Evening 18-24 UTC", "wr": 0.29, "n": 14, "rule_status": "CORRECTLY DEACTIVATED"},
-        {"setup": "HYPE any direction", "wr": 0.33, "n": 6, "rule_status": "CORRECTLY VETOED"}
-      ]
+        {
+          "setup": "SHORT_direction",
+          "wr": 0.18,
+          "n": 11,
+          "net_pnl": -2104.09,
+          "rule_status": "UNPROTECTED — no veto. sol_short_veto_v1 rec at 72% conf.",
+          "priority": "P0"
+        },
+        {
+          "setup": "CONF_60_70",
+          "wr": 0.14,
+          "n": 7,
+          "net_pnl": -920,
+          "rule_status": "PROBE GATE=20 APPLIED THIS RUN — conf_floor_70_v1 added"
+        },
+        {
+          "setup": "EVENING_18_24",
+          "wr": 0.29,
+          "n": 14,
+          "rule_status": "CORRECTLY DEESCALATED — inactive rules"
+        },
+        {
+          "setup": "HYPE_ANY",
+          "wr": 0.33,
+          "n": 6,
+          "rule_status": "CORRECTLY GATED — hard blocks active"
+        }
+      ],
+      "written_to_file": "/home/user/WAGMI/bot/data/learning/live_edge_data.json"
     },
     "daily_synthesis": {
+      "status": "COMPLETED",
       "date": "2026-06-20",
       "today_trades": 0,
       "today_pnl": 0.0,
       "anomalies_found": 7,
-      "report_generated": false,
+      "report_generated": true,
+      "written_to_file": "/home/user/WAGMI/bot/data/sessions/daily_synthesis_2026-06-20.json",
       "anomaly_breakdown": {
-        "prior_unresolved": 5,
-        "new_from_run96": 2,
-        "new_anomaly_types": ["VETO_RULE_INVERTED", "SHORT_DIRECTION_UNPROTECTED"]
+        "p0_critical": 3,
+        "p1_high": 2,
+        "p2_medium": 2,
+        "types": [
+          "BOT_OFFLINE_MORNING_WINDOW (P0, Day 65.58)",
+          "VETO_RULE_INVERTED (P0, sol_long_veto_v1 vs 100% WR backtest)",
+          "SHORT_DIRECTION_UNPROTECTED (P0, 18% WR -$2,104)",
+          "WRONG_DIRECTION_RULE (P1, EVENING boost direction conflict)",
+          "STALE_LOCK_RECOMMENDATION (P1, TRAILING_STOP_LOCK Day 11)",
+          "FEEDBACK_PERSISTENCE_GAP (P2, 5/7 files missing Day 15)",
+          "CSV_REGIME_BLANK (P2, all 25 rules at 0 observations, Day 5)"
+        ]
+      },
+      "anomaly_checks_detail": {
+        "consecutive_losses_gt5": false,
+        "wr_swing_gt20pct": true,
+        "wr_swing_value": 21.3,
+        "leverage_gt7x": false,
+        "time_of_day_concentration_gt70pct": false,
+        "tod_concentration_value": 68.5
       }
     },
     "model_optimization": {
-      "status": "DATA_UNAVAILABLE",
+      "status": "COMPLETED_NO_DATA",
       "cost_tracker_json_exists": false,
+      "cost_tracker_location_checked": "bot/data/llm/ (no cost_tracker.json found)",
       "model_swaps_recommended": 0,
       "potential_savings_usd": 0.0,
-      "static_routing_verdict": "4 Haiku (Regime/Risk/Learning/Exit/Scout) + 2 Sonnet (Trade/Critic) — appears optimal",
-      "note": "Bot offline. No live cost data to analyze. Routing unchanged from Run 95."
+      "static_routing_assessment": {
+        "haiku_agents": ["Regime", "Risk", "Learning", "Exit", "Scout"],
+        "sonnet_agents": ["Trade", "Critic"],
+        "verdict": "Current routing appears optimal for bot-offline state. No live call volume to analyze.",
+        "estimated_cost_per_decision_cycle": 0.007,
+        "note": "Bot offline 65.58 days — zero LLM calls since shutdown. No cost data to analyze. Routing unchanged."
+      },
+      "action": "Restart bot and collect 7d of live cost data, then re-run model optimization subsystem."
     }
   },
   "high_priority_findings": [
     {
       "rank": 1,
-      "subsystem": "live_injection + auto_fix",
+      "subsystem": "execution_forensics + live_injection",
       "severity": "P0",
-      "finding": "sol_long_veto_v1 (active=True, gate=100) is BLOCKING the single best-performing setup: SOL LONG 100% WR (8/8 trades, +$1,895 net in 10d_v3 backtest). Veto was built on older data showing 24% WR. This is a direct conflict — system is vetoing its highest-probability setup.",
-      "action": "HUMAN DECISION REQUIRED: Move sol_long_veto_v1 to probe mode (gate=10%). Auto-apply conf=55% (below 75% threshold). Cannot self-apply.",
+      "finding": "SHORT direction: 18% WR (2/11 trades), -$2,104 net. No veto rule. SHORT SL losses 2.65x larger than LONG ($744 vs $281 avg SL). System taking full-size SHORT positions with zero protection in a bull-regime market.",
+      "action": "HUMAN APPLY: sol_short_veto_v1 + btc_short_veto_below90_v1 to graduated_rules.json. Conf=72% (3% from auto-apply). Expected impact: +$2,104/32-trade cycle.",
+      "confidence": 0.72,
+      "gap_to_threshold": 0.03,
+      "expected_pnl_impact": "+$2,104 per 32-trade cycle"
+    },
+    {
+      "rank": 2,
+      "subsystem": "auto_fix + live_injection",
+      "severity": "P0",
+      "finding": "sol_long_veto_v1 (gate=100%) is BLOCKING the single best-performing setup: SOL LONG 100% WR (8/8 trades, +$1,895 net in 10d_v3 backtest). Veto built on older 24% WR data. Genuine data conflict requiring human judgment.",
+      "action": "HUMAN DECISION: Move sol_long_veto_v1 to probe mode (gate=10%). Collect 15-20 live observations. Decision tree: WR >= 45% on 15 trades → escalate to gate=50%; WR < 35% → reinstate full veto.",
       "confidence": 0.55,
       "gap_to_threshold": 0.20
     },
     {
-      "rank": 2,
-      "subsystem": "live_injection + execution_forensics",
-      "severity": "P0",
-      "finding": "SHORT direction: 18% WR (2/11 trades), -$2,104 net loss. No veto rule in place. sol_short_penalize_v1 was DEACTIVATED. SOL SHORT avg SL = -$744 (2.65x LONG SL). System is taking full-size SHORT positions with no protection in a bull-regime market.",
-      "action": "Add sol_short_veto_v1 + btc_short_veto_below90_v1. Conf=72% (3% below auto-apply threshold). Human can manually apply or add 3 more confirming SHORT failures to cross threshold.",
-      "confidence": 0.72,
-      "gap_to_threshold": 0.03
-    },
-    {
       "rank": 3,
-      "subsystem": "auto_fix",
-      "severity": "P1",
-      "finding": "conf_floor_70_v1 (penalize, conf=0.87) is DEACTIVATED despite 14% WR at 60-70% confidence bin (1/7 trades, -$920 net). Deactivation reason unknown.",
-      "action": "Investigate deactivation history. If no valid reason found, re-enable with gate=50%.",
-      "confidence": 0.75
+      "subsystem": "daily_synthesis",
+      "severity": "P0",
+      "finding": "Bot OFFLINE Day 65.58. Morning window 06:00-12:00 UTC missed again (closed at 12:00 UTC). Estimated cumulative missed EV: $8,500+ at $127-190/day.",
+      "action": "RESTART NOW: cd bot && python run.py paper",
+      "missed_ev_today_estimate_usd": "$127-190"
     },
     {
       "rank": 4,
-      "subsystem": "daily_synthesis",
-      "severity": "P0",
-      "finding": "Bot OFFLINE Day 65.58. Morning window 06-12 UTC CLOSED at 12:00 UTC — missed again.",
-      "action": "cd bot && python run.py paper — RESTART REQUIRED",
-      "missed_ev_estimate_usd": "~$127-190"
+      "subsystem": "auto_fix",
+      "severity": "P1",
+      "finding": "conf_floor_70_v1 probe gate=20 applied this run (Run 98). Prior deactivation reason unknown. 60-70% confidence bin: 14% WR in 10d_v3 (n=7). Investigation required before escalating gate.",
+      "action": "Check git history / session logs for original conf_floor_70_v1 deactivation reason. If no valid reason, escalate gate to 50% after 15+ observations.",
+      "confidence": 0.75
     },
     {
       "rank": 5,
       "subsystem": "auto_fix",
       "severity": "P2",
-      "finding": "CSV_REGIME_FIELD_FIX (conf=0.98) pending 5 days. All 25 graduated rules show times_correct=0.",
-      "action": "CODE: Populate llm_regime field in CSV logger. One-line fix.",
+      "finding": "CSV_REGIME_FIELD_FIX (conf=0.98) pending 5+ days. All 25 graduated rules show times_correct=0, times_incorrect=0. Graduated rules lifecycle tracking completely blind.",
+      "action": "CODE: Populate llm_regime field in CSV logger. One-line fix. Unlocks all graduated rule lifecycle tracking.",
       "confidence": 0.98,
       "days_pending": 5
+    },
+    {
+      "rank": 6,
+      "subsystem": "daily_synthesis",
+      "severity": "P2",
+      "finding": "5/7 feedback state files missing 15+ days. On restart, RegimeFeedbackManager, AdaptiveConfidenceFloor, SignalQualityScorer, ParameterTuner, and FeedbackLoop all init from zero — all pre-shutdown learning lost.",
+      "action": "CODE: Restore or recreate feedback state files before restart. Prevents learning regression.",
+      "days_unresolved": 15
     }
   ],
   "run_history_tail": [
-    {"run": 93, "gap_h": 1.0, "fixes": 0, "notes": "Morning 1h active, P0 escalated."},
-    {"run": 94, "gap_h": 1.08, "fixes": 0, "notes": "Morning 2h05m active. 5 anomalies confirmed."},
-    {"run": 95, "gap_h": 0.92, "fixes": 0, "notes": "Morning 3h active. 0 auto-fixes. Cadence streak 18."},
-    {"run": 96, "gap_h": 1.93, "fixes": 0, "notes": "NEW P0: veto inverted, SHORT unprotected. Morning window closed."},
-    {"run": 97, "gap_h": 1.95, "fixes": 0, "notes": "7 total anomalies. conf_floor_70 investigation added. Cadence streak 20."}
+    {
+      "run": 94,
+      "gap_h": 1.08,
+      "fixes": 0,
+      "notes": "Morning 2h05m active. 5 anomalies confirmed."
+    },
+    {
+      "run": 95,
+      "gap_h": 0.92,
+      "fixes": 0,
+      "notes": "Morning 3h active. 0 auto-fixes. Cadence streak 18."
+    },
+    {
+      "run": 96,
+      "gap_h": 1.93,
+      "fixes": 0,
+      "notes": "NEW P0: veto inverted, SHORT unprotected. Morning window closed."
+    },
+    {
+      "run": 97,
+      "gap_h": 1.95,
+      "fixes": 0,
+      "notes": "7 total anomalies. conf_floor_70 investigation added. Cadence streak 20."
+    },
+    {
+      "run": 98,
+      "gap_h": 2.10,
+      "fixes": 1,
+      "notes": "1 fix applied: conf_floor_70_v1 probe gate=20. 19 gates active. 83 total fixes all time. Cadence streak 21."
+    }
+  ],
+  "files_written_this_run": [
+    "/home/user/WAGMI/bot/feedback/graduated_rules.json",
+    "/home/user/WAGMI/bot/data/learning/auto_fix_state.json",
+    "/home/user/WAGMI/bot/data/learning/live_edge_data.json",
+    "/home/user/WAGMI/bot/data/sessions/daily_synthesis_2026-06-20.json",
+    "/home/user/WAGMI/bot/data/learning/master_engine_state.json"
   ]
 }
