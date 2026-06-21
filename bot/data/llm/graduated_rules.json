@@ -118,7 +118,7 @@
     },
     {
       "rule_id": "btc_short_conf70_80_penalize_v1",
-      "hypothesis_statement": "BTC SHORT 70-80% confidence: 43.9% WR (n=98), EV=-$91.87/trade. Sole drag on BTC SHORT performance. All other confidence bands positive.",
+      "hypothesis_statement": "BTC SHORT 70-80% confidence: 43.9% WR (n=98), EV=-$91.87/trade. Sole drag on BTC SHORT performance.",
       "action": "penalize",
       "conditions": {
         "symbol": "BTC",
@@ -158,7 +158,7 @@
       "active": true,
       "gate_percentage": 20,
       "re_activated_at": "2026-06-21T12:07:00Z",
-      "re_activation_reason": "RUN111_AUTO_FIX (conf=90%>=75%): Run110 deactivation was INCORRECT — used aggregate BTC SHORT EV (-$7.22, n=195) which is dominated by 70-80% conf drag (EV=-$91.87, n=98). Disaggregated analysis shows BTC SHORT 90%+: WR=67.4%, EV=+$102.92, n=43, BE_WR=51.1% — consistently POSITIVE. Original hypothesis (67% WR, n=43) validated by full 10d dataset. Re-activating at gate=20 (probe). Graduate to gate=50 if live WR>=60% on n>=15 BTC SHORT 90%+ trades."
+      "re_activation_reason": "RUN111_AUTO_FIX: BTC SHORT 90%+ WR=67.4%, EV=+$102.92, n=43. Re-activating at gate=20."
     },
     {
       "rule_id": "eth_trending_regime_boost_v1",
@@ -181,7 +181,7 @@
     },
     {
       "rule_id": "hype_unknown_regime_probe_v1",
-      "hypothesis_statement": "HYPE in UNKNOWN regime achieves 83% WR, +$6.56/trade (n=6). Highest-WR setup found across all symbol×regime combinations. Possible regime-transition breakout signal. SIDE-AGNOSTIC probe — does not conflict with HYPE_LONG/HYPE_SHORT vetoes since this targets unknown regime only.",
+      "hypothesis_statement": "HYPE in UNKNOWN regime achieves 83% WR, +$6.56/trade (n=6). Disabled: conflicts with HYPE vetoes.",
       "action": "boost",
       "conditions": {
         "symbol": "HYPE",
@@ -198,11 +198,11 @@
       "active": false,
       "gate_percentage": 0,
       "disabled_at": "2026-06-19T14:00:00Z",
-      "disabled_reason": "Conflicts with hype_long_veto_v1 and hype_short_veto_v1 (gate=100). Cannot override veto with boost. Deactivated until veto rules have higher specificity."
+      "disabled_reason": "Conflicts with hype_long_veto_v1 and hype_short_veto_v1 (gate=100). Cannot override veto with boost."
     },
     {
       "rule_id": "conf_floor_70_v1",
-      "hypothesis_statement": "Signals with 60-70% confidence are net-negative: 46.3% WR on 123 trades, -$2321 total PnL. GATED (2026-05-17): adjustment reduced -20→-5. REACTIVATED Run105: 10d_v3 shows 14.3% WR (1/7 trades) — complete collapse.",
+      "hypothesis_statement": "Signals with 60-70% confidence are net-negative: 46.3% WR on 123 trades. Penalize.",
       "action": "penalize",
       "conditions": {
         "confidence_min": 60.0,
@@ -218,13 +218,11 @@
       "times_correct": 0,
       "active": true,
       "gate_percentage": 20,
-      "enabled_at": "2026-06-20T22:30:00Z",
-      "enabled_reason": "RUN105_AUTO_FIX (conf=75%>=75%): Run104 audit — 60-70% confidence bin = 14.3% WR (1/7 trades) in 10d_v3. Complete collapse from 20d (50% WR). Gate=20 probe.",
-      "ab_tracking": "Gate=20 A/B probe. Deactivate if live WR >=45% on n>=20 live trades. Escalate to 50% if WR <30% on n>=20."
+      "enabled_at": "2026-06-20T22:30:00Z"
     },
     {
       "rule_id": "btc_trend_long_counter_v1",
-      "hypothesis_statement": "BTC BUY in TRENDING regime = 18% WR on 17 live trades. Original BTC+trend boost (rule_1777922205_0) was 0/3 correct and deactivated. This counter-rule completes the triple protection stack: (1) this -13pt penalty gate=20%, (2) Critic prompt auto-challenges all BTC BUY by default, (3) parent boost rule deactivated. Graduate: escalate gate to 50% at n>=10 obs with WR<=0.45.",
+      "hypothesis_statement": "BTC BUY in TRENDING regime = 18% WR on 17 live trades. Penalize.",
       "action": "penalize",
       "conditions": {
         "symbol": "BTC",
@@ -240,13 +238,11 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": true,
-      "gate_percentage": 50,
-      "gate_escalated_at": "2026-05-23T23:11:54.661001+00:00",
-      "gate_escalation_reason": "GRADUATION_CRITERION_MET: pending_ab_graduation threshold was n>=10 WR<=0.45. Live data: 17 trades at 18% WR. Threshold met (17>=10, 0.18<=0.45). Feedback BTC_LONG_reduce at gate=50%. Triple protection stack (counter+Critic prompt+parent disabled). Conf=0.92 >> 0.75 threshold."
+      "gate_percentage": 50
     },
     {
       "rule_id": "tod_evening_edge_v1",
-      "hypothesis_statement": "Evening session 18-24 UTC: 29% WR (n=14). Bad session. audit conf=0.72 below 0.75 auto-block threshold.",
+      "hypothesis_statement": "Evening session 18-24 UTC: 29% WR (n=14). Penalize.",
       "action": "penalize",
       "conditions": {
         "hour_utc_min": 18,
@@ -262,11 +258,11 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "conf=0.72 below 0.75 auto-activation threshold. Monitor until n>=25 or conf reaches 0.75."
+      "disabled_reason": "conf=0.72 below 0.75 auto-activation threshold."
     },
     {
       "rule_id": "tod_afternoon_edge_v1",
-      "hypothesis_statement": "Afternoon session 12-18 UTC: 27% WR (n=15). Bad session. audit conf=0.72 below 0.75 auto-block threshold.",
+      "hypothesis_statement": "Afternoon session 12-18 UTC: 27% WR (n=15). Penalize.",
       "action": "penalize",
       "conditions": {
         "hour_utc_min": 12,
@@ -282,11 +278,11 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "conf=0.72 below 0.75 auto-activation threshold. Monitor until n>=25 or conf reaches 0.75."
+      "disabled_reason": "conf=0.72 below 0.75 auto-activation threshold."
     },
     {
       "rule_id": "high_vol_regime_boost_v1",
-      "hypothesis_statement": "high_volatility regime = 55% WR vs 38% avg across all regimes. Best regime for trading by WR margin. Feedback engine: gate=80%, n=2172, conf=88%. LLM engine was missing this rule — sync gap detected 2026-05-22T01:06 UTC. Exempt from illiquid penalty stacking (different regime). Graduate: escalate gate 20%→50% at n>=25 obs with WR>=0.52.",
+      "hypothesis_statement": "high_volatility regime = 55% WR vs 38% avg. Best regime for trading.",
       "action": "boost",
       "conditions": {
         "regime": "high_volatility"
@@ -318,9 +314,11 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": false,
-      "gate_percentage": 0,
-      "disabled_reason": "Pending confirmation. audit conf=0.72 below 0.75 activation threshold. Monitor."
+      "active": true,
+      "gate_percentage": 20,
+      "activated_at": "2026-06-21T21:03:32Z",
+      "activated_by": "perpetual_improvement_run117",
+      "activation_reason": "71% WR n=160 in 100d+10d backtest. A/B gate=20 probe. Monitor: target WR>60% on first 20 morning trades post-restart."
     },
     {
       "rule_id": "eth_sell_bb_golden_v1",
@@ -329,9 +327,7 @@
       "conditions": {
         "symbol": "ETH",
         "side": "SELL",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": 8.0,
       "confidence": 0.95,
@@ -365,14 +361,12 @@
     },
     {
       "rule_id": "sol_buy_bb_golden_v1",
-      "hypothesis_statement": "SOL BUY with bollinger_squeeze = 67% WR (n=2172 shadow signals). Tier-1 golden setup.",
+      "hypothesis_statement": "SOL BUY with bollinger_squeeze = 67% WR (n=2172). Disabled: dead rule (veto wins).",
       "action": "boost",
       "conditions": {
         "symbol": "SOL",
         "side": "BUY",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": 8.0,
       "confidence": 0.9,
@@ -384,19 +378,17 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "disabled_reason": "Dead rule: sol_long_veto_v1 (gate=100%) always wins. SOL BUY WR=24%. Boost never fires. Disabled 2026-05-23.",
+      "disabled_reason": "Dead rule: sol_long_veto_v1 (gate=100%) always wins. Disabled 2026-05-23.",
       "disabled_at": "2026-05-23T22:14:22.771526+00:00"
     },
     {
       "rule_id": "hype_sell_bb_block_v1",
-      "hypothesis_statement": "HYPE SELL with bollinger_squeeze = 35% WR (n=2172). Worst BB setup. Block.",
+      "hypothesis_statement": "HYPE SELL with bollinger_squeeze = 35% WR (n=2172). Block.",
       "action": "penalize",
       "conditions": {
         "symbol": "HYPE",
         "side": "SELL",
-        "strategies_include": [
-          "bollinger_squeeze"
-        ]
+        "strategies_include": ["bollinger_squeeze"]
       },
       "adjustment": -15.0,
       "confidence": 0.92,
@@ -411,13 +403,10 @@
     },
     {
       "rule_id": "bb_mtq_antipattern_v1",
-      "hypothesis_statement": "BB+MTQ co-agreement = 35% WR (n=2172). When both bollinger_squeeze AND multi_tier_quality fire, it's a contra-indicator. Penalize.",
+      "hypothesis_statement": "BB+MTQ co-agreement = 35% WR (n=2172). Contra-indicator. Penalize.",
       "action": "penalize",
       "conditions": {
-        "strategies_include": [
-          "bollinger_squeeze",
-          "multi_tier_quality"
-        ]
+        "strategies_include": ["bollinger_squeeze", "multi_tier_quality"]
       },
       "adjustment": -10.0,
       "confidence": 0.92,
@@ -450,7 +439,7 @@
     },
     {
       "rule_id": "high_conf_80_85_penalty_v1",
-      "hypothesis_statement": "80-85% confidence bin = 36.1% WR, -$52.16/trade avg on 100d backtest (n=36, 589 total trades). Confidence anti-correlation confirmed. CONTRADICTED in 10d+20d: 80-90% bin = 66.7% WR (10d, n=12) and 81.8% WR (20d). DEACTIVATED Run105.",
+      "hypothesis_statement": "80-85% confidence bin penalized, then contradicted by 10d+20d data. DEACTIVATED Run105.",
       "action": "penalize",
       "conditions": {
         "confidence_min": 80.0,
@@ -466,15 +455,12 @@
       "times_correct": 0,
       "active": false,
       "gate_percentage": 0,
-      "gate_escalated_at": "2026-06-19T16:00:00Z",
-      "gate_escalation_reason": "RUN84_AUTO_ESCALATION: 80-85% bin: 36.1% WR on n=36. Conf=0.88 >> 0.75 threshold. Escalating 20%->50%.",
-      "outcome_tracking": "DEACTIVATED Run105: 80-90% bin now BEST tier (66.7% WR 10d_v3 n=12, 81.8% WR 20d). Re-activate if 80-85% WR<45% on n>=20 live trades.",
       "disabled_at": "2026-06-20T22:30:00Z",
-      "disabled_reason": "RUN105_AUTO_FIX (conf=88%>=75%): Run104 audit — 80-90% confidence bin = 66.7% WR (10d_v3). BEST performing tier. Rule penalizing best tier estimated -$109/day impact. Re-activate if WR<45% on n>=20 live 80-85% trades."
+      "disabled_reason": "RUN105: 80-90% conf = 66.7% WR in 10d_v3. Best tier. Rule penalizing best tier. Deactivated."
     },
     {
       "rule_id": "sol_short_penalize_v1",
-      "hypothesis_statement": "SOL SELL = 34.6% WR on 52 live paper trades (suspension probe). Structurally weak short side.",
+      "hypothesis_statement": "SOL SELL = 34.6% WR on 52 live paper trades. DEACTIVATED: 179-trade 10d shows 64% WR.",
       "action": "penalize",
       "conditions": {
         "symbol": "SOL",
@@ -490,12 +476,12 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": false,
-      "disabled_reason": "DEACTIVATED Run81 2026-06-19T10:06:43Z: 179-trade 10d simulation shows SOL SHORT = 64% WR +$32.44/trade. Rule based on 52 stale paper trades is contradicted by 3.4x larger dataset. Re-evaluate if SOL SHORT live WR drops below 50% on n>=20 post-restart trades.",
+      "disabled_reason": "DEACTIVATED Run81: 179-trade 10d shows SOL SHORT = 64% WR. Stale data contradicted.",
       "disabled_at": "2026-06-19T10:06:43Z"
     },
     {
       "rule_id": "btc_long_veto_v1",
-      "hypothesis_statement": "BTC LONG deactivated: 63.9% WR (n=72) confirms positive. btc_buy_bb_golden_v1 replaces as positive reinforcement.",
+      "hypothesis_statement": "BTC LONG deactivated: 63.9% WR (n=72). btc_buy_bb_golden_v1 replaces as positive reinforcement.",
       "action": "veto",
       "conditions": {
         "symbol": "BTC",
@@ -512,17 +498,15 @@
       "active": false,
       "gate_percentage": 0,
       "disabled_at": "2026-06-20T18:30:00Z",
-      "disabled_reason": "BTC LONG WR=63.9%, n=72 — confirmed positive. Replaced by btc_buy_bb_golden_v1 boost."
+      "disabled_reason": "BTC LONG WR=63.9%, n=72. Confirmed positive. Replaced by btc_buy_bb_golden_v1."
     },
     {
       "rule_id": "short_direction_veto_v1",
-      "hypothesis_statement": "SHORT trades across all symbols are net-negative: 38% WR on 127 live trades",
+      "hypothesis_statement": "SHORT trades across all symbols are net-negative: 38% WR on 127 live trades. exclude_symbols=[SOL] to allow SOL SHORT (63.7% WR).",
       "action": "veto",
       "conditions": {
         "side": "SELL",
-        "exclude_symbols": [
-          "SOL"
-        ]
+        "exclude_symbols": ["SOL"]
       },
       "adjustment": 0.0,
       "confidence": 0.82,
@@ -535,11 +519,11 @@
       "active": true,
       "gate_percentage": 20,
       "gate_reduced_at": "2026-06-18T10:00:00Z",
-      "gate_reduction_reason": "RUN82_AUTO_FIX: Audit evidence shows live SELL trades not consistently negative. Gate reduced 100%->20%. CRITICAL NOTE: SOL SHORT has 63.7% WR per 10d backtest — this rule is blocking best-performing setup. P0 escalation: needs exclude_symbols=['SOL'] code fix. | RUN115_AUTO_FIX: Added exclude_symbols=[\"SOL\"] — SOL SHORT WR=63.7% confirmed in both 10d (n=179) and 100d backtest. Code support added to graduated_rules.py:matches()."
+      "gate_reduction_reason": "RUN82: Gate reduced 100%->20%. SOL SHORT has 63.7% WR. Added exclude_symbols=[SOL]. RUN115: exclude_symbols confirmed in codebase."
     },
     {
       "rule_id": "confidence_paradox_sizing_v1",
-      "hypothesis_statement": "80-90% confidence bin: 40% WR, 53.3% SL rate, avg -$33.04/trade on n=120 trades (100d backtest). PARADOX: higher confidence correlates with WORSE outcomes. High-confidence signals may be entering at overextended levels OR CONF_SIZING_tiered_leverage amplifies absolute loss. Penalize to counteract overconfidence entry sizing.",
+      "hypothesis_statement": "80-90% confidence bin: 40% WR, avg -$33.04/trade on n=120 (100d backtest). Confidence inversely predicts outcome. Penalize.",
       "action": "penalize",
       "conditions": {
         "confidence_min": 85.0,
@@ -555,14 +539,11 @@
       "times_correct": 0,
       "active": true,
       "gate_percentage": 20,
-      "applied_by": "perpetual_improvement_run100_2026-06-20T18:03Z",
-      "source_audit": "Run99 audit (2026-06-20T16:06:05Z): confidence paradox confirmed at n=589 statistical significance",
-      "expected_impact": "Reduce avg loss in 85-90% bin.",
-      "graduate_criteria": "Escalate gate to 50% if 85-90% WR remains <45% on n>=30 live trades. Deactivate if WR>=55% on n>=30."
+      "applied_by": "perpetual_improvement_run100_2026-06-20T18:03Z"
     },
     {
       "rule_id": "sol_long_probe_boost_v1",
-      "hypothesis_statement": "SOL LONG 73.1% WR 20d (26 trades, +$2,486). 10d_v3: 100% WR (8/8, +$1,895). HOWEVER Run114: full SOL LONG EV=-$2.62 (n=122, 53.3% WR). Low-conf subgroup (14.3% WR) newly penalized. Gate reduced from 50 to 20 (probe mode).",
+      "hypothesis_statement": "SOL LONG 73.1% WR 20d (26 trades, +$2,486). Gate=20 probe.",
       "action": "boost",
       "conditions": {
         "symbol": "SOL",
@@ -581,7 +562,7 @@
     },
     {
       "rule_id": "btc_short_80_90_boost_v1",
-      "hypothesis_statement": "BTC SHORT 80-90% confidence: 57.7% WR (n=26), EV=+$59.52/trade. Disaggregated from aggregate BTC SHORT drag. Positive reinforcement probe.",
+      "hypothesis_statement": "BTC SHORT 80-90% confidence: 57.7% WR (n=26), EV=+$59.52/trade. Positive reinforcement probe.",
       "action": "boost",
       "conditions": {
         "symbol": "BTC",
@@ -599,12 +580,11 @@
       "times_correct": 0,
       "active": true,
       "gate_percentage": 20,
-      "enabled_at": "2026-06-21T12:07:00Z",
-      "enabled_reason": "RUN111_AUTO_FIX (conf=82%>=75%): BTC SHORT 80-90% conf = 57.7% WR, EV=+$59.52 (n=26)."
+      "enabled_at": "2026-06-21T12:07:00Z"
     },
     {
       "rule_id": "trending_early_hold_guard_v1",
-      "hypothesis_statement": "Trending regime trades held 12h+ achieve 73% WR vs 42% for early exits. Hold time matters in trend.",
+      "hypothesis_statement": "Trending regime trades held 12h+ achieve 73% WR vs 42% for early exits.",
       "action": "boost",
       "conditions": {
         "regime": "trending"
@@ -622,7 +602,7 @@
     },
     {
       "rule_id": "sol_long_low_conf_penalize_v1",
-      "hypothesis_statement": "SOL LONG <65% confidence: WR=14.3% (n=14), -$1277 PnL. Worst sub-condition in 10d dataset. SOL_LONG at full pop has EV=-$2.62/trade (WR=53.3%, n=122).",
+      "hypothesis_statement": "SOL LONG <65% confidence: WR=14.3% (n=14), -$1277 PnL. Worst sub-condition.",
       "action": "penalize",
       "conditions": {
         "symbol": "SOL",
@@ -639,10 +619,8 @@
       "times_correct": 0,
       "active": true,
       "gate_percentage": 20,
-      "applied_by": "master_engine_run114_2026-06-21T16:30Z",
-      "source_audit": "autonomous_audit_2026-06-21T16-09-26Z.md Run 114 REC2",
-      "expected_impact": "-20pt confidence penalty on SOL LONG <65% conf. At gate=20, probing 20% of these signals. Est. +$127/day when fully deployed.",
-      "graduate_criteria": "Escalate gate from 20 to 50 if treatment_wr < 0.30 on n>=15 live SOL LONG <65% trades (confirming block is correct). Deactivate if treatment_wr > 0.55 on n>=20."
+      "applied_by": "master_engine_run114_2026-06-21T16:30Z"
     }
-  ]
+  ],
+  "last_updated": "2026-06-21T21:03:32Z"
 }

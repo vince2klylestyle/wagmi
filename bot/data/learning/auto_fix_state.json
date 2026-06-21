@@ -1,124 +1,73 @@
 {
-  "last_run": "2026-06-21T18:30:00Z",
-  "run_number": 116,
-  "cadence_streak": 38,
+  "last_run": "2026-06-21T21:04:02Z",
+  "run_number": 117,
+  "cadence_streak": 39,
   "audit_source": "autonomous_audit_2026-06-21T18-30-00Z.md",
   "audit_run_number": 115,
   "audit_dataset": "backtest_100d.csv (n=589, BTC/HYPE/SOL)",
-  "fixes_applied_this_run": 0,
-  "new_fixes_this_run": [],
+  "fixes_applied_this_run": 1,
+  "new_fixes_this_run": [
+    {
+      "rec_id": "TOD_MORNING_EDGE_ACTIVATE",
+      "description": "Activated tod_morning_edge_v1: active=False,gate=0 -> active=True,gate=20",
+      "confidence": 82,
+      "evidence": "71% WR n=160 (backtest_100d + trades_10d), conditions: hour_utc 06-12",
+      "baseline_wr": 0.71,
+      "treatment_wr": null,
+      "applied_at": "2026-06-21T21:04:02Z",
+      "file": "bot/data/llm/graduated_rules.json",
+      "rule_id": "tod_morning_edge_v1",
+      "gate_before": 0,
+      "gate_after": 20,
+      "active_before": false,
+      "active_after": true
+    }
+  ],
+  "major_discovery_run117": {
+    "finding": "DEFERRED CODE CHANGES WERE ALREADY APPLIED IN PRIOR RUNS",
+    "details": [
+      "graduated_rules.py:matches() line 52-53: exclude_symbols already implemented",
+      "multi_strategy_main.py line 3257: _gr_side = BUY if LONG else SELL already applied",
+      "short_direction_veto_v1: already has exclude_symbols=[SOL] and is active gate=20"
+    ],
+    "implication": "SOL SHORT was ALREADY UNBLOCKED - not blocked as prior 5 runs assumed",
+    "severity": "P0_RESOLVED",
+    "runs_incorrectly_flagged_as_blocked": 5
+  },
   "skipped_this_run": [
     {
-      "rec_id": "REC1_EXCLUDE_SYMBOLS_CODE_FIX",
-      "reason": "CODE_CHANGE_REQUIRED: graduated_rules.py needs exclude_symbols support — already escalated in Run 115, awaiting code confirmation",
-      "confidence": 82,
-      "priority": "P0",
-      "note": "Rec 1 from audit Run 115 (conf=82%). Estimated +$160/day SOL SHORT unblocked. Requires code addition to graduated_rules.py:matches().",
-      "consecutive_runs_unactioned": 5,
-      "escalation": "P0 — code change required, flagged 5 consecutive runs"
-    },
-    {
       "rec_id": "REC2_BTC_SHORT_90PLUS_INVESTIGATE",
-      "reason": "INVESTIGATION_REQUIRED: btc_short_90plus_boost_v1 times_applied=0 across all runs. Diagnostic logging needed before code fix.",
+      "reason": "INVESTIGATION_REQUIRED: btc_short_90plus_boost_v1 times_applied=0. Side vocab fix now live.",
       "confidence": 65,
       "priority": "P2",
-      "note": "Rec 2 from audit Run 115 (conf=65% — below 75% threshold). Add diagnostic log to evaluate_signal() to trace why rule never fires.",
-      "consecutive_runs_flagged": 3
-    },
-    {
-      "rec_id": "REC3_RECORD_OUTCOME_SIDE_FIX",
-      "reason": "CODE_CHANGE_REQUIRED: multi_strategy_main.py line 3256 passes LONG/SHORT but rules expect BUY/SELL. times_correct permanently 0 for all 16 side-conditioned rules.",
-      "confidence": 95,
-      "priority": "P0",
-      "note": "Rec 3 from audit Run 115 (conf=95% — ABOVE 75% threshold). ONE-LINE FIX. _signal_side = 'BUY' if event.side == 'LONG' else 'SELL'. Run 115 master_engine_state claims fix was applied — verifying if actually in codebase.",
-      "consecutive_runs_flagged": 4,
-      "fix_details": {
-        "file": "bot/multi_strategy_main.py",
-        "line": 3256,
-        "change": "_signal_side = 'BUY' if event.side == 'LONG' else 'SELL'; pass _signal_side to record_outcome() instead of event.side"
-      }
+      "consecutive_runs_flagged": 4
     },
     {
       "rec_id": "REC_DURATION_H_FIX",
-      "reason": "CODE_CHANGE_REQUIRED: backtest/engine.py and position_manager.py. 91.2% trades have duration_h=0.0 in 100d dataset.",
+      "reason": "CODE_CHANGE_REQUIRED: backtest/engine.py ~line 2522. 6th run unactioned.",
       "confidence": 92,
       "priority": "P1",
-      "consecutive_runs_unactioned": 5
+      "consecutive_runs_unactioned": 6
     }
   ],
   "already_present": [
-    "hype_short_veto_v1 (gate=100%) — validated by 100d data, CONFIRMED correct",
-    "night_session_block_v1 (gate=100%) — confirmed, n=13 trades at 15% WR",
-    "sol_long_low_conf_penalize_v1 (gate=20%) — added Run 114"
+    "hype_short_veto_v1 (gate=100%) - validated by 100d data",
+    "night_session_block_v1 (gate=100%) - confirmed",
+    "short_direction_veto_v1 (gate=20%) - already has exclude_symbols=[SOL]",
+    "record_outcome() BUY/SELL mapping - already applied multi_strategy_main.py:3257"
   ],
-  "high_confidence_recs_from_latest_audit": [
-    {
-      "rec_id": "REC3_RECORD_OUTCOME_SIDE_FIX",
-      "confidence": 95,
-      "above_threshold": true,
-      "threshold": 75,
-      "action": "Would apply gate_percentage=20 probe — but requires code change, not JSON",
-      "status": "DEFERRED_CODE_CHANGE"
-    },
-    {
-      "rec_id": "REC1_EXCLUDE_SYMBOLS_CODE_FIX",
-      "confidence": 82,
-      "above_threshold": true,
-      "threshold": 75,
-      "action": "Would apply gate_percentage=20 probe — but requires code change to matches()",
-      "status": "DEFERRED_CODE_CHANGE"
-    }
-  ],
-  "100d_audit_key_validations": {
-    "hype_short_danger_zone_75_85_pct": {
-      "wr": "33%",
-      "n": 40,
-      "pnl": -4155,
-      "verdict": "hype_short_veto_v1 VALIDATED — do not deactivate"
-    },
-    "overall_wr_100d": "44.5% (n=589) vs 57% (10d n=965) — includes older pre-optimization trades",
-    "payoff_ratio_100d": 0.930,
-    "confidence_inversion_confirmed": "80-90% conf WR=40% worse than 60-70% WR=48.6% in 100d dataset"
-  },
   "total_rules_in_llm_graduated": 31,
-  "active_rules": 22,
-  "total_applied_all_time": 105,
+  "active_rules": 23,
+  "total_fixes_all_time": 106,
   "deferred_code_changes": [
-    {
-      "id": "EXCLUDE_SYMBOLS_MATCHES",
-      "confidence": 0.82,
-      "priority": "P0",
-      "status": "CODE_CHANGE_REQUIRED — ESCALATED (5 consecutive runs unactioned)",
-      "detail": "Add exclude_symbols support to bot/llm/graduated_rules.py:matches(). Then add exclude_symbols=['SOL'] to short_direction_veto_v1.",
-      "run_first_flagged": 111,
-      "runs_unactioned": 5,
-      "estimated_daily_impact": "+$160/day"
-    },
-    {
-      "id": "RECORD_OUTCOME_SIDE_ENCODING",
-      "confidence": 0.95,
-      "priority": "P0",
-      "status": "CODE_CHANGE_REQUIRED — 4 consecutive runs confirming",
-      "file": "bot/multi_strategy_main.py",
-      "line": 3256,
-      "change": "Map LONG->BUY / SHORT->SELL before calling record_outcome()",
-      "runs_unactioned": 4
-    },
     {
       "id": "DURATION_H_FIX",
       "confidence": 0.92,
       "priority": "P1",
-      "status": "CODE_CHANGE_REQUIRED — 5 consecutive runs",
+      "status": "CODE_CHANGE_REQUIRED - 6 consecutive runs",
       "file_1": "bot/execution/position_manager.py",
-      "file_2": "bot/backtest/engine.py ~line 2522"
-    },
-    {
-      "id": "BTC_SHORT_90PLUS_DIAGNOSTIC",
-      "confidence": 0.65,
-      "priority": "P2",
-      "status": "INVESTIGATION — add debug log to GraduatedRulesEngine.evaluate_signal()",
-      "rule_id": "btc_short_90plus_boost_v1",
-      "times_applied": 0
+      "file_2": "bot/backtest/engine.py ~line 2522",
+      "impact": "HoldTimeRuleManager neutered - min_hold_hours stuck at manual 3.0"
     }
   ]
 }

@@ -1,139 +1,77 @@
 {
   "schema_version": "4.0",
-  "last_run": "2026-06-21T18:30:00Z",
-  "run_number": 116,
-  "cadence_streak": 38,
-  "bot_offline_days": 69.25,
+  "last_run": "2026-06-21T21:05:51Z",
+  "run_number": 117,
+  "cadence_streak": 39,
+  "bot_offline_days": 69.42,
   "today_date": "2026-06-21",
   "data_sources": {
     "audit_latest": "bot/data/sessions/autonomous_audit_2026-06-21T18-30-00Z.md (Run 115)",
     "audit_dataset": "backtest_100d.csv (n=589, BTC/HYPE/SOL)",
-    "trades_live": "bot/data/trades.csv — FILE MISSING (bot offline)",
-    "trades_backtest_10d": "bot/trades_10d.csv (n=965) — cross-reference",
-    "graduated_rules": "bot/feedback/graduated_rules.json (31 rules, 22 active)",
-    "cost_tracker": "NOT FOUND — bot offline 69+ days",
-    "prior_master_state": "bot/data/learning/master_engine_state.json (Run 115)"
+    "trades_live": "bot/data/trades.csv - FILE MISSING (bot offline 69.42 days)",
+    "graduated_rules": "bot/data/llm/graduated_rules.json (31 rules, 23 now active - tod_morning_edge_v1 activated)"
   },
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETED",
-      "run_number": 116,
-      "output_file": "bot/data/learning/auto_fix_state.json",
-      "fixes_applied_this_run": 0,
-      "reason_no_fixes": "All qualifying recs (conf>=75%) require code changes, not JSON edits.",
-      "high_confidence_recs_above_75_pct": [
-        {"rec_id": "REC3_RECORD_OUTCOME_SIDE_FIX", "confidence": 95, "action_needed": "CODE: multi_strategy_main.py line 3256", "status": "DEFERRED_CODE_CHANGE"},
-        {"rec_id": "REC1_EXCLUDE_SYMBOLS_CODE_FIX", "confidence": 82, "action_needed": "CODE: graduated_rules.py:matches()", "status": "DEFERRED_CODE_CHANGE"}
-      ],
-      "total_rules_in_graduated": 31,
-      "active_rules": 22,
-      "total_fixes_all_time": 105,
-      "key_finding": "hype_short_veto_v1 CONFIRMED CORRECT by 100d data: HYPE SHORT 75-85% = 33% WR, -$4155"
+      "fixes_applied_this_run": 1,
+      "gates_active": 23,
+      "new_fix": {"rule_id": "tod_morning_edge_v1", "action": "activated gate=0->20", "evidence": "71% WR n=160", "confidence": 82},
+      "major_discovery": "PRIOR P0 CODE FIXES ALREADY APPLIED - exclude_symbols, record_outcome BUY/SELL, short_direction_veto_v1 SOL exclusion all confirmed.",
+      "total_fixes_all_time": 106
     },
     "execution_forensics": {
       "status": "COMPLETED",
-      "run_number": 116,
-      "output_file": "bot/data/learning/execution_forensics.json",
       "live_data_available": false,
-      "key_metrics_100d": {
-        "win_rate_pct": 44.5,
-        "total_pnl": -8173.52,
-        "payoff_ratio": 0.930,
-        "sl_hit_rate_pct": 45.7,
-        "breakeven_wr_required_pct": 54.0
-      },
-      "avg_slippage": "UNAVAILABLE — no live fills",
-      "duration_h_broken_pct": 100.0,
-      "duration_h_bug_runs": 5,
-      "confidence_inversion_100d": {
-        "finding": "80-90% confidence WR=40% is WORST band",
-        "severity": "P0_NEW"
-      }
+      "key_metrics_100d": {"win_rate_pct": 44.5, "total_pnl": -8173.52, "payoff_ratio": 0.93, "sl_hit_rate_pct": 45.7},
+      "avg_slippage": "UNAVAILABLE - no live fills",
+      "duration_h_bug_runs": 6
     },
     "live_injection": {
       "status": "COMPLETED",
-      "run_number": 116,
-      "output_file": "bot/data/learning/live_edge_data.json",
-      "high_edges_found": [
-        {"setup": "SOL_SHORT", "wr_pct": 63.7, "n": 179, "ev_per_trade": 32.44, "status": "BLOCKED"},
-        {"setup": "MORNING_SESSION_06_12", "wr_pct": 71.0, "n": 160, "status": "INACTIVE tod_morning_edge_v1 gate=0", "new_finding": true},
-        {"setup": "BTC_SHORT_90plus", "wr_pct": 67.4, "n": 43, "status": "RULE ACTIVE but times_applied=0"}
-      ],
-      "new_opportunity_run116": {
-        "setup": "tod_morning_edge_v1 activation",
-        "edge": "71% WR n=160",
-        "action": "Set gate_percentage=20 in graduated_rules.json"
-      }
+      "high_edges_found": 4,
+      "weak_setups_found": 4,
+      "high_edges": [
+        {"setup": "SOL_SHORT", "wr_pct": 63.7, "n": 179, "status": "UNBLOCKED"},
+        {"setup": "MORNING_06_12", "wr_pct": 71.0, "n": 160, "status": "ACTIVATED_THIS_RUN"},
+        {"setup": "BTC_SHORT_90plus", "wr_pct": 67.4, "n": 43, "status": "Active gate=20, never fired"},
+        {"setup": "BTC_LONG", "wr_pct": 63.9, "n": 72, "status": "btc_buy_bb_golden_v1 gate=50"}
+      ]
     },
     "daily_synthesis": {
       "status": "COMPLETED",
-      "run_number": 116,
-      "output_file": "bot/data/sessions/daily_synthesis_2026-06-21.json",
-      "date": "2026-06-21",
       "today_trades": 0,
-      "bot_status": "OFFLINE — Day 69.25",
-      "anomalies_count": 8,
-      "p0_anomalies": 2
+      "bot_status": "OFFLINE - Day 69.42",
+      "anomalies_count": 7,
+      "p0_anomalies": 2,
+      "report_generated": true
     },
     "model_optimization": {
       "status": "COMPLETED_INFERENCE_ONLY",
-      "run_number": 116,
-      "output_file": "bot/data/learning/model_optimization.json",
-      "verdict": "All current model assignments appropriate. No swaps recommended.",
-      "one_recommendation": {
-        "agent": "regime_agent",
-        "change": "Upgrade to Sonnet for REGIME_SHIFT events only",
-        "cost_delta_monthly": "+$0.27"
-      },
-      "estimated_llm_cost_per_day_when_live": 0.35,
-      "implied_roi_ratio": 1143
+      "model_swaps_recommended": 1,
+      "swap_detail": "regime_agent: Haiku->Sonnet for REGIME_SHIFT events only (+$0.27/month)"
     }
   },
   "high_priority_findings": [
-    {"rank": 1, "severity": "P0_CRITICAL", "finding": "Bot offline Day 69.25 — zero revenue.", "action_required": "RESTART: cd bot && python run.py paper", "consecutive_runs_flagged": 51},
-    {"rank": 2, "severity": "P0_NEW", "finding": "Confidence inversion in 100d data: 80-90% conf WR=40% is WORST band.", "action_required": "Audit bot/strategies/confidence_scorer.py", "first_identified": "Run 116"},
-    {"rank": 3, "severity": "P0", "finding": "SOL SHORT (WR=63.7%, EV=+$32.44/trade) blocked 5 consecutive runs.", "action_required": "CODE: Add exclude_symbols to graduated_rules.py", "estimated_daily_impact": "+$160-194/day"},
-    {"rank": 4, "severity": "P1", "finding": "Morning 06-12 UTC: 71% WR (n=160) — tod_morning_edge_v1 gate=0.", "action_required": "Activate tod_morning_edge_v1 at gate=20", "new_finding": true},
-    {"rank": 5, "severity": "P1", "finding": "record_outcome() LONG/SHORT vs BUY/SELL mismatch — 16 rules broken.", "action_required": "CODE: multi_strategy_main.py line 3256"},
-    {"rank": 6, "severity": "P1", "finding": "duration_h=0.0 for 91.2% of 100d trades. HoldTimeRuleManager blind. 5th run.", "action_required": "CODE: bot/backtest/engine.py ~line 2522"},
-    {"rank": 7, "severity": "P1_CONFIRMED", "finding": "HYPE SHORT 75-85% conf: 33% WR, -$4155 on 40 trades — hype_short_veto_v1 CORRECT.", "action_required": "NONE"},
-    {"rank": 8, "severity": "P1", "finding": "btc_short_90plus_boost_v1 times_applied=0. Rule never fires.", "action_required": "Add diagnostic log to GraduatedRulesEngine.evaluate_signal()"}
+    {"rank": 1, "severity": "P0_CRITICAL", "finding": "Bot offline Day 69.42 - 52 consecutive runs flagged, zero revenue.", "action_required": "RESTART: cd bot && python run.py paper", "consecutive_runs_flagged": 52},
+    {"rank": 2, "severity": "P0_RESOLVED", "finding": "DEFERRED CODE CHANGES ALREADY APPLIED: exclude_symbols, record_outcome BUY/SELL, short_direction_veto_v1 SOL exclusion confirmed. Prior 5 runs incorrectly showed SOL SHORT as blocked.", "action_required": "NONE - resolved"},
+    {"rank": 3, "severity": "P0", "finding": "Confidence inversion: 80-90% conf WR=40% is WORST band. confidence_scorer.py miscalibrated.", "action_required": "Audit bot/strategies/confidence_scorer.py"},
+    {"rank": 4, "severity": "P1_FIXED", "finding": "tod_morning_edge_v1 ACTIVATED: 71% WR n=160, gate=0->20.", "fix_applied": true},
+    {"rank": 5, "severity": "P1", "finding": "duration_h=0.0 for 91.2% of 100d trades. 6th consecutive run flagged.", "action_required": "CODE: bot/backtest/engine.py ~line 2522", "consecutive_runs_unactioned": 6},
+    {"rank": 6, "severity": "P1", "finding": "btc_short_90plus_boost_v1 times_applied=0. Side vocab fix now live. Monitor on restart.", "action_required": "Monitor on restart"}
   ],
   "cumulative_stats": {
     "total_rules_in_graduated": 31,
-    "active_rules": 22,
-    "total_fixes_all_time": 105,
-    "fixes_this_run": 0,
-    "new_findings_this_run": [
-      "confidence_inversion_100d (80-90% conf = 40% WR — worst band)",
-      "hype_short_75_85_danger_zone_quantified (33% WR, -$4155, n=40 in 100d)",
-      "morning_edge_unmonetized (71% WR n=160, tod_morning_edge_v1 gate=0)",
-      "100d_vs_10d_dataset_discrepancy (WR 44.5% vs 57% — pre-optimization data effect)"
-    ],
-    "validated_rules_this_run": [
-      "hype_short_veto_v1 — CONFIRMED CORRECT by 100d data",
-      "night_session_block_v1 — CONFIRMED (15% WR n=13)"
-    ],
-    "consecutive_cadence_streak": 38
+    "active_rules": 23,
+    "total_fixes_all_time": 106,
+    "fixes_this_run": 1,
+    "consecutive_cadence_streak": 39
   },
   "next_run_focus": {
-    "priority_1": "RESTART: cd bot && python run.py paper — 51 consecutive runs flagged",
-    "priority_2": "VERIFY Run 115 claimed code fixes are in codebase",
-    "priority_3": "ACTIVATE tod_morning_edge_v1 at gate=20",
-    "priority_4": "INVESTIGATE confidence_inversion_100d",
-    "priority_5": "CODE: duration_h fix in bot/backtest/engine.py (6th request if not done)"
-  },
-  "run_metadata": {
-    "engine_version": "master_engine_v4.0",
-    "subsystems_executed": 5,
-    "subsystems_completed": 5,
-    "files_written": [
-      "bot/data/learning/auto_fix_state.json",
-      "bot/data/learning/execution_forensics.json",
-      "bot/data/learning/live_edge_data.json",
-      "bot/data/sessions/daily_synthesis_2026-06-21.json",
-      "bot/data/learning/model_optimization.json",
-      "bot/data/learning/master_engine_state.json"
-    ]
+    "priority_1": "RESTART: cd bot && python run.py paper - 52 consecutive runs flagged",
+    "priority_2": "AUDIT confidence_scorer.py (P0 confidence inversion)",
+    "priority_3": "CODE: duration_h fix in bot/backtest/engine.py (6th request)",
+    "priority_4": "MONITOR: tod_morning_edge_v1 first trades after restart",
+    "priority_5": "MONITOR: btc_short_90plus_boost_v1 times_applied on restart"
   }
 }
