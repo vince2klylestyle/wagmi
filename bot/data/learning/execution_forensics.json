@@ -1,25 +1,11 @@
 {
-  "last_updated": "2026-06-21T00:30:00Z",
-  "run_number": 108,
-  "data_source": "bot/backtest_10d_v3.csv (n=32) + bot/backtest_20d.csv (n=111) — live trades.csv empty (bot offline Day 68)",
+  "last_updated": "2026-06-21T10:10:00Z",
+  "run_number": 110,
+  "data_source": "bot/trades_10d.csv (n=965) — live trades.csv empty (bot offline Day 68.42)",
   "avg_slippage": {"value": "UNAVAILABLE", "reason": "Bot offline. No live fill data."},
-  "noise_stop_problem": {
-    "10d_noise_sl_rate": 0.417,
-    "short_sl_multiplier": 2.65,
-    "mitigation": "conf_floor_70_v1 + short_direction_veto_v1 both ACTIVE gate=20"
-  },
-  "payoff_analysis": {
-    "10d_v3": {"n": 32, "wr": 0.5, "payoff_ratio": 0.956, "avg_win": 226.38, "avg_loss": -236.82},
-    "20d": {"n": 111, "wr": 0.658, "payoff_ratio": 0.916, "avg_win": 223.78, "avg_loss": -244.26}
-  },
-  "trailing_stop_analysis": {
-    "10d_wr": 0.5, "10d_avg_pnl": -0.5,
-    "20d_wr": 0.84, "20d_avg_pnl": 19.89,
-    "severity": "P2"
-  },
-  "output": {
-    "avg_slippage": "UNAVAILABLE_BOT_OFFLINE",
-    "noise_stop_problem": "41.7% of 10d SLs from conf<70% setups. SHORT SL losses 2.65x LONG SL losses.",
-    "payoff_ratio": 0.956
-  }
+  "sl_analysis": {"total_trades": 965, "sl_count": 370, "sl_rate_pct": 38.3, "sl_by_symbol_side": {"BTC_LONG": {"n": 24, "avg_pnl": -414.62, "total": -9950.84}, "BTC_SHORT": {"n": 83, "avg_pnl": -366.45, "total": -30415.76}, "HYPE_LONG": {"n": 58, "avg_pnl": -186.58, "total": -10821.64}, "HYPE_SHORT": {"n": 97, "avg_pnl": -181.42, "total": -17598.15}, "SOL_LONG": {"n": 52, "avg_pnl": -125.77, "total": -6539.94}, "SOL_SHORT": {"n": 56, "avg_pnl": -139.04, "total": -7786.28}}},
+  "duration_h_status": {"zero_duration_count": 809, "zero_duration_pct": 83.8, "status": "BROKEN", "note": "HoldTimeRuleManager corrupted. trending_early_hold_guard_v1 cannot function."},
+  "noise_stop_analysis": {"noise_regime_pct": 100.0, "note": "All 965 trades have blank llm_regime. CSV_REGIME_BLANK P1 bug.", "proxy_noise_stop_pct": 41.7},
+  "payoff_analysis": {"overall_payoff": 0.763, "by_conf_bin": {"60-70": {"payoff": 0.964, "wr": 0.463, "ev": -18.87, "avg_win": 203.51, "avg_loss": -210.92}, "70-80": {"payoff": 0.697, "wr": 0.586, "ev": -0.98, "avg_win": 127.31, "avg_loss": -182.65}, "80-90": {"payoff": 0.709, "wr": 0.602, "ev": 7.67}, "90+": {"payoff": 1.035, "wr": 0.560, "ev": 32.33, "avg_win": 238.12, "avg_loss": -230.05}}},
+  "output": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "payoff_ratio": 0.763, "key_finding": "70-80% conf band (n=633): WR=58.6% but EV=-$0.98 due to payoff 0.697"}
 }

@@ -1,17 +1,20 @@
 {
-  "last_updated": "2026-06-21T10:06:33.214566Z",
-  "run_number": 109,
-  "data_source": "backtest_10d_v3(n=32) + backtest_20d_top68 = 100 rows",
-  "high_edges_found": 3,
-  "weak_setups_found": 1,
+  "last_updated": "2026-06-21T10:10:00Z",
+  "run_number": 110,
+  "data_source": "bot/trades_10d.csv (n=965)",
+  "high_edges_found": 4,
+  "weak_setups_found": 0,
   "high_edges": {
-    "SOL_LONG": {"wr_pct": 78.3, "n": 23, "pnl": 2323.68, "priority": "P0", "rule": "sol_long_probe_boost_v1 ACTIVE"},
-    "conf_80-90": {"wr_pct": 72.7, "n": 22, "pnl": 3837.90, "priority": "P0", "rule": "high_conf_80_85_penalty REMOVED - correct"},
-    "conf_70-80": {"wr_pct": 63.0, "n": 54, "pnl": -574.26, "priority": "P1", "note": "Positive WR but negative PnL — payoff ratio issue (avg loss > avg win)"}
+    "SOL_SHORT": {"wr_pct": 63.7, "n": 179, "ev_per_trade": 32.44, "total_pnl": 5806.76, "priority": "P0_CRITICAL_NEW", "rule": "short_direction_veto_v1 gate=20 BLOCKS 80%", "note": "HIGHEST EV setup. $259/day missed. Veto targets HYPE, not SOL."},
+    "BTC_LONG": {"wr_pct": 63.9, "n": 72, "ev_per_trade": 25.55, "total_pnl": 1839.60, "priority": "P1"},
+    "conf_90plus": {"wr_pct": 56.0, "n": 91, "ev_per_trade": 32.33, "total_pnl": 2942.03, "priority": "P1"},
+    "conf_80_90": {"wr_pct": 60.2, "n": 118, "ev_per_trade": 7.67, "total_pnl": 904.86, "priority": "P1"}
   },
   "weak_setups": {
-    "BTC_SHORT": {"wr_pct": 20.0, "n": 5, "pnl": -978.66, "mitigation": "short_direction_veto_v1 ACTIVE gate=20"}
+    "conf_60_70": {"wr_pct": 46.3, "n": 123, "ev_per_trade": -18.87, "mitigation": "conf_floor_70_v1 gate=20"},
+    "band_70_80": {"wr_pct": 58.6, "n": 633, "ev_per_trade": -0.98, "note": "Primary drag. Payoff 0.697. TP1_MULTIPLIER_BOOST needed."}
   },
-  "key_insight": "70-80% conf bin: 63% WR but -$574 PnL on 54 trades = payoff ratio < 0.7 in this bin. Need to improve TP exits.",
-  "regime_note": "All 100 rows show regime='blank' — CSV regime column not populated. Cannot compute regime-based WR accurately. P1 fix needed."
+  "critical_new_finding": {"id": "SOL_SHORT_HIGH_EV_BLOCKED", "severity": "HIGH", "confidence": 0.77, "auto_apply_eligible": false, "finding": "SOL_SHORT WR=63.7%, EV=$32.44, n=179. 80% blocked by veto. Add SOL exception."},
+  "key_insight": "SOL_SHORT ($32.44/trade, n=179) is top EV setup, 80% suppressed. 70-80% conf (65.6% of trades) loses despite 58.6% WR due to payoff 0.697.",
+  "regime_note": "All 965 rows: llm_regime=blank (CSV_REGIME_BLANK P1 bug)."
 }

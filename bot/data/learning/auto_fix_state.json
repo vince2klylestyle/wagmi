@@ -1,68 +1,16 @@
 {
-  "last_run": "2026-06-21T10:05:40.316435Z",
-  "run_number": 109,
-  "cadence_streak": 31,
+  "last_run": "2026-06-21T10:10:00Z",
+  "run_number": 110,
+  "cadence_streak": 32,
   "fixes_applied_this_run": 1,
   "gates_active": 20,
-  "total_applied_all_time": 97,
-  "new_fixes_this_run": [
-    {
-      "rule_id": "trending_early_hold_guard_v1",
-      "source_rec": "REC-2",
-      "source_audit": "autonomous_audit_2026-06-21T08-05-38Z",
-      "confidence": 0.78,
-      "gate_percentage": 20,
-      "applied_at": "2026-06-21T10:05:40.316435Z",
-      "baseline_wr": "UNKNOWN_BOT_OFFLINE",
-      "treatment_wr": "PENDING_LIVE_TRADES",
-      "expected_impact": "+$5-15/day",
-      "rollback": "Set active=False on trending_early_hold_guard_v1"
-    }
-  ],
-  "run109_review": {
-    "source_audit": "autonomous_audit_2026-06-21T08-05-38Z (Run105) — most recent",
-    "recs_reviewed": [
-      {
-        "rec_id": "REC1_TOD_AFTERNOON_EVENING_BLOCK",
-        "description": "Add tod_afternoon_block_v1 and tod_evening_block_v1 rules (27% and 29% WR respectively)",
-        "confidence": 70,
-        "action_type": "add_rules",
-        "qualifies": false,
-        "skip_reason": "Confidence 70% < 75% threshold. Sample n=14-15, too small. Apply only after n>=20."
-      },
-      {
-        "rec_id": "REC2_TRENDING_EARLY_HOLD_GUARD",
-        "description": "Promote TRENDING_EARLY_HOLD_GUARD from KB to live graduated rules (78% confidence, 87/352 recoverable SL exits, $1,119 missed)",
-        "confidence": 78,
-        "action_type": "add_rule",
-        "qualifies": true,
-        "status": "APPLIED"
-      },
-      {
-        "rec_id": "REC3_FEEDBACK_PERSISTENCE",
-        "description": "Fix 5 feedback subsystems missing _save() methods",
-        "confidence": 95,
-        "action_type": "code_change",
-        "qualifies": true,
-        "skip_reason": "Architectural code change — cannot auto-apply. Logged as HIGH priority deferred item."
-      }
-    ],
-    "deferred_code_changes": [
-      {
-        "id": "FEEDBACK_PERSISTENCE_5_SYSTEMS",
-        "description": "REC-3: Add _save() to SignalQualityScorer, RegimeFeedbackManager, AdaptiveConfidenceFloor, ParameterTuner, FeedbackLoop",
-        "confidence": 0.95,
-        "priority": "P1",
-        "files": ["bot/feedback/signal_quality.py", "bot/feedback/regime_feedback.py", "bot/feedback/parameter_tuner.py", "bot/feedback/feedback_loop.py"],
-        "status": "LOGGED — needs manual code implementation"
-      },
-      {
-        "id": "TP1_MULTIPLIER_BOOST",
-        "description": "Boost TP1 targets 7% in trending regime — payoff ratio fix (0.956 -> ~1.00)",
-        "confidence": 0.82,
-        "files": ["bot/trading_config.py"],
-        "status": "DEFERRED — needs R:R audit before applying"
-      }
-    ]
-  }
+  "total_applied_all_time": 98,
+  "new_fixes_this_run": [{"rule_id": "btc_short_90plus_boost_v1", "action": "DEACTIVATED", "confidence": 0.85, "applied_at": "2026-06-21T10:10:00Z", "reason": "Conflict with short_direction_veto_v1. BTC SHORT EV=-$7.22/trade, rule never fired."}],
+  "deferred_code_changes": [
+    {"id": "DURATION_H_FIX", "confidence": 0.92, "priority": "P1", "status": "LOGGED"},
+    {"id": "APPLIED_COUNT_PERSISTENCE", "confidence": 0.95, "priority": "P1", "status": "LOGGED"},
+    {"id": "FEEDBACK_PERSISTENCE_5_SYSTEMS", "confidence": 0.95, "priority": "P1", "status": "LOGGED"},
+    {"id": "TP1_MULTIPLIER_BOOST", "confidence": 0.82, "status": "DEFERRED"},
+    {"id": "SOL_SHORT_VETO_REVIEW", "description": "SOL_SHORT WR=63.7%, EV=$32.44, n=179. 80% blocked by short_direction_veto_v1. Add SOL exception.", "confidence": 0.77, "priority": "P1_NEW_Run110", "status": "NEW_FINDING — manual review before auto-apply"}
+  ]
 }
