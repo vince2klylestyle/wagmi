@@ -1,25 +1,25 @@
 {
-  "last_run": "2026-06-20T23:30:00Z",
-  "run_number": 106,
-  "cadence_streak": 28,
-  "bot_offline_days": 67.0,
-  "source_audit": "autonomous_audit_2026-06-20T22:07:20Z (Run104) — Run105 applied all 3 recs. Run106 completed missed partial fix from Run105 REC3.",
-  "session_run": "master_engine_subsystem_run106",
+  "last_run": "2026-06-21T02:12:54Z",
+  "run_number": 108,
+  "cadence_streak": 29,
+  "bot_offline_days": 67.09,
+  "source_audit": "autonomous_audit_2026-06-21T02-06-14Z (Run108)",
+  "session_run": "master_engine_subsystem_run108",
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETED — 1 fix applied (Run106 completes Run105 REC3 partial fix)",
+      "status": "COMPLETED \u2014 1 fix applied (btc_conf_floor_75_v1 added as gate=50 probe)",
       "fixes_applied": 1,
       "fix_detail": {
-        "rule_id": "sniper_premium_insight_stale",
-        "action": "insights.json[9] INVALIDATED",
-        "confidence_pct": 96,
-        "reason": "Run104 REC3 (conf=96%) explicitly named both morning edge (done Run105) AND sniper_premium stale data for invalidation. Zero sniper_premium trades in 10d/20d confirms strategy not generating signals.",
-        "expected_impact": "Risk prevention — prevents stale n=6 insight driving future recommendations"
+        "rule_id": "btc_conf_floor_75_v1",
+        "action": "ADDED to graduated_rules.json \u2014 gate=50 probe",
+        "confidence_pct": 72,
+        "reason": "Run108 REC2 (conf=72%): BTC n=267 gross $431 but fees $2,632 \u2192 net -$2,200. 60-70% conf at 46.3% WR is below break-even. Gate=50 probe to filter low-confidence BTC trades.",
+        "expected_impact": "+$80-120/day from eliminating low-confidence BTC fee drag"
       },
       "rule_integrity_check": {
         "sol_long_veto_v1": "INACTIVE gate=0 (Run101)",
         "btc_long_veto_v1": "INACTIVE gate=0 (Run101)",
-        "sol_long_probe_boost_v1": "ACTIVE gate=50 (Run101)",
+        "sol_long_probe_boost_v1": "ACTIVE gate=50 (Run101/106)",
         "night_session_block_v1": "ACTIVE gate=100",
         "short_direction_veto_v1": "ACTIVE gate=20 (Run100)",
         "hype_long_veto_v1": "ACTIVE gate=100",
@@ -27,65 +27,100 @@
         "high_conf_80_85_penalty_v1": "INACTIVE gate=0 (DEACTIVATED Run105)",
         "conf_floor_70_v1": "ACTIVE gate=20 (REACTIVATED Run105)",
         "tod_morning_edge_v1": "INACTIVE gate=0 (insight invalidated Run105)",
-        "confidence_paradox_sizing_v1": "ACTIVE gate=20 (probe — insufficient 10d data to confirm recovery)"
+        "confidence_paradox_sizing_v1": "ACTIVE gate=20 (probe Run100)",
+        "btc_conf_floor_75_v1": "ACTIVE gate=50 (ADDED Run108 \u2014 probe)"
       },
-      "graduated_rules_total": 28,
+      "graduated_rules_total": 29,
       "graduated_rules_active": 20,
-      "graduated_rules_inactive": 8,
+      "graduated_rules_inactive": 9,
       "total_applied_all_time": 96,
       "insights_valid_active": 4,
       "insights_invalidated": 15,
       "insights_total": 19,
-      "output": {"fixes_applied": 1, "gates_active": 20}
+      "output": {
+        "fixes_applied": 1,
+        "gates_active": 20
+      }
     },
     "execution_forensics": {
-      "status": "COMPLETED — bot offline Day 67, no new findings vs Run105",
+      "status": "COMPLETED \u2014 bot offline Day 67.09",
       "trades_csv_available": false,
-      "avg_slippage": "UNAVAILABLE — bot offline",
-      "noise_stop_problem": {"illiquid_regime_sl_rate": 0.719, "ranging_regime_sl_rate": 0.72, "fix_status": "GATED"},
-      "trailing_stop_degradation": {
-        "type": "TRAILING_STOP_DEGRADATION",
-        "severity": "P2",
-        "value": {"10d_avg_pnl": -2.0, "20d_avg_pnl": 20.0, "10d_wr": 0.50, "20d_wr": 0.842},
-        "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%.",
-        "status": "MONITORING — awaiting bot restart for live data"
+      "trades_10d_csv_available": true,
+      "trades_10d_n": 965,
+      "key_finding": "HYPE net -$5708 (payoff 0.663x, needs 60.1% WR, actual 55.4%). BTC net -$2200 after fees. SOL net +$4868 (only profit center). System payoff ratio 0.763x at 0.3% margin above break-even.",
+      "symbol_performance_10d": {
+        "SOL": {
+          "n": 301,
+          "wr": 0.595,
+          "gross": 5487,
+          "fees": 619,
+          "net": 4868
+        },
+        "BTC": {
+          "n": 267,
+          "wr": 0.566,
+          "gross": 431,
+          "fees": 2632,
+          "net": -2200
+        },
+        "HYPE": {
+          "n": 397,
+          "wr": 0.554,
+          "gross": -5014,
+          "fees": 695,
+          "net": -5709
+        }
       },
-      "feedback_persistence_finding": {
-        "finding": "SignalQualityScorer saves every 10 trades (threshold), AdaptiveConfidenceFloor saves conditionally. HoldTimeRuleManager persists correctly. RegimeFeedbackManager/ParameterTuner/FeedbackLoop: need further investigation. Root cause: early restart before threshold = data loss.",
-        "severity": "P1",
-        "action": "Reduce save threshold in SignalQualityScorer to 1 (save every trade) or add shutdown hook",
-        "status": "INVESTIGATION_COMPLETE — fix deferred pending safe implementation"
-      },
-      "output": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "trailing_stop": "P2 degraded 10d avg -$2/trade. Persistence bug investigation completed."}
+      "payoff_ratio": 0.763,
+      "break_even_wr": 0.567,
+      "actual_wr": 0.57,
+      "margin_above_breakeven": 0.003,
+      "kelly_fraction": 0.006
     },
-    "live_injection": {
-      "status": "NO_CHANGE — live_edge_data.json current from Run105",
-      "high_edges_found": 5,
-      "weak_setups_found": 6,
-      "note": "Same backtest datasets. No new edge data since Run105.",
-      "output": {"high_edges_found": 5, "weak_setups_found": 6}
-    },
-    "daily_synthesis": {
-      "status": "NO_CHANGE — daily_synthesis_2026-06-20.json complete from Run105",
-      "date": "2026-06-20",
-      "today_trades": 0,
-      "today_pnl": 0.0,
-      "anomalies_found": 9,
-      "note": "Same day. 0 new trades. No updates required.",
-      "output": {"anomalies_found": 9, "report_generated": true}
-    },
-    "model_optimization": {
-      "status": "SKIPPED — cost_tracker.json absent",
-      "model_swaps_recommended": 0,
-      "output": {"model_swaps_recommended": 0, "potential_savings": "$0.00"}
+    "insight_validation": {
+      "insights_checked": 4,
+      "insights_confirmed": 0,
+      "insights_unvalidatable": 4,
+      "reason": "Time-of-day insights (night/evening/afternoon weakness + ensemble concentration) cannot be validated \u2014 trades_10d.csv lacks timestamp column and n_agree field",
+      "action_required": "Fix CSV writer to include open_time timestamp column"
     }
   },
   "high_priority_findings": [
-    {"subsystem": "auto_fix", "severity": "MEDIUM", "finding": "SNIPER_PREMIUM INSIGHT INVALIDATED — stale n=6 data from early May 2026. Strategy not generating signals in 10d/20d.", "action": "COMPLETED Run106 — completes Run105 REC3 partial fix.", "status": "RESOLVED"},
-    {"subsystem": "execution_forensics", "severity": "MEDIUM", "finding": "FEEDBACK_PERSISTENCE_BUG: SignalQualityScorer saves every 10 trades — data lost if restart before threshold. Fix: reduce save threshold to 1 or add shutdown hook.", "action": "Deferred — safe implementation requires testing with offline bot", "status": "INVESTIGATION_COMPLETE"},
-    {"subsystem": "execution_forensics", "severity": "MEDIUM", "finding": "TRAILING_STOP_DEGRADATION: 10d avg -$2/trade vs 20d +$20/trade", "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%.", "status": "MONITORING"},
-    {"subsystem": "auto_fix", "severity": "CRITICAL", "finding": "BOT STILL OFFLINE — Day 67.0. All rules ready, EV improvements accumulated but not live-tested.", "action": "P0: cd bot && python run.py paper", "status": "UNRESOLVED"},
-    {"subsystem": "auto_fix", "severity": "HIGH", "finding": "PAYOFF_RATIO CODE FIX PENDING: TP1_MULTIPLIER=1.07 requires audit of all strategy TP calc paths in trading_config.py. -$1,383/100 trades structural loss.", "action": "Human: audit regime_trend_tp1_mult/tp_sl_rr1/multi_tier_tp1_ratio paths, add global TP1 boost multiplier.", "status": "PENDING_CODE_CHANGE"}
+    {
+      "subsystem": "auto_fix",
+      "severity": "MEDIUM",
+      "finding": "SNIPER_PREMIUM INSIGHT INVALIDATED \u2014 stale n=6 data from early May 2026. Strategy not generating signals in 10d/20d.",
+      "action": "COMPLETED Run106 \u2014 completes Run105 REC3 partial fix.",
+      "status": "RESOLVED"
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "MEDIUM",
+      "finding": "FEEDBACK_PERSISTENCE_BUG: SignalQualityScorer saves every 10 trades \u2014 data lost if restart before threshold. Fix: reduce save threshold to 1 or add shutdown hook.",
+      "action": "Deferred \u2014 safe implementation requires testing with offline bot",
+      "status": "INVESTIGATION_COMPLETE"
+    },
+    {
+      "subsystem": "execution_forensics",
+      "severity": "MEDIUM",
+      "finding": "TRAILING_STOP_DEGRADATION: 10d avg -$2/trade vs 20d +$20/trade",
+      "action": "Monitor 30 live trailing-stop trades. Widen by 0.5 ATR if WR<55%.",
+      "status": "MONITORING"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "CRITICAL",
+      "finding": "BOT STILL OFFLINE \u2014 Day 67.0. All rules ready, EV improvements accumulated but not live-tested.",
+      "action": "P0: cd bot && python run.py paper",
+      "status": "UNRESOLVED"
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "HIGH",
+      "finding": "PAYOFF_RATIO CODE FIX PENDING: TP1_MULTIPLIER=1.07 requires audit of all strategy TP calc paths in trading_config.py. -$1,383/100 trades structural loss.",
+      "action": "Human: audit regime_trend_tp1_mult/tp_sl_rr1/multi_tier_tp1_ratio paths, add global TP1 boost multiplier.",
+      "status": "PENDING_CODE_CHANGE"
+    }
   ],
   "cumulative_stats": {
     "total_rules_llm": 28,
@@ -100,17 +135,33 @@
     "estimated_daily_ev_when_live": "+$293/day (SOL $124 + BTC $8 + high_conf_penalty $109 + conf_floor $52)"
   },
   "next_run_focus": {
-    "priority_1": "Start bot: cd bot && python run.py paper (P0 — Day 67+ offline)",
-    "priority_2": "Apply TP1_MULTIPLIER: audit regime_trend_tp1_mult, tp_sl_rr1, multi_tier_tp1_ratio paths — then add 1.07x global TP1 boost",
-    "priority_3": "If bot running: capture first SOL LONG + BTC LONG trades — verify rule changes took effect",
-    "priority_4": "If bot running: monitor 80-85% conf trades — confirm deactivated penalty not firing",
+    "priority_1": "Start bot: cd bot && python run.py paper (P0 \u2014 Day 67+ offline)",
+    "priority_2": "Apply TP1_MULTIPLIER: audit regime_trend_tp1_mult, tp_sl_rr1, multi_tier_tp1_ratio paths \u2014 then add 1.07x global TP1 boost",
+    "priority_3": "If bot running: capture first SOL LONG + BTC LONG trades \u2014 verify rule changes took effect",
+    "priority_4": "If bot running: monitor 80-85% conf trades \u2014 confirm deactivated penalty not firing",
     "priority_5": "Fix SignalQualityScorer save threshold: change `if total % 10 == 0` to `always save` or add shutdown hook"
   },
   "subsystem_outputs_summary": {
-    "auto_fix": {"fixes_applied": 1, "gates_active": 20, "insights_invalidated_this_run": 1},
-    "execution_forensics": {"avg_slippage": "UNAVAILABLE_BOT_OFFLINE", "persistence_bug": "SignalQualityScorer saves every 10 trades — partial data loss risk on early restart"},
-    "live_injection": {"high_edges_found": 5, "weak_setups_found": 6},
-    "daily_synthesis": {"anomalies_found": 9, "no_change": true},
-    "model_optimization": {"model_swaps_recommended": 0, "potential_savings": "$0.00"}
+    "auto_fix": {
+      "fixes_applied": 1,
+      "gates_active": 20,
+      "insights_invalidated_this_run": 1
+    },
+    "execution_forensics": {
+      "avg_slippage": "UNAVAILABLE_BOT_OFFLINE",
+      "persistence_bug": "SignalQualityScorer saves every 10 trades \u2014 partial data loss risk on early restart"
+    },
+    "live_injection": {
+      "high_edges_found": 5,
+      "weak_setups_found": 6
+    },
+    "daily_synthesis": {
+      "anomalies_found": 9,
+      "no_change": true
+    },
+    "model_optimization": {
+      "model_swaps_recommended": 0,
+      "potential_savings": "$0.00"
+    }
   }
 }
