@@ -64,6 +64,9 @@ class GraduatedRule:
                     return False
         if c.get("side") and side.upper() != c["side"].upper():
             return False
+        if c.get("exclude_symbols"):
+            if symbol.upper() in [s.upper() for s in c["exclude_symbols"]]:
+                return False
         if c.get("strategy") and strategy != c["strategy"]:
             return False
         if c.get("strategies_include"):

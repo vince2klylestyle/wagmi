@@ -3122,9 +3122,10 @@ class BacktestEngine:
                 except (TypeError, ValueError):
                     rr_achieved = 0
 
-                # Duration in hours — handle both datetime and float (Unix epoch) timestamps
+                # Duration in hours — handle both datetime and float (Unix epoch) timestamps.
+                # Require >= 60s to filter wallclock noise from backtest sim (wallclock ~0.001s).
                 hold_s = meta.get("hold_time_s") or open_meta.get("hold_time_s", 0)
-                if hold_s and hold_s > 0:
+                if hold_s and hold_s >= 60:
                     # hold_time_s may be a timedelta or a float (seconds)
                     try:
                         duration_h = round(hold_s.total_seconds() / 3600, 1)

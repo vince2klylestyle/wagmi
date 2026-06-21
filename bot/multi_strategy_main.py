@@ -3253,8 +3253,11 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 # Graduated rules: record outcome so rules track accuracy + auto-retire poor rules
                 try:
                     from llm.graduated_rules import get_graduated_rules_engine
+                    _side_for_rules = {"LONG": "BUY", "SHORT": "SELL"}.get(
+                        (event.side or "").upper(), event.side or ""
+                    )
                     get_graduated_rules_engine().record_outcome(
-                        symbol=symbol, regime=_rg_fb, side=event.side, won=total_pnl > 0
+                        symbol=symbol, regime=_rg_fb, side=_side_for_rules, won=total_pnl > 0
                     )
                 except Exception:
                     pass
