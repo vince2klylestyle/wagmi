@@ -49,6 +49,8 @@ class GraduatedRule:
         c = self.conditions
         if c.get("symbol") and symbol.upper() != c["symbol"].upper():
             return False
+        if c.get("exclude_symbols") and symbol.upper() in [s.upper() for s in c["exclude_symbols"]]:
+            return False
         if c.get("regime"):
             # Canonicalize both sides for comparison — "trending_bull", "trending_bear",
             # "trending", "trend" all compare equal to a rule condition of "trending" or "trend"
