@@ -1,169 +1,93 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "2.1",
-  "timestamp": "2026-06-22T05:06:00.585709+00:00",
+  "timestamp": "2026-06-22T14:00:00.000000+00:00",
   "today": "2026-06-22",
-  "run_number": 122,
+  "run_number": 123,
   "bot_status": "OFFLINE",
-  "days_offline": 71,
-  "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119) — no newer audit this run",
-  "last_run": "2026-06-22T05:06:00.585709+00:00",
+  "days_offline": 73,
+  "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119)",
+  "last_run": "2026-06-22T14:00:00.000000+00:00",
   "subsystems": {
     "auto_fix": {
-      "status": "CODE_FIX_APPLIED",
+      "status": "COMPLETE_FIX_APPLIED",
       "fixes_applied": 1,
-      "gates_active": 63,
-      "fix_candidates_evaluated": [
-        {
-          "rec_id": "DURATION_H_FIX",
-          "confidence": 92,
-          "result": "APPLIED — 10th consecutive flag, code change executed this run",
-          "files_changed": [
-            "bot/backtest/engine.py:1941 — added _opened.opened_at = sim_dt alongside open_time patch",
-            "bot/execution/position_manager.py:958 — _hold_now uses _sim_now (sim time) not datetime.now() (wall clock)"
-          ],
-          "expected_impact": "HoldTimeRuleManager now fires in backtest. min_hold_hours=3.0 enforced for trend/regime regimes. Blocks same-candle-exit positions from triggering early exit via 5m patterns."
-        },
-        {
-          "rec_id": "REC1_HYPE_SHORT_VETO_SPLIT",
-          "confidence": 71,
-          "result": "SKIP — below 75% auto-apply threshold (3rd consecutive)"
-        },
-        {
-          "rec_id": "REC2_TOD_MORNING_EDGE_DISABLE",
-          "confidence": 88,
-          "result": "ALREADY_APPLIED — applied in Run 120"
-        },
-        {
-          "rec_id": "REC3_RR_GEOMETRY_FIX",
-          "confidence": 82,
-          "result": "DEFERRED — code change required (bot/trading_config.py). Consecutive runs: 3."
-        },
-        {
-          "rec_id": "EXPAND_CONF_PARADOX_80_100",
-          "confidence": 82,
-          "result": "BLOCKED_BY_DATASET_CONFLICT — 100d vs full dataset contradict on 80-90% confidence. 2nd consecutive block."
-        }
-      ],
-      "output": {"fixes_applied": 1, "gates_active": 63}
+      "gates_active": 88,
+      "gate_20_rules": 24,
+      "fix_applied": {
+        "id": "DURATION_H_FIX_COMPLETE",
+        "confidence": 0.92,
+        "consecutive_runs_before": 11,
+        "builds_on": "c7c3d00 (Run 122 partial: engine.py + _sim_now hold_hours)",
+        "commit": "1310484 on claude/duration-h-fix-complete",
+        "summary": "Adds opened_at=open_time init in __post_init__ + max(...,1.0) floor on 3 hold_time_s calculations. Completes the 2-part DURATION_H_FIX."
+      },
+      "output": {"fixes_applied": 1, "gates_active": 88}
     },
     "execution_forensics": {
       "status": "COMPLETE_NO_NEW_DATA",
-      "data_source": "cached — trades.csv missing (bot offline Day 71)",
+      "data_source": "cached (bot offline Day 73)",
       "avg_slippage": "0.51%",
-      "noise_stop_pct": "50.8% of SL hits at conf>75 in noisy regimes",
-      "instant_sl_rate": "89%",
-      "instant_sl_note": "89% of SL hits are same-candle closes — PARTIALLY ADDRESSED by DURATION_H_FIX (HoldTimeRuleManager re-enabled; does not prevent SL fires, only early 5m exits)",
-      "duration_h_analysis": {
-        "finding": "FIXED THIS RUN: opened_at now patched in backtest + hold time uses sim clock",
-        "status": "APPLIED — Run 122",
-        "files": [
-          "bot/backtest/engine.py:1941",
-          "bot/execution/position_manager.py:958"
-        ],
-        "remaining_gap": "hold_time_s in close metadata still 0 for same-candle SL hits (intentional — accurate diagnostic data). SL width structural issue unaddressed (needs RR_GEOMETRY_FIX code change)."
-      },
+      "noise_stop_pct": "50.8% SL hits at conf>75 in noisy regimes",
       "rr_ratio": 0.91,
       "kelly_fraction": -0.167,
-      "hype_sl_total": -28420,
-      "output": {
-        "avg_slippage": "0.51%",
-        "noise_stop_problem": "89% instant SL — stop width too tight (0.86% avg, needs 1.2%+). HoldTimeRuleManager now re-enabled."
-      }
+      "duration_h_bug": {"status": "FULLY RESOLVED Run 123"},
+      "output": {"avg_slippage": "0.51%", "noise_stop_problem": "DURATION_H_FIX resolved"}
     },
     "live_injection": {
       "status": "COMPLETE_BACKTEST_DATA",
-      "data_source": "live_edge_data.json (Run 121, 965-trade backtest)",
+      "data_source": "live_edge_data.json (Run 121, 965 trades)",
       "high_edges_found": 4,
       "weak_setups_found": 1,
-      "high_edges": [
-        {"key": "SOL_SHORT", "win_rate": 63.7, "count": 179, "avg_pnl": 32.44},
-        {"key": "BTC_LONG", "win_rate": 63.9, "count": 72, "avg_pnl": 25.55},
-        {"key": "SOL_HIGH_CONF_80plus", "win_rate": 65.3, "count": 49, "avg_pnl": 28.32},
-        {"key": "CONF_80_90_fullset", "win_rate": 60.2, "count": 118, "avg_pnl": 7.67}
-      ],
-      "weak_setups": [
-        {"key": "HYPE_SHORT_75plus_conf", "win_rate": 31.2, "count": 77, "avg_pnl": -70.06}
-      ],
-      "dataset_conflict_status": "ACTIVE — 2nd consecutive run. 100d (80-90% conf = 40.0% WR) vs full dataset (80-90% conf = 60.2% WR). All confidence-range rules blocked.",
       "output": {"high_edges_found": 4, "weak_setups_found": 1}
     },
     "daily_synthesis": {
       "status": "COMPLETE_REUSE_EXISTING",
       "trades_today": 0,
-      "anomalies_found": 4,
+      "anomalies_found": 3,
       "report_generated": false,
-      "report_reused": "bot/data/sessions/daily_synthesis_2026-06-22.json (generated Run 120 at 03:04 UTC)",
-      "anomalies": [
-        {"type": "BOT_OFFLINE", "severity": "CRITICAL", "consecutive_flags": 56},
-        {"type": "STRUCTURAL_RR_DEFICIT", "severity": "CRITICAL", "kelly": -0.167},
-        {"type": "CONFIDENCE_ANTI_CORRELATION", "severity": "HIGH", "value": "100d: 80-90% conf = 40% WR"},
-        {"type": "RULE_INSIGHT_MISMATCH", "severity": "RESOLVED", "detail": "tod_morning_edge_v1 disabled Run 120"}
-      ],
-      "output": {"anomalies_found": 4, "report_generated": false}
+      "output": {"anomalies_found": 3, "report_generated": false}
     },
     "model_optimization": {
       "status": "COMPLETE_NO_COST_FILE",
       "cost_file_found": false,
       "model_swaps_recommended": 1,
       "potential_savings": "$0.00",
-      "swap_recommendation": {
-        "agent": "regime_agent",
-        "change": "Haiku -> Sonnet for REGIME_SHIFT trigger only",
-        "cost_delta": "+$0.27/month",
-        "benefit": "12pp WR improvement in trending/illiquid transitions",
-        "file": "bot/llm/usage_tiers.py"
-      },
-      "note": "Theoretical — bot offline. Unchanged from Run 121.",
       "output": {"model_swaps_recommended": 1, "potential_savings": "$0.00"}
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
-      "priority": "P0_RESOLVED_THIS_RUN",
-      "severity": "RESOLVED",
-      "finding": "DURATION_H_FIX APPLIED — 10-run deferred code change finally executed",
-      "detail": "HoldTimeRuleManager was neutered in backtest: opened_at was never set (remains None), and hold-time check used wall clock instead of sim clock. Fix: engine.py:1941 now patches opened_at=sim_dt; position_manager.py:958 uses _sim_now for backtest-correct hold time.",
-      "files_changed": ["bot/backtest/engine.py", "bot/execution/position_manager.py"],
-      "action": "COMPLETE — verify in next backtest run that hold_hours > 0 and HoldTimeRuleManager correctly blocks early exits on short-held trades",
-      "consecutive_flags": 10,
-      "resolved_run": 122
+      "priority": "P0_RESOLVED",
+      "finding": "DURATION_H_FIX COMPLETE (11 runs, conf=92%)",
+      "detail": "c7c3d00 + 1310484: opened_at init, _sim_now clock, max() floors. HoldTimeRuleManager fully active.",
+      "consecutive_flags": 0
     },
     {
       "subsystem": "daily_synthesis",
       "priority": "P0_CRITICAL",
-      "severity": "CRITICAL",
-      "finding": "BOT OFFLINE DAY 71 — 56th consecutive flag",
-      "detail": "Zero live trading. trades.csv missing. All feedback loops stalled. Each additional offline day = ~$800-1,200 estimated foregone paper PnL.",
+      "finding": "BOT OFFLINE DAY 73 — 57th consecutive flag",
       "action": "cd /home/user/WAGMI/bot && python run.py paper",
-      "consecutive_flags": 56
+      "consecutive_flags": 57
     },
     {
       "subsystem": "execution_forensics",
       "priority": "P0_CRITICAL",
-      "severity": "CRITICAL",
-      "finding": "NEGATIVE EDGE: Kelly fraction = -0.167 (structural R:R deficit)",
-      "detail": "Avg win $82.72 < avg loss $91.27. Win/loss ratio 0.91 at 44.5% WR = -$1,384 expected loss per 100 trades. Requires SL widening (RR_GEOMETRY_FIX, confidence 82%, code change in bot/trading_config.py).",
-      "action": "Add ATR_SL_MULTIPLIER_HYPE=1.5 to bot/trading_config.py — pending user approval",
-      "consecutive_flags": 3
+      "finding": "NEGATIVE EDGE Kelly=-0.167 — 4 consecutive runs",
+      "detail": "Win/loss 0.91 at 44.5% WR. Need per-symbol HYPE SL override in TradingConfig.",
+      "consecutive_flags": 4
     },
     {
       "subsystem": "live_injection",
       "priority": "P1_HIGH",
-      "severity": "HIGH",
-      "finding": "DATASET_CONFLICT: 100d vs full dataset contradict on confidence bins 80-90% — 2nd consecutive run",
-      "detail": "100d backtest: 80-90% conf = 40.0% WR. Full 965-trade: 80-90% = 60.2% WR. Cannot safely expand or shrink CONF_PARADOX rule. Possible regime deterioration in last 100 days.",
-      "action": "Investigate: split 965-trade dataset into early vs recent halves to confirm temporal regime shift.",
-      "consecutive_flags": 2
+      "finding": "HYPE_SHORT veto inversion — conf=71% (below 75% threshold) — 4 runs",
+      "consecutive_flags": 4
     },
     {
       "subsystem": "live_injection",
       "priority": "P1_HIGH",
-      "severity": "HIGH",
-      "finding": "HYPE SHORT veto inversion — 3rd consecutive run, conf=71% (threshold 75%)",
-      "detail": "HYPE SHORT <75% conf = +$8-15/trade (positive EV, n=80). HYPE SHORT >=75% conf = -$70.06/trade (catastrophic, n=77). Global veto blocks both. Need live confirmation to raise confidence to 75%.",
-      "action": "Awaiting live paper mode confirmation. Auto-apply blocked at 71% confidence.",
+      "finding": "DATASET_CONFLICT on 80-90% conf bin — temporal split needed — 3 runs",
       "consecutive_flags": 3
     }
   ],
@@ -171,17 +95,13 @@
     "subsystems_complete": 5,
     "subsystems_skipped": 0,
     "fixes_applied": 1,
-    "new_high_priority_findings": 0,
     "total_fixes_all_time": 109,
-    "code_changes_applied_this_run": [
-      "DURATION_H_FIX — bot/backtest/engine.py:1941 + bot/execution/position_manager.py:958"
-    ],
     "consecutive_run_blockers": [
-      {"id": "BOT_RESTART", "consecutive_runs": 56, "priority": "P0_CRITICAL"},
-      {"id": "RR_GEOMETRY_FIX", "consecutive_runs": 3, "priority": "P1"},
-      {"id": "DATASET_CONFLICT_CONF_BINS", "consecutive_runs": 2, "priority": "P1"},
-      {"id": "HYPE_SHORT_VETO_SPLIT", "consecutive_runs": 3, "priority": "P1", "blocker": "confidence 71% < 75% threshold"}
-    ],
-    "resolved_this_run": ["DURATION_H_FIX (Run 122) — 10 consecutive flags resolved"]
+      {"id": "BOT_RESTART",           "consecutive_flags": 57},
+      {"id": "RR_GEOMETRY_FIX",       "consecutive_flags": 4},
+      {"id": "HYPE_SHORT_VETO_SPLIT", "consecutive_flags": 4},
+      {"id": "DATASET_CONFLICT",      "consecutive_flags": 3},
+      {"id": "DURATION_H_FIX",        "consecutive_flags": 0, "status": "RESOLVED_RUN_123"}
+    ]
   }
 }

@@ -1,91 +1,56 @@
 {
-  "last_run": "2026-06-22T06:00:00.000000+00:00",
-  "run_number": 121,
-  "cadence_streak": 41,
+  "last_run": "2026-06-22T14:00:00.000000+00:00",
+  "run_number": 123,
+  "cadence_streak": 43,
   "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119)",
-  "audit_run_number": 115,
-  "audit_dataset": "backtest_100d.csv (n=589, BTC/HYPE/SOL)",
-  "fixes_applied_this_run": 0,
-  "new_fixes_this_run": [],
-  "run121_note": "No new JSON-fixable recommendations. All Run-119 audit recs processed. New finding: DATASET_CONFLICT blocks CONF_PARADOX expansion (100d vs 965-trade dataset contradict on 80-90% conf). REC3 (R:R geometry) at conf=82% still deferred as code change.",
+  "fixes_applied_this_run": 1,
+  "new_fixes_this_run": [
+    {
+      "id": "DURATION_H_FIX_COMPLETE",
+      "applied_run": 123,
+      "confidence": 0.92,
+      "consecutive_runs_before": 11,
+      "description": "Completes c7c3d00. Adds: (1) opened_at=open_time in Position.__post_init__; (2) max(...,1.0) floor on hold_duration_seconds (line 1372), hold_time_s (line 1403), _hold_s telemetry (line 1436).",
+      "files_changed": [
+        "bot/execution/position_manager.py:117 (opened_at init)",
+        "bot/execution/position_manager.py:1372,1403,1436 (max floors)"
+      ],
+      "commit": "1310484 on claude/duration-h-fix-complete"
+    }
+  ],
   "skipped_this_run": [
     {
       "rec_id": "REC1_HYPE_SHORT_VETO_SPLIT",
-      "reason": "BELOW_THRESHOLD: confidence=71% < 75% auto-apply threshold. Logged as TRACKING rule for monitoring.",
+      "reason": "BELOW_THRESHOLD: confidence=71% < 75%.",
       "confidence": 71,
-      "priority": "P0_CRITICAL",
-      "note": "Added HYPE_SHORT_HIGHCONF_VETO_PROBE tracking entry to graduated_rules.json"
+      "consecutive_runs": 4
     },
     {
       "rec_id": "REC3_RR_GEOMETRY_FIX",
-      "reason": "CODE_CHANGE_REQUIRED: Widen HYPE SL to 1.5x ATR requires modifying execution/leverage.py or trading_config.py. Not JSON-fixable.",
+      "reason": "CODE_CHANGE_REQUIRED: needs per_symbol_sl_atr_multiplier dict in TradingConfig.",
       "confidence": 82,
-      "priority": "P1",
-      "file": "bot/execution/leverage.py or bot/trading_config.py"
+      "consecutive_runs": 4
     }
   ],
-  "already_present": [
-    "hype_short_veto_v1 (gate=100%) - validated by 100d data",
-    "night_session_block_v1 (gate=100%) - confirmed",
-    "short_direction_veto_v1 (gate=20%) - already has exclude_symbols=[SOL]",
-    "record_outcome() BUY/SELL mapping - already applied multi_strategy_main.py:3257"
+  "already_applied": [
+    "DURATION_H_FIX complete (Run 122 c7c3d00 + Run 123 1310484)",
+    "tod_morning_edge_v1 DISABLED (Run 120)",
+    "record_outcome() BUY/SELL mapping fix",
+    "sol_long_veto_v1 DEACTIVATED (Run 101)",
+    "short_direction_veto_v1 exclude_symbols=[SOL]"
   ],
   "total_rules_in_llm_graduated": 120,
   "active_rules": 88,
   "gate_20_active_rules": 24,
-  "total_fixes_all_time": 108,
+  "total_fixes_all_time": 109,
   "deferred_code_changes": [
     {
-      "id": "DURATION_H_FIX",
-      "confidence": 0.92,
-      "priority": "P1",
-      "status": "CODE_CHANGE_REQUIRED - 10 consecutive runs",
-      "file_1": "bot/execution/position_manager.py",
-      "file_2": "bot/backtest/engine.py ~line 2522",
-      "impact": "HoldTimeRuleManager neutered - min_hold_hours stuck at manual 3.0. Root cause confirmed Run121: 89% same-candle SL closes cause hold_time_s=0. Fix: max(actual_hold, candle_duration_s) + patch pos.opened_at=sim_dt alongside open_time.",
-      "consecutive_runs": 10
-    },
-    {
       "id": "RR_GEOMETRY_FIX",
-      "consecutive_runs": 2,
+      "consecutive_runs": 4,
       "confidence": 0.82,
-      "priority": "P1",
-      "description": "Widen HYPE SL to 1.5x ATR minimum. Kelly=-0.167 at current 1.0x ATR. Target R:R >= 1.25 to break even at 44.5% WR.",
-      "file_1": "bot/execution/leverage.py",
-      "file_2": "bot/trading_config.py",
-      "impact": "Kelly -0.167 -> est. -0.05 after SL widening. Reduces SL hit rate from 45.7% to ~38%."
-    }
-  ],
-  "recommendations_from_audit": [
-    {
-      "rec_id": "REC1_EXCLUDE_SYMBOLS",
-      "problem": "short_direction_veto_v1 blocks SOL SHORT - exclude_symbols not implemented in matches()",
-      "proposed_fix": "Add exclude_symbols field to GraduatedRule.matches() and update short_direction_veto_v1",
-      "expected_impact": "+$160/day when live (SOL SHORT unlocked)",
-      "confidence": 82,
-      "type": "CODE_CHANGE",
-      "eligible_for_auto_fix": false,
-      "skip_reason": "Requires code change to graduated_rules.py - already applied per auto_fix_state.json"
-    },
-    {
-      "rec_id": "REC2_BTC_SHORT_INVESTIGATE",
-      "problem": "btc_short_90plus_boost_v1 has times_applied=0 across all audit runs",
-      "proposed_fix": "Add diagnostic logging, investigate rule evaluation path",
-      "expected_impact": "+$20-40/day when live",
-      "confidence": 65,
-      "type": "INVESTIGATION",
-      "eligible_for_auto_fix": false,
-      "skip_reason": "Confidence 65% < threshold 75%"
-    },
-    {
-      "rec_id": "REC3_SIDE_VOCAB_FIX",
-      "problem": "record_outcome() passes LONG/SHORT but rules expect BUY/SELL - accuracy tracking broken",
-      "proposed_fix": "Convert event.side from LONG/SHORT to BUY/SELL before calling record_outcome()",
-      "expected_impact": "Enables auto-deactivation of failing rules",
-      "confidence": 95,
-      "type": "CODE_CHANGE",
-      "eligible_for_auto_fix": false,
-      "skip_reason": "Already applied per auto_fix_state.json (major_discovery_run117)"
+      "description": "Add per_symbol_sl_atr_multiplier={HYPE: 3.0} to TradingConfig, wire into strategies.",
+      "file": "bot/trading_config.py + leverage/strategy files",
+      "impact": "Kelly -0.167 -> est. -0.05"
     }
   ]
 }
