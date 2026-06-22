@@ -250,3 +250,15 @@ LESSON: do not extrapolate a directional edge across regimes; the down-regime sh
 ACTION (reversible, risk-reducing): EXPLORATION_BLOCK_COMBOS back to HYPE_LONG,SOL_LONG (drop forced short-only bias);
 EXPLORATION_EPSILON 0.40→0.20 (halve churn/bleed while regime unclear). Restarted (pid→12436, healthy 18:16Z).
 NOTE: bot has NO external alert channel (Discord/Telegram blank) — user's "audit/backtest pings" are the CC loop, not the bot.
+
+## 2026-06-22T23:05Z — UNRESTRICTED ALPHA (Nunu directive) — removed hardcoded blocks, restored volume
+Nunu: "stupid pre-decided hard blocks?" + wants unrestricted alpha + more volume. CORRECT — my earlier
+epsilon throttle (0.40→0.20) cut volume, wrong call. Reversed:
+- EXPLORATION_BLOCK_COMBOS = EMPTY (no hardcoded directional blocks; was HYPE_LONG,SOL_LONG)
+- EXPLORATION_EPSILON 0.20→0.45 (more skips→trades)
+- MAX_OPEN_POSITIONS 4→6 (more concurrent throughput)
+Restarted (pid 33308, healthy 23:04Z). Only remaining guards = bot's OWN data-learned graduated_rules vetoes
+(NOT pre-decided). FOUND but did NOT change (execution-critical, needs backtest): hardcoded conf thresholds —
+multi_strategy_main.py:6030 cost-gate skips LLM veto if conf<60; sizing/model-route tiers at 60/65/75/85/92;
+signal_pipeline conf>=75..90 tiers. None are hard "no-trade" directional blocks, but they are pre-decided numbers.
+TODO if Nunu wants fuller LLM control: backtest loosening the conf<60 veto cost-gate + sizing tiers.
