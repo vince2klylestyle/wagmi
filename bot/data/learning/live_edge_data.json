@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-22T00:00:00Z",
-  "run_number": 119,
+  "generated_at": "2026-06-22T06:00:00Z",
+  "run_number": 121,
   "data_source": "autonomous_audit_2026-06-21T22-00-00Z.md (965 backtest trades, BTC/HYPE/SOL)",
   "trades_analyzed": 965,
   "symbol_win_rates": {
@@ -129,10 +129,27 @@
       "avg_pnl": 7.67
     }
   ],
-  "weak_setups": [],
+  "weak_setups": [
+    {
+      "type": "symbol_side_conf",
+      "key": "HYPE_SHORT_75plus_conf",
+      "win_rate": 31.2,
+      "count": 77,
+      "avg_pnl": -70.06,
+      "note": "100d backtest confirms catastrophic. Not yet blocked by targeted rule (blanket 80% block applies but inverts profitable sub-condition)."
+    }
+  ],
   "output": {
     "high_edges_found": 4,
-    "weak_setups_found": 0
+    "weak_setups_found": 1
   },
-  "key_insight": "SOL_SHORT (63.7% WR, +$32.44/trade) and BTC_LONG (63.9% WR, +$25.55/trade) are primary alpha sources. 60-70% confidence bin destroys -$2321 PnL and should be hard-blocked at 70% floor."
+  "dataset_conflict": {
+    "flagged_run": 121,
+    "finding": "100d backtest (589 trades) vs full 965-trade dataset give OPPOSITE conclusions on conf 80-90%",
+    "full_965_result": "80-90% conf = 60.2% WR +$7.67/trade (STRONG EDGE)",
+    "recent_100d_result": "80-90% conf = 40.0% WR -$33/trade (WORST TIER)",
+    "implication": "Temporal regime shift in confidence quality. High-confidence signals have degraded in recent 100 days. Do NOT expand CONF_PARADOX_sizing_v1 to full 80-100% range until temporal split analysis completed.",
+    "resolution_needed": "Split 965-trade dataset by date into early vs recent halves. If early=(60%+ WR) and recent=(40% WR), confirms model confidence calibration degraded after regime shift."
+  },
+  "key_insight": "SOL_SHORT (63.7% WR, +$32.44/trade) and BTC_LONG (63.9% WR, +$25.55/trade) are primary alpha sources. HYPE_SHORT_75plus is confirmed danger zone (-$70/trade). DATASET_CONFLICT on 80-90% conf bins requires temporal analysis before acting."
 }

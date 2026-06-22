@@ -1,76 +1,172 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "2.1",
-  "timestamp": "2026-06-22T03:06:08.148858+00:00",
+  "timestamp": "2026-06-22T06:00:00.000000+00:00",
   "today": "2026-06-22",
-  "run_number": 120,
+  "run_number": 121,
   "bot_status": "OFFLINE",
-  "days_offline": 70,
-  "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119)",
-  "last_run": "2026-06-22T03:06:08.148858+00:00",
+  "days_offline": 71,
+  "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119) — no newer audit this run",
+  "last_run": "2026-06-22T06:00:00.000000+00:00",
   "subsystems": {
     "auto_fix": {
-      "status": "COMPLETE",
-      "fixes_applied": 1,
+      "status": "COMPLETE_NO_NEW_FIXES",
+      "fixes_applied": 0,
       "gates_active": 63,
-      "fix_description": "TOD_morning_edge disabled (A/B_ACTIVE->DISABLED_LIVE_CONTRADICTION, gate 50->0). REC2 from Run119 audit (conf=88%)",
-      "skipped": 2,
-      "output": {"fixes_applied": 1, "gates_active": 63}
+      "fix_candidates_evaluated": [
+        {
+          "rec_id": "REC1_HYPE_SHORT_VETO_SPLIT",
+          "confidence": 71,
+          "result": "SKIP — below 75% auto-apply threshold. Status: TRACKING in graduated_rules.json."
+        },
+        {
+          "rec_id": "REC2_TOD_MORNING_EDGE_DISABLE",
+          "confidence": 88,
+          "result": "ALREADY_APPLIED — applied in Run 120. graduated_rules.json status: DISABLED_LIVE_CONTRADICTION."
+        },
+        {
+          "rec_id": "REC3_RR_GEOMETRY_FIX",
+          "confidence": 82,
+          "result": "DEFERRED — code change required (bot/execution/leverage.py). Not JSON-fixable. Consecutive runs: 2."
+        },
+        {
+          "rec_id": "EXPAND_CONF_PARADOX_80_100",
+          "confidence": 82,
+          "result": "BLOCKED_BY_DATASET_CONFLICT — 100d backtest shows 80-90% conf = 40.0% WR (weak), but 965-trade full dataset shows 80-90% conf = 60.2% WR (strong). Contradictory evidence. Cannot safely expand CONF_PARADOX rule until conflict resolved."
+        }
+      ],
+      "new_finding_this_run": "DATASET_CONFLICT: 100d backtest vs 965-trade dataset give opposite conclusions on confidence bin 80-90%. Blocks all confidence-range rule changes.",
+      "output": {"fixes_applied": 0, "gates_active": 63}
     },
     "execution_forensics": {
-      "status": "COMPLETE_NO_LIVE_DATA",
-      "data_source": "backtest_100d.csv via Run 119 audit",
+      "status": "COMPLETE_NO_NEW_DATA",
+      "data_source": "cached — trades.csv missing (bot offline Day 71)",
       "avg_slippage": "0.51%",
-      "noise_stop_pct": "50.8% at conf>75 in noisy regimes",
+      "noise_stop_pct": "50.8% of SL hits at conf>75 in noisy regimes",
       "instant_sl_rate": "89%",
+      "instant_sl_note": "89% of SL hits are same-candle closes — stop width 0.86% avg vs 1.2%+ needed. HYPE most affected.",
+      "duration_h_analysis": {
+        "finding": "CONFIRMED: duration_h=0 for ~89% of trades because stops fire in same simulated candle as open",
+        "root_cause": "Backtest engine patches pos.open_time=sim_dt but candle-level SL check (update_price) uses same sim_dt for close_time. Same-candle open+close = hold_time_s=0.",
+        "code_path": "bot/execution/position_manager.py:1398 (hold_time_s=close_time-open_time) + bot/backtest/engine.py:1941 (open_time patch)",
+        "fix_needed": "Minimum hold of 1 candle-duration (3600s for 1h candles) or use 5m sub-candle timestamps for close_time"
+      },
       "rr_ratio": 0.91,
       "kelly_fraction": -0.167,
       "hype_sl_total": -28420,
-      "output": {"avg_slippage": "0.51%", "noise_stop_problem": "89% instant SL, Kelly=-0.167 (negative edge)"}
+      "output": {
+        "avg_slippage": "0.51%",
+        "noise_stop_problem": "89% instant SL — stop width too tight (0.86% avg, needs 1.2%+)"
+      }
     },
     "live_injection": {
       "status": "COMPLETE_BACKTEST_DATA",
-      "data_source": "Run 119 audit (100d backtest 589 + 965 full dataset)",
+      "data_source": "live_edge_data.json (Run 119, 965-trade backtest)",
       "high_edges_found": 4,
-      "weak_setups_found": 3,
-      "new_edges": ["HYPE_SHORT_below_75pct_conf: 53.75% WR +$10.10/trade (n=80) — currently blocked by hype_short_veto"],
-      "new_weak_setups": ["HYPE_SHORT_75plus_conf: 31.2% WR -$70.06/trade (n=77) — NOT blocked by any rule"],
-      "output": {"high_edges_found": 4, "weak_setups_found": 3}
+      "weak_setups_found": 1,
+      "high_edges": [
+        {"key": "SOL_SHORT", "win_rate": 63.7, "count": 179, "avg_pnl": 32.44},
+        {"key": "BTC_LONG", "win_rate": 63.9, "count": 72, "avg_pnl": 25.55},
+        {"key": "SOL_HIGH_CONF_80plus", "win_rate": 65.3, "count": 49, "avg_pnl": 28.32},
+        {"key": "CONF_80_90_fullset", "win_rate": 60.2, "count": 118, "avg_pnl": 7.67}
+      ],
+      "weak_setups": [
+        {"key": "HYPE_SHORT_75plus_conf", "win_rate": 31.2, "count": 77, "avg_pnl": -70.06}
+      ],
+      "new_finding_this_run": {
+        "type": "DATASET_CONFLICT",
+        "severity": "HIGH",
+        "description": "100d backtest (589 trades) vs full dataset (965 trades) give OPPOSITE conclusions on confidence bins 80-90% and 90%+. 100d: 80-90%=40.0% WR -$33/trade. Full: 80-90%=60.2% WR +$7.67/trade. Possible regime shift in last 100 days — high-confidence trades have degraded recently.",
+        "implication": "Cannot apply CONF_PARADOX expansion to 80-100% until dataset conflict resolved. The 100d window may reflect genuine regime deterioration of model confidence."
+      },
+      "output": {"high_edges_found": 4, "weak_setups_found": 1}
     },
     "daily_synthesis": {
-      "status": "COMPLETE",
+      "status": "COMPLETE_REUSE_EXISTING",
       "trades_today": 0,
       "anomalies_found": 4,
-      "report_generated": true,
-      "report_path": "bot/data/sessions/daily_synthesis_2026-06-22.json",
-      "output": {"anomalies_found": 4, "report_generated": true}
+      "report_generated": false,
+      "report_reused": "bot/data/sessions/daily_synthesis_2026-06-22.json (generated Run 120 at 03:04 UTC)",
+      "note": "No new data since Run 120. Report already exists for today. Next synthesis update on new trade data or next-day rollover.",
+      "output": {"anomalies_found": 4, "report_generated": false}
     },
     "model_optimization": {
       "status": "COMPLETE_NO_COST_FILE",
       "cost_file_found": false,
       "model_swaps_recommended": 1,
       "potential_savings": "$0.00",
-      "note": "Theoretical analysis only — bot offline, no live call data",
+      "swap_recommendation": {
+        "agent": "regime_agent",
+        "change": "Haiku -> Sonnet for REGIME_SHIFT trigger only",
+        "cost_delta": "+$0.27/month",
+        "benefit": "12pp WR improvement in trending/illiquid transitions",
+        "file": "bot/llm/usage_tiers.py: add REGIME_SHIFT to MEDIUM_VALUE_TRIGGERS"
+      },
+      "note": "Theoretical analysis — bot offline, no live call data. Unchanged from Run 120.",
       "output": {"model_swaps_recommended": 1, "potential_savings": "$0.00"}
     }
   },
   "high_priority_findings": [
-    {"subsystem": "daily_synthesis", "priority": "P0_CRITICAL", "severity": "CRITICAL", "finding": "BOT OFFLINE DAY 70 — 54th consecutive flag", "detail": "Zero live trading, zero live revenue. trades.csv missing. All feedback loops stalled. Each additional day offline = ~$800-1,200 estimated foregone paper PnL.", "action": "cd /home/user/WAGMI/bot && python run.py paper"},
-    {"subsystem": "execution_forensics", "priority": "P0_CRITICAL", "severity": "CRITICAL", "finding": "NEGATIVE EDGE: Kelly fraction = -0.167 (structural R:R deficit)", "detail": "Avg win $82.72 < avg loss $91.27. Win/loss ratio 0.91. At 44.5% WR every 100 trades produces -$1,384 expected loss. No routing fix resolves negative Kelly — requires wider TPs or tighter SLs.", "action": "Code change: widen HYPE SL to 1.5x ATR minimum in bot/execution/leverage.py. Deferred code change RR_GEOMETRY_FIX added."},
-    {"subsystem": "auto_fix", "priority": "P1_HIGH", "severity": "HIGH", "finding": "TOD_morning_edge DISABLED this run (fix applied)", "detail": "Rule was boosting confidence for morning session (06-12 UTC) despite live WR=28% on 18 trades (-$76.94). Underlying insight invalidated at 96% confidence. Rule disabled: A/B_ACTIVE -> DISABLED_LIVE_CONTRADICTION.", "action": "COMPLETE — rule disabled with gate_percentage=0"},
-    {"subsystem": "live_injection", "priority": "P1_HIGH", "severity": "HIGH", "finding": "hype_short_veto is inverted: blocking profitable band (+$10.10/trade), allowing catastrophic band (-$70.06/trade)", "detail": "HYPE SHORT <75% conf = 53.75% WR +$10.10/trade (n=80). HYPE SHORT 75%+ conf = 31.2% WR -$70.06/trade (n=77). Existing blanket veto is backwards. Need confidence split.", "action": "CODE_CHANGE: Replace hype_short_veto_v1 with hype_short_highconf_veto (block 75%+, allow <75% at 50% size). Confidence 71% — below 75% auto-apply threshold. Tracked as HYPE_SHORT_HIGHCONF_VETO_PROBE rule."},
-    {"subsystem": "execution_forensics", "priority": "P1_HIGH", "severity": "HIGH", "finding": "Confidence ANTI-correlated with performance (100d window)", "detail": "60-70% conf = 48.6% WR; 70-80% = 45.2%; 80-90% = 40.0%; 90%+ = 40.5%. Each 10pp conf increase = ~4pp WR loss. confidence_paradox_sizing_v1 covers 85-90% only. Range 80-100% needs full intervention.", "action": "Expand confidence_paradox rule to cover 80-100% range (not just 85-90%). Confidence 82%."},
-    {"subsystem": "daily_synthesis", "priority": "P2_MEDIUM", "severity": "MEDIUM", "finding": "DURATION_H fix: 9th consecutive run unactioned", "detail": "All backtest trades show duration_h=0.0. HoldTimeRuleManager neutered. Cannot validate 3h min hold rule.", "action": "Fix bot/backtest/engine.py ~line 2522: duration_h = (close_ts - open_ts).total_seconds() / 3600"}
+    {
+      "subsystem": "daily_synthesis",
+      "priority": "P0_CRITICAL",
+      "severity": "CRITICAL",
+      "finding": "BOT OFFLINE DAY 71 — 55th consecutive flag",
+      "detail": "Zero live trading. trades.csv missing. All feedback loops stalled. Each additional offline day = ~$800-1,200 estimated foregone paper PnL. 71 days without live execution = $56,800-$85,200 in missed backtest-equivalent returns.",
+      "action": "cd /home/user/WAGMI/bot && python run.py paper",
+      "consecutive_flags": 55
+    },
+    {
+      "subsystem": "execution_forensics",
+      "priority": "P0_CRITICAL",
+      "severity": "CRITICAL",
+      "finding": "NEGATIVE EDGE: Kelly fraction = -0.167 (structural R:R deficit)",
+      "detail": "Avg win $82.72 < avg loss $91.27. Win/loss ratio 0.91 at 44.5% WR = -$1,384 expected loss per 100 trades. No JSON rule fix resolves negative Kelly — requires SL widening in code (bot/execution/leverage.py or bot/trading_config.py). Confidence 82%.",
+      "action": "Code change: widen HYPE SL to 1.5x ATR minimum. File: bot/trading_config.py (ATR_SL_MULTIPLIER_HYPE)",
+      "consecutive_flags": 2
+    },
+    {
+      "subsystem": "live_injection",
+      "priority": "P1_HIGH",
+      "severity": "HIGH",
+      "finding": "NEW: DATASET_CONFLICT blocks confidence-range rule changes",
+      "detail": "100d backtest shows conf 80-90% = 40.0% WR (-$33/trade). Full 965-trade dataset shows 80-90% = 60.2% WR (+$7.67/trade). These directly contradict. Cannot safely expand CONF_PARADOX_sizing_v1 or apply any confidence-range intervention until resolved. Likely cause: model confidence quality degraded in last ~100 trading days (regime shift).",
+      "action": "Investigate: split 965-trade dataset into early-vs-recent to confirm temporal regime shift in confidence quality. Then re-evaluate CONF_PARADOX scope.",
+      "first_flagged": "2026-06-22T06:00:00Z",
+      "consecutive_flags": 1
+    },
+    {
+      "subsystem": "execution_forensics",
+      "priority": "P1_HIGH",
+      "severity": "HIGH",
+      "finding": "DURATION_H_FIX — 10th consecutive run unactioned (up from 9)",
+      "detail": "All trades show duration_h=0.0. Root cause confirmed: 89% of SL hits are same-candle closes (sim_dt used for both open and close time). HoldTimeRuleManager cannot enforce 3h minimum hold. Backtest learning from hold-time patterns is neutered.",
+      "action": "Code fix at bot/execution/position_manager.py:1398 — add 1-candle minimum to hold_time_s: hold_time_s = max((pos.close_time - pos.open_time).total_seconds(), candle_duration_s). Also patch pos.opened_at = sim_dt in engine.py:1941 alongside open_time.",
+      "files": ["bot/execution/position_manager.py", "bot/backtest/engine.py"],
+      "consecutive_flags": 10
+    },
+    {
+      "subsystem": "live_injection",
+      "priority": "P1_HIGH",
+      "severity": "HIGH",
+      "finding": "HYPE SHORT veto inversion unresolved — conf=71% blocks auto-apply",
+      "detail": "HYPE SHORT <75% conf = 60% WR +$15/trade (n=15) / 52.3% WR +$8.91/trade (n=65). HYPE SHORT >=75% conf = 31.2% WR -$70.06/trade (n=77). Blanket 80% block applies equally to profitable and catastrophic sub-conditions. Rule confidence at 71% — 4 points below 75% auto-apply threshold.",
+      "action": "Awaiting live confirmation OR confidence bump to 75%+. No code change this run. Will auto-apply when confidence threshold met.",
+      "consecutive_flags": 2
+    }
   ],
   "run_metrics": {
     "subsystems_complete": 5,
     "subsystems_skipped": 0,
-    "fixes_applied": 1,
-    "new_high_priority_findings": 3,
+    "fixes_applied": 0,
+    "new_high_priority_findings": 1,
     "total_fixes_all_time": 108,
     "consecutive_run_blockers": [
-      {"id": "DURATION_H_FIX", "consecutive_runs": 9, "priority": "P1"},
-      {"id": "BOT_RESTART", "consecutive_runs": 54, "priority": "P0_CRITICAL"}
-    ]
+      {"id": "BOT_RESTART", "consecutive_runs": 55, "priority": "P0_CRITICAL"},
+      {"id": "DURATION_H_FIX", "consecutive_runs": 10, "priority": "P1"},
+      {"id": "RR_GEOMETRY_FIX", "consecutive_runs": 2, "priority": "P1"},
+      {"id": "HYPE_SHORT_VETO_SPLIT", "consecutive_runs": 2, "priority": "P1", "blocker": "confidence 71% < 75% threshold"}
+    ],
+    "new_findings_this_run": ["DATASET_CONFLICT_CONF_BINS_80_90"]
   }
 }

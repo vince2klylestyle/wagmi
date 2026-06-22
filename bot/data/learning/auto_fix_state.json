@@ -1,24 +1,13 @@
 {
-  "last_run": "2026-06-22T03:05:29.699885+00:00",
-  "run_number": 120,
-  "cadence_streak": 40,
+  "last_run": "2026-06-22T06:00:00.000000+00:00",
+  "run_number": 121,
+  "cadence_streak": 41,
   "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119)",
   "audit_run_number": 115,
   "audit_dataset": "backtest_100d.csv (n=589, BTC/HYPE/SOL)",
-  "fixes_applied_this_run": 1,
-  "new_fixes_this_run": [
-    {
-      "rule_id": "TOD_morning_edge",
-      "field": "status",
-      "old_value": "A/B_ACTIVE",
-      "new_value": "DISABLED_LIVE_CONTRADICTION",
-      "gate_percentage_old": 50,
-      "gate_percentage_new": 0,
-      "reason": "REC2 from Run 119 audit (conf=88%): Underlying insight invalidated at 96% confidence. Live morning WR=28% (18 trades, -$76.94). Boosting confidence in this window is harmful.",
-      "audit_source": "autonomous_audit_2026-06-22T02-05-51Z.md",
-      "rec_confidence": 88
-    }
-  ],
+  "fixes_applied_this_run": 0,
+  "new_fixes_this_run": [],
+  "run121_note": "No new JSON-fixable recommendations. All Run-119 audit recs processed. New finding: DATASET_CONFLICT blocks CONF_PARADOX expansion (100d vs 965-trade dataset contradict on 80-90% conf). REC3 (R:R geometry) at conf=82% still deferred as code change.",
   "skipped_this_run": [
     {
       "rec_id": "REC1_HYPE_SHORT_VETO_SPLIT",
@@ -50,15 +39,15 @@
       "id": "DURATION_H_FIX",
       "confidence": 0.92,
       "priority": "P1",
-      "status": "CODE_CHANGE_REQUIRED - 9 consecutive runs",
+      "status": "CODE_CHANGE_REQUIRED - 10 consecutive runs",
       "file_1": "bot/execution/position_manager.py",
       "file_2": "bot/backtest/engine.py ~line 2522",
-      "impact": "HoldTimeRuleManager neutered - min_hold_hours stuck at manual 3.0",
-      "consecutive_runs": 9
+      "impact": "HoldTimeRuleManager neutered - min_hold_hours stuck at manual 3.0. Root cause confirmed Run121: 89% same-candle SL closes cause hold_time_s=0. Fix: max(actual_hold, candle_duration_s) + patch pos.opened_at=sim_dt alongside open_time.",
+      "consecutive_runs": 10
     },
     {
       "id": "RR_GEOMETRY_FIX",
-      "consecutive_runs": 1,
+      "consecutive_runs": 2,
       "confidence": 0.82,
       "priority": "P1",
       "description": "Widen HYPE SL to 1.5x ATR minimum. Kelly=-0.167 at current 1.0x ATR. Target R:R >= 1.25 to break even at 44.5% WR.",
