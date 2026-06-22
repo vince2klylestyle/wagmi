@@ -1,54 +1,22 @@
 {
   "date": "2026-06-22",
-  "generated_at": "2026-06-22T00:00:00Z",
-  "run_number": 119,
-  "data_source": "backtest data (trades.csv missing - bot offline)",
+  "generated_at": "2026-06-22T03:04:58.470559+00:00",
+  "run_number": 120,
   "trades_today": 0,
-  "bot_status": "OFFLINE",
-  "days_offline": 70,
-  "anomalies_found": 3,
+  "bot_status": "OFFLINE_DAY70",
+  "anomalies_found": 4,
   "anomalies": [
-    {
-      "type": "CONSECUTIVE_LOSSES",
-      "severity": "HIGH",
-      "value": 11,
-      "threshold": 5,
-      "detail": "Max consecutive loss streak: 11 (exceeds threshold of 5)",
-      "data_source": "backtest_100d.csv last 100 trades"
-    },
-    {
-      "type": "BOT_OFFLINE",
-      "severity": "CRITICAL",
-      "value": "Day 70+",
-      "detail": "Bot has been offline for 70+ days as of 2026-06-22. trades.csv is missing. No live trades today or since June 5, 2026.",
-      "consecutive_audit_flags": 52
-    },
-    {
-      "type": "RECENT_REGRESSION",
-      "severity": "HIGH",
-      "value": "Last 100 WR=44.5%",
-      "detail": "Recent performance regression: full-period WR=57.0% vs last-100-trades WR=44.5%. Delta = 12.5pp.",
-      "total_pnl_last_100": -7804
-    }
+    {"type": "BOT_OFFLINE", "severity": "CRITICAL", "value": "Day 70+", "detail": "Bot offline 70+ days. trades.csv missing. 54th consecutive audit flag. Zero live revenue.", "consecutive_flags": 54},
+    {"type": "STRUCTURAL_RR_DEFICIT", "severity": "CRITICAL", "value": "Kelly=-0.167 (negative edge)", "detail": "Win/loss ratio 0.91 at 44.5% WR = guaranteed long-term loss. Break-even requires WR>52.4% at current R:R.", "new_this_run": true},
+    {"type": "CONFIDENCE_ANTI_CORRELATION", "severity": "HIGH", "value": "80-90% conf = 40% WR (worst tier)", "detail": "100d backtest: WR degrades 4pp per confidence decile above 70%. 80-90% = 40% WR (-$33/trade). Model overconfidence predicts worse outcomes.", "new_this_run": false, "run_first_flagged": 119},
+    {"type": "RULE_INSIGHT_MISMATCH", "severity": "HIGH", "value": "TOD_morning_edge active with invalidated underlying insight", "detail": "FIXED THIS RUN: Disabled TOD_morning_edge rule (was boosting morning confidence despite live WR=28% on 18 trades). Underlying insight invalidated at 96% confidence.", "resolved_this_run": true}
   ],
-  "report_generated": true,
-  "key_metrics": {
-    "full_dataset_wr": 57.0,
-    "recent_100_wr": 44.5,
-    "wr_swing_pct": 12.5,
-    "max_consecutive_losses": 11,
-    "high_leverage_7x_plus_count": 0,
-    "tod_dominance_analysis": "unavailable - no timestamps in CSV",
-    "total_pnl_last_100": -7804,
-    "total_pnl_full_dataset": 905.23
-  },
-  "recommendations": [
-    "P0_CRITICAL: Start bot immediately - cd /home/user/WAGMI/bot && python run.py paper",
-    "P0: Verify CONF_70_HARD_FLOOR gate set to 20% (auto-fixed this run)",
-    "P1: Fix duration_h bug in backtest/engine.py (8th consecutive unactioned flag)"
+  "daily_summary": {"trades": 0, "wr_pct": null, "pnl": 0.0, "best_trade": null, "worst_trade": null},
+  "tomorrows_focus": [
+    "RESTART BOT: cd bot && python run.py paper — primary action, day 71 without this is $800+/day alpha loss",
+    "HYPE SHORT 75%+ veto: highest-confidence code change pending (blocks -$70/trade avg)",
+    "R:R geometry fix: widen HYPE SL to 1.5x ATR (Kelly=-0.167 is unsustainable)",
+    "Monitor SOL_SHORT and BTC_LONG as primary alpha sources when live"
   ],
-  "output": {
-    "anomalies_found": 3,
-    "report_generated": true
-  }
+  "report_generated": true
 }
