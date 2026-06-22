@@ -149,6 +149,43 @@
       "category": "general",
       "tags": [],
       "source": "seed"
+    },
+    {
+      "knowledge_type": "axiom",
+      "content": "Price moves toward liquidity. Stop losses cluster at obvious levels (round numbers, recent highs/lows). Smart money hunts these clusters before reversing.",
+      "confidence": 0.9,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774290803.4242227,
+      "last_validated": 1774290803.424223,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "market_structure",
+      "tags": [
+        "liquidity",
+        "stops",
+        "manipulation"
+      ],
+      "source": "student_course"
+    },
+    {
+      "knowledge_type": "axiom",
+      "content": "Volume confirms price movement. A move up on high volume is real. A move up on low volume is suspect and likely to reverse.",
+      "confidence": 0.9,
+      "evidence_count": 0,
+      "supporting": [],
+      "contradicting": [],
+      "created_at": 1774290803.4249418,
+      "last_validated": 1774290803.4249418,
+      "validation_count": 0,
+      "invalidation_count": 0,
+      "category": "market_structure",
+      "tags": [
+        "volume",
+        "confirmation"
+      ],
+      "source": "student_course"
     }
   ]
 }
