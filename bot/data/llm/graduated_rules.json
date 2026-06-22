@@ -17,6 +17,181 @@
       "times_applied": 0,
       "times_correct": 0,
       "active": true
+    },
+    {
+      "rule_id": "restored_night_session_block_v1",
+      "hypothesis_statement": "Night session (00:00-06:00 UTC) produces catastrophic 7-15% WR — full trading suspension required",
+      "action": "veto",
+      "conditions": {
+        "hour_utc_min": 0,
+        "hour_utc_max": 6
+      },
+      "adjustment": 0.0,
+      "confidence": 0.95,
+      "evidence_ratio": 0.85,
+      "total_evidence": 13,
+      "created_at": 1779577493.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_hype_long_block_v1",
+      "hypothesis_statement": "Block HYPE_LONG signals — live WR=23% on 35 trades, -$77.26 total",
+      "action": "veto",
+      "conditions": {
+        "symbol": "HYPE",
+        "side": "LONG"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.88,
+      "evidence_ratio": 0.77,
+      "total_evidence": 35,
+      "created_at": 1780009493.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_illiquid_regime_block_v1",
+      "hypothesis_statement": "Block trades in illiquid market regime — 28.1% WR confirmed on 57 trades",
+      "action": "veto",
+      "conditions": {
+        "regime": "illiquid"
+      },
+      "adjustment": 0.0,
+      "confidence": 0.87,
+      "evidence_ratio": 0.72,
+      "total_evidence": 57,
+      "created_at": 1780441493.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_ranging_regime_penalty_v1",
+      "hypothesis_statement": "Penalize confidence -15 points in ranging regime — 25% WR confirmed on 16 trades",
+      "action": "penalize",
+      "conditions": {
+        "regime": "ranging"
+      },
+      "adjustment": -15.0,
+      "confidence": 0.82,
+      "evidence_ratio": 0.75,
+      "total_evidence": 16,
+      "created_at": 1780614293.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_hype_short_highconf_veto_v1",
+      "hypothesis_statement": "HYPE SHORT >= 75% confidence catastrophic: -$70.06/trade, 31.2% WR (n=77). Blanket veto at high confidence.",
+      "action": "veto",
+      "conditions": {
+        "symbol": "HYPE",
+        "side": "SHORT",
+        "confidence_min": 75
+      },
+      "adjustment": 0.0,
+      "confidence": 0.71,
+      "evidence_ratio": 0.69,
+      "total_evidence": 77,
+      "created_at": 1780873493.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_hype_sizing_cap_v1",
+      "hypothesis_statement": "HYPE confirmed negative EV across all directions — size cap 0.5x is essential",
+      "action": "size_adjust",
+      "conditions": {
+        "symbol": "HYPE"
+      },
+      "adjustment": -0.5,
+      "confidence": 0.92,
+      "evidence_ratio": 0.88,
+      "total_evidence": 239,
+      "created_at": 1780268693.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_sol_short_boost_v1",
+      "hypothesis_statement": "SOL SHORT is primary alpha source — 63.7% WR, +$32.44/trade on 179 trades",
+      "action": "boost",
+      "conditions": {
+        "symbol": "SOL",
+        "side": "SHORT"
+      },
+      "adjustment": 8.0,
+      "confidence": 0.81,
+      "evidence_ratio": 0.74,
+      "total_evidence": 179,
+      "created_at": 1781132693.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_btc_long_boost_v1",
+      "hypothesis_statement": "BTC LONG is secondary alpha source — 63.9% WR, +$25.55/trade on 72 trades",
+      "action": "boost",
+      "conditions": {
+        "symbol": "BTC",
+        "side": "LONG"
+      },
+      "adjustment": 8.0,
+      "confidence": 0.78,
+      "evidence_ratio": 0.74,
+      "total_evidence": 72,
+      "created_at": 1781305493.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_confidence_paradox_sizing_v1",
+      "hypothesis_statement": "85-90% confidence signals show WORSE WR than 70-85% — paradox sizing intervention: 0.75x size",
+      "action": "size_adjust",
+      "conditions": {
+        "confidence_min": 85,
+        "confidence_max": 90
+      },
+      "adjustment": -0.25,
+      "confidence": 0.78,
+      "evidence_ratio": 0.72,
+      "total_evidence": 120,
+      "created_at": 1781478293.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
+    },
+    {
+      "rule_id": "restored_instant_sl_buffer_v1",
+      "hypothesis_statement": "89% of SL hits are instant (<6 min) — stop width too tight, adding buffer",
+      "action": "size_adjust",
+      "conditions": {},
+      "adjustment": -0.1,
+      "confidence": 0.83,
+      "evidence_ratio": 0.78,
+      "total_evidence": 89,
+      "created_at": 1780959893.490456,
+      "last_applied": 0.0,
+      "times_applied": 0,
+      "times_correct": 0,
+      "active": true
     }
   ]
 }
