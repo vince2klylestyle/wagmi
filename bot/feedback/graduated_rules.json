@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-06-22T12:00:00.000000+00:00",
-  "last_auto_fix_run": 123,
+  "last_updated": "2026-06-22T18:04:20.185804+00:00",
+  "last_auto_fix_run": 127,
   "rules": [
     {
       "rule_id": "F2_calibration_offset_cap",
@@ -525,8 +525,18 @@
       "source": "perpetual_improvement_deep_dive 2026-05-01",
       "description": "Gate escalation candidates from TOD + regime analysis",
       "escalations": [
-        {"rule_id": "NIGHT_session_pause", "from_gate": 20, "to_gate": 100, "reason": "WR=7-15% catastrophic"},
-        {"rule_id": "HYPE_LONG_hard_block", "from_gate": 20, "to_gate": 80, "reason": "HYPE_LONG live WR=23% confirmed"}
+        {
+          "rule_id": "NIGHT_session_pause",
+          "from_gate": 20,
+          "to_gate": 100,
+          "reason": "WR=7-15% catastrophic"
+        },
+        {
+          "rule_id": "HYPE_LONG_hard_block",
+          "from_gate": 20,
+          "to_gate": 80,
+          "reason": "HYPE_LONG live WR=23% confirmed"
+        }
       ],
       "status": "RESOLVED",
       "confidence": 94,
@@ -591,6 +601,54 @@
       "verified": false,
       "auto_fix_run": 123,
       "consecutive_deferred_runs": 4
+    },
+    {
+      "rule_id": "CONF_70_80_DEGRADATION_PROBE",
+      "source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119) + Run 100 Phase 2",
+      "description": "100d backtest: 70-80% confidence bin = 45.2% WR (-$2,740), degraded from 58.6% in full dataset. Confidence anti-correlation may extend below 80%.",
+      "problem": "100d backtest shows 70-80% conf at 45.2% WR — worse than 60-70% bin (48.6% WR). If confirmed, confidence model is inverted in all ranges.",
+      "fix_applied": "gate_20 probe: 0.85x size reduction for 70-80% conf signals (same as CONF_PARADOX but milder)",
+      "status": "A/B_ACTIVE",
+      "confidence": 77,
+      "gate_percentage": 20,
+      "baseline_wr": 0.452,
+      "treatment_wr": null,
+      "applied_date": "2026-06-22",
+      "source_run": 127,
+      "auto_applied": true,
+      "note": "SUBSYSTEM1_AUTO_FIX RUN127. Probe only — full dataset shows 58.6% WR. 100d recent data shows degradation. Gate=20 pending temporal split analysis."
+    },
+    {
+      "rule_id": "SHORT_DIRECTION_VETO_INVERSION",
+      "source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119) Phase 2 By Side",
+      "description": "SHORT trades outperform LONG (46.4% WR vs 39.5% WR). Active short_direction_veto blocks the better-performing side.",
+      "problem": "short_direction_veto_v1 vetos all SHORTs except SOL. 100d backtest: SHORT=46.4% WR better than LONG=39.5%. Veto is directionally inverted.",
+      "fix_applied": "gate_20 probe: track WR split SHORT vs LONG for 20 live trades with veto suspended",
+      "status": "A/B_ACTIVE",
+      "confidence": 79,
+      "gate_percentage": 20,
+      "baseline_wr": 0.464,
+      "treatment_wr": null,
+      "applied_date": "2026-06-22",
+      "source_run": 127,
+      "auto_applied": true,
+      "note": "SUBSYSTEM1_AUTO_FIX RUN127. Evidence: 100d backtest n=589. Short=422 trades 46.4% WR, Long=167 trades 39.5% WR. Direction veto appears inverted on 100d evidence. Gate=20 probe to confirm."
+    },
+    {
+      "rule_id": "HYPE_SIZING_CAP_PROBE",
+      "source": "autonomous_audit_2026-06-22T02-05-51Z.md (Run 119) + Run 100 By Symbol",
+      "description": "HYPE accounts for 68% of total losses (-$5,563 of -$8,173) despite 48.9% WR — largest position sizing inflates losses disproportionately.",
+      "problem": "HYPE has 2-3x larger dollar sizing than BTC/SOL. Even if WR improves, HYPE loss magnitude dominates P&L. Size cap reduces risk without affecting signal quality.",
+      "fix_applied": "gate_20 probe: cap HYPE position size at 0.75x normal regardless of confidence",
+      "status": "A/B_ACTIVE",
+      "confidence": 81,
+      "gate_percentage": 20,
+      "baseline_wr": 0.489,
+      "treatment_wr": null,
+      "applied_date": "2026-06-22",
+      "source_run": 127,
+      "auto_applied": true,
+      "note": "SUBSYSTEM1_AUTO_FIX RUN127. HYPE losses: 69 SHORT SLs x -$221 + 26 LONG SLs x -$159 = dominant loss source. 0.75x cap reduces loss per SL by 25% while preserving signal participation."
     }
   ],
   "rules_added_2026_04_26_1545_hourly": [],
