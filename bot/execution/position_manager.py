@@ -955,7 +955,8 @@ class PositionManager:
         if self.hold_time_rules and pos.opened_at:
             try:
                 from datetime import datetime, timezone
-                hold_hours = (datetime.now(timezone.utc) - pos.opened_at).total_seconds() / 3600.0
+                _hold_now = getattr(self, '_sim_now', None) or datetime.now(timezone.utc)
+                hold_hours = (_hold_now - pos.opened_at).total_seconds() / 3600.0
                 regime = (pos.entry_reasons or {}).get("regime", "unknown")
                 if self.hold_time_rules.should_block_early_exit(regime, hold_hours):
                     return False

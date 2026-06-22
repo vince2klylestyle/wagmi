@@ -1933,12 +1933,14 @@ class BacktestEngine:
             notes=position_notes,
         )
 
-        # Patch open_time with simulated time for accurate hold time calculations.
+        # Patch open_time and opened_at with simulated time for accurate hold time calculations.
         # Position.__init__ uses datetime.now(UTC) which is wall clock, not sim time.
+        # opened_at is required by HoldTimeRuleManager; without it the hold-time gate never fires.
         if sim_dt:
             _opened = self.pos_mgr.positions.get(signal.symbol)
             if _opened and _opened.state != "CLOSED":
                 _opened.open_time = sim_dt
+                _opened.opened_at = sim_dt
 
         llm_tag = signal.metadata.get("llm_status", "unknown")
         logger.info(
