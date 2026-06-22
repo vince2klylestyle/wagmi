@@ -125,6 +125,10 @@ class Position:
             self.highest_price = self.entry
         if self.lowest_price == 0:
             self.lowest_price = self.entry
+        # opened_at mirrors open_time unless explicitly overridden (e.g. by backtest engine).
+        # HoldTimeRuleManager gates on opened_at; if it stays None the check is always skipped.
+        if self.opened_at is None:
+            self.opened_at = self.open_time
 
     # ── Derived properties (backward compat) ──
     @property
@@ -1365,7 +1369,7 @@ class PositionManager:
                     total_fees=pos.fees_paid,
                     funding_costs=pos.funding_costs,
                     outcome=pos.outcome,
-                    hold_duration_seconds=(pos.close_time - pos.open_time).total_seconds(),
+                    hold_duration_seconds=max((pos.close_time - pos.open_time).total_seconds(), 1.0),
                     entry_reasons=pos.entry_reasons or {},
                     notes=pos.notes,
                     setup_type=pos.setup_type,
@@ -1396,7 +1400,7 @@ class PositionManager:
                 "total_pnl": pos.realized_pnl,
                 "total_fees": pos.fees_paid,
                 "funding_costs": pos.funding_costs,
-                "hold_time_s": (pos.close_time - pos.open_time).total_seconds(),
+                "hold_time_s": max((pos.close_time - pos.open_time).total_seconds(), 1.0),
                 "peak_price": pos.peak_price,
                 "outcome": pos.outcome,
                 "state_path": pos.state_path_str,
@@ -1429,7 +1433,7 @@ class PositionManager:
         try:
             tel = _get_tel()
             if tel is not None:
-                _hold_s = (pos.close_time - pos.open_time).total_seconds()
+                _hold_s = max((pos.close_time - pos.open_time).total_seconds(), 1.0)
                 # Map action to event type
                 if action in ("SL", "TRAILING_STOP"):
                     _event_type = "SL_HIT"
