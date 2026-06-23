@@ -341,3 +341,15 @@ Known issues to fix before enabling later: (1) regime_bucket() only maps 'bull'/
 momentum/overleveraged_*/overbought/panic_oversold/recovering (all collapse to neutral), so the bull-leak fix rarely triggers;
 (2) win_prob(k=0) ZeroDivision (unreachable, default k=5). REVISIT when mechanical-exit n is larger (exit-agent now disabled → accruing).
 NET: bot is under-confident (conservative) live — acceptable while gathering clean data; do NOT enable unproven priors.
+
+## 2026-06-23T19:20Z — Veto self-measurement: ATTEMPTED → reverted (adversarial gate caught partial regression)
+Implemented record_veto_outcome + same-population accuracy + override counters (6/6 unit tests, replay said safe).
+BUT adversarial review caught a real flaw: the old times_applied increment in evaluate_signal was a SHARED counter for
+ALL 4 veto call sites; only ensemble.py was wired to record_veto_outcome. Moving the increment off evaluate_signal
+would leave 3 LIVE veto paths uncounted (signal_pipeline.py:456 Gate 1g; coordinator.py:1639 pre-LLM veto_only filter —
+HIGHEST volume; coordinator.py:4824 action=flat) → veto measurement WORSE, not better. Review verdict: fix-first.
+The replay only exercised the ensemble path, missing the other 3 — the review caught what the replay didn't.
+DECISION: reverted the partial change to clean committed state (no half-measure shipped). Doing veto-scoring RIGHT
+requires the DECISION-LEDGER approach (audit's high-effort item): per-decision attribution across all 4 veto call sites
+(stamp veto_rule_ids + route a counterfactual to record_veto_outcome from each site). Well-specified, deferred to a
+dedicated session. Vetoes still function (block trades) and display 'unmeasured' (honest) — no regression vs pre-session.
