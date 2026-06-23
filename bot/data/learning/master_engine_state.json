@@ -1,138 +1,134 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "2.6",
-  "last_run": "2026-06-22T23:07:26Z",
-  "today": "2026-06-22",
-  "run_number": 130,
+  "last_run": "2026-06-23T00:00:00Z",
+  "today": "2026-06-23",
+  "run_number": 131,
   "bot_status": "OFFLINE",
-  "days_offline": 75,
-  "audit_source": "autonomous_audit_2026-06-22T22-05-43Z.md (Run 129) + perpetual_improvement_run_130",
+  "days_offline": 76,
+  "audit_source": "autonomous_audit_2026-06-22T22-05-43Z.md (Run 129) — no new audit since run 130",
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETE",
       "fixes_applied": 1,
       "gates_active": 46,
-      "new_fix": "GRADUATED_RULES_RESTORE (conf=92)",
-      "rules_restored": 10,
+      "new_fix": "GRADUATED_RULES_OVERWRITE_CODE_BUG (conf=95) — code fix to bot/llm/graduated_rules.py",
+      "fix_type": "CODE_FIX",
       "skipped": [
-        "HYPE_SHORT_VETO_SPLIT (conf=71, 11th flag)",
-        "RR_GEOMETRY_FIX (ambiguity)",
-        "GRAD_RULES_CODE_FIX (dev needed)"
+        "HYPE_SHORT_VETO_SPLIT (conf=71, 12th flag, AWAITING_HUMAN_APPROVAL)",
+        "RR_GEOMETRY_FIX (conf=82, atr_mult_sl ambiguity)"
       ]
     },
     "execution_forensics": {
-      "status": "COMPLETE_CACHED",
+      "status": "CACHED_NO_NEW_TRADES",
       "trades_analyzed": 589,
       "avg_slippage": "0.51%",
       "noise_stop_problem": "50.8% of SL hits in noise regime (est -$14,814 recoverable)",
       "kelly_fraction": -0.167,
-      "verdict": "NEGATIVE_EDGE — structural deficit persists"
+      "verdict": "NEGATIVE_EDGE — structural deficit persists. No new data.",
+      "delta": "NO_CHANGE — bot offline Day 76"
     },
     "live_injection": {
-      "status": "COMPLETE_CACHED_WITH_UPDATE",
+      "status": "CACHED_NO_NEW_TRADES",
       "high_edges_found": 5,
       "weak_setups_found": 6,
-      "rules_restored_by_s1": 10,
       "new_candidates": [
-        "BTC_SHORT_90plus (WR=67.4%, n=46)",
-        "HYPE_SHORT_sub75 (11th flag, human needed)"
-      ]
+        "BTC_SHORT_90plus (WR=67.4%, n=46, conf=72% — below 75% threshold)",
+        "HYPE_SHORT_sub75 (12th flag, human needed)"
+      ],
+      "delta": "NO_CHANGE — no live trades"
     },
     "daily_synthesis": {
       "status": "COMPLETE",
-      "date": "2026-06-22",
+      "date": "2026-06-23",
       "todays_trades": 0,
-      "anomalies_count": 7,
-      "is_end_of_day": true,
+      "anomalies_count": 4,
+      "is_end_of_day": false,
       "report_generated": true,
-      "key_resolution": "GRADUATED_RULES_COLLAPSE auto-fixed"
+      "report_path": "bot/data/sessions/daily_synthesis_2026-06-23.json",
+      "key_finding": "GRADUATED_RULES_OVERWRITE_CODE_BUG resolved — _save() now merge-safe"
     },
     "model_optimization": {
-      "status": "COMPLETE_ESTIMATED",
+      "status": "CACHED_NO_NEW_DATA",
       "agents_analyzed": 7,
       "swaps_recommended": 1,
-      "swap_detail": "Regime Haiku→Sonnet for REGIME_SHIFT: +$186/mo benefit, +$0.27/mo cost",
+      "swap_detail": "Regime Haiku→Sonnet for REGIME_SHIFT: +$186/mo benefit, +$0.27/mo cost (688x ROI)",
       "potential_savings_usd": 0.0,
-      "potential_benefit_usd": 186.0
+      "potential_benefit_usd": 186.0,
+      "delta": "NO_CHANGE — cost_tracker.json still absent"
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "auto_fix",
       "severity": "RESOLVED_THIS_RUN",
-      "finding": "GRADUATED_RULES_COLLAPSE: LLM graduated_rules.json was reset to 1 rule (first detected Run 129, 2026-06-22T22:05Z). AUTO-FIXED in Run 130: 10 critical rules restored.",
-      "action": "DONE — rules restored. PENDING: fix llm/graduated_rules.py overwrite bug (code fix needed).",
-      "consecutive_flags": 0
-    },
-    {
-      "subsystem": "auto_fix",
-      "severity": "CRITICAL",
-      "finding": "GRADUATED_RULES_OVERWRITE_CODE_BUG: llm/graduated_rules.py writes fresh file on hypothesis graduation, destroying accumulated rules. Data fixed; code fix not yet applied.",
-      "action": "DEV REQUIRED: Fix graduate_hypothesis() to load-merge-write instead of overwrite. See llm/graduated_rules.py.",
-      "consecutive_flags": 1,
-      "first_detected": "2026-06-22T23:07:26Z"
+      "finding": "GRADUATED_RULES_OVERWRITE_CODE_BUG: _save() in bot/llm/graduated_rules.py replaced file contents instead of merging when called from a fresh engine instance. Root cause of Run 129 collapse (31 rules → 1 rule). CODE FIX APPLIED in Run 131.",
+      "action": "DONE — merge-safe _save() implemented. Push and monitor for correctness after bot restart.",
+      "consecutive_flags": 0,
+      "first_detected": "2026-06-22T23:07:26Z",
+      "resolved_at": "2026-06-23T00:00:00Z"
     },
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "BOT OFFLINE DAY 75 — 63rd consecutive P0 flag. Zero live revenue.",
+      "finding": "BOT OFFLINE DAY 76 — 64th consecutive P0 flag. Zero live revenue. Opportunity cost accumulating.",
       "action": "cd /home/user/WAGMI/bot && python run.py paper",
-      "consecutive_flags": 63
+      "consecutive_flags": 64
     },
     {
       "subsystem": "execution_forensics",
       "severity": "CRITICAL",
-      "finding": "NEGATIVE KELLY EDGE (9th flag): Kelly=-0.167. WR=44.5% vs 52.4% needed. Every 100 trades = -$1,384 expected.",
-      "action": "HYPE_SL_ATR_WIDEN: resolve atr_mult_sl ambiguity (1.0 vs 2.0), widen to 1.5×. Dev investigation needed.",
+      "finding": "NEGATIVE KELLY EDGE (9th flag, unchanged): Kelly=-0.167. WR=44.5% vs 52.4% needed. HYPE SL too tight: -$15,312 from 69 SL hits.",
+      "action": "HYPE_SL_ATR_WIDEN: audit trading_config.py SymbolProfile — atr_mult_sl=2.0 contradicts graduated_rules 1.5x recommendation. Resolve conflict, widen to 1.5x ATR, raise TP proportionally.",
       "consecutive_flags": 9
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "HYPE_SHORT_VETO_SPLIT (11th flag, AWAITING_HUMAN_APPROVAL): HYPE SHORT <75% conf = +$808 EV blocked by blanket veto.",
-      "action": "HUMAN DECISION REQUIRED: Split hype_short_veto into highconf(≥75%)_veto + lowconf(<75%)_probe_gate_20.",
-      "consecutive_flags": 11
+      "finding": "HYPE_SHORT_VETO_SPLIT (12th flag, AWAITING_HUMAN_APPROVAL): HYPE SHORT <75% conf = 56.8% WR, +$808/100d EV blocked by blanket veto.",
+      "action": "HUMAN DECISION REQUIRED: Split hype_short_veto_v1 into hype_short_highconf_veto_v1 (>=75%) + hype_short_lowconf_probe_v1 (<75%) at gate_20.",
+      "consecutive_flags": 12
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "CONFIDENCE ANTI-CORRELATION (9th flag): 80-90% conf = 40% WR, worst tier. -$4,639 on 157 trades.",
-      "action": "confidence_paradox_sizing_v1 restored (Run 130). Validate on first 20 trades at restart.",
+      "finding": "CONFIDENCE ANTI-CORRELATION (9th flag): 80-90% conf = 40.0% WR, worst tier (-$33.04/trade). confidence_paradox_sizing_v1 restored (Run 130) but unvalidated on live trades.",
+      "action": "Validate confidence_paradox_sizing_v1 on first 20 live trades post-restart. If WR improves at 80-90% band, promote from gate_20 to gate_50.",
       "consecutive_flags": 9
     },
     {
       "subsystem": "model_optimization",
       "severity": "MEDIUM",
-      "finding": "REGIME_AGENT UPGRADE OPPORTUNITY: Haiku→Sonnet for REGIME_SHIFT events. 688x ROI.",
-      "action": "Add AGENT_REGIME_SHIFT_MODEL=sonnet env var. Implement in usage_tiers.py.",
+      "finding": "REGIME_AGENT UPGRADE OPPORTUNITY: Haiku→Sonnet for REGIME_SHIFT events only. 688x ROI potential ($186/mo benefit for $0.27/mo cost).",
+      "action": "Set AGENT_REGIME_SHIFT_MODEL=sonnet in .env. Implement REGIME_SHIFT trigger routing in usage_tiers.py.",
       "consecutive_flags": 4
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "NOISE STOP EPIDEMIC (3rd flag): 50.8% of SL hits in noise regime. -$14,814 recoverable.",
-      "action": "Audit signal_pipeline.py regime gate ordering. Illiquid/ranging blocks now restored.",
+      "finding": "NOISE STOP EPIDEMIC (3rd flag): 50.8% of SL hits occur in illiquid/ranging/unknown regimes (-$14,814 recoverable). Regime blocks restored in Run 130.",
+      "action": "On bot restart, verify illiquid_regime_block_v1 and ranging_regime_penalty_v1 are firing correctly via graduated_rules logs.",
       "consecutive_flags": 3
     }
   ],
   "run_metrics": {
     "subsystems_complete": 5,
     "fixes_applied_this_run": 1,
-    "new_graduated_rules": 10,
+    "fix_type_this_run": "CODE_FIX",
+    "cached_subsystems": 3,
     "gates_active": 46,
-    "delta_from_run129": {
+    "total_fixes_all_time": 117,
+    "delta_from_run130": {
       "new_resolutions": [
-        "GRADUATED_RULES_COLLAPSE (auto-fixed)"
+        "GRADUATED_RULES_OVERWRITE_CODE_BUG (code fix applied to bot/llm/graduated_rules.py)"
       ],
-      "new_findings": [
-        "GRADUATED_RULES_OVERWRITE_CODE_BUG (new, code fix needed)"
-      ],
+      "new_findings": [],
       "counter_increments": [
-        "BOT_OFFLINE: 62→63",
-        "HYPE_SHORT_VETO_SPLIT: 10→11",
-        "NEGATIVE_KELLY: 8→9"
+        "BOT_OFFLINE: 75→76 days",
+        "HYPE_SHORT_VETO_SPLIT: 11→12 flags",
+        "days_cadence_streak: 48→49"
       ],
-      "llm_rules": "1 → 11 (+10 restored)"
+      "pending_dev_fix_rules": "1 → 0 (resolved this run)"
     }
   }
 }

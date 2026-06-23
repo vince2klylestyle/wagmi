@@ -35,56 +35,42 @@
       ]
     }
   ],
-  "applied_total": 5,
+  "applied_total": 6,
   "reverted_total": 0,
   "ab_tests_active": 0,
-  "last_run": "2026-06-22T23:07:26Z",
-  "run_number": 130,
-  "cadence_streak": 48,
-  "audit_source": "autonomous_audit_2026-06-22T22-05-43Z.md (Run 129)",
+  "last_run": "2026-06-23T00:00:00Z",
+  "run_number": 131,
+  "cadence_streak": 49,
+  "audit_source": "autonomous_audit_2026-06-22T22-05-43Z.md (Run 129) — no new audit since",
   "audit_run_number": 129,
   "fixes_applied_this_run": 1,
   "new_fixes_this_run": [
     {
-      "fix_id": "GRADUATED_RULES_RESTORE",
-      "description": "LLM graduated_rules.json restored to 11 rules. 10 critical protective/boost rules reactivated. Resolved GRADUATED_RULES_COLLAPSE (new critical finding from Run 129).",
-      "confidence": 92,
+      "fix_id": "GRADUATED_RULES_OVERWRITE_CODE_BUG",
+      "description": "Fixed bot/llm/graduated_rules.py _save() to merge on-disk rules with in-memory before writing. Prevents fresh-engine-instance overwrites that caused the Run 129 collapse (31 rules → 1 rule).",
+      "confidence": 95,
       "gate_percentage": 100,
-      "applied_at": "2026-06-22T23:07:26Z",
+      "applied_at": "2026-06-23T00:00:00Z",
       "baseline_wr": 44.5,
       "status": "active",
-      "rec_source": "REC1 from autonomous_audit_2026-06-22T22-05-43Z.md (Run 129)",
-      "rollback_condition": "Re-enable if rules cause unexpected veto rate > 80% after restart",
-      "rules_restored": [
-        "restored_night_session_block_v1",
-        "restored_hype_long_block_v1",
-        "restored_illiquid_regime_block_v1",
-        "restored_ranging_regime_penalty_v1",
-        "restored_hype_short_highconf_veto_v1",
-        "restored_hype_sizing_cap_v1",
-        "restored_sol_short_boost_v1",
-        "restored_btc_long_boost_v1",
-        "restored_confidence_paradox_sizing_v1",
-        "restored_instant_sl_buffer_v1"
-      ]
+      "rec_source": "GRADUATED_RULES_OVERWRITE_CODE_BUG finding from Run 130 (first detected Run 129)",
+      "rollback_condition": "Revert if _save() creates duplicate rules or causes load errors",
+      "fix_type": "CODE_FIX",
+      "file_changed": "bot/llm/graduated_rules.py",
+      "change_summary": "_save() now reads disk state first, merges by rule_id (in-memory wins ties), writes merged set. Prevents cross-instance data loss."
     }
   ],
   "skipped_this_run": [
     {
       "rec_id": "HYPE_SHORT_VETO_SPLIT",
-      "reason": "AWAITING_HUMAN_APPROVAL: confidence=71% < 75% threshold. 11th consecutive flag.",
+      "reason": "AWAITING_HUMAN_APPROVAL: confidence=71% < 75% threshold. 12th consecutive flag.",
       "confidence": 71,
-      "consecutive_runs": 11
+      "consecutive_runs": 12
     },
     {
       "rec_id": "RR_GEOMETRY_FIX",
       "reason": "PARAMETER_AMBIGUITY: HYPE SymbolProfile atr_mult_sl=2.0 contradicts graduated_rules recommendation of 1.5x. Dev investigation required.",
       "confidence": 82
-    },
-    {
-      "rec_id": "GRADUATED_RULES_OVERWRITE_CODE_FIX",
-      "reason": "CODE_FIX_REQUIRED: llm/graduated_rules.py must load-merge-write instead of overwrite. Data fix applied (restored rules), code fix needs dev attention.",
-      "confidence": 95
     }
   ],
   "previously_active_probes": [
@@ -115,12 +101,13 @@
   ],
   "total_rules_in_llm_graduated": 11,
   "ab_active_rules": 26,
-  "applied_rules": 12,
-  "pending_dev_fix_rules": 1,
+  "applied_rules": 13,
+  "pending_dev_fix_rules": 0,
   "pending_human_review_rules": 3,
   "awaiting_human_approval_rules": 1,
-  "total_fixes_all_time": 116,
+  "total_fixes_all_time": 117,
   "gates_active": 46,
   "run128_note": "Run 128: 1 new fix applied (TOD_MORNING_EDGE_DEACTIVATION, conf=88). HYPE_SHORT_VETO_SPLIT now 10th consecutive AWAITING_HUMAN_APPROVAL flag.",
-  "run130_note": "Run 130: 1 CRITICAL auto-fix applied (GRADUATED_RULES_RESTORE, conf=92). LLM rule system restored from collapse."
+  "run130_note": "Run 130: 1 CRITICAL auto-fix applied (GRADUATED_RULES_RESTORE, conf=92). LLM rule system restored from collapse.",
+  "run131_note": "Run 131: 1 CODE FIX applied (GRADUATED_RULES_OVERWRITE_CODE_BUG, conf=95). _save() now merge-safe — prevents future graduated_rules collapse. pending_dev_fix_rules: 1 → 0."
 }

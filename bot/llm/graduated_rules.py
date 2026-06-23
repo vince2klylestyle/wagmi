@@ -133,8 +133,30 @@ class GraduatedRulesEngine:
     def _save(self):
         try:
             os.makedirs(os.path.dirname(_RULES_FILE), exist_ok=True)
+            # Merge with on-disk state first — prevents cross-instance overwrites where a
+            # fresh engine (empty self._rules) graduates one hypothesis and writes only that
+            # rule, silently destroying all accumulated rules from other instances.
+            merged_by_id: Dict[str, "GraduatedRule"] = {}
+            if os.path.exists(_RULES_FILE):
+                try:
+                    with open(_RULES_FILE, "r") as _f:
+                        _disk = json.load(_f)
+                    _known = {fld.name for fld in dc_fields(GraduatedRule)}
+                    for _r in _disk.get("rules", []):
+                        try:
+                            _rule = GraduatedRule(**{k: v for k, v in _r.items() if k in _known})
+                            merged_by_id[_rule.rule_id] = _rule
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            # In-memory rules override on-disk for same rule_id (have latest times_applied)
+            for rule in self._rules:
+                merged_by_id[rule.rule_id] = rule
+            final_rules = list(merged_by_id.values())
+            self._rules = final_rules  # keep in-memory consistent with merged state
             with open(_RULES_FILE, "w") as f:
-                json.dump({"rules": [asdict(r) for r in self._rules]}, f, indent=2, default=str)
+                json.dump({"rules": [asdict(r) for r in final_rules]}, f, indent=2, default=str)
         except Exception as e:
             logger.warning(f"[GRAD-RULES] Save error: {e}")
 
