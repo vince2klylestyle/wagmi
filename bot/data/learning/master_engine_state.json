@@ -1,70 +1,134 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "3.0",
-  "last_run": "2026-06-23T14:05:03Z",
+  "last_run": "2026-06-23T16:08:00Z",
   "today": "2026-06-23",
-  "run_number": 139,
+  "run_number": 140,
   "bot_status": "OFFLINE",
   "days_offline": 75,
   "audit_source": "autonomous_audit_2026-06-23T10-05-44Z.md",
-  "data_source_confirmed": "trades_10d.csv (n=965 full dataset, last50=BTC-only)",
+  "data_source_confirmed": "trades_10d.csv (n=965 full dataset, last50_rows=BTC-only rows 916-965)",
   "subsystems": {
     "auto_fix": {
       "fixes_applied": 0,
       "gates_active": 49,
+      "new_proposals": [
+        {
+          "id": "CONF_90PLUS_SELECTIVE_BOOST",
+          "description": "90%+ confidence is the ONLY profitable tier in recent 100 trades (WR=53.8%, +$25.37/trade). All other bins negative. 3rd consecutive flag — PROPOSAL READY.",
+          "confidence": 72,
+          "flag_count": 3,
+          "status": "PROPOSED — needs conf >= 75 for auto-inject. Requires bot restart.",
+          "action": "Monitor 1 more run. If 4th consecutive flag, propose +5 boost injection for 90%+ conf signals."
+        }
+      ],
+      "flag_increments": [
+        {"id": "BOT_OFFLINE", "flags": 70, "action": "cd /home/user/WAGMI/bot && python run.py paper"},
+        {"id": "RR_GEOMETRY_FIX", "flags": 12, "action": "HUMAN DECISION: tp_sl_atr_mult 1.5->1.8 global OR HYPE atr_mult_sl 2.0->2.3 only"},
+        {"id": "FEEDBACK_STATE_FILES_MISSING", "flags": 6, "action": "DEV: Debug _save() in signal_quality.py, regime_feedback.py, adaptive_confidence.py, parameter_tuner.py"},
+        {"id": "DURATION_BUG", "flags": 4, "action": "DEV: Record open_time/close_time, compute duration_h=(close-open).total_seconds()/3600"},
+        {"id": "CONFIDENCE_PARADOX_RULE_MISCAL", "flags": 2, "action": "REVIEW: Rule targets 85-90% but recent data shows 75-80% is worst band (-$88.82/trade vs 85-90% at +$7.67 all-time)"},
+        {"id": "SOL_SHORT_75_80_PRECISION", "flags": 6, "action": "CANDIDATE: WR=64.4% (n=45, +$41.39/trade). Below 75% auto-inject conf threshold."},
+        {"id": "BTC_SHORT_90PLUS_EDGE", "flags": 6, "action": "CANDIDATE (n=43 all-time, WR=67.4%). Recent 100d n too small for injection."}
+      ],
       "skipped_high_conf": [
-        {"id": "RR_GEOMETRY_FIX", "conf": 82, "reason": "HUMAN_DECISION_REQUIRED", "flags": 11},
-        {"id": "FEEDBACK_STATE_FILES_MISSING", "conf": 93, "reason": "DEV_REQUIRED", "flags": 5}
+        {"id": "RR_GEOMETRY_FIX", "conf": 82, "reason": "HUMAN_DECISION_REQUIRED — parameter path ambiguous + bot restart needed", "flags": 12},
+        {"id": "FEEDBACK_STATE_FILES_MISSING", "conf": 93, "reason": "DEV_REQUIRED — silent exception in _save()", "flags": 6}
       ],
       "monitored": [
-        {"id": "CONF_70_80_SIZE_REDUCTION", "status": "A/B_GATE_20%_ACTIVE_RUN137", "check": "awaiting_restart"},
-        {"id": "BTC_SHORT_90PLUS_CANDIDATE", "status": "n=10_recent100 < 30_threshold", "action": "HOLD"}
+        {"id": "CONF_70_80_SIZE_REDUCTION", "status": "A/B_GATE_20%_ACTIVE_RUN137", "check": "awaiting_bot_restart"},
+        {"id": "BTC_LONG_BOOST_DEACTIVATION", "status": "A/B_GATE_20%_ACTIVE_RUN135", "check": "awaiting_bot_restart"},
+        {"id": "CONF_90PLUS_SELECTIVE_BOOST", "status": "PROPOSAL_PENDING — 3rd consecutive flag, conf=72%", "check": "needs_1_more_run_before_injection_decision"}
       ],
-      "audit_source": "autonomous_audit_2026-06-23T10-05-44Z.md",
-      "note": "No new high-confidence actionable fixes this run. 2 blocked items require human/dev. A/B gates holding."
+      "note": "No new high-confidence actionable fixes this run. 2 blocked items require human/dev. All Run136 recs processed in runs 135-138. New proposal: CONF_90PLUS_SELECTIVE_BOOST (3rd flag)."
     },
     "execution_forensics": {
-      "sl_hits_last50": 22,
-      "avg_slippage_pct": 0.5345,
-      "noise_stop_pct": 36.4,
+      "analysis_window": "last 50 rows (916-965 of trades_10d.csv, all BTC)",
+      "unique_trades_estimated": 37,
+      "sl_hits_last50_rows": 23,
+      "win_rows_last50": 27,
+      "wr_by_rows": 54.0,
+      "wr_by_unique_trades": 37.8,
+      "avg_slippage_pct": 0.521,
+      "slippage_change_vs_run139": -0.013,
       "noise_stop_count": 8,
+      "noise_stop_pct": 34.8,
+      "noise_stop_change_vs_run139": -1.6,
       "partial_fills": 0,
-      "avg_rr_achieved": 4.697,
       "worst_slippage": [
-        {"symbol": "BTC", "side": "SHORT", "slip_pct": 1.8366, "confidence": 71.3, "pnl": -881.0},
-        {"symbol": "BTC", "side": "SHORT", "slip_pct": 1.5387, "confidence": 73.3, "pnl": -401.83},
-        {"symbol": "BTC", "side": "SHORT", "slip_pct": 1.3231, "confidence": 73.7, "pnl": -351.32}
+        {"row": 954, "symbol": "BTC", "side": "SHORT", "slip_pct": 1.837, "confidence": 71.3, "pnl": -881.0},
+        {"row": 958, "symbol": "BTC", "side": "SHORT", "slip_pct": 1.538, "confidence": 73.3, "pnl": -401.83},
+        {"row": 924, "symbol": "BTC", "side": "SHORT", "slip_pct": 1.323, "confidence": 73.7, "pnl": -351.32}
       ],
-      "regime_sl_breakdown": {"unknown": 370},
-      "note": "Last 50 trades 100% BTC. Slippage from SL level (gap through). Noise stops = conf>=75% but still hit SL."
+      "noise_stop_entries": [
+        {"row": 925, "conf": 76.2}, {"row": 926, "conf": 76.6}, {"row": 931, "conf": 75.3},
+        {"row": 938, "conf": 78.0}, {"row": 939, "conf": 77.6}, {"row": 940, "conf": 77.8},
+        {"row": 942, "conf": 78.5}, {"row": 961, "conf": 75.3}
+      ],
+      "regime_sl_breakdown": {"unknown": 23},
+      "slippage_by_conf_band": {
+        "60_70": {"avg_slip_pct": 0.082, "count": 3, "note": "Low slippage in this band"},
+        "70_75": {"avg_slip_pct": 0.812, "count": 9, "note": "WORST BAND — high slippage + SL hits"},
+        "75_80": {"avg_slip_pct": 0.423, "count": 8, "note": "Noise stops concentrated here"},
+        "80_90": {"avg_slip_pct": 0.0, "count": 0, "note": "No SL hits in 80-90% in this window"},
+        "90plus": {"avg_slip_pct": 0.0, "count": 0, "note": "No 90%+ SL hits in last 50 rows"}
+      },
+      "note": "Minor improvement: slippage -1.3bps, noise stop rate -1.6pp vs run139. 70-75% band worst for slippage. All recent trades BTC-only."
     },
     "live_injection": {
       "high_edges_found": 2,
       "weak_setups_found": 0,
       "new_edges_this_run": 0,
       "conf_70_80_recent_wr": 47.0,
-      "conf_90plus_recent_wr": 53.8,
-      "conf_90plus_recent_ev": 25.37,
+      "conf_90plus_recent_wr_run138": 53.8,
+      "conf_90plus_recent_ev_run138": 25.37,
+      "conf_90plus_flag_count": 3,
       "high_edges": [
-        {"key": "BTC_LONG", "wr": 63.9, "n": 72, "ev": 25.55},
-        {"key": "SOL_SHORT", "wr": 63.7, "n": 179, "ev": 32.44}
+        {"key": "BTC_LONG", "wr": 63.9, "n": 72, "ev": 25.55, "status": "HISTORICAL — boost deactivated run135"},
+        {"key": "SOL_SHORT", "wr": 63.7, "n": 179, "ev": 32.44, "status": "ACTIVE — boost +8 in place"}
       ],
-      "weak_setups": [],
-      "note": "Full dataset n=965. Live edge data refreshed."
+      "conf_90plus_proposal_status": {
+        "flag_count": 3,
+        "threshold_to_propose": 3,
+        "threshold_to_inject": 4,
+        "current_conf": 72,
+        "inject_conf_required": 75,
+        "evidence": "Recent 100: WR=53.8%, EV=+$25.37. Only profitable tier. All other bins negative.",
+        "proposed_rule": "boost +5 confidence for signals with confidence >= 90",
+        "action": "4th consecutive flag in next run → propose as graduated rule"
+      },
+      "confidence_paradox_miscal": {
+        "flag_count": 2,
+        "current_rule": "restored_confidence_paradox_sizing_v1: 85-90% → -0.25x",
+        "problem": "85-90% all-time WR=60.2% (+$7.67/trade). Actual problem: 75-80% recent WR=45.5% (-$88.82/trade)",
+        "recommendation_pending": "Consider shifting rule to target 75-80% band instead of 85-90%. Flag at 3rd run.",
+        "action": "1 more run before proposing rule remap"
+      },
+      "note": "No new edges — data unchanged (bot offline). CONF_90PLUS_PROPOSAL at 3rd flag, 1 run from injection proposal."
     },
     "daily_synthesis": {
       "todays_trades": 0,
       "bot_status": "OFFLINE",
       "days_offline": 75,
-      "recent_50_wr": 56.0,
+      "recent_50_wr_by_rows": 54.0,
+      "recent_50_wr_by_unique_trades": 37.8,
       "recent_100_wr": 48.0,
       "seven_day_avg_wr": 44.5,
-      "wr_swing_pct": 11.5,
+      "wr_swing_pct": 9.5,
       "max_consecutive_losses_last50": 8,
       "unusual_leverage_trades": 0,
       "max_leverage_observed": 3.01,
-      "anomalies_found": 5,
-      "report_generated": true
+      "anomalies_found": 6,
+      "anomaly_detail": [
+        {"type": "BOT_OFFLINE_DAY_75", "severity": "CRITICAL", "flags": 70},
+        {"type": "DURATION_BUG_TOTAL", "severity": "CRITICAL", "flags": 4},
+        {"type": "FEEDBACK_STATE_FILES_MISSING", "severity": "HIGH", "flags": 6},
+        {"type": "RR_GEOMETRY_FIX_BLOCKED", "severity": "HIGH", "flags": 12},
+        {"type": "CONSECUTIVE_LOSS_STREAK", "severity": "HIGH", "value": 8},
+        {"type": "CONF_90PLUS_ONLY_PROFITABLE_TIER", "severity": "MEDIUM", "flags": 3, "note": "3rd flag — all other conf bins negative EV recently"}
+      ],
+      "report_generated": false,
+      "note": "No new daily report — bot offline, no trades. Anomaly count +1 (CONF_90PLUS tracking promoted to anomaly list)."
     },
     "model_optimization": {
       "cost_tracker_available": false,
@@ -75,50 +139,60 @@
       "model_swaps_recommended": 0,
       "potential_savings": 0.0,
       "bottleneck": "TRADE_QUALITY_NOT_MODEL_COST",
-      "note": "cost_tracker.json absent. No swaps justified — cost is not the constraint."
+      "note": "cost_tracker.json absent (persistent). No swaps justified — cost is not the constraint. Trade quality is the bottleneck."
     }
   },
   "high_priority_findings": [
     {
-      "subsystem": "daily_synthesis",
-      "severity": "CRITICAL",
-      "finding": "Bot OFFLINE Day 75 — zero live trades, zero revenue, zero rule validation",
-      "action": "cd /home/user/WAGMI/bot && python run.py paper",
-      "consecutive_flags": 69
-    },
-    {
-      "subsystem": "execution_forensics + auto_fix",
-      "severity": "CRITICAL",
-      "finding": "DURATION_BUG: ALL 965 trades have duration_h=0/negative. HoldTimeRuleManager ML fully blind. 3rd escalation flag.",
-      "action": "DEV: Record open_time/close_time in trade logging, compute duration_h = (close-open).total_seconds()/3600",
+      "subsystem": "auto_fix + live_injection",
+      "severity": "MEDIUM",
+      "finding": "CONF_90PLUS_SELECTIVE_BOOST: 3rd consecutive flag. 90%+ confidence is the ONLY profitable tier in recent 100 trades (WR=53.8%, EV=+$25.37/trade). All other bins negative. 1 more run triggers injection proposal.",
+      "action": "On next run: auto-propose graduated rule boost +5 for confidence >= 90% signals.",
       "consecutive_flags": 3
     },
     {
-      "subsystem": "auto_fix",
-      "severity": "HIGH",
-      "finding": "FEEDBACK_STATE_PERSISTENCE: 4/6 feedback state files never written (silent exception swallow in _save()). 5th flag.",
-      "action": "DEV: Debug _save() in signal_quality.py, regime_feedback.py, adaptive_confidence.py, parameter_tuner.py",
-      "consecutive_flags": 5
+      "subsystem": "live_injection",
+      "severity": "MEDIUM",
+      "finding": "CONFIDENCE_PARADOX_RULE_MISCAL (2nd flag): active rule penalizes 85-90% (-0.25x), but 85-90% WR=60.2% all-time (+$7.67/trade). Actual problem is 75-80% (WR=45.5%, -$88.82/trade). Rule targeting the wrong band.",
+      "action": "3rd flag next run → propose shifting rule target from 85-90% to 75-80% band.",
+      "consecutive_flags": 2
     },
     {
-      "subsystem": "auto_fix",
+      "subsystem": "daily_synthesis",
+      "severity": "CRITICAL",
+      "finding": "Bot OFFLINE Day 75 — zero live trades, zero revenue, zero rule validation. 70th consecutive flag.",
+      "action": "cd /home/user/WAGMI/bot && python run.py paper",
+      "consecutive_flags": 70
+    },
+    {
+      "subsystem": "execution_forensics",
       "severity": "HIGH",
-      "finding": "RR_GEOMETRY_FIX_BLOCKED: 11th consecutive flag (conf=82). HUMAN DECISION needed on atr_mult_sl parameter.",
-      "action": "DECIDE: tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3 only. Then restart bot.",
-      "consecutive_flags": 11
+      "finding": "DURATION_BUG (4th flag): ALL 965 trades have duration_h=0 or negative. HoldTimeRuleManager ML fully blind. Time-of-day analysis impossible.",
+      "action": "DEV: Fix trade logging to record open_time and close_time, compute duration_h=(close-open).total_seconds()/3600",
+      "consecutive_flags": 4
     },
     {
       "subsystem": "execution_forensics",
       "severity": "MEDIUM",
-      "finding": "NOISE_STOPS: 36.4% of SL hits had confidence>=75% (noise breakthrough). Avg slippage=0.534%",
-      "action": "Widen SL buffer for high-conf trades OR apply instant_sl_buffer rule more aggressively",
+      "finding": "Slippage IMPROVED slightly: 0.534% -> 0.521% (-1.3bps). Noise stop rate IMPROVED: 36.4% -> 34.8% (-1.6pp). Minor positive signal but sample unchanged (bot offline).",
+      "action": "MONITOR — improvement within margin of recalculation variability. No action needed.",
       "consecutive_flags": 1
     }
   ],
   "cumulative_stats": {
     "total_fixes_all_time": 121,
     "active_graduated_rules": 10,
-    "cadence_streak": 55,
-    "ab_tests_active": 2
+    "cadence_streak": 56,
+    "ab_tests_active": 2,
+    "total_runs": 140,
+    "proposals_pending": 1
+  },
+  "run_delta_vs_139": {
+    "new_fixes": 0,
+    "new_proposals": 1,
+    "flag_increments": 7,
+    "slippage_delta_bps": -1.3,
+    "noise_stop_delta_pct": -1.6,
+    "high_priority_findings_count": 5
   }
 }

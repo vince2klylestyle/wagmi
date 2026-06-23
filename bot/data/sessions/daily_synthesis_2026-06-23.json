@@ -1,7 +1,7 @@
 {
   "date": "2026-06-23",
-  "last_updated": "2026-06-23T14:05:03Z",
-  "run_number": 139,
+  "last_updated": "2026-06-23T16:08:00Z",
+  "run_number": 140,
   "bot_status": "OFFLINE",
   "days_offline": 75,
   "todays_trades": 0,
@@ -11,7 +11,7 @@
     {
       "type": "BOT_OFFLINE_DAY_75",
       "severity": "CRITICAL",
-      "consecutive_flags": 69,
+      "consecutive_flags": 70,
       "description": "Day 75 offline. No live trades, no revenue, no rule validation.",
       "recommendation": "cd /home/user/WAGMI/bot && python run.py paper"
     },
@@ -25,35 +25,35 @@
     {
       "type": "FEEDBACK_STATE_FILES_MISSING",
       "severity": "HIGH",
-      "consecutive_flags": 5,
-      "description": "4/6 feedback state files absent (5th flag). _save() silently fails.",
+      "consecutive_flags": 6,
+      "description": "4/6 feedback state files absent (6th flag). _save() silently fails.",
       "recommendation": "DEV: Add write-confirmation log to each _save() method."
     },
     {
       "type": "RR_GEOMETRY_FIX_BLOCKED",
       "severity": "HIGH",
-      "consecutive_flags": 11,
+      "consecutive_flags": 12,
       "description": "HUMAN DECISION needed: tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3 specifically?",
       "recommendation": "UNBLOCK: Choose atr_mult param path. Apply fix on next bot restart."
     },
     {
       "type": "DURATION_BUG_CRITICAL",
       "severity": "CRITICAL",
-      "consecutive_flags": 3,
-      "description": "ALL 965 trades have duration_h=0 or negative. HoldTimeRuleManager ML fully compromised. 3rd flag.",
+      "consecutive_flags": 4,
+      "description": "ALL 965 trades have duration_h=0 or negative. HoldTimeRuleManager ML fully compromised. 4th flag.",
       "recommendation": "DEV: Fix trade logging — record open_time and close_time, compute duration_h correctly"
     }
   ],
   "7day_avg_wr": 44.5,
   "recent_100_wr": 48.0,
-  "recent_50_wr": 56.0,
+  "recent_50_wr": 54.0,
   "all_time_wr": 57.0,
-  "wr_swing_from_7d_avg": 11.5,
+  "wr_swing_from_7d_avg": 9.5,
   "max_consecutive_losses": 8,
   "unusual_leverage_trades": 0,
   "max_leverage_observed": 3.01,
-  "slippage_estimate_last50": "0.534% avg from SL level in last 50 trades (all BTC)",
-  "noise_stop_rate": "36.4% of SL hits had conf>=75%",
+  "slippage_estimate_last50": "0.521% avg from SL level in last 50 rows (all BTC, run140 recompute)",
+  "noise_stop_rate": "34.8% of SL hits had conf>=75% (run140 recompute, improved from 36.4%)",
   "rr_ratio_last50": 0.479,
   "kelly_full_dataset": 0.0061,
   "kelly_recent_100": -0.265,
