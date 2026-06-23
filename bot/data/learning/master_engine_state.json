@@ -1,26 +1,26 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "2.7",
-  "last_run": "2026-06-23T05:04:19Z",
+  "last_run": "2026-06-23T06:04:05Z",
   "today": "2026-06-23",
-  "run_number": 133,
+  "run_number": 134,
   "bot_status": "OFFLINE",
-  "days_offline": 75,
+  "days_offline": 76,
   "audit_source": "autonomous_audit_2026-06-23T02-06-15Z.md (Run 131)",
   "subsystems": {
     "auto_fix": {
       "status": "COMPLETE",
       "fixes_applied": 0,
       "gates_active": 46,
-      "cadence_streak": 50,
-      "new_findings": [
-        "BTC_LONG_TEMPORAL_DEGRADATION confirmed (2nd flag): edge existed >100 days ago, WR=31.7% in recent 100d. Now classified as DEGRADING_EDGE."
+      "cadence_streak": 51,
+      "new_resolutions": [
+        "GRADUATED_RULES_CODE_BUG CONFIRMED FIXED: _save() has _ensure_loaded() guard (line 137), atomic write via os.replace() (line 142), graduate_hypothesis() forces fresh load (lines 151-152). Previously flagged as unfixed in Run 131 audit — code inspection confirms all three recommended fixes are already implemented."
       ],
       "skipped": [
-        "HYPE_SHORT_VETO_SPLIT (conf=71%, 13th flag, AWAITING_HUMAN_APPROVAL)",
-        "BTC_LONG_BOOST_MISCALIBRATION (conf=82%, 2nd flag, AWAITING_HUMAN_REVIEW — ESCALATING)",
-        "SOL_SHORT_75_80_PRECISION (conf=68%, 3rd flag, below 75% threshold)",
-        "RR_GEOMETRY_FIX (conf=82%, 6th flag, PARAMETER_AMBIGUITY)"
+        "HYPE_SHORT_VETO_SPLIT (conf=71%, 14th flag, AWAITING_HUMAN_APPROVAL)",
+        "BTC_LONG_BOOST_MISCALIBRATION (conf=82%, 3rd flag, AWAITING_HUMAN_REVIEW — ESCALATING)",
+        "SOL_SHORT_75_80_PRECISION (conf=68%, 4th flag, below 75% threshold)",
+        "RR_GEOMETRY_FIX (conf=82%, 7th flag, PARAMETER_AMBIGUITY — A/B proposal: atr_mult_sl=1.8 gate_10 at restart)"
       ]
     },
     "execution_forensics": {
@@ -32,17 +32,17 @@
       "noise_stop_problem": "50.8% of SL hits in noise regime — est -$14,814 recoverable",
       "kelly_fraction": -0.167,
       "verdict": "NEGATIVE_EDGE — structural deficit persists",
-      "delta": "NO CHANGE — same 589-trade dataset, bot offline (47 consecutive cached runs)",
+      "delta": "NO CHANGE — same 589-trade dataset, bot offline (48 consecutive cached runs)",
       "duration_bug_status": "UNFIXED — 52 trades with negative duration (8.8%), biases hold-time ML"
     },
     "live_injection": {
-      "status": "UPDATED_DEGRADATION_RECLASSIFICATION",
+      "status": "STABLE_NO_NEW_EDGES",
       "trades_analyzed": 965,
       "high_edges_found": 4,
       "degrading_edges_found": 1,
       "weak_setups_found": 7,
-      "key_change": "BTC_LONG downgraded from high_edge to degrading_edge. Full dataset WR=63.9% (n=72) vs 100d WR=31.7% (n=41) — temporal degradation pattern confirmed across 2 consecutive flags. live_edge_data.json updated.",
-      "new_weak_setup": "BTC_LONG_RECENT_100d added to weak_setups (WR=31.7%, n=41, -$13.41/trade)"
+      "new_candidates": 0,
+      "delta": "NO CHANGE from Run 133. BTC_LONG remains degrading_edge. All 3 candidates pending."
     },
     "daily_synthesis": {
       "status": "COMPLETE",
@@ -53,22 +53,22 @@
       "is_end_of_day": false,
       "report_generated": false,
       "anomaly_list": [
-        {"type": "BOT_OFFLINE", "severity": "CRITICAL", "flag_count": 65},
-        {"type": "NEGATIVE_KELLY", "severity": "CRITICAL", "flag_count": 11},
-        {"type": "HYPE_SHORT_VETO_SPLIT", "severity": "HIGH", "flag_count": 13},
-        {"type": "BTC_LONG_BOOST_MISCALIBRATION", "severity": "HIGH", "flag_count": 2},
-        {"type": "CONFIDENCE_ANTI_CORRELATION", "severity": "HIGH", "flag_count": 11},
-        {"type": "REGIME_AGENT_UPGRADE", "severity": "MEDIUM", "flag_count": 6},
-        {"type": "SOL_SHORT_75_80_PRECISION", "severity": "MEDIUM", "flag_count": 3},
-        {"type": "RR_GEOMETRY_FIX", "severity": "MEDIUM", "flag_count": 6},
-        {"type": "BTC_SHORT_90PLUS_OVERCLAIM", "severity": "MEDIUM", "flag_count": 3}
+        {"type": "BOT_OFFLINE", "severity": "CRITICAL", "flag_count": 66},
+        {"type": "NEGATIVE_KELLY", "severity": "CRITICAL", "flag_count": 12},
+        {"type": "HYPE_SHORT_VETO_SPLIT", "severity": "HIGH", "flag_count": 14},
+        {"type": "BTC_LONG_BOOST_MISCALIBRATION", "severity": "HIGH", "flag_count": 3},
+        {"type": "CONFIDENCE_ANTI_CORRELATION", "severity": "HIGH", "flag_count": 12},
+        {"type": "REGIME_AGENT_UPGRADE", "severity": "MEDIUM", "flag_count": 7},
+        {"type": "SOL_SHORT_75_80_PRECISION", "severity": "MEDIUM", "flag_count": 4},
+        {"type": "RR_GEOMETRY_FIX", "severity": "MEDIUM", "flag_count": 7},
+        {"type": "BTC_SHORT_90PLUS_OVERCLAIM", "severity": "MEDIUM", "flag_count": 4}
       ]
     },
     "model_optimization": {
       "status": "CACHED_NO_CHANGE",
       "agents_analyzed": 7,
       "swaps_recommended": 1,
-      "swap_detail": "Regime Agent: Haiku->Sonnet for REGIME_SHIFT events only. Est +$186/mo benefit, +$0.27/mo cost (688x ROI). 6th consecutive flag.",
+      "swap_detail": "Regime Agent: Haiku->Sonnet for REGIME_SHIFT events only. Est +$186/mo benefit, +$0.27/mo cost (688x ROI). 7th consecutive flag.",
       "potential_savings_usd": 0.0,
       "potential_benefit_usd": 186.0,
       "note": "cost_tracker.json absent — all estimates architectural"
@@ -76,54 +76,60 @@
   },
   "high_priority_findings": [
     {
+      "subsystem": "auto_fix",
+      "severity": "RESOLVED",
+      "finding": "GRADUATED_RULES_CODE_BUG CONFIRMED FIXED. All 3 safety measures present in graduated_rules.py: _ensure_loaded() guard (line 137), atomic os.replace() (line 142), forced fresh load in graduate_hypothesis() (lines 151-152).",
+      "action": "CLOSE THIS FINDING",
+      "consecutive_flags": 0
+    },
+    {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "BOT OFFLINE DAY 75 — 65th consecutive P0 flag. Zero live revenue. All feedback loops frozen. All state files stale.",
+      "finding": "BOT OFFLINE DAY 76 — 66th consecutive P0 flag. Zero live revenue.",
       "action": "cd /home/user/WAGMI/bot && python run.py paper",
-      "consecutive_flags": 65
+      "consecutive_flags": 66
     },
     {
       "subsystem": "execution_forensics",
       "severity": "CRITICAL",
-      "finding": "NEGATIVE KELLY EDGE (11th flag): Kelly=-0.167. WR=44.5% vs 52.4% needed. Every 100 trades = -$1,384 expected loss.",
-      "action": "Pre-restart: resolve atr_mult_sl ambiguity, widen HYPE SL to 1.5x. Review/deactivate BTC_LONG boost rule.",
-      "consecutive_flags": 11
+      "finding": "NEGATIVE KELLY EDGE (12th flag): Kelly=-0.167. WR=44.5% vs 52.4% needed. Every 100 trades = -$1,384 expected loss.",
+      "action": "Pre-restart: (1) deactivate restored_btc_long_boost_v1, (2) resolve HYPE atr_mult_sl, (3) validate paradox sizing.",
+      "consecutive_flags": 12
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "BTC_LONG_TEMPORAL_DEGRADATION (2nd flag — ESCALATING): restored_btc_long_boost_v1 boosts all BTC LONG +8 conf. Full dataset claim: WR=63.9% on n=72. But 100d window: WR=31.7% on n=41, -$550 total. Edge concentrated in data >100 days old and has since expired. rule_1782144529_0 already covers BTC+trend profitable subset. Generic boost will amplify losses at restart.",
-      "action": "HUMAN DECISION REQUIRED BEFORE RESTART: deactivate restored_btc_long_boost_v1 OR narrow conditions to {regime: trend}. Second consecutive flag — urgency increasing.",
-      "consecutive_flags": 2,
-      "first_detected": "2026-06-23T10:06:23Z"
+      "finding": "BTC_LONG_TEMPORAL_DEGRADATION (3rd flag — ESCALATING): restored_btc_long_boost_v1 boosts all BTC LONG +8 but 100d WR=31.7% (n=41, -$550). Edge expired.",
+      "action": "HUMAN DECISION REQUIRED BEFORE RESTART: deactivate OR narrow to {regime: trend}.",
+      "consecutive_flags": 3
     },
     {
       "subsystem": "auto_fix",
       "severity": "HIGH",
-      "finding": "HYPE_SHORT_VETO_SPLIT (13th flag, AWAITING_HUMAN_APPROVAL): HYPE SHORT <75% conf = WR=53.8%, n=80, +$808 EV blocked by blanket veto. 4 of top 5 wins are HYPE SHORT <75%.",
-      "action": "HUMAN DECISION REQUIRED: Split veto at 75% confidence. Keep >=75% blocked. Allow <75% with gate_20 A/B probe.",
-      "consecutive_flags": 13
+      "finding": "HYPE_SHORT_VETO_SPLIT (14th flag): HYPE SHORT <75% conf = WR=53.8%, n=80, +$808 EV blocked by blanket veto.",
+      "action": "HUMAN DECISION: Split veto at 75%. Allow <75% with gate_20 A/B probe.",
+      "consecutive_flags": 14
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "CONFIDENCE ANTI-CORRELATION (11th flag): 80-90% conf = WR=40.0%, -$33.04/trade — worst performance tier. Each +10pp confidence = -3.3pp WR across all tiers. Paradox sizing rule active but untested live.",
-      "action": "Validate confidence_paradox_sizing rule on first 20 trades at restart. Track 80-90% tier WR separately.",
-      "consecutive_flags": 11
+      "finding": "CONFIDENCE ANTI-CORRELATION (12th flag): 80-90% conf = WR=40.0%, -$33.04/trade — worst tier.",
+      "action": "Validate confidence_paradox_sizing on first 20 trades. Track 80-90% tier separately.",
+      "consecutive_flags": 12
+    },
+    {
+      "subsystem": "auto_fix",
+      "severity": "MEDIUM",
+      "finding": "RR_GEOMETRY_FIX (7th flag): Win/loss=0.91. Concrete A/B proposal: atr_mult_sl=1.8 on gate_10 for first 20 HYPE trades at restart.",
+      "action": "Apply at restart to resolve 7-run ambiguity via data.",
+      "consecutive_flags": 7
     },
     {
       "subsystem": "model_optimization",
       "severity": "MEDIUM",
-      "finding": "REGIME_AGENT UPGRADE (6th flag): Haiku->Sonnet for REGIME_SHIFT events. 688x ROI — $186/mo benefit vs $0.27/mo cost.",
-      "action": "Add AGENT_REGIME_SHIFT_MODEL=sonnet to .env. Implement trigger-based routing in usage_tiers.py.",
-      "consecutive_flags": 6
-    },
-    {
-      "subsystem": "live_injection",
-      "severity": "MEDIUM",
-      "finding": "SOL_SHORT_75_80 PRECISION EDGE (3rd flag): WR=52.9%, n=34, +$24.26/trade. Generic boost covers negative-EV bands. Potential +$825 EV/100d from precision targeting. conf=68% — below 75% auto-inject threshold.",
-      "action": "Track as PENDING. Re-evaluate after n>=50 in 100d. Do not inject yet.",
-      "consecutive_flags": 3
+      "finding": "REGIME_AGENT UPGRADE (7th flag): Haiku->Sonnet for REGIME_SHIFT. 688x ROI.",
+      "action": "Add AGENT_REGIME_SHIFT_MODEL=sonnet to .env.",
+      "consecutive_flags": 7
     }
   ],
   "run_metrics": {
@@ -131,31 +137,22 @@
     "fixes_applied_this_run": 0,
     "gates_active": 46,
     "llm_rules_active": 11,
-    "new_resolutions": [],
-    "new_findings": [
-      "BTC_LONG_TEMPORAL_DEGRADATION (live_edge_data.json updated — BTC_LONG downgraded from high_edge to degrading_edge)",
-      "cadence_streak=50 milestone (50 consecutive hourly runs)"
-    ],
+    "new_resolutions": ["GRADUATED_RULES_CODE_BUG CONFIRMED FIXED"],
     "counter_increments": [
-      "BOT_OFFLINE: 64->65",
-      "HYPE_SHORT_VETO_SPLIT: 12->13",
-      "NEGATIVE_KELLY: 10->11",
-      "CONFIDENCE_ANTI_CORRELATION: 10->11",
-      "REGIME_AGENT_UPGRADE: 5->6",
-      "SOL_SHORT_75_80: 2->3",
-      "BTC_LONG_BOOST_MISCALIBRATION: 1->2 (ESCALATING)",
-      "BTC_SHORT_90PLUS_OVERCLAIM: 2->3",
-      "RR_GEOMETRY_FIX: 5->6",
-      "cadence_streak: 49->50"
+      "BOT_OFFLINE: 65->66", "HYPE_SHORT_VETO_SPLIT: 13->14", "NEGATIVE_KELLY: 11->12",
+      "CONFIDENCE_ANTI_CORRELATION: 11->12", "REGIME_AGENT_UPGRADE: 6->7",
+      "RR_GEOMETRY_FIX: 6->7", "SOL_SHORT_75_80: 3->4",
+      "BTC_LONG_BOOST_MISCALIBRATION: 2->3 (ESCALATING)", "BTC_SHORT_90PLUS_OVERCLAIM: 3->4",
+      "cadence_streak: 50->51"
     ],
-    "delta_from_run132": {
+    "delta_from_run133": {
       "new": [
-        "BTC_LONG reclassified from high_edge to degrading_edge in live_edge_data.json",
-        "BTC_LONG_RECENT_100d added to weak_setups",
-        "cadence_streak=50 milestone"
+        "GRADUATED_RULES_CODE_BUG CONFIRMED FIXED — false alarm from Run 131",
+        "RR_GEOMETRY_FIX concrete A/B proposal: atr_mult_sl=1.8 gate_10"
       ],
-      "resolved": [],
-      "unchanged": ["BOT_OFFLINE", "NEGATIVE_KELLY", "HYPE_SHORT_VETO_SPLIT", "CONFIDENCE_ANTI_CORRELATION", "HYPE_LOSS_DOMINANCE"],
+      "resolved": ["GRADUATED_RULES_CODE_BUG"],
+      "unchanged": ["BOT_OFFLINE", "NEGATIVE_KELLY", "HYPE_SHORT_VETO_SPLIT",
+        "BTC_LONG_TEMPORAL_DEGRADATION", "CONFIDENCE_ANTI_CORRELATION"],
       "llm_rules": "11 (stable)"
     }
   }
