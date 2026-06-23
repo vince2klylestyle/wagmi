@@ -1,51 +1,15 @@
 {
-  "status": "UPDATED_RUN140",
-  "data_source": "trades_10d.csv (n=965, full dataset). Bot offline Day 75 — no live trades.",
+  "status": "UPDATED_RUN141",
+  "data_source": "trades_10d.csv (n=965, full dataset). Bot offline Day 75 — no live trades. Data UNCHANGED from run140.",
   "trades_analyzed": 965,
-  "last_updated": "2026-06-23T16:08:00Z",
-  "run_number": 140,
+  "last_updated": "2026-06-23T16:04:13Z",
+  "run_number": 141,
   "high_edges": [
-    {
-      "key": "SOL_SHORT",
-      "win_rate": 68.2,
-      "count": 179,
-      "ev_per_trade": 32.44,
-      "regime": "any",
-      "injection": "BOOST +8 confidence for SOL SHORT signals (restored Run 130)",
-      "status": "ACTIVE"
-    },
-    {
-      "key": "BTC_TREND_REGIME",
-      "win_rate": null,
-      "count": 15,
-      "ev_per_trade": null,
-      "injection": "BOOST +8 for BTC in trend regime (rule_1782144529_0)",
-      "status": "ACTIVE"
-    },
-    {
-      "key": "BTC_LONG",
-      "win_rate": 66.7,
-      "count": 72,
-      "ev_per_trade": 25.55,
-      "injection": "HISTORICAL: BTC LONG 66.7% WR all-time. Current 100d WR=31.7% — BOOST DEACTIVATED Run135",
-      "status": "DEACTIVATED_MONITORING"
-    },
-    {
-      "key": "BTC_SHORT_90plus",
-      "win_rate": 67.4,
-      "count": 43,
-      "ev_per_trade": 102.92,
-      "injection": "CANDIDATE: BTC SHORT 90%+ — n=43 full dataset. n=10 only in 100d (WR=50%). Monitor.",
-      "status": "CANDIDATE — DO NOT INJECT until 100d n>=30"
-    },
-    {
-      "key": "conf_90plus",
-      "win_rate": 59.3,
-      "count": 91,
-      "ev_per_trade": 32.33,
-      "injection": "90%+ confidence is best tier. Recent 200: 64.1% WR, +$101.92/trade.",
-      "status": "ACTIVE — natural edge, no intervention needed"
-    }
+    {"key": "SOL_SHORT", "win_rate": 68.2, "count": 179, "ev_per_trade": 32.44, "regime": "any", "injection": "BOOST +8 confidence for SOL SHORT signals (restored Run 130)", "status": "ACTIVE"},
+    {"key": "BTC_TREND_REGIME", "win_rate": null, "count": 15, "ev_per_trade": null, "injection": "BOOST +8 for BTC in trend regime (rule_1782144529_0)", "status": "ACTIVE"},
+    {"key": "BTC_LONG", "win_rate": 66.7, "count": 72, "ev_per_trade": 25.55, "injection": "HISTORICAL: BTC LONG 66.7% WR all-time. Current 100d WR=31.7% — BOOST DEACTIVATED Run135", "status": "DEACTIVATED_MONITORING"},
+    {"key": "BTC_SHORT_90plus", "win_rate": 67.4, "count": 43, "ev_per_trade": 102.92, "injection": "CANDIDATE: BTC SHORT 90%+ — n=43 full dataset. n=10 only in 100d (WR=50%). Monitor.", "status": "CANDIDATE — DO NOT INJECT until 100d n>=30"},
+    {"key": "conf_90plus", "win_rate": 59.3, "count": 91, "ev_per_trade": 32.33, "injection": "90%+ confidence is best tier. Recent 200: 64.1% WR, +$101.92/trade. Recent 100: 53.8% WR, +$25.37/trade.", "status": "PENDING_HUMAN_REVIEW — CONF_90PLUS_SELECTIVE_BOOST proposal at 4th flag, conf=72%"}
   ],
   "high_edges_found": 5,
   "weak_setups": [
@@ -60,90 +24,35 @@
   ],
   "weak_setups_found": 8,
   "new_injection_candidates": [
-    {
-      "key": "SOL_SHORT_75_80",
-      "win_rate": 52.9,
-      "count": 34,
-      "ev_per_trade": 24.26,
-      "confidence": 68,
-      "flag_count": 6,
-      "action": "CANDIDATE (6th flag): SOL SHORT precision 75-80% conf. Below 75% auto-inject threshold. Monitor."
-    },
-    {
-      "key": "CONF_90PLUS_SELECTIVE_BOOST",
-      "win_rate": 53.8,
-      "count": 13,
-      "ev_per_trade": 25.37,
-      "confidence": 72,
-      "flag_count": 3,
-      "action": "PROPOSAL_READY (3rd flag): 90%+ conf = only profitable tier recent 100. Propose +5 boost rule at 4th flag."
-    }
+    {"key": "SOL_SHORT_75_80", "win_rate": 52.9, "count": 34, "ev_per_trade": 24.26, "confidence": 68, "flag_count": 7, "action": "CANDIDATE (7th flag): SOL SHORT precision 75-80% conf. Below 75% auto-inject threshold. Monitor after bot restart."},
+    {"key": "CONF_90PLUS_SELECTIVE_BOOST", "win_rate": 53.8, "count": 13, "ev_per_trade": 25.37, "confidence": 72, "flag_count": 4, "status": "PENDING_HUMAN_REVIEW", "action": "ESCALATED (4th flag): 90%+ conf = only profitable tier recent 100. Conf=72% < 75% auto-inject. Human review: approve +5 boost rule at gate=20%?"},
+    {"key": "CONFIDENCE_PARADOX_RULE_REMAP", "win_rate": null, "count": null, "ev_per_trade": null, "confidence": 74, "flag_count": 3, "status": "PROPOSAL_TRIGGERED", "action": "3RD FLAG: Active rule targets 85-90% (-0.25x) but data shows 75-80% is the real loss center. CONF_70_80_SIZE_REDUCTION may be sufficient. Defer: collect A/B results on bot restart (50 trades)."}
   ],
   "deactivations_this_run": 0,
   "new_rules_applied_this_run": 0,
   "recent_200_confidence_bands": {
-    "70_80": {"win_rate": 47.6, "count": 200, "ev_per_trade": -86.67, "verdict": "PRIMARY_LOSS_CENTER"},
+    "70_80": {"win_rate": 47.6, "count": 200, "ev_per_trade": -86.67, "verdict": "PRIMARY_LOSS_CENTER — CONF_70_80_SIZE_REDUCTION A/B active at 20% gate"},
     "80_90": {"win_rate": 52.2, "count": null, "ev_per_trade": -37.23, "verdict": "DEGRADING"},
-    "90plus": {"win_rate": 64.1, "count": 39, "ev_per_trade": 101.92, "verdict": "BEST_TIER"}
+    "90plus": {"win_rate": 64.1, "count": 39, "ev_per_trade": 101.92, "verdict": "BEST_TIER — CONF_90PLUS boost pending human review"}
   },
-  "run140_updates": {
-    "last_updated": "2026-06-23T16:08:00Z",
-    "run_number": 140,
+  "run141_updates": {
+    "last_updated": "2026-06-23T16:04:13Z",
+    "run_number": 141,
     "conf_90plus_flag_status": {
-      "flag_count": 3,
-      "threshold_for_proposal": 3,
+      "flag_count": 4,
+      "threshold_hit": true,
       "current_confidence": 72,
-      "status": "PROPOSAL_READY — inject on next run if 4th consecutive flag + conf >= 75",
+      "inject_conf_required": 75,
+      "status": "PENDING_HUMAN_REVIEW — 4th flag. Conf=72% below 75% auto-inject. Evidence consistent over 4 runs.",
       "proposed_action": {"rule": "boost", "conditions": {"confidence_min": 90}, "adjustment": 5.0, "gate": 20}
     },
     "confidence_paradox_miscal_flag": {
-      "flag_count": 2,
+      "flag_count": 3,
+      "threshold_hit": true,
       "current_rule": "restored_confidence_paradox_sizing_v1 targets 85-90%",
-      "actual_problem": "75-80% band: WR=45.5%, EV=-$88.82/trade (worst tier)",
-      "correct_target": "75-80% band (partially addressed by CONF_70_80_SIZE_REDUCTION at -0.3x)",
-      "status": "Flag at 3rd run then propose rule remap or confirm CONF_70_80_SIZE_REDUCTION suffices"
-    },
-    "execution_forensics_delta": {
-      "avg_slippage_pct": 0.521,
-      "noise_stop_pct": 34.8,
-      "note": "Both metrics improved vs run139. Sample unchanged (bot offline)."
-    }
-  },
-  "run138_updates": {
-    "last_updated": "2026-06-23T14:00:00Z",
-    "run_number": 138,
-    "confidence_bins_full_dataset": {
-      "60_70": {"win_rate": 46.3, "count": 123, "avg_pnl": -18.87, "verdict": "NEGATIVE_EV"},
-      "70_75": {"win_rate": 59.8, "count": 341, "avg_pnl": -5.16, "verdict": "MARGINALLY_NEGATIVE"},
-      "75_80": {"win_rate": 57.2, "count": 292, "avg_pnl": 3.90, "verdict": "SLIGHTLY_POSITIVE"},
-      "80_90": {"win_rate": 60.2, "count": 118, "avg_pnl": 7.67, "verdict": "POSITIVE_ALL_TIME"},
-      "90_100": {"win_rate": 56.0, "count": 91, "avg_pnl": 32.33, "verdict": "BEST_TIER"}
-    },
-    "confidence_bins_recent_100": {
-      "60_70": {"win_rate": 50.0, "count": 16, "avg_pnl": -82.96, "verdict": "DETERIORATING"},
-      "70_75": {"win_rate": 48.5, "count": 33, "avg_pnl": -77.45, "verdict": "PRIMARY_LOSS_CENTER"},
-      "75_80": {"win_rate": 45.5, "count": 33, "avg_pnl": -88.82, "verdict": "PRIMARY_LOSS_CENTER"},
-      "80_90": {"win_rate": 40.0, "count": 5, "avg_pnl": -263.89, "verdict": "SMALL_N_ALARMING"},
-      "90_100": {"win_rate": 53.8, "count": 13, "avg_pnl": 25.37, "verdict": "ONLY_POSITIVE_TIER"}
-    },
-    "key_finding": "Recent 100 trades: ONLY 90%+ confidence tier has positive EV (+$25.37/trade). ALL other tiers negative. This is a qualitative shift from full-dataset picture.",
-    "anomaly_BTC_only_recent": "Last 50-100 trades appear to be BTC-only. SOL/HYPE absent from recent window. Multi-symbol edge data may be stale.",
-    "consecutive_loss_streaks": {
-      "max_streak_all_time": 9,
-      "streaks_over_5": 8,
-      "recent_streaks": [9, 8, 8, 6, 6],
-      "verdict": "Streak frequency is HIGH. 8 separate streaks of >5 consecutive losses in 965 trades = 1 every ~120 trades."
-    },
-    "leverage_summary": {
-      "max_leverage_observed": 3.01,
-      "trades_over_7x": 0,
-      "verdict": "No leverage anomalies. Max 3.01x confirms leverage safety gates functioning."
-    },
-    "fee_analysis": {
-      "total_fees_965_trades": 3945.33,
-      "avg_fee_per_trade": 4.09,
-      "fee_as_pct_total_pnl": 435.8,
-      "verdict": "Fees = 4.35x total net PnL. On $905 net PnL with $3,945 in fees. Fee drag significant."
+      "actual_problem": "75-80% band: WR=45.5%, EV=-$88.82/trade (worst tier recent 100)",
+      "mitigation_status": "CONF_70_80_SIZE_REDUCTION (run137) at 20% gate may be sufficient",
+      "status": "PROPOSAL_TRIGGERED at 3rd flag — defer remap decision until A/B results"
     }
   }
 }

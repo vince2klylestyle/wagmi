@@ -1,47 +1,54 @@
 {
   "date": "2026-06-23",
-  "last_updated": "2026-06-23T16:08:00Z",
-  "run_number": 140,
+  "last_updated": "2026-06-23T16:04:13Z",
+  "run_number": 141,
   "bot_status": "OFFLINE",
   "days_offline": 75,
   "todays_trades": 0,
   "todays_pnl": 0.0,
-  "anomalies_count": 5,
+  "anomalies_count": 6,
   "anomalies": [
     {
       "type": "BOT_OFFLINE_DAY_75",
       "severity": "CRITICAL",
-      "consecutive_flags": 70,
-      "description": "Day 75 offline. No live trades, no revenue, no rule validation.",
+      "consecutive_flags": 71,
+      "description": "Day 75 offline. No live trades, no revenue, no rule validation. 71st consecutive flag.",
       "recommendation": "cd /home/user/WAGMI/bot && python run.py paper"
     },
     {
       "type": "CONSECUTIVE_LOSS_STREAK_HIST",
       "severity": "HIGH",
       "value": 8,
-      "description": "Max streak of 8 consecutive losses in last 50 trades (circuit breaker at 5).",
-      "recommendation": "Verify circuit breaker implementation in risk.py"
+      "description": "Max streak of 8 consecutive losses in last 50 trades (circuit breaker at 5). Historical pattern: 8 streaks of >5 losses in 965 trades.",
+      "recommendation": "Verify circuit breaker implementation in risk.py. RR geometry fix (atr_mult 1.5->1.8) would reduce streak probability."
     },
     {
       "type": "FEEDBACK_STATE_FILES_MISSING",
       "severity": "HIGH",
-      "consecutive_flags": 6,
-      "description": "4/6 feedback state files absent (6th flag). _save() silently fails.",
-      "recommendation": "DEV: Add write-confirmation log to each _save() method."
+      "consecutive_flags": 7,
+      "description": "4/6 feedback state files absent (7th flag). _save() silently fails.",
+      "recommendation": "DEV: Add write-confirmation log to each _save() method in signal_quality.py, regime_feedback.py, adaptive_confidence.py, parameter_tuner.py."
     },
     {
       "type": "RR_GEOMETRY_FIX_BLOCKED",
       "severity": "HIGH",
-      "consecutive_flags": 12,
-      "description": "HUMAN DECISION needed: tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3 specifically?",
-      "recommendation": "UNBLOCK: Choose atr_mult param path. Apply fix on next bot restart."
+      "consecutive_flags": 13,
+      "description": "HUMAN DECISION OVERDUE (13th flag): tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3 specifically? 370 SL hits = -$83,112 total loss.",
+      "recommendation": "UNBLOCK: Choose one parameter path. Apply fix on next bot restart."
     },
     {
       "type": "DURATION_BUG_CRITICAL",
       "severity": "CRITICAL",
+      "consecutive_flags": 5,
+      "description": "ALL 965 trades have duration_h=0 or negative. 809 zero, 156 negative, 0 valid. HoldTimeRuleManager ML fully compromised. 5th flag with zero progress.",
+      "recommendation": "DEV: Fix trade logging — record open_time and close_time, compute duration_h correctly."
+    },
+    {
+      "type": "CONF_90PLUS_PENDING_HUMAN_REVIEW",
+      "severity": "MEDIUM",
       "consecutive_flags": 4,
-      "description": "ALL 965 trades have duration_h=0 or negative. HoldTimeRuleManager ML fully compromised. 4th flag.",
-      "recommendation": "DEV: Fix trade logging — record open_time and close_time, compute duration_h correctly"
+      "description": "90%+ confidence is the ONLY profitable tier in recent 100 trades (WR=53.8%, +$25.37/trade). 4th consecutive flag. Confidence=72% just below 75% auto-inject threshold. PENDING_HUMAN_REVIEW.",
+      "recommendation": "Human decision: approve boost +5 for confidence >= 90 signals at 20% A/B gate?"
     }
   ],
   "7day_avg_wr": 44.5,
@@ -52,15 +59,27 @@
   "max_consecutive_losses": 8,
   "unusual_leverage_trades": 0,
   "max_leverage_observed": 3.01,
-  "slippage_estimate_last50": "0.521% avg from SL level in last 50 rows (all BTC, run140 recompute)",
-  "noise_stop_rate": "34.8% of SL hits had conf>=75% (run140 recompute, improved from 36.4%)",
+  "slippage_estimate_last50": "0.521% avg (unchanged run140-141, bot offline)",
+  "noise_stop_rate": "34.8% of SL hits had conf>=75% (unchanged run140-141)",
   "rr_ratio_last50": 0.479,
   "kelly_full_dataset": 0.0061,
   "kelly_recent_100": -0.265,
   "total_fees_965_trades": 3945.33,
+  "graduated_rules_active": 10,
+  "graduated_rules_total": 12,
+  "ab_tests_active": 2,
+  "ab_tests_detail": [
+    {"id": "CONF_70_80_SIZE_REDUCTION", "gate": "20%", "trades_collected": 0, "target": 50, "status": "awaiting bot restart"},
+    {"id": "BTC_LONG_BOOST_DEACTIVATION", "gate": "20%", "trades_collected": 0, "target": 50, "status": "awaiting bot restart"}
+  ],
   "tomorrows_focus": {
     "priority_symbols": ["SOL", "BTC"],
+    "priority_setups": ["SOL SHORT (all conf)", "BTC SHORT 90%+ conf", "BTC in trend regime"],
     "avoid": ["HYPE_LONG", "HYPE_SHORT_gte75", "illiquid_regime", "ranging_regime", "night_0-6_UTC", "conf_70-80"],
+    "pending_human_decisions": [
+      "Approve CONF_90PLUS_SELECTIVE_BOOST (+5 boost for conf>=90, gate=20%)?",
+      "Choose RR geometry fix path: global tp_sl_atr_mult 1.5->1.8 OR HYPE-specific atr_mult_sl 2.0->2.3?"
+    ],
     "restart_required": true,
     "restart_command": "cd /home/user/WAGMI/bot && python run.py paper"
   }
