@@ -229,6 +229,117 @@ def test_flag_off_disables_regime_prior_table(monkeypatch):
     assert brain._regime_priors is None, "flag off => no regime prior table => legacy lookup"
 
 
+# ── USE_MECHANICAL_BASELINE: separable baseline decontamination ───────────
+
+
+def _write_ledger_71llm_19win_11loss(data_dir):
+    """Build a ledger matching the audit shape: 71 LLM losers + 30 mechanical
+    (19 winners / 11 losers). Mechanical-only WR = 19/30 ~ 0.633; contaminated
+    pooled WR over all 101 exits ~ 0.188."""
+    ledger = data_dir / "trade_ledger.csv"
+    rows = []
+    for i in range(71):
+        rows.append(_mk("ETH", "SHORT", "range", "LLM_EXIT_AGENT", -10.0, 1_780_000_000 + i))
+    for i in range(19):
+        rows.append(_mk("ETH", "SHORT", "range", "TP2", 50.0, 1_780_100_000 + i))
+    for i in range(11):
+        rows.append(_mk("ETH", "SHORT", "range", "SL", -50.0, 1_780_200_000 + i))
+    with open(ledger, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    return ledger
+
+
+def _reload_ds_with_data_dir(monkeypatch, data_dir):
+    import llm.agents.dynamic_stats as ds
+    importlib.reload(ds)
+    monkeypatch.setattr(ds, "_DATA_DIR", data_dir, raising=True)
+    # Point legacy loader at an absent trades.csv so the legacy path yields its
+    # fallback (0.50, 1.5) — distinct from any mechanical value.
+    monkeypatch.setattr(ds, "TRADES_CSV", data_dir / "trades.csv", raising=True)
+    return ds
+
+
+def test_mechanical_baseline_flag_on_returns_mechanical_wr(tmp_path, monkeypatch):
+    """(a) USE_MECHANICAL_BASELINE=ON returns the ~0.63 mechanical-only WR,
+    excluding the 71 LLM_EXIT_AGENT closes — INDEPENDENT of USE_REGIME_PRIORS."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _write_ledger_71llm_19win_11loss(data_dir)
+    ds = _reload_ds_with_data_dir(monkeypatch, data_dir)
+
+    # Regime-priors flag stays OFF; only the new baseline flag is on.
+    monkeypatch.delenv("USE_REGIME_PRIORS", raising=False)
+    monkeypatch.setenv("USE_MECHANICAL_BASELINE", "true")
+
+    wr, payoff = ds.get_system_baseline()
+    assert wr == pytest.approx(19 / 30, abs=1e-9)
+    assert wr > 0.6, "decontaminated mechanical WR must reflect the true ~0.63 edge"
+    assert payoff == pytest.approx(50.0 / 50.0, abs=1e-9)
+
+
+def test_mechanical_baseline_flag_off_returns_legacy(tmp_path, monkeypatch):
+    """(b) BOTH flags OFF returns the legacy fallback (0.50, 1.5), ignoring the
+    mechanical ledger entirely — byte-identical to current live behavior."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _write_ledger_71llm_19win_11loss(data_dir)
+    ds = _reload_ds_with_data_dir(monkeypatch, data_dir)
+
+    monkeypatch.delenv("USE_REGIME_PRIORS", raising=False)
+    monkeypatch.delenv("USE_MECHANICAL_BASELINE", raising=False)
+
+    wr_off, payoff_off = ds.get_system_baseline()
+    assert (wr_off, payoff_off) == (0.50, 1.5), (
+        "both flags OFF must reproduce the legacy fallback, ignoring the ledger"
+    )
+
+    # Sanity: explicit 'false' is treated the same as unset.
+    monkeypatch.setenv("USE_MECHANICAL_BASELINE", "false")
+    assert ds.get_system_baseline() == (0.50, 1.5)
+
+
+def test_mechanical_baseline_flag_does_not_activate_regime_table(monkeypatch):
+    """(c) USE_MECHANICAL_BASELINE must NOT build the regime-keyed prior table.
+
+    The regime prior table stays gated by USE_REGIME_PRIORS alone. Turning on
+    only the baseline flag must leave flag_enabled() False and QuantBrain's
+    regime-prior table None.
+    """
+    monkeypatch.delenv("USE_REGIME_PRIORS", raising=False)
+    monkeypatch.setenv("USE_MECHANICAL_BASELINE", "true")
+
+    # The baseline gate is open ...
+    assert rp.mechanical_baseline_enabled() is True
+    # ... but the regime-keyed prior gate is NOT.
+    assert rp.flag_enabled() is False
+
+    from llm.quant_brain import QuantBrain
+    brain = QuantBrain()
+    assert brain._regime_priors is None, (
+        "USE_MECHANICAL_BASELINE must not activate the regime prior table; "
+        "that remains gated by USE_REGIME_PRIORS"
+    )
+
+
+def test_regime_priors_flag_still_implies_mechanical_baseline(tmp_path, monkeypatch):
+    """USE_REGIME_PRIORS alone must still decontaminate the baseline (back-compat).
+
+    The regime-priors feature has always implied the mechanical baseline; the
+    separable flag must not regress that.
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _write_ledger_71llm_19win_11loss(data_dir)
+    ds = _reload_ds_with_data_dir(monkeypatch, data_dir)
+
+    monkeypatch.delenv("USE_MECHANICAL_BASELINE", raising=False)
+    monkeypatch.setenv("USE_REGIME_PRIORS", "true")
+    wr, _ = ds.get_system_baseline()
+    assert wr == pytest.approx(19 / 30, abs=1e-9)
+
+
 def test_regime_bucket_collapse():
     assert rp.regime_bucket("trending_bull") == "bull"
     assert rp.regime_bucket("trending_bear") == "bear"

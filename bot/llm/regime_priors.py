@@ -78,10 +78,38 @@ _FALLBACK_DEFAULT = 0.40
 
 
 def flag_enabled() -> bool:
-    """True iff USE_REGIME_PRIORS is set to a truthy value (default FALSE)."""
+    """True iff USE_REGIME_PRIORS is set to a truthy value (default FALSE).
+
+    This gates the FULL regime-keyed prior table (the (symbol, side,
+    regime_bucket) lookup), whose regime-KEYING dimension is unproven at low
+    sample. It does NOT, by itself, control the system-baseline decontamination
+    — that is a pure correctness fix gated separately by
+    `mechanical_baseline_enabled()` (USE_MECHANICAL_BASELINE).
+    """
     return os.getenv("USE_REGIME_PRIORS", "false").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+def mechanical_baseline_enabled() -> bool:
+    """True iff the system-baseline decontamination should be applied.
+
+    Enabled by EITHER:
+      - USE_MECHANICAL_BASELINE (default FALSE) — the separable, pure
+        correctness fix that makes get_system_baseline() return the
+        mechanical-exit WR (excludes LLM_EXIT_AGENT closes that are 0/N by
+        construction), OR
+      - USE_REGIME_PRIORS (default FALSE) — the full regime-prior feature,
+        which has always implied the decontaminated baseline.
+
+    This does NOT activate the regime-keyed prior table; that remains gated by
+    `flag_enabled()` (USE_REGIME_PRIORS) alone.
+    """
+    if os.getenv("USE_MECHANICAL_BASELINE", "false").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return True
+    return flag_enabled()
 
 
 def regime_bucket(regime_label: Optional[str]) -> str:

@@ -132,13 +132,21 @@ def get_system_baseline() -> Tuple[float, float]:
     Returns: (win_rate, payoff_ratio)
     Fallback: (0.50, 1.5) if insufficient data
 
-    When USE_REGIME_PRIORS is enabled, the baseline is computed from
-    MECHANICAL-exit trades only (excludes LLM_EXIT_AGENT closes that are 0/N
-    by construction). Default (flag off) preserves the legacy behavior exactly.
+    When USE_MECHANICAL_BASELINE (or USE_REGIME_PRIORS, which implies it) is
+    enabled, the baseline is computed from MECHANICAL-exit trades only (excludes
+    LLM_EXIT_AGENT closes that are 0/N by construction). USE_MECHANICAL_BASELINE
+    is the separable, pure-correctness fix and does NOT activate the
+    regime-keyed prior table. With both flags off the legacy behavior is
+    preserved byte-for-byte.
     """
-    if os.getenv("USE_REGIME_PRIORS", "false").strip().lower() in (
-        "1", "true", "yes", "on",
-    ):
+    _mech_on = False
+    try:
+        from llm.regime_priors import mechanical_baseline_enabled
+        _mech_on = mechanical_baseline_enabled()
+    except Exception as e:
+        logger.debug("dynamic_stats: mechanical_baseline flag check failed: %s", e)
+
+    if _mech_on:
         mech_baseline = _load_mechanical_ledger_baseline()
         if mech_baseline is not None:
             return mech_baseline

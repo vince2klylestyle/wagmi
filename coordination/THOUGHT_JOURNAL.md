@@ -353,3 +353,19 @@ DECISION: reverted the partial change to clean committed state (no half-measure 
 requires the DECISION-LEDGER approach (audit's high-effort item): per-decision attribution across all 4 veto call sites
 (stamp veto_rule_ids + route a counterfactual to record_veto_outcome from each site). Well-specified, deferred to a
 dedicated session. Vetoes still function (block trades) and display 'unmeasured' (honest) — no regression vs pre-session.
+
+## 2026-06-23T19:13Z — Baseline decontamination ENABLED (both gates approved) + VOLUME REFRAME
+Shipped USE_MECHANICAL_BASELINE=true (separate flag, independent of unproven USE_REGIME_PRIORS). Baseline WR fed to
+LLM prompts now 0.633 (true mechanical) not ~0.23 (contaminated by 0/71 LLM-exit closes + wrong source file). Restarted
+(pid 36224); confirmed live baseline=0.633. quant+review BOTH said enable: zero over-sizing risk (sizing/Kelly never
+read the baseline — it only feeds LLM PROMPT text + _default_wp for unlisted symbols; all 8 live setups use _calibrations).
+KEY REFRAME (important): the volume problem is NOT gate-driven. Decisions log (last 300): 0 hard-gate blocks; bot goes
+'flat' 148x via LLM JUDGMENT (multi_agent_decision). So under-trading = the LLM choosing to skip, fed false "23%/TOXIC"
+pessimism. The edge map shows most setups ARE -EV in this chop (longs everywhere, HYPE, shorts outside bear) — so heavy
+skipping may be CORRECT. The real fix was never "force more trades," it was fixing the measurement so the LLM skips the
+bad ones and takes the genuinely-good ones (shorts in bear, BTC/ETH mechanical) with TRUE confidence. Quality > forced qty.
+SESSION TALLY (all gated): exit-agent muzzled; stale-advisory pruning (live, observed working); exit-regret tracking;
+calibration repaired; accuracy clamp; baseline decontaminated. HELD (gates): regime-keyed priors (unproven n=30, dormant);
+veto self-scoring (reverted — needs full decision-ledger across 4 call sites).
+NEXT CANDIDATES: agreement_level anomaly (agree=2 is -EV vs agree=1 +EV — possible ensemble bug); veto decision-ledger;
+regime priors re-validate when mechanical n grows.
