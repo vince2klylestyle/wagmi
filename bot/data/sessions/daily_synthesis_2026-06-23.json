@@ -1,7 +1,7 @@
 {
   "date": "2026-06-23",
-  "last_updated": "2026-06-23T17:05:05Z",
-  "run_number": 142,
+  "last_updated": "2026-06-23T18:05:00Z",
+  "run_number": 143,
   "bot_status": "OFFLINE",
   "days_offline": 75,
   "todays_trades": 0,
@@ -9,18 +9,18 @@
   "data_source": "Historical cached dataset (trades_10d.csv, n=965). No live trades.",
   "anomalies_count": 5,
   "anomalies": [
-    {"type": "CONSECUTIVE_LOSS_STREAK", "severity": "HIGH", "value": 8, "threshold": 5, "description": "Historical max streak = 8 consecutive losses. Exceeds circuit breaker threshold of 5.", "recommendation": "Verify circuit breaker implementation. RR geometry fix would reduce streak probability.", "triggered": true},
-    {"type": "DATASET_CONTRADICTION_UNRESOLVED", "severity": "HIGH", "value": 21.3, "description": "20d vs 100d WR contradiction: 20d=65.8% vs 100d=44.5%. Swing=21.3%. Rules built from 100d may penalize recent-winning setups.", "triggered": true},
-    {"type": "LEVERAGE_NORMAL", "severity": "INFO", "value": 3.01, "threshold": 7.0, "description": "Max leverage: 3.01x — within safe limits. Safety gates confirmed.", "triggered": false},
-    {"type": "TIME_OF_DAY_ANALYSIS_BLOCKED", "severity": "CRITICAL", "description": "Cannot assess time-of-day dominance. Duration bug: 0/965 trades have valid duration_h.", "triggered": true, "root_cause": "Duration logging not implemented in trade CSV writer"},
-    {"type": "BOT_OFFLINE_DAY_75", "severity": "CRITICAL", "consecutive_flags": 72, "description": "Day 75 offline. Zero live trades. Zero revenue. All 49+ A/B gate slots untested.", "recommendation": "cd /home/user/WAGMI/bot && python run.py paper"},
-    {"type": "FEEDBACK_STATE_FILES_MISSING", "severity": "HIGH", "consecutive_flags": 8, "description": "4/6 feedback state files absent. signal_quality.json, regime_feedback_state.json, tuner_state.json missing. _save() silently fails.", "recommendation": "DEV: Add write-confirmation log to each _save() method"}
+    {"type": "CONSECUTIVE_LOSS_STREAK", "severity": "HIGH", "value": 8, "threshold": 5, "triggered": true},
+    {"type": "DATASET_CONTRADICTION_UNRESOLVED", "severity": "HIGH", "value": 21.3, "description": "20d WR=65.8% vs 100d WR=44.5%. Rules from 100d may penalize recent-winning setups.", "triggered": true},
+    {"type": "LEVERAGE_NORMAL", "severity": "INFO", "value": 3.01, "threshold": 7.0, "triggered": false},
+    {"type": "TIME_OF_DAY_ANALYSIS_BLOCKED", "severity": "CRITICAL", "description": "Duration bug: 0/965 valid durations.", "triggered": true},
+    {"type": "BOT_OFFLINE_DAY_75", "severity": "CRITICAL", "consecutive_flags": 73, "triggered": true},
+    {"type": "FEEDBACK_STATE_FILES_MISSING", "severity": "HIGH", "consecutive_flags": 8, "triggered": true}
   ],
   "win_rate_metrics": {
-    "all_time_wr": 57.0, "7day_avg_wr": 44.5, "recent_100_wr": 48.0, "recent_50_wr": 56.0, "20d_wr": 65.8, "100d_wr": 44.5, "wr_swing_20d_vs_100d": 21.3
+    "all_time_wr": 57.0, "7day_avg_wr": 44.5, "recent_100_wr": 48.0, "recent_50_wr": 56.0, "20d_wr": 65.8, "100d_wr": 44.5
   },
   "risk_metrics": {
-    "max_consecutive_losses": 8, "circuit_breaker_threshold": 5, "max_leverage_observed": 3.01, "leverage_threshold": 7.0, "noise_stop_rate": 34.8, "avg_slippage_pct": 0.534, "rr_ratio": 0.479, "kelly_recent_100": -0.265, "kelly_full_dataset": 0.0061
+    "max_consecutive_losses": 8, "circuit_breaker_threshold": 5, "max_leverage_observed": 3.01, "noise_stop_rate": 34.8, "avg_slippage_pct": 0.534, "rr_ratio": 0.479, "kelly_recent_100": -0.265, "kelly_full_dataset": 0.0061
   },
   "tomorrows_focus": {
     "priority_symbols": ["SOL", "BTC"],
@@ -28,11 +28,13 @@
     "avoid": ["HYPE_LONG", "HYPE_SHORT_gte75", "illiquid_regime", "ranging_regime", "night_0-6_UTC", "conf_70-80"],
     "pending_human_decisions": [
       "Approve CONF_90PLUS_SELECTIVE_BOOST (+5 boost for conf>=90, gate=20%)?",
-      "Choose RR geometry fix path: global tp_sl_atr_mult 1.5->1.8 OR HYPE-specific atr_mult_sl 2.0->2.3?"
+      "Choose RR geometry fix: global atr_mult_sl 1.5->1.8 OR HYPE-specific 2.0->2.3?"
     ],
     "restart_required": true,
     "restart_command": "cd /home/user/WAGMI/bot && python run.py paper"
   },
-  "graduated_rules_active": 10,
-  "ab_tests_active": 2
+  "graduated_rules_active": 13,
+  "graduated_rules_file_total": 14,
+  "ab_tests_active": 5,
+  "run143_note": "3 rules physically added: conf_70_80_size_reduction_v1 (backfill), evening_session_penalize_v1, afternoon_session_penalize_v1. TP1 code fix deferred pending investigation."
 }
