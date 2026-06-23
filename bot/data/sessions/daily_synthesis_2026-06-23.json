@@ -1,0 +1,77 @@
+{
+  "date": "2026-06-23",
+  "last_updated": "2026-06-23T04:09:28Z",
+  "run_number": 132,
+  "bot_status": "OFFLINE",
+  "days_offline": 76,
+  "todays_trades": 0,
+  "todays_pnl": 0.0,
+  "anomalies_count": 8,
+  "anomalies": [
+    {
+      "type": "BTC_LONG_BOOST_BROKEN",
+      "severity": "CRITICAL",
+      "consecutive_flags": 1,
+      "description": "NEW Run132: BTC LONG boost rule claims 63.9% WR but 100d backtest shows 31.7% WR EV=-$13.42/trade. Rule is promoting a loser. Must deactivate restored_btc_long_boost_v1.",
+      "action": "Deactivate restored_btc_long_boost_v1, replace with penalize -8"
+    },
+    {
+      "type": "BOT_OFFLINE",
+      "severity": "CRITICAL",
+      "consecutive_flags": 64,
+      "description": "Day 76 offline. Zero revenue. All feedback loops frozen.",
+      "action": "cd /home/user/WAGMI/bot && python run.py paper"
+    },
+    {
+      "type": "NEGATIVE_KELLY_EDGE",
+      "severity": "CRITICAL",
+      "consecutive_flags": 10,
+      "description": "Kelly=-0.168, WR=44.5% vs 52.5% needed. Avg win $82.72 < avg loss $91.27."
+    },
+    {
+      "type": "HYPE_SHORT_VETO_SPLIT",
+      "severity": "HIGH",
+      "consecutive_flags": 12,
+      "description": "AWAITING_HUMAN_APPROVAL: HYPE SHORT <75% conf = +$808 EV blocked (EV=+$10.10/trade, WR=53.8%, n=80)."
+    },
+    {
+      "type": "CONFIDENCE_ANTI_CORRELATION",
+      "severity": "HIGH",
+      "consecutive_flags": 10,
+      "description": "80-90% conf = 40% WR (worst tier, EV=-$33.04). Paradox sizing rule active but untested live."
+    },
+    {
+      "type": "HYPE_LOSS_DOMINANCE",
+      "severity": "HIGH",
+      "consecutive_flags": 7,
+      "description": "HYPE 38% of trades, 68% of losses. Sizing cap 0.5x active in graduated rules."
+    },
+    {
+      "type": "SHORT_DIRECTION_VETO_INVERSION",
+      "severity": "HIGH",
+      "consecutive_flags": 4,
+      "description": "LONGs 39.5% WR vs SHORTs 46.4% WR. SHORT is structurally better direction."
+    },
+    {
+      "type": "SOL_SHORT_BOOST_BLUNT",
+      "severity": "MEDIUM",
+      "consecutive_flags": 1,
+      "description": "NEW Run132: SOL SHORT boost only valid at 75-80% conf (WR=52.9%, EV=+$24.26). Sub-75% losses boosted unnecessarily."
+    }
+  ],
+  "7day_avg_wr": 44.5,
+  "run132_findings": {
+    "new_critical": "BTC_LONG_BOOST_BROKEN — promotes 31.7% WR loser",
+    "confirmed_fixed": "graduated_rules.py code bug (time-bomb) is PATCHED in codebase",
+    "confirmed": "HYPE LONG veto economically correct (EV=-$14.36/trade despite 50% WR)",
+    "alpha_blocked": "HYPE SHORT <75%: +$808 EV, 12th consecutive run awaiting approval"
+  },
+  "tomorrows_focus": {
+    "priority_symbols": ["SOL", "BTC"],
+    "avoid": ["HYPE_LONG", "illiquid_regime", "ranging_regime", "night_0-6_UTC", "BTC_LONG"],
+    "watch": ["HYPE_SHORT_sub75_conf", "SOL_SHORT_75-80pct_conf"],
+    "restart_required": true,
+    "restart_command": "cd /home/user/WAGMI/bot && python run.py paper",
+    "urgent_code_fix": "Deactivate restored_btc_long_boost_v1 in data/llm/graduated_rules.json"
+  }
+}
