@@ -270,3 +270,13 @@ Kicked a backtest (run.py backtest) to baseline edge-by-regime before deciding w
 execution-side confidence gates (conf<60 veto cost-gate, sizing tiers). NOT yanking those blind — validating first
 (backtest-before-change guardrail) since they're execution-critical/real-money path.
 Guards remaining = bot's own data-learned vetoes only. Watching: does unrestricted alpha beat the chop or bleed faster.
+
+## 2026-06-23T06:13Z — Backtest findings + acted (full throttle)
+Backtest: gates net -224.9% (gates hurt). ensemble gate 50.2% correct (coin flip, REVIEW); risk_filter_chain 82.6% KEEP.
+confidence_floor net -33% (hurts). Big missed edge: HYPE SELL (shorts) +14-16% repeatedly.
+Findings:
+- Config ALREADY loose: MIN_VOTES=1, VETO_RATIO=2.0, ENSEMBLE_CONFIDENCE_FLOOR=20, LLM_FIRST=true, LLM_MODE=5,
+  ABSOLUTE_MIN_FLOOR already lowered 50→20. The old silent-gate (adaptive floor override) is already fixed.
+- REMAINING throttle: RANGING_CONFIDENCE_FLOOR was unset → default 68, heavy gating in current chop. → set 30.0, restarted (pid 30984).
+- graduated vetoes (hype_long, sol_long) are CORRECTLY directional (block losing LONG side only, shorts free) → KEEP. NOT pre-decided blocks.
+- BUG noted (ties to Quant Brain suspect): veto rules show times_correct=0 over 3120 applications — learning loop not crediting veto correctness. Measurement spine still leaks here. TODO: fix veto outcome attribution.
