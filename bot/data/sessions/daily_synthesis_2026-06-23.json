@@ -1,103 +1,66 @@
 {
   "date": "2026-06-23",
-  "last_updated": "2026-06-23T14:00:00Z",
-  "run_number": 138,
+  "last_updated": "2026-06-23T14:05:03Z",
+  "run_number": 139,
   "bot_status": "OFFLINE",
   "days_offline": 75,
   "todays_trades": 0,
   "todays_pnl": 0.0,
-  "anomalies_count": 7,
+  "anomalies_count": 5,
   "anomalies": [
     {
       "type": "BOT_OFFLINE_DAY_75",
       "severity": "CRITICAL",
-      "consecutive_flags": 68,
-      "description": "Day 75 offline. Zero revenue. No live validation of rules.",
-      "action": "cd /home/user/WAGMI/bot && python run.py paper"
+      "consecutive_flags": 69,
+      "description": "Day 75 offline. No live trades, no revenue, no rule validation.",
+      "recommendation": "cd /home/user/WAGMI/bot && python run.py paper"
     },
     {
-      "type": "NEGATIVE_KELLY_EDGE",
-      "severity": "CRITICAL",
-      "consecutive_flags": 11,
-      "description": "Kelly=-0.168. WR=44.5% in 100d backtest vs 52.4% needed for positive Kelly. Structural deficit.",
-      "action": "Apply RR_GEOMETRY_FIX (atr_mult_sl=1.8) on restart"
-    },
-    {
-      "type": "CONSECUTIVE_LOSS_STREAK",
+      "type": "CONSECUTIVE_LOSS_STREAK_HIST",
       "severity": "HIGH",
-      "value": 9,
-      "description": "Max consecutive loss streak of 9 found in trade history. Circuit breaker threshold: 5.",
-      "action": "Circuit breaker active at 5 consecutive losses — verify parameter in risk.py"
-    },
-    {
-      "type": "CONF_70_80_LOSS_CENTER",
-      "severity": "HIGH",
-      "consecutive_flags": 1,
-      "description": "70-80% confidence band = WR=47.6%, avg=-$86.67/trade in recent 200 trades (primary loss center).",
-      "action": "CONF_70_80_SIZE_REDUCTION rule applied Run137 (A/B gate 20%). Monitor on restart."
-    },
-    {
-      "type": "HYPE_SHORT_APPROVAL_REJECTED",
-      "severity": "HIGH",
-      "consecutive_flags": 16,
-      "description": "15-run HYPE SHORT <75% approval REJECTED Run137. Full dataset confirms -$4.41/trade avg (n=105).",
-      "action": "RESOLVED — rejection applied to graduated_rules.json"
-    },
-    {
-      "type": "RR_GEOMETRY_FIX_BLOCKED",
-      "severity": "HIGH",
-      "consecutive_flags": 9,
-      "description": "conf=82, 9th flag. atr_mult_sl=1.8 proposal blocked by restart requirement + param ambiguity.",
-      "action": "HUMAN DECISION: tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3?"
+      "value": 8,
+      "description": "Max streak of 8 consecutive losses in last 50 trades (circuit breaker at 5).",
+      "recommendation": "Verify circuit breaker implementation in risk.py"
     },
     {
       "type": "FEEDBACK_STATE_FILES_MISSING",
       "severity": "HIGH",
+      "consecutive_flags": 5,
+      "description": "4/6 feedback state files absent (5th flag). _save() silently fails.",
+      "recommendation": "DEV: Add write-confirmation log to each _save() method."
+    },
+    {
+      "type": "RR_GEOMETRY_FIX_BLOCKED",
+      "severity": "HIGH",
+      "consecutive_flags": 11,
+      "description": "HUMAN DECISION needed: tp_sl_atr_mult 1.5->1.8 globally OR HYPE atr_mult_sl 2.0->2.3 specifically?",
+      "recommendation": "UNBLOCK: Choose atr_mult param path. Apply fix on next bot restart."
+    },
+    {
+      "type": "DURATION_BUG_CRITICAL",
+      "severity": "CRITICAL",
       "consecutive_flags": 3,
-      "description": "4/6 feedback state files absent. _save() methods exist but silently fail to write.",
-      "action": "DEV REQUIRED: debug _save() in signal_quality.py, regime_feedback.py, adaptive_confidence.py, parameter_tuner.py"
+      "description": "ALL 965 trades have duration_h=0 or negative. HoldTimeRuleManager ML fully compromised. 3rd flag.",
+      "recommendation": "DEV: Fix trade logging — record open_time and close_time, compute duration_h correctly"
     }
   ],
   "7day_avg_wr": 44.5,
   "recent_100_wr": 48.0,
   "recent_50_wr": 56.0,
   "all_time_wr": 57.0,
-  "wr_swing_from_7d_avg": 3.5,
-  "max_consecutive_losses": 9,
+  "wr_swing_from_7d_avg": 11.5,
+  "max_consecutive_losses": 8,
   "unusual_leverage_trades": 0,
   "max_leverage_observed": 3.01,
-  "slippage_estimate_last50": "0.53% avg from SL level in last 50 trades (all BTC)",
-  "noise_stop_rate": "36.4% of SL hits had conf>=75% (noise stops in last 50 BTC trades)",
+  "slippage_estimate_last50": "0.534% avg from SL level in last 50 trades (all BTC)",
+  "noise_stop_rate": "36.4% of SL hits had conf>=75%",
   "rr_ratio_last50": 0.479,
   "kelly_full_dataset": 0.0061,
   "kelly_recent_100": -0.265,
   "total_fees_965_trades": 3945.33,
-  "run137_fixes": [
-    "HYPE_SHORT_SUB75_VETO_SPLIT_REJECTED: 15-run approval rejected (full dataset invalidates 100d claim)",
-    "CONF_70_80_SIZE_REDUCTION: new A/B gate 20% — -0.3x size for 70-80% confidence signals"
-  ],
-  "run138_findings": [
-    "DURATION_BUG_UPGRADED: 100% of trades have zero/negative duration (was estimated 8.8%). HoldTime ML fully compromised.",
-    "KELLY_CORRECTED: Full-dataset Kelly=+0.0061 (not -0.168). Prior figure was from negative backtest sub-window.",
-    "RR_WORSENED: Last-50 ratio=0.479 vs prior estimate 0.91. Situation more severe than reported.",
-    "CONFIDENCE_BIN_COLLAPSE: Recent 100 trades — ONLY 90%+ tier is profitable (+$25.37/trade). All other bins negative.",
-    "BTC_ONLY_WINDOW: Last 50-100 trades are 100% BTC. SOL/HYPE edge data not in recent window."
-  ],
-  "anomalies_detected_run138": {
-    "consecutive_losses_over5": {"detected": true, "count": 8, "max_streak": 9, "verdict": "CIRCUIT_BREAKER_WILL_TRIGGER"},
-    "wr_swing_over20pct": {"detected": true, "events": 7, "verdict": "HIGH_REGIME_VOLATILITY"},
-    "unusual_leverage_over7x": {"detected": false, "verdict": "SAFETY_GATES_HOLDING"},
-    "time_of_day_dominance": {"detected": false, "reason": "CANNOT_COMPUTE — no timestamps in CSV (duration bug)", "verdict": "DATA_GAP"}
-  },
   "tomorrows_focus": {
     "priority_symbols": ["SOL", "BTC"],
-    "avoid": ["HYPE_LONG", "HYPE_SHORT_gte75", "illiquid_regime", "ranging_regime", "night_0-6_UTC", "conf_70-80 (now gated)", "conf_below_60"],
-    "watch": ["CONF_70_80_SIZE_REDUCTION A/B results", "BTC_LONG_WR_post_deactivation", "SOL_SHORT_75-80_conf", "90%+ conf tier (only positive bin)"],
-    "dev_fixes_needed": [
-      "Fix duration_h logging (all zero/negative — 100% affected)",
-      "Fix feedback _save() methods (4 managers silently failing)",
-      "Add cost_tracker.json for LLM ROI measurement"
-    ],
+    "avoid": ["HYPE_LONG", "HYPE_SHORT_gte75", "illiquid_regime", "ranging_regime", "night_0-6_UTC", "conf_70-80"],
     "restart_required": true,
     "restart_command": "cd /home/user/WAGMI/bot && python run.py paper"
   }
