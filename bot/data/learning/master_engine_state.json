@@ -1,65 +1,74 @@
 {
   "engine": "perpetual_improvement_loop",
   "version": "3.1",
-  "last_run": "2026-06-24T00:05:00Z",
+  "last_run": "2026-06-24T06:00:00Z",
   "today": "2026-06-24",
-  "run_number": 144,
+  "run_number": 145,
   "bot_status": "OFFLINE",
-  "days_offline": 76,
-  "cadence_streak": 60,
+  "days_offline": 77,
+  "cadence_streak": 61,
   "data_source_confirmed": "trades_10d.csv (n=965 full dataset). No live trades available. bot/data/trades.csv absent.",
   "subsystems": {
     "auto_fix": {
-      "last_run": "2026-06-24T00:05:00Z",
+      "last_run": "2026-06-24T06:00:00Z",
       "fixes_applied_this_run": 0,
       "total_fixes_all_time": 124,
       "gates_active": 56,
       "new_rules_written_to_file": 0,
       "deferred": [
-        "TP1_BLIND_SPOT_FIX (87%) — BLOCKED_PENDING_INVESTIGATION: TP1 is partial close (OPEN->TP1_HIT->TRAILING->CLOSED). Needs _PARTIAL_CLOSE handler, not _FULL_CLOSE addition. Deferred run count: 2."
+        "TP1_BLIND_SPOT_FIX (87%) — INVESTIGATION_COMPLETE_RUN145: TP1 in _close_actions (L3077) but excluded from _FULL_CLOSE (L3115). All 7 feedback systems gate on _FULL_CLOSE at L3120. Fix requires SEPARATE TP1 partial-feedback branch (NOT adding TP1 to _FULL_CLOSE — total_pnl would be wrong since pos still open at TP1). Must audit 7 systems for double-counting safety before applying. Deferred run count: 3."
       ],
       "skipped": [
         "HYPE_SHORT_HIGHCONF_VETO_AUDIT (68% < 75% threshold)"
       ],
       "verified_this_run": [
-        "LLM graduated_rules.json confirmed: all 14 rules present (13 active, 1 inactive). Evening/afternoon penalizers from run143 verified in file."
+        "LLM graduated_rules.json confirmed: 14 rules present (13 active, 1 inactive). All 3 rules from run143 still verified. No drift from run144 verification."
       ],
+      "tp1_investigation_findings": {
+        "status": "COMPLETE",
+        "finding": "_close_actions at L3077 includes TP1 (triggers order execution + log_trade). _FULL_CLOSE at L3115 excludes TP1. 7 feedback systems all gate on _FULL_CLOSE check at L3120.",
+        "wrong_fix": "Adding TP1 to _FULL_CLOSE — at TP1 time pos.realized_pnl is partial only, position still open.",
+        "correct_fix": "Add separate `if event.action == 'TP1'` branch after L3117 to call lightweight partial feedback on regime_feedback + signal_quality with event.pnl and win=True.",
+        "double_count_risk": "Trades that go OPEN->TP1_HIT->TRAILING->CLOSED will fire BOTH TP1 partial branch AND _FULL_CLOSE branch for the same trade. Need to decide: (A) accept double signal with partial=True metadata tag, or (B) only record TP1 feedback for systems explicitly designed for partial signals.",
+        "next_action": "Run 146: audit 7 feedback systems — identify which accept partial=True flag. Then implement branch.",
+        "systems_to_audit": ["weight_mgr.record_outcome", "regime_feedback.record_trade", "confidence_floor.record_outcome", "hold_time_rules.record_trade", "signal_quality.record_outcome", "parameter_tuner.record_outcome", "continuous_backtest.record_outcome"]
+      },
       "llm_graduated_rules_total": 14,
-      "cadence_streak": 60
+      "cadence_streak": 61
     },
     "execution_forensics": {
-      "last_run": "2026-06-24T00:05:00Z",
+      "last_run": "2026-06-24T06:00:00Z",
       "trades_analyzed": 965,
-      "delta_from_prior": "NO CHANGE — bot offline, same 965-trade dataset",
+      "delta_from_prior": "NO CHANGE — bot offline Day 77, same 965-trade dataset. RR fix flag: 15->16.",
       "avg_slippage_pct": 0.534,
       "noise_stop_pct": 34.8,
       "rr_ratio": 0.479,
       "win_rate_all_time": 57.0,
       "win_rate_recent_50": 56.0,
       "avg_pnl_recent_50": -52.71,
-      "duration_bug": "CODE_FIX_APPLIED_UNVERIFIED — run126 patch applied to position_manager.py + backtest/engine.py. Cannot verify without live data. 7th consecutive flag.",
-      "duration_bug_consecutive_flags": 7,
+      "duration_bug": "CODE_FIX_APPLIED_UNVERIFIED — run126 patch applied to position_manager.py + backtest/engine.py. Cannot verify without live data. 8th consecutive flag.",
+      "duration_bug_consecutive_flags": 8,
       "best_setup": "SOL_SHORT (WR=63.7%, EV=+$32.44)",
       "worst_setup": "HYPE_SHORT (WR=54.4%, EV=-$16.65)",
-      "rr_fix_status": "HUMAN_DECISION_OVERDUE_FLAG_15 — atr_mult_sl 1.5->1.8 proposed"
+      "rr_fix_status": "HUMAN_DECISION_OVERDUE_FLAG_16 — atr_mult_sl 1.5->1.8 proposed. CRITICALLY OVERDUE."
     },
     "live_injection": {
-      "last_run": "2026-06-24T00:05:00Z",
+      "last_run": "2026-06-24T06:00:00Z",
       "high_edges_found": 3,
       "weak_setups_found": 4,
       "new_injections_this_run": 0,
-      "pending_human_review": "CONF_90PLUS_BOOST (conf=72%, 5th flag) — threshold requires conf>=75 OR human approval. 5th flag now met.",
+      "pending_human_review": "CONF_90PLUS_BOOST (conf=72%, 5th flag — UNCHANGED from run144) — threshold requires conf>=75 OR human approval. 5th flag threshold met, confidence NOT met.",
       "best_edge": "SOL_SHORT WR=63.7% EV=+$32.44 (ACTIVE boost +8 in LLM rules)",
       "worst_setup": "CONF_70_80_PCT EV=-$86.67 (SIZE_REDUCTION A/B gate=20% in LLM rules)",
       "conf_90plus_flag_count": 5
     },
     "daily_synthesis": {
-      "last_run": "2026-06-24T00:05:00Z",
+      "last_run": "2026-06-24T06:00:00Z",
       "todays_trades": 0,
       "anomalies_critical": 2,
       "anomalies_high": 4,
       "anomalies_medium": 1,
-      "bot_offline_flags": 74,
+      "bot_offline_flags": 75,
       "max_consecutive_losses": 8,
       "max_leverage_observed": 3.01,
       "wr_swing_20d_100d": 21.3,
@@ -68,7 +77,7 @@
       "daily_synthesis_file_written": "bot/data/sessions/daily_synthesis_2026-06-24.json"
     },
     "model_optimization": {
-      "last_run": "2026-06-24T00:05:00Z",
+      "last_run": "2026-06-24T06:00:00Z",
       "cost_tracker_available": false,
       "roi_all_time": 140.0,
       "roi_recent_100": -11647.8,
@@ -76,83 +85,83 @@
       "model_swaps_recommended": 0,
       "bottleneck": "TRADE_QUALITY_NOT_MODEL_COST",
       "upgrade_candidate": "Regime -> Sonnet for REGIME_SHIFT (est 688x ROI — unverified, blocked on llm_regime logging fix)",
-      "delta_from_prior": "NO CHANGE — cost_tracker.json still absent"
+      "delta_from_prior": "NO CHANGE — cost_tracker.json still absent. 2nd consecutive skip."
     }
   },
   "high_priority_findings": [
     {
       "subsystem": "daily_synthesis",
       "severity": "CRITICAL",
-      "finding": "Bot OFFLINE Day 76 — 74th consecutive flag. Zero live trades, zero revenue, zero rule validation. 14 LLM rules and 56 A/B gate slots fully untested. All findings are from cached backtest data.",
+      "finding": "Bot OFFLINE Day 77 — 75th consecutive flag. Zero live trades, zero revenue, zero rule validation. 14 LLM rules and 56 A/B gate slots fully untested. All findings are from cached backtest data.",
       "action": "cd /home/user/WAGMI/bot && python run.py paper",
-      "consecutive_flags": 74,
+      "consecutive_flags": 75,
       "urgency": "SEVERELY_OVERDUE"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "CRITICAL",
-      "finding": "RR geometry broken: avg_loss=$306.96 vs avg_win=$147.07 (ratio=0.479). Kelly recent=-0.265 (NEGATIVE — expected losing strategy). 15th consecutive flag. HUMAN DECISION CRITICALLY OVERDUE.",
+      "finding": "RR geometry broken: avg_loss=$306.96 vs avg_win=$147.07 (ratio=0.479). Kelly recent=-0.265 (NEGATIVE — expected losing strategy). 16th consecutive flag. HUMAN DECISION CRITICALLY OVERDUE.",
       "action": "Human approval required: (A) global atr_mult_sl 1.5->1.8 OR (B) HYPE-specific atr_mult_sl 2.0->2.3",
-      "consecutive_flags": 15,
+      "consecutive_flags": 16,
       "urgency": "CRITICAL_OVERDUE"
     },
     {
       "subsystem": "auto_fix",
-      "severity": "CRITICAL",
-      "finding": "TP1 blind spot: _FULL_CLOSE at multi_strategy_main.py:L3116 excludes TP1 (27.2% of trades invisible to all 7 feedback systems). TP1 is PARTIAL close — state machine OPEN->TP1_HIT->TRAILING->CLOSED means adding TP1 to _FULL_CLOSE is wrong.",
-      "action": "DEV: Add _PARTIAL_CLOSE handler with partial pnl recording to all 7 feedback systems. conf=87%.",
+      "severity": "HIGH",
+      "finding": "TP1 blind spot INVESTIGATION COMPLETE (Run 145): Fix confirmed as separate partial-feedback branch, not _FULL_CLOSE addition. 7 feedback systems need double-count audit before applying. Code location: multi_strategy_main.py L3114-L3120.",
+      "action": "Run 146: audit 7 systems for partial=True compatibility. Apply branch in Run 146 or 147.",
       "confidence": 87,
-      "urgency": "INVESTIGATION_REQUIRED_BEFORE_CODE_CHANGE",
-      "deferred_runs": 2
+      "urgency": "READY_FOR_IMPLEMENTATION_PENDING_AUDIT",
+      "deferred_runs": 3,
+      "new_this_run": true
     },
     {
       "subsystem": "live_injection",
       "severity": "HIGH",
-      "finding": "CONF_90PLUS_SELECTIVE_BOOST: 5th consecutive flag. WR=64.1%, EV=+$101.92/trade (n=39). Confidence=72% (below 75% auto-inject). 5th flag threshold MET but conf gate NOT met.",
-      "action": "Human approval: add boost +5 for conf>=90 at gate=20% in bot/data/llm/graduated_rules.json. Strong evidence — EV is highest of any bin.",
+      "finding": "CONF_90PLUS_SELECTIVE_BOOST: 5th consecutive flag (UNCHANGED). WR=64.1%, EV=+$101.92/trade (n=39). Confidence=72% (below 75% auto-inject). Human approval can bypass.",
+      "action": "Human approval: add boost +5 for conf>=90 at gate=20% in bot/data/llm/graduated_rules.json.",
       "consecutive_flags": 5,
       "urgency": "HUMAN_REVIEW_STRONGLY_URGED"
     },
     {
       "subsystem": "execution_forensics",
       "severity": "HIGH",
-      "finding": "Duration bug: code fix applied run126 (position_manager.py:1367+1398, backtest/engine.py:1941) but cannot verify without live trades. 7th consecutive tracking flag.",
-      "action": "Verify at first live trade-close post-restart. If duration_h still 0, investigate run126 patch.",
-      "consecutive_flags": 7,
+      "finding": "Duration bug: code fix applied run126 but unverified. 8th consecutive flag.",
+      "action": "Verify at first live trade-close post-restart.",
+      "consecutive_flags": 8,
       "urgency": "VERIFY_ON_RESTART"
     },
     {
       "subsystem": "auto_fix",
       "severity": "MEDIUM",
-      "finding": "LLM graduated_rules.json VERIFIED this run: 14 rules confirmed present. All 3 rules from run143 (conf_70_80_size_reduction_v1, evening_session_penalize_v1, afternoon_session_penalize_v1) are in file.",
-      "action": "None required. File state is correct.",
+      "finding": "LLM graduated_rules.json VERIFIED run144+145: 14 rules confirmed present. File state stable.",
+      "action": "None required.",
       "urgency": "INFORMATIONAL"
     },
     {
       "subsystem": "model_optimization",
       "severity": "MEDIUM",
-      "finding": "No cost_tracker.json. llm_regime empty in all 965 trades. These 2 gaps block Regime model optimization (estimated +$186/mo benefit from Sonnet upgrade on REGIME_SHIFT events).",
+      "finding": "No cost_tracker.json. llm_regime empty in all 965 trades. Regime model optimization blocked.",
       "action": "1) Create bot/llm/cost_tracker.json with per-agent call logging. 2) Wire llm_regime field to trades.csv at close time.",
       "urgency": "LOW_EFFORT_HIGH_LEVERAGE"
     }
   ],
   "findings_summary": {
-    "critical": 3,
+    "critical": 2,
     "high": 3,
-    "medium": 1,
+    "medium": 2,
     "total": 7
   },
-  "run144_actions_taken": {
+  "run145_actions_taken": {
     "graduated_rules_json_edits": 0,
-    "rules_verified": ["conf_70_80_size_reduction_v1", "evening_session_penalize_v1", "afternoon_session_penalize_v1"],
+    "rules_verified": [],
     "file_state_divergence_corrected": false,
     "code_changes": 0,
     "deferred_code_changes": 1,
+    "investigations_completed": ["TP1_BLIND_SPOT — root cause confirmed, fix approach defined"],
     "state_files_updated": [
       "bot/data/learning/master_engine_state.json",
       "bot/data/learning/auto_fix_state.json",
-      "bot/data/learning/execution_forensics.json",
-      "bot/data/learning/live_edge_data.json",
       "bot/data/sessions/daily_synthesis_2026-06-24.json"
     ]
   },
@@ -161,17 +170,18 @@
     "active_llm_graduated_rules": 13,
     "llm_graduated_rules_file_total": 14,
     "ab_tests_active": 5,
-    "total_runs": 144,
+    "total_runs": 145,
     "proposals_pending": 2,
     "items_pending_human_review": 3
   },
-  "run_delta_vs_143": {
+  "run_delta_vs_144": {
     "new_fixes_applied": 0,
-    "rules_verified_in_file": 3,
-    "duration_bug_flag": "6->7",
-    "rr_fix_flag": "14->15",
-    "conf_90plus_flag": "4->5",
-    "bot_offline_flag": "73->74",
-    "notes": "No new rules applied. LLM graduated_rules.json verified correct with 14 rules. Flag escalations: duration bug 7th, RR fix 15th (CRITICALLY OVERDUE), CONF_90PLUS 5th flag."
+    "rules_verified_in_file": 0,
+    "duration_bug_flag": "7->8",
+    "rr_fix_flag": "15->16",
+    "conf_90plus_flag": "5 (unchanged)",
+    "bot_offline_flag": "74->75",
+    "tp1_investigation": "COMPLETED — fix approach confirmed: separate partial-feedback branch at L3117, NOT _FULL_CLOSE addition. Next: audit 7 systems for double-count safety.",
+    "notes": "TP1 investigation completed. No new rules applied. All flag escalations: duration bug 8th, RR fix 16th (CRITICALLY OVERDUE). cadence_streak: 60->61."
   }
 }
