@@ -1,44 +1,64 @@
 {
-  "status": "UPDATED_RUN143",
-  "data_source": "trades_10d.csv (n=965 full dataset). Bot offline Day 75 — NO NEW TRADES. Data UNCHANGED.",
-  "last_updated": "2026-06-23T18:05:00Z",
-  "run_number": 143,
+  "status": "UPDATED_RUN144",
+  "data_source": "trades_10d.csv (n=965 full dataset). Bot offline Day 76 — NO NEW TRADES. Data UNCHANGED.",
+  "last_updated": "2026-06-24T00:05:00Z",
+  "run_number": 144,
   "trades_analyzed": 965,
-  "bot_offline_days": 75,
+  "bot_offline_days": 76,
   "trades_csv_exists": false,
-  "note": "bot/data/trades.csv does not exist. All forensics from cached trades_10d.csv (n=965). No delta possible.",
+  "note": "bot/data/trades.csv does not exist. All forensics from cached trades_10d.csv (n=965). No delta possible until live restart.",
   "slippage_analysis": {
     "sl_hit_trades_last50": 22,
     "avg_slippage_from_sl_level_pct": 0.5345,
-    "slippage_by_symbol": {"BTC_last50": {"avg_pct": 0.5345, "n": 22}, "BTC_cached": 0.41, "SOL_cached": 0.48, "HYPE_cached": 0.64},
-    "slippage_context": "High slippage cases cluster in BTC SHORT at 71-74% confidence — consistent with 70-80% conf degradation."
+    "slippage_by_symbol": {
+      "BTC_last50": {"avg_pct": 0.5345, "n": 22},
+      "BTC_cached": 0.41,
+      "SOL_cached": 0.48,
+      "HYPE_cached": 0.64
+    },
+    "slippage_context": "High slippage cases cluster in BTC SHORT at 71-74% confidence — consistent with 70-80% conf degradation. 70-80% conf size-reduction A/B gate (run137) should help when live."
   },
   "noise_stop_analysis": {
     "noise_stop_pct_last50": 36.4,
     "noise_stop_count_last50": 8,
     "total_sl_hits_last50": 22,
     "noise_stop_definition": "SL hit with confidence >= 75%",
-    "noise_stop_pattern": "5/5 top noise stops are BTC SHORT in 76-79% confidence range."
+    "noise_stop_pattern": "5/5 top noise stops are BTC SHORT in 76-79% confidence range.",
+    "mitigation_active": "restored_instant_sl_buffer_v1 (size_adjust -0.1x, all trades) in LLM rules"
   },
   "rr_geometry": {
     "avg_win_last50": 147.07,
     "avg_loss_last50": -306.96,
     "win_loss_ratio_last50": 0.479,
-    "verdict": "DEEPLY_NEGATIVE — avg loss is 2.09x avg win. Need 68%+ WR to break even.",
+    "verdict": "DEEPLY_NEGATIVE — avg loss is 2.09x avg win. Need 68%+ WR to break even at this R:R.",
     "kelly_full_dataset": 0.0061,
     "kelly_recent_100": -0.265,
-    "rr_fix_status": "PENDING_RESTART — atr_mult_sl=1.8 A/B test proposed (14th flag)"
+    "rr_fix_status": "HUMAN_DECISION_OVERDUE_FLAG_15 — atr_mult_sl=1.8 proposed. 15th consecutive flag. No action taken.",
+    "consecutive_flags": 15,
+    "fix_options": [
+      "Option A: global atr_mult_sl 1.5->1.8 (raises breakeven WR from 68%->62%)",
+      "Option B: HYPE-specific atr_mult_sl 2.0->2.3 (targeted, lower risk)"
+    ]
   },
   "duration_bug": {
-    "severity": "CRITICAL_UPGRADED",
+    "severity": "CRITICAL",
     "zero_duration_count": 809,
     "negative_duration_count": 156,
     "valid_duration_count": 0,
     "pct_affected": 100.0,
-    "status": "UNFIXED — dev required.",
-    "consecutive_flags": 6
+    "status": "UNFIXED — prior Run126 applied max(60.0) floor patch to position_manager.py:1367+1398 and backtest/engine.py:1941, but patch not reflected in cached dataset. Will only show in live data post-restart.",
+    "consecutive_flags": 7,
+    "note": "Duration fix was APPLIED in code (run126) but cannot be verified until bot restarts and closes trades."
   },
-  "performance_summary_last50": {"win_rate": 56.0, "total_pnl": -2635.32, "avg_pnl_per_trade": -52.71},
-  "performance_summary_all_965": {"win_rate": 57.0, "total_pnl": 905.23, "avg_pnl_per_trade": 0.94},
-  "delta_from_last_run": "NO CHANGE — bot offline, same 965-trade dataset."
+  "performance_summary_last50": {
+    "win_rate": 56.0,
+    "total_pnl": -2635.32,
+    "avg_pnl_per_trade": -52.71
+  },
+  "performance_summary_all_965": {
+    "win_rate": 57.0,
+    "total_pnl": 905.23,
+    "avg_pnl_per_trade": 0.94
+  },
+  "delta_from_run143": "NO CHANGE — bot offline, same 965-trade dataset. Duration bug flag count: 6->7. RR fix flag count: 14->15."
 }
