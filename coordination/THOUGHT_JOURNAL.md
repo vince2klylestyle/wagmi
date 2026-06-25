@@ -414,3 +414,16 @@ CLEAN REPORT now (n=8, thin but real): TRAILING_STOP exits show NEGATIVE regret 
 moving against after exit); a BTC SHORT SL had +4.5% regret (slightly eager). 82 tests pass. Bot restarted clean (pid 39516).
 NET: the exit-quality measurement loop is now LIVE and accumulating clean data — the foundation for the future
 "LLM exit agent earns back close authority on measured per-regime edge" model (needs more n first).
+
+## 2026-06-25T06:30Z — Overnight verification: ALL 6 fixes WORKING in prod; trading effectively; LET IT RUN
+Read-only verification swarm confirmed all today's fixes live in production (concrete log/file/computed evidence):
+exit-agent full-close blocked (last LLM exit ~40h ago), enricher stale-pruning firing, baseline=0.625 (flag on) vs
+0.276 (off), agreement boost removed (trades at 1.0x), veto-ledger pairing accruing (test-id rule proven; real rule
+pending CF resolution), exit-regret daemon scoring clean values. HEALTH: trading_effectively=YES — 8 closes/24h,
+net +$47.89, 5W/3L, 100% MECHANICAL exits (4 trailing +4 SL), ZERO LLM exits. Equity $2092 (reconciled ~$2104), circuit fine.
+DECISION: do NOT touch the running bot overnight (independent recommendation + stability: ~14 restarts today, backoff grown).
+Measurement spine fully online; remaining upgrades are DATA-GATED (need trades to accumulate, not more code).
+CONCERN FOR DAYTIME (do NOT rush overnight): watchdog "heartbeat stall" (~5min) false-positives trigger ~daily exit-code-1
+restarts; bot self-recovers each time but it's the main fragility — needs careful diagnosis of the stall root cause + whether
+the 5min watchdog threshold is too tight for slow LLM scan cycles. Also cosmetic: log date-rotation past midnight.
+OVERNIGHT PLAN: light periodic health monitoring (catch a sustained outage), no code churn, let it gather data.
