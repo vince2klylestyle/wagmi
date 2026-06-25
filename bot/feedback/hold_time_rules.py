@@ -95,7 +95,6 @@ class HoldTimeRuleManager:
         # Per-regime: list of hold-time buckets
         self.regime_buckets: Dict[str, list[HoldTimeBucket]] = {}
         self._init_buckets()
-        self._load()
 
         # Computed minimum hold times per regime (in hours)
         # Defaults: be conservative, require longer holds
@@ -107,6 +106,7 @@ class HoldTimeRuleManager:
             "unknown": 2.0,        # Safe default
         }
         self._last_update: Dict[str, str] = {}  # Track when each regime was last updated
+        self._load()
 
     def _init_buckets(self):
         """Initialize hold-time buckets for all regimes."""
