@@ -1,0 +1,75 @@
+{
+  "date": "2026-06-25",
+  "generated_at": "2026-06-25T01:01:00Z",
+  "run_number": 156,
+  "bot_status": "OFFLINE",
+  "days_offline": 86,
+  "daily_summary": {
+    "trades_today": 0,
+    "win_rate_today": null,
+    "pnl_today": 0.0,
+    "best_trade": null,
+    "worst_trade": null,
+    "note": "Bot offline. Zero live activity on 2026-06-25."
+  },
+  "anomalies": [
+    {
+      "type": "BOT_OFFLINE",
+      "severity": "CRITICAL",
+      "consecutive_days": 86,
+      "description": "Bot has been offline for 86 consecutive days. No live trades, no revenue, no rule validation. 14 graduated rules untested in production. 5 A/B gates (3 via LLM rules + 2 code changes) inactive.",
+      "recommendation": "cd /home/user/WAGMI/bot && python run.py paper -- start paper trading immediately"
+    },
+    {
+      "type": "RR_GEOMETRY_BROKEN",
+      "severity": "CRITICAL",
+      "consecutive_flags": 27,
+      "description": "avg_loss=$306.96 vs avg_win=$147.07 (ratio=0.479). Kelly recent=-0.265. Bot cannot be profitable at current R:R without 68%+ WR (actual=57%). This is the primary structural defect.",
+      "recommendation": "DECIDE: Option A (global atr_mult_sl 1.5->1.8, breakeven WR drops to 62%) OR Option B (HYPE-specific 2.0->2.3). No more deferrals -- 27 flags is 27 runs of structural bleeding."
+    },
+    {
+      "type": "CONF_90PLUS_UNCAPTURED_EDGE",
+      "severity": "CRITICAL",
+      "consecutive_flags": 16,
+      "description": "ESCALATED from HIGH. Confidence >=90% setups: WR=64.1%, EV=+$101.92/trade, n=39. Boost +5 proposed (conf=72%, auto-threshold=75%). 16 consecutive runs without action = ~$1,630.72 missed EV. Only blocker: human approval (72% vs 75% threshold).",
+      "recommendation": "Approve CONF_90PLUS_BOOST in graduated_rules.json: action=boost, conditions={confidence_min: 90}, adjustment=5.0, gate_percentage=20. Low risk -- A/B gate means only 20% of trades see the boost."
+    },
+    {
+      "type": "DURATION_BUG_UNVERIFIED",
+      "severity": "HIGH",
+      "consecutive_flags": 19,
+      "description": "Code fix applied at run126 but unverifiable until bot restarts. HoldTimeRuleManager uses corrupted data (0 or negative duration on all 965 trades). 19 consecutive flags.",
+      "recommendation": "Auto-verify at first live trade close post-restart. No action needed now -- fix is in code."
+    },
+    {
+      "type": "HYPE_DOUBLE_PENALTY",
+      "severity": "HIGH",
+      "description": "HYPE SHORT >=75% conf triggers both veto (restored_hype_short_highconf_veto_v1, conf=0.71) AND size cap (restored_hype_sizing_cap_v1, conf=0.92). Veto rule has lowest confidence of all 14 active rules yet most aggressive action. May suppress valid HYPE SHORT signals.",
+      "recommendation": "Monitor first 20 HYPE SHORT >=75% signals live. If veto rate >80%, reduce to size_cap only."
+    },
+    {
+      "type": "DATASET_TEMPORAL_CONFLICT",
+      "severity": "MEDIUM",
+      "description": "20d WR=65.8%/+$7,053 vs 100d WR=44.5%/-$8,173. Confidence-WR relationship inverts: 100d shows 40% WR at 80-90% conf; 20d shows 82% WR at same band. Rules calibrated on 100d data may penalize recent-period winners.",
+      "recommendation": "After bot restart, weight rules toward recent 20-30d data. Flag if confidence-WR inversion persists after 50 live trades."
+    }
+  ],
+  "anomalies_by_severity": {
+    "CRITICAL": 3,
+    "HIGH": 2,
+    "MEDIUM": 1,
+    "LOW": 0
+  },
+  "tomorrows_focus": {
+    "symbols": ["SOL", "BTC"],
+    "preferred_setups": ["SOL_SHORT (WR=63.7%, active boost)", "BTC_TREND_LONG (boost active for trend regime)"],
+    "avoid": ["HYPE in ranging/illiquid regime", "all trades in night session (00-06 UTC)", "70-80% confidence band (EV=-$86.67)"],
+    "key_action": "Start bot in paper mode, let first 20 trades calibrate live feedback systems"
+  },
+  "seven_day_wr_avg": 57.0,
+  "wr_swing_vs_7d": 0.0,
+  "output": {
+    "anomalies_found": 6,
+    "report_generated": true
+  }
+}
