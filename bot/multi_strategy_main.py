@@ -1219,6 +1219,35 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         perception_thread.start()
         logger.info("[INIT] Bot perception capture started (TIER 5)")
 
+    def _start_exit_regret_scorer(self):
+        """Background: score matured exit-closes against forward price (exit-regret) on a throttled
+        cadence. MEASUREMENT-ONLY — never touches any trading/exit decision. Runs every
+        EXIT_REGRET_SCAN_S (default 300s) in a daemon thread so the price fetches never block the tick.
+        Produces data/logs/exit_regret_scores.jsonl: per (symbol,side,regime,exit_type) regret —
+        the foundation for ever letting the LLM exit agent earn back close authority on measured edge."""
+        interval = int(os.getenv("EXIT_REGRET_SCAN_S", "300"))
+
+        def _scorer_loop():
+            try:
+                from analytics.exit_regret import ExitRegretEngine
+                eng = ExitRegretEngine()
+            except Exception as e:
+                logger.warning(f"[EXIT-REGRET] init failed, scorer disabled: {e}")
+                return
+            time.sleep(90)  # let startup settle before competing for the price fetcher
+            while True:
+                try:
+                    n = eng.resolve_pending()
+                    if n:
+                        logger.info(f"[EXIT-REGRET] scored {n} matured exits")
+                except Exception as e:
+                    logger.debug(f"[EXIT-REGRET] scan error: {e}")
+                time.sleep(interval)
+
+        t = threading.Thread(target=_scorer_loop, daemon=True, name="ExitRegretScorer")
+        t.start()
+        logger.info(f"[INIT] Exit-regret scorer started (every {interval}s)")
+
     def _run_health_check(self):
         """Startup symbol health check: validate precision, connectivity, leverage caps."""
         logger.info("=" * 60)
@@ -1434,6 +1463,9 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Start Bot Perception System (TIER 5: async perception capture)
         self._start_perception_capture()
+
+        # Start exit-regret scorer (measurement-only background loop)
+        self._start_exit_regret_scorer()
 
         # Start HTTP health endpoint (container/orchestrator readiness probes)
         try:

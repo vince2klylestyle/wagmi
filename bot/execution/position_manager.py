@@ -1526,8 +1526,11 @@ class PositionManager:
                 "mfe_pct": round(pos.mfe / pos.entry * 100, 4) if pos.entry else 0.0,
                 "hold_time_s": (pos.close_time - pos.open_time).total_seconds() if pos.close_time and pos.open_time else 0.0,
             }
-            with open(os.path.join(_regret_dir, "exit_closes.jsonl"), "a") as _rf:
-                _rf.write(json.dumps(_regret_row) + "\n")
+            # Skip the real-file write under pytest so synthetic test closes never pollute
+            # production exit_closes.jsonl (decision_id stamping above still happens for tests).
+            if not os.getenv("PYTEST_CURRENT_TEST"):
+                with open(os.path.join(_regret_dir, "exit_closes.jsonl"), "a") as _rf:
+                    _rf.write(json.dumps(_regret_row) + "\n")
         except Exception as _regret_err:
             logger.debug(f"[EXIT-REGRET] stamp failed (non-fatal): {_regret_err}")
 

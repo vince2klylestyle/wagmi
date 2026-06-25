@@ -397,3 +397,20 @@ suite 0 NEW failures (the 10 fails are all pre-existing, verified). Restarted cl
 counterfactual_learner, brain_wiring, ensemble, signal_pipeline, coordinator + 2 test files.
 NEXT: vetoes now accrue real accuracy as trades resolve → in ~weeks bad vetoes auto-retire, good ones earn trust. Then:
 crazyonsol.online live-data bridge; re-validate regime priors as mechanical n grows; convert remaining magic-number gates to measured.
+
+## 2026-06-25T06:20Z — Exit-regret scorer WIRED + data-quality bugs fixed (measurement loop now LIVE)
+The exit-regret measurement was built but dormant (resolve_pending never called). Wired it as a daemon thread
+(_start_exit_regret_scorer in multi_strategy_main, every EXIT_REGRET_SCAN_S=300s, 90s startup delay, non-blocking,
+measurement-only). On first run it scored matured closes — and immediately EXPOSED a bug: regret values were absurd
+(3177%, -14793%) because UNIT-TEST data had leaked into the real data/logs/exit_closes.jsonl (synthetic rows entry=100/
+exit=94, entry=50000/exit=48000 repeated 15x) and the scorer compared those fake prices to the real BTC price (~$61k).
+FIXES (3):
+1. position_manager._close_position: skip the exit_closes write under PYTEST_CURRENT_TEST (root cause — tests were
+   polluting the production file; decision_id stamping still happens).
+2. exit_regret._score_close: sanity guard — drop any close whose forward-regret magnitude >200% (scale mismatch =
+   stale/synthetic/wrong-symbol data); never pollute aggregates.
+3. Cleaned exit_closes.jsonl (dropped 28 synthetic test rows, kept 10 real) + reset scores.
+CLEAN REPORT now (n=8, thin but real): TRAILING_STOP exits show NEGATIVE regret (-0.5 to -3.2%) = JUSTIFIED (price kept
+moving against after exit); a BTC SHORT SL had +4.5% regret (slightly eager). 82 tests pass. Bot restarted clean (pid 39516).
+NET: the exit-quality measurement loop is now LIVE and accumulating clean data — the foundation for the future
+"LLM exit agent earns back close authority on measured per-regime edge" model (needs more n first).

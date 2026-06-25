@@ -211,6 +211,13 @@ class ExitRegretEngine:
             return None
 
         resolved = [v for v in regrets.values() if v is not None]
+        # Sanity guard: a real exit's forward regret is single/low-double-digit %. A magnitude
+        # >200% means the exit_price and the fetched forward price are on different scales —
+        # i.e. stale/synthetic/test data or a wrong-symbol price fetch. Drop it (do NOT pollute aggregates).
+        if any(abs(v) > 200.0 for v in resolved):
+            logger.debug("[EXIT-REGRET] dropping implausible row %s regret=%s exit_price=%s",
+                         decision_id, resolved, exit_price)
+            return None
         recovered = any(v > 0.05 for v in resolved)  # >5bps favorable = recovered
 
         return {
