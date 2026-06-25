@@ -540,3 +540,16 @@ uncertain explorations (0 over-blocks; old gate caught only 2). Review=DEPLOY (f
 regime_aware_ok). 13 conviction tests pass. Shipped: code (multi_strategy_main.py) + EXPLORATION_UNIFIED_TOXIC/MIN_EV/TOXIC_MIN_N env.
 Restarted (pid 34716->34116, healthy 20:22Z, heartbeat daemon fresh). NOTE: EXPLORATION_BLOCK_COMBOS name-block now REDUNDANT
 (unified guard catches it universally) — keep as belt-and-suspenders, drop after live confirmation (next: confirm 0 forced -EV/toxic post-#4).
+
+## AUDIT SWARM #5 (2026-06-25T20:40Z) — edge-map refresh + regime-prior re-validation (READ-ONLY, no change)
+DISCIPLINED RESULT — keep USE_REGIME_PRIORS OFF. Walk-forward re-validation (n=44 clean mech, 36 OOS): regime-keyed prior is
+STILL A TIE (Brier REGIME 0.2561 vs POOLED 0.2551 vs POOLED+SHRINK 0.2521 — regime fractionally WORSE; all paired-bootstrap CIs
+straddle zero, P(regime better)=0.43-0.49). The EV-gate gain (+342 vs +273 take-all) is captured IDENTICALLY by SIDE+SHRINK (+338,
+NO regime) -> the edge is the SIDE filter (skip longs), not regime keying. Clean mech n unchanged at 44 (new closes displaced old rows).
+IMPORTANT CORRECTION: the "SHORT trending_bear = the +EV cell (+$1361, 78% of net)" belief is largely an IN-SAMPLE ARTIFACT —
+driven by ~1-3 early trades; OUT-OF-SAMPLE SHORT.bear is 2/4 = -$105. The robust validated edge is SIDE-LEVEL: avoid LONGS
+(esp non-bull, LONG.neutral -$124), trade SHORTS (SHORT.neutral 15/24 +$478 OOS is the real broad signal). 2 of 6 (side,bucket)
+cells are EMPTY (SHORT.bull, LONG.bear). So: do NOT over-fit to regime cells; the name-block/long-suppression IS the genuine win.
+ACTIONS: none (USE_REGIME_PRIORS already off; side-level guardrail already enforced via name-block). Name-block NOT droppable yet
+(need a clean post-#4 window with zero -EV/toxic exploration; today still had toxic entries pre-20:22; 0 after 20:22 but thin data).
+Re-test regime dimension only after SHORT.bear / the empty bull/bear cells each reach ~10+ post-cutoff trades. Bot healthy, equity $2045.
