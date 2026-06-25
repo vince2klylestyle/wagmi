@@ -24,6 +24,7 @@ Enable: LLM_MULTI_AGENT=true
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -95,6 +96,36 @@ _CLI_JSON_SUFFIX = (
     "\n\nCRITICAL: Your ENTIRE response must be a single JSON object. "
     "No markdown, no prose before or after. Start with { and end with }."
 )
+
+
+# ── Global Sonnet/Opus concurrency throttle ──────────────────────────────────
+# When SCAN_PARALLEL_SYMBOLS is on, multiple symbols run their pipelines in
+# parallel worker threads. The cheap Haiku stages (Regime/Risk/Quant) may fan
+# out freely, but the expensive Sonnet/Opus calls (Trade/Critic) route through
+# the Claude Code CLI subprocess, which is QUOTA/rate-limit sensitive (not
+# pay-per-token). This BoundedSemaphore caps concurrent Sonnet/Opus `claude -p`
+# sessions to LLM_SONNET_CONCURRENCY regardless of how many symbols are in
+# flight, so adding symbols can never increase peak concurrent Sonnet sessions
+# beyond the configured cap. In the serial path the semaphore is acquired and
+# released by a single thread with no contention (no behavior change).
+def _sonnet_concurrency_limit() -> int:
+    try:
+        n = int(os.getenv("LLM_SONNET_CONCURRENCY", "2"))
+    except (TypeError, ValueError):
+        n = 2
+    return max(1, n)
+
+
+_SONNET_SEMAPHORE = threading.BoundedSemaphore(_sonnet_concurrency_limit())
+
+
+def _is_sonnet_or_opus(model: str) -> bool:
+    """True if the resolved model is a Sonnet/Opus tier (throttled), else
+    False for Haiku (free to fan out)."""
+    if not model:
+        return False
+    m = model.lower()
+    return ("sonnet" in m) or ("opus" in m)
 
 
 def _call_llm_via_cli(
@@ -330,6 +361,12 @@ class AgentCoordinator:
         # Lazy-initialized enrichment modules
         self._background_thinker: Optional[Any] = None
         self._pre_trade_simulator: Optional[Any] = None
+        # Cache lock: under SCAN_PARALLEL_SYMBOLS the regime/entry-decision
+        # caches are read-modify-written from multiple worker threads. dict
+        # get/set are individually GIL-atomic, but the TTL check-then-set
+        # sequence is not — guard it so concurrent symbols can't corrupt
+        # entries. Cheap and uncontended in the serial path.
+        self._cache_lock = threading.RLock()
         # Regime cache: avoid re-calling Regime Agent when regime hasn't changed
         # Structure: {symbol: {"result": AgentOutput, "timestamp": time.time()}}
         self._regime_cache: Dict[str, Dict[str, Any]] = {}
@@ -376,12 +413,13 @@ class AgentCoordinator:
 
     def invalidate_regime_cache(self, symbol: Optional[str] = None) -> None:
         """Clear regime cache for a symbol or all symbols."""
-        if symbol:
-            self._regime_cache.pop(symbol, None)
-            logger.info(f"[MULTI-AGENT] Regime cache invalidated for {symbol}")
-        else:
-            self._regime_cache.clear()
-            logger.info("[MULTI-AGENT] Regime cache fully cleared")
+        with self._cache_lock:
+            if symbol:
+                self._regime_cache.pop(symbol, None)
+                logger.info(f"[MULTI-AGENT] Regime cache invalidated for {symbol}")
+            else:
+                self._regime_cache.clear()
+                logger.info("[MULTI-AGENT] Regime cache fully cleared")
 
     def get_trading_decision(
         self,
@@ -857,12 +895,14 @@ class AgentCoordinator:
         if _regime_markets and isinstance(_regime_markets, list) and _regime_markets:
             _regime_symbol = _regime_markets[0].get("s", _regime_markets[0].get("sym", ""))
 
-        _cached = self._regime_cache.get(_regime_symbol)
-        if (
-            _cached
-            and _regime_symbol
-            and (time.time() - _cached["timestamp"]) < self._regime_cache_ttl
-        ):
+        with self._cache_lock:
+            _cached = self._regime_cache.get(_regime_symbol)
+            _cache_fresh = bool(
+                _cached
+                and _regime_symbol
+                and (time.time() - _cached["timestamp"]) < self._regime_cache_ttl
+            )
+        if _cache_fresh:
             regime_out = _cached["result"]
             logger.info(
                 f"[MULTI-AGENT] Regime cache HIT for {_regime_symbol} "
@@ -875,10 +915,11 @@ class AgentCoordinator:
             )
             # Cache successful results
             if regime_out.ok and _regime_symbol:
-                self._regime_cache[_regime_symbol] = {
-                    "result": regime_out,
-                    "timestamp": time.time(),
-                }
+                with self._cache_lock:
+                    self._regime_cache[_regime_symbol] = {
+                        "result": regime_out,
+                        "timestamp": time.time(),
+                    }
                 logger.info(
                     f"[MULTI-AGENT] Regime cache MISS for {_regime_symbol} — cached new result"
                 )
@@ -1583,7 +1624,8 @@ class AgentCoordinator:
         if not _is_backtest_mode:
             _cache_key = self._entry_cache_key(signal_context, market_context)
             _now = time.time()
-            _cached = self._entry_decision_cache.get(_cache_key)
+            with self._cache_lock:
+                _cached = self._entry_decision_cache.get(_cache_key)
             if _cached is not None:
                 _age = _now - _cached["ts"]
                 _entry_price = float(signal_context.get("entry", 0))
@@ -1592,7 +1634,8 @@ class AgentCoordinator:
                 _ttl_ok = _age < self._entry_cache_ttl
                 _price_ok = _price_move < self._entry_cache_price_tolerance
                 if _ttl_ok and _price_ok:
-                    self._entry_cache_hits += 1
+                    with self._cache_lock:
+                        self._entry_cache_hits += 1
                     _cached_dec = _cached["decision"]
                     logger.info(
                         f"[LLM-CACHE] HIT {signal_context.get('symbol','')} {signal_context.get('side','')} "
@@ -1607,8 +1650,10 @@ class AgentCoordinator:
                     )
                 else:
                     # Stale cache entry — remove it
-                    del self._entry_decision_cache[_cache_key]
-            self._entry_cache_misses += 1
+                    with self._cache_lock:
+                        self._entry_decision_cache.pop(_cache_key, None)
+            with self._cache_lock:
+                self._entry_cache_misses += 1
         else:
             _cache_key = None
 
@@ -1674,11 +1719,12 @@ class AgentCoordinator:
                     )
                     # Store in cache as skip (same TTL as LLM skips)
                     if _cache_key is not None:
-                        self._entry_decision_cache[_cache_key] = {
-                            "decision": _veto_decision,
-                            "ts": time.time(),
-                            "entry_price": float(signal_context.get("entry", 0)),
-                        }
+                        with self._cache_lock:
+                            self._entry_decision_cache[_cache_key] = {
+                                "decision": _veto_decision,
+                                "ts": time.time(),
+                                "entry_price": float(signal_context.get("entry", 0)),
+                            }
                     return _veto_decision
             except Exception as _pfe:
                 logger.debug(f"[PRE-FILTER] Error: {_pfe}")
@@ -1879,14 +1925,15 @@ class AgentCoordinator:
         # ── Store skip decisions in cache ──
         # GOs are single-use (never replay a trade). Skips in stable conditions are safe to cache.
         if entry_decision.action == "skip" and _cache_key is not None and not _is_backtest_mode:
-            self._entry_decision_cache[_cache_key] = {
-                "decision": entry_decision,
-                "ts": time.time(),
-                "entry_price": float(signal_context.get("entry", 0)),
-            }
-            if len(self._entry_decision_cache) > 50:
-                oldest = min(self._entry_decision_cache, key=lambda k: self._entry_decision_cache[k]["ts"])
-                del self._entry_decision_cache[oldest]
+            with self._cache_lock:
+                self._entry_decision_cache[_cache_key] = {
+                    "decision": entry_decision,
+                    "ts": time.time(),
+                    "entry_price": float(signal_context.get("entry", 0)),
+                }
+                if len(self._entry_decision_cache) > 50:
+                    oldest = min(self._entry_decision_cache, key=lambda k: self._entry_decision_cache[k]["ts"])
+                    del self._entry_decision_cache[oldest]
 
         return entry_decision
 
@@ -3240,7 +3287,8 @@ class AgentCoordinator:
         # Enrich prompt with latest quant intelligence from deep memory
         # Skip in backtest mode — insight_journal/network_learning contain pre-overhaul data
         _bt = getattr(self, '_current_is_backtest', False)
-        if not _bt:
+        _enrich_on = os.getenv("AGENT_ENRICH_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+        if not _bt and _enrich_on:
             try:
                 prompt = enrich_prompt(role.value, prompt)
             except Exception as e:
@@ -3311,36 +3359,51 @@ class AgentCoordinator:
 
         model = config.model_override or fallback_model or _get_default_model(role)
 
-        # Route through CLI (subscription) or Anthropic API depending on config.
-        if _should_use_cli():
-            raw_text, usage = _call_llm_via_cli(
-                system_prompt=dynamic_prefix or "",
-                snapshot_json=input_json,
-                model=model,
-                max_tokens=config.max_tokens,
-                timeout=config.timeout_s,
-                cacheable_prefix=prompt,
-            )
-            logger.debug(f"[COORD-CLI] {role.value} latency={usage.get('latency_ms',0)}ms")
-        elif dynamic_prefix:
-            raw_text, usage = call_llm(
-                system_prompt=dynamic_prefix,
-                snapshot_json=input_json,
-                model=model,
-                max_tokens=config.max_tokens,
-                max_retries=1,
-                timeout=config.timeout_s,
-                cacheable_prefix=prompt,
-            )
-        else:
-            raw_text, usage = call_llm(
-                system_prompt=prompt,
-                snapshot_json=input_json,
-                model=model,
-                max_tokens=config.max_tokens,
-                max_retries=1,
-                timeout=config.timeout_s,
-            )
+        # Global Sonnet/Opus throttle: only the expensive tier is gated, so
+        # under parallel symbol scan we never exceed LLM_SONNET_CONCURRENCY
+        # concurrent Sonnet/Opus CLI sessions. Haiku stages skip the semaphore
+        # entirely. Acquire is a context manager so the permit is always
+        # released even if the call raises/times out.
+        _throttle = _is_sonnet_or_opus(model)
+        _sem_acquired = False
+        try:
+            if _throttle:
+                _SONNET_SEMAPHORE.acquire()
+                _sem_acquired = True
+
+            # Route through CLI (subscription) or Anthropic API depending on config.
+            if _should_use_cli():
+                raw_text, usage = _call_llm_via_cli(
+                    system_prompt=dynamic_prefix or "",
+                    snapshot_json=input_json,
+                    model=model,
+                    max_tokens=config.max_tokens,
+                    timeout=config.timeout_s,
+                    cacheable_prefix=prompt,
+                )
+                logger.debug(f"[COORD-CLI] {role.value} latency={usage.get('latency_ms',0)}ms")
+            elif dynamic_prefix:
+                raw_text, usage = call_llm(
+                    system_prompt=dynamic_prefix,
+                    snapshot_json=input_json,
+                    model=model,
+                    max_tokens=config.max_tokens,
+                    max_retries=1,
+                    timeout=config.timeout_s,
+                    cacheable_prefix=prompt,
+                )
+            else:
+                raw_text, usage = call_llm(
+                    system_prompt=prompt,
+                    snapshot_json=input_json,
+                    model=model,
+                    max_tokens=config.max_tokens,
+                    max_retries=1,
+                    timeout=config.timeout_s,
+                )
+        finally:
+            if _sem_acquired:
+                _SONNET_SEMAPHORE.release()
 
         self._call_count += 1
         in_tok = usage.get("input_tokens", 0)

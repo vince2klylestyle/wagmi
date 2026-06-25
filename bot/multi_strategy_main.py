@@ -18,7 +18,8 @@ import time
 import threading
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
@@ -451,6 +452,18 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
     def __init__(self, config: TradingConfig):
         self.config = config
         self.stop_event = threading.Event()
+
+        # Lock guarding self._tick_candidates — under SCAN_PARALLEL_SYMBOLS
+        # multiple worker threads (one per symbol) append concurrently.
+        self._tick_candidates_lock = threading.Lock()
+
+        # Cheap liveness snapshot for the heartbeat daemon. The main loop
+        # refreshes this every tick (and the daemon thread reads it every
+        # HEARTBEAT_DAEMON_INTERVAL_S) so data/heartbeat.json stays fresh even
+        # during a multi-minute scan, killing false-positive watchdog stalls.
+        self._hb_snapshot: dict = {"positions": 0, "equity": 0.0}
+        self._hb_snapshot_lock = threading.Lock()
+        self._heartbeat_daemon: Optional[threading.Thread] = None
 
         # Apply paper/live profile overrides (caps leverage, risk, etc.)
         apply_profile(config)
@@ -1480,6 +1493,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Start watchdog (background health monitoring)
         self.watchdog.start()
+
+        # Start heartbeat daemon: decouples liveness reporting from the scan
+        # loop so data/heartbeat.json never goes stale during a multi-minute
+        # scan. ON by default — it only improves liveness reporting and cannot
+        # affect trading. Seed the snapshot so the first daemon write is valid.
+        self._update_hb_snapshot()
+        if self._heartbeat_daemon is None or not self._heartbeat_daemon.is_alive():
+            self._heartbeat_daemon = threading.Thread(
+                target=self._run_heartbeat_daemon,
+                daemon=True,
+                name="heartbeat-daemon",
+            )
+            self._heartbeat_daemon.start()
+
         log_health_event("BOT_START", "INFO", f"Bot started: {len(DEFAULT_SYMBOLS)} symbols, LLM={self.llm_mode.name}")
 
         # Auto-start live_analyst as background subprocess when committee gate is enabled
@@ -1586,20 +1613,19 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
                 )
                 self.watchdog.record_error()
 
-                # Save heartbeat with error status so external watchdog sees it
+                # Save heartbeat with error status so external watchdog sees it.
+                # Route through the shared atomic writer so this error-path write
+                # shares the same lock + atomic replace as the daemon/main-loop and
+                # can never tear the JSON.
                 try:
-                    import json as _json
-                    _hb_path = os.path.join("data", "heartbeat.json")
-                    os.makedirs("data", exist_ok=True)
-                    _hb_data = {
+                    from monitoring.health import write_heartbeat_atomic
+                    write_heartbeat_atomic({
                         "last_alive": datetime.now(timezone.utc).isoformat(),
                         "pid": os.getpid(),
                         "status": "error",
                         "error": str(e)[:200],
                         "consecutive_failures": _consecutive_failures,
-                    }
-                    with open(_hb_path, "w") as _hbf:
-                        _json.dump(_hb_data, _hbf)
+                    })
                 except Exception:
                     pass
 
@@ -1744,10 +1770,83 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
             time.sleep(min(step, seconds - waited))
             waited += step
 
+    def _update_hb_snapshot(self):
+        """Cheaply refresh the liveness snapshot read by the heartbeat daemon.
+
+        Reads positions/equity (in-memory, no I/O) and stores them under a lock
+        so the daemon thread can write an accurate data/heartbeat.json without
+        racing the main loop or doing expensive work itself.
+        """
+        try:
+            positions = self.pos_mgr.get_open_count()
+        except Exception:
+            positions = 0
+        try:
+            equity = self.risk_mgr.equity
+        except Exception:
+            equity = 0.0
+        try:
+            exchange_healthy = not self.degradation.should_halt_entries()
+        except Exception:
+            exchange_healthy = True
+        with self._hb_snapshot_lock:
+            self._hb_snapshot = {
+                "positions": positions,
+                "equity": equity,
+                "exchange_healthy": exchange_healthy,
+            }
+
+    def _run_heartbeat_daemon(self):
+        """Background daemon that keeps liveness reporting decoupled from the
+        scan loop.
+
+        The scan loop only writes data/heartbeat.json at cycle boundaries, so
+        during a multi-minute scan the file goes stale and the external watchdog
+        false-positives a 'stall' -> exit-code-1 restart even though the bot is
+        fine. This daemon writes the heartbeat every HEARTBEAT_DAEMON_INTERVAL_S
+        from the cheap snapshot the main loop refreshes each tick, so last_alive
+        never goes stale mid-scan. If the process genuinely wedges, this thread
+        stops too and the file legitimately goes stale (no masking of real hangs).
+        """
+        try:
+            interval = max(5, int(os.getenv("HEARTBEAT_DAEMON_INTERVAL_S", "30")))
+        except (TypeError, ValueError):
+            interval = 30
+        logger.info(f"[HEARTBEAT-DAEMON] Started (interval={interval}s)")
+        while not self.stop_event.is_set():
+            try:
+                with self._hb_snapshot_lock:
+                    snap = dict(self._hb_snapshot)
+                # Write data/heartbeat.json (read by external watchdog.py).
+                # extra marks this as a daemon write so loop_duration_s/scan_count
+                # stats remain owned by the end-of-cycle record at the loop.
+                self.health_monitor.record_heartbeat(
+                    loop_duration_s=0.0,
+                    positions=int(snap.get("positions", 0)),
+                    equity=float(snap.get("equity", 0.0)),
+                    extra={"source": "heartbeat_daemon"},
+                )
+                # Also poke the in-process watchdog so its stall timer resets.
+                self.watchdog.heartbeat(
+                    equity=float(snap.get("equity", 0.0)),
+                    scan_count=self._tick,
+                    exchange_healthy=bool(snap.get("exchange_healthy", True)),
+                )
+            except Exception as e:
+                logger.debug(f"[HEARTBEAT-DAEMON] write error: {e}")
+            # Interruptible wait so shutdown is prompt.
+            self.stop_event.wait(interval)
+        logger.info("[HEARTBEAT-DAEMON] Stopped")
+
     def _tick_once(self):
         """One iteration of the main loop."""
         trace_id = uuid.uuid4().hex[:8]
         _loop_start = time.time()
+
+        # Refresh the cheap liveness snapshot for the heartbeat daemon at the
+        # START of the tick (before the multi-minute scan) so the daemon can
+        # report fresh positions/equity even while this scan is in progress.
+        self._update_hb_snapshot()
 
         # Per-trade compound sizing cache: stored at entry, read at close for attribution
         self._compound_mult_cache: Dict[str, float] = {}
@@ -1841,12 +1940,46 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         except Exception as e:
             logger.debug(f"Failed to update adaptive confidence floor: {e}")
 
-        for symbol, sym_cfg in eval_order:
+        # ── Symbol evaluation: serial (default) or bounded-parallel ──
+        # SCAN_PARALLEL_SYMBOLS runs each symbol's full Regime->Quant->Trade->
+        # Risk->Critic chain in its own worker thread so wall-clock collapses
+        # from sum(per-symbol) to ceil(N/K) of per-symbol time. Each symbol keeps
+        # its OWN serial intra-symbol pipeline and its own thread-local
+        # scratchpad, so directional decisions are byte-for-byte identical to
+        # the serial path; only cross-symbol ordering/wall-clock changes. The
+        # global Sonnet semaphore in the coordinator caps concurrent Sonnet/Opus
+        # CLI sessions independent of K, so quota cannot be exceeded.
+        _parallel = os.getenv("SCAN_PARALLEL_SYMBOLS", "false").lower() in ("1", "true", "yes", "on")
+        if _parallel and len(eval_order) > 1:
             try:
-                self._process_symbol(symbol, sym_cfg, trace_id)
-            except Exception as e:
-                logger.error(f"[{trace_id}][{symbol}] Error: {e}", exc_info=True)
-                self.health_monitor.record_error()
+                _k = int(os.getenv("SCAN_MAX_CONCURRENCY", "2"))
+            except (TypeError, ValueError):
+                _k = 2
+            # Hard cap at 3 — never let a config typo open the floodgates.
+            _k = max(1, min(_k, 3, len(eval_order)))
+            logger.info(
+                f"[{trace_id}] Parallel symbol scan: {len(eval_order)} symbols, "
+                f"concurrency={_k}"
+            )
+            with ThreadPoolExecutor(max_workers=_k, thread_name_prefix="symscan") as _pool:
+                _futs = {
+                    _pool.submit(self._process_symbol, _sym, _cfg, trace_id): _sym
+                    for _sym, _cfg in eval_order
+                }
+                for _fut in as_completed(_futs):
+                    _sym = _futs[_fut]
+                    try:
+                        _fut.result()
+                    except Exception as e:
+                        logger.error(f"[{trace_id}][{_sym}] Error: {e}", exc_info=True)
+                        self.health_monitor.record_error()
+        else:
+            for symbol, sym_cfg in eval_order:
+                try:
+                    self._process_symbol(symbol, sym_cfg, trace_id)
+                except Exception as e:
+                    logger.error(f"[{trace_id}][{symbol}] Error: {e}", exc_info=True)
+                    self.health_monitor.record_error()
 
         # ── Pending limit order fills ──
         # Check if any pending orders should fill at current prices
@@ -5514,19 +5647,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
         # target for other open positions that may want to rotate into this one.
         if has_position or at_max_positions:
             if self.rotation_mgr and not has_position:
-                self._tick_candidates.append({
-                    "symbol": symbol,
-                    "side": signal_result.side,
-                    "entry": signal_result.entry,
-                    "sl": signal_result.sl,
-                    "tp1": signal_result.tp1,
-                    "tp2": signal_result.tp2,
-                    "atr": signal_result.atr,
-                    "confidence": signal_result.confidence,
-                    "align_score": signal_result.metadata.get("num_agree", 1),
-                    "strategy": signal_result.strategy,
-                    "rr1": rr1,
-                })
+                with self._tick_candidates_lock:
+                    self._tick_candidates.append({
+                        "symbol": symbol,
+                        "side": signal_result.side,
+                        "entry": signal_result.entry,
+                        "sl": signal_result.sl,
+                        "tp1": signal_result.tp1,
+                        "tp2": signal_result.tp2,
+                        "atr": signal_result.atr,
+                        "confidence": signal_result.confidence,
+                        "align_score": signal_result.metadata.get("num_agree", 1),
+                        "strategy": signal_result.strategy,
+                        "rr1": rr1,
+                    })
             return
 
         # ── Wave 2: Signal Decay — reduce confidence for stale signals ──
@@ -6635,19 +6769,20 @@ class MultiStrategyBot(AnalyticsMixin, LLMIntegrationMixin, PositionWiringMixin)
 
         # Collect as rotation candidate for other open positions
         if self.rotation_mgr:
-            self._tick_candidates.append({
-                "symbol": symbol,
-                "side": signal_result.side,
-                "entry": actual_entry,
-                "sl": adj_sl,
-                "tp1": adj_tp1,
-                "tp2": adj_tp2,
-                "atr": signal_result.atr,
-                "confidence": signal_result.confidence,
-                "align_score": signal_result.metadata.get("num_agree", 1),
-                "strategy": signal_result.strategy,
-                "rr1": rr1,
-            })
+            with self._tick_candidates_lock:
+                self._tick_candidates.append({
+                    "symbol": symbol,
+                    "side": signal_result.side,
+                    "entry": actual_entry,
+                    "sl": adj_sl,
+                    "tp1": adj_tp1,
+                    "tp2": adj_tp2,
+                    "atr": signal_result.atr,
+                    "confidence": signal_result.confidence,
+                    "align_score": signal_result.metadata.get("num_agree", 1),
+                    "strategy": signal_result.strategy,
+                    "rr1": rr1,
+                })
 
         # Telemetry: record slippage (trade count deferred until order confirms)
         Telemetry.record("slippages", slippage_pct)

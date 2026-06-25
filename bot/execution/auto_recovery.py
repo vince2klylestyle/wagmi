@@ -36,15 +36,23 @@ _EXCHANGE_MAX_RETRIES = 5
 # ── Heartbeat: track when bot was last alive ───────────────
 
 def save_heartbeat(filepath: str = _HEARTBEAT_FILE) -> None:
-    """Write current timestamp to heartbeat file. Call every tick."""
+    """Write current timestamp to heartbeat file. Call every tick.
+
+    Routes through monitoring.health.write_heartbeat_atomic so this write shares
+    the SAME module-level lock + atomic os.replace() as the HealthMonitor and the
+    30s heartbeat daemon. Otherwise concurrent writes (daemon + main loop, now
+    parallel) could tear the JSON that watchdog.py reads.
+    """
     try:
-        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
-        data = {
-            "last_alive": datetime.now(timezone.utc).isoformat(),
-            "pid": os.getpid(),
-        }
-        with open(filepath, "w") as f:
-            json.dump(data, f)
+        from monitoring.health import write_heartbeat_atomic
+
+        write_heartbeat_atomic(
+            {
+                "last_alive": datetime.now(timezone.utc).isoformat(),
+                "pid": os.getpid(),
+            },
+            filepath,
+        )
     except Exception as e:
         logger.debug(f"[HEARTBEAT] Failed to write: {e}")
 

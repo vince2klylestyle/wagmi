@@ -466,3 +466,19 @@ KNOWN LIMITATION (review): the primary conviction signal entry_decision.confiden
   name-block EXPLORATION_BLOCK_COMBOS=HYPE/SOL/BTC/ETH_LONG as belt-and-suspenders for longs. NEXT: fix the inverted signal
   (use win_prob/EV as primary skip-conviction proxy) -> then drop the name-block (the "no hardcoded blocks" end state).
 RESTART NOTE: supervisor backoff now 240s after 13 attempts today — minimize restarts; the watchdog-stall/restart fix is the priority daytime item.
+
+## 2026-06-25T18:25Z — SCAN-SPEED + STABILITY deployed (parallel scan + Critic-Haiku + heartbeat daemon)
+Root cause of low volume + ~daily restarts = 5-11min SERIAL cold-start claude -p cycles (4 symbols x 5-stage pipeline,
+~20 serial subprocess calls) + heartbeat written only at cycle-end (went stale mid-cycle -> watchdog 300s false-positive restart).
+SHIPPED (2 gated workflows, both review=deploy; broad suite 480 pass, 0 new failures):
+- Parallel symbol scan (SCAN_PARALLEL_SYMBOLS=true, K=2) with a global Sonnet BoundedSemaphore (LLM_SONNET_CONCURRENCY=2)
+  so concurrency can't trip CLI rate limits; threading.local pipeline scratchpad (was a shared global — would've corrupted
+  per-symbol reasoning under parallelism). Critic->Haiku (Trade stays Sonnet = accuracy kept). Expected cycle 5-11min -> ~2.5-3.5min.
+- Heartbeat daemon (30s) writing last_alive atomically (temp+os.replace, shared lock, Windows retry) — fixes the watchdog
+  false-positive restarts. CONFIRMED LIVE: heartbeat.json advanced 18:24:39->18:25:09 independent of cycle (source=heartbeat_daemon).
+  Found+fixed a 3-writer bug (watchdog's last_alive actually came from auto_recovery.save_heartbeat; daemon was clobbering it).
+- WATCHDOG_STALE_THRESHOLD_S 300->900 belt-and-suspenders.
+INCIDENT: .env briefly truncated (186->10 lines) by a cp1252 encoding error mid-write; caught immediately via key-count check,
+restored from pre-change backup, re-applied atomically (utf-8). Running bot was unaffected (loads .env only at restart).
+Bot restarted clean (pid 34716, attempt #14). Full config now: volume (60s interval, 12 concurrent) + conviction-aware exploration
++ name-block + parallel scan + Critic-Haiku + heartbeat daemon. Watching: actual cycle time + quota under parallel load.

@@ -18,6 +18,7 @@ from here. unified_context.py is deprecated — its data has been merged here.
 
 import json
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -778,7 +779,17 @@ def build_shared_context_block(
 # ── Singleton instances ──────────────────────────────────────────
 
 _shared_lessons: Optional[SharedLessons] = None
-_pipeline_scratchpad: Optional[PipelineScratchpad] = None
+
+# The pipeline scratchpad is THREAD-LOCAL. When SCAN_PARALLEL_SYMBOLS is on,
+# each worker thread runs one symbol's full Regime->Quant->Trade->Risk->Critic
+# chain. A module-global scratchpad would let a concurrent symbol's regime/quant
+# context bleed into another symbol's Trade decision (read_by_key("regime")
+# returns the most-recent write from ANY thread). Making it thread-local gives
+# every worker its own isolated scratchpad, preserving the per-symbol
+# OBSERVE->REGIME->TRADE reasoning chain byte-for-byte vs. the serial path.
+# In the serial (default) path there is exactly one thread, so behavior is
+# identical to the old module-global singleton.
+_pipeline_scratchpad = threading.local()
 
 
 def get_shared_lessons() -> SharedLessons:
@@ -790,18 +801,23 @@ def get_shared_lessons() -> SharedLessons:
 
 
 def get_pipeline_scratchpad() -> PipelineScratchpad:
-    """Get or create the pipeline scratchpad."""
-    global _pipeline_scratchpad
-    if _pipeline_scratchpad is None:
-        _pipeline_scratchpad = PipelineScratchpad()
-    return _pipeline_scratchpad
+    """Get or create the pipeline scratchpad for the CURRENT thread.
+
+    Thread-local: each worker thread (one symbol under parallel scan) gets its
+    own scratchpad, so cross-symbol reasoning never bleeds between threads.
+    """
+    pad = getattr(_pipeline_scratchpad, "pad", None)
+    if pad is None:
+        pad = PipelineScratchpad()
+        _pipeline_scratchpad.pad = pad
+    return pad
 
 
 def reset_pipeline_scratchpad() -> PipelineScratchpad:
-    """Reset the scratchpad for a new pipeline run."""
-    global _pipeline_scratchpad
-    _pipeline_scratchpad = PipelineScratchpad()
-    return _pipeline_scratchpad
+    """Reset the scratchpad for a new pipeline run (current thread only)."""
+    pad = PipelineScratchpad()
+    _pipeline_scratchpad.pad = pad
+    return pad
 
 
 # ── Setup Type Helpers ──────────────────────────────────────────
