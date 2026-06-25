@@ -1,8 +1,8 @@
 {
-  "status": "UPDATED_RUN156",
-  "last_updated": "2026-06-25T01:01:00Z",
-  "run_number": 156,
-  "data_source": "Full 965-trade dataset (cached). Bot offline Day 86 -- no new trades.",
+  "status": "UPDATED_RUN157",
+  "last_updated": "2026-06-25T02:01:00Z",
+  "run_number": 157,
+  "data_source": "Full 965-trade dataset (cached). Bot offline Day 87 -- no new trades.",
   "trades_analyzed": 965,
   "high_edges": [
     {
@@ -11,7 +11,7 @@
       "count": 179,
       "ev_per_trade": 32.44,
       "status": "ACTIVE boost +8 in LLM rules (restored_sol_short_boost_v1)",
-      "consecutive_flags": 24
+      "consecutive_flags": 25
     },
     {
       "key": "BTC_LONG",
@@ -19,20 +19,20 @@
       "count": 72,
       "ev_per_trade": 25.55,
       "status": "BOOST DEACTIVATED run135 (100d WR=31.7% -- temporal degradation). Boost active for BTC_TREND regime only.",
-      "consecutive_flags": 24
+      "consecutive_flags": 25
     },
     {
       "key": "CONF_90_PLUS",
       "win_rate": 64.1,
       "count": 39,
       "ev_per_trade": 101.92,
-      "status": "PENDING_HUMAN_REVIEW -- ESCALATED CRITICAL. boost +5 proposed. conf=72% (below 75% auto-inject). 16TH CONSECUTIVE FLAG.",
-      "consecutive_flags": 16,
-      "inject_trigger": "Human approval OR (flags>=5 AND conf>=75%). Currently: flags=16 MET (threshold=5), conf=72% NOT MET. 16th flag -- ESCALATED CRITICAL. ~$1,630.72 missed EV across 16 runs.",
-      "missed_ev_total": 1630.72,
+      "status": "PENDING_HUMAN_REVIEW -- CRITICAL. boost +5 proposed. conf=72% (below 75% auto-inject). 17TH CONSECUTIVE FLAG.",
+      "consecutive_flags": 17,
+      "inject_trigger": "Human approval OR (flags>=5 AND conf>=75%). Currently: flags=17 MET (threshold=5), conf=72% NOT MET. 17th flag -- CRITICAL.",
+      "missed_ev_total": 1732.64,
       "severity": "CRITICAL",
       "escalated_run": 156,
-      "note": "16th consecutive flag. ESCALATED from HIGH to CRITICAL. EV=+$101.92/trade (n=39). Each run without action = ~$102 additional uncaptured edge. Strongly recommend human bypass at gate=20%."
+      "note": "17th consecutive flag. CRITICAL since run156. EV=+$101.92/trade (n=39). Each run without action = ~$102 additional uncaptured edge. Strongly recommend human bypass at gate=20%."
     }
   ],
   "high_edges_found": 3,
@@ -65,7 +65,7 @@
   ],
   "weak_setups_found": 4,
   "new_injections_this_run": 0,
-  "pending_human_review": "CONF_90PLUS_BOOST (conf=72%, 16th flag) -- ESCALATED CRITICAL. Threshold requires conf>=75 OR human approval. Flags=16 (threshold=5 met), confidence NOT met (72%). Uncaptured edge every run. ~$1,630.72 missed EV. ESCALATED from HIGH at run155.",
+  "pending_human_review": "CONF_90PLUS_BOOST (conf=72%, 17th flag) -- CRITICAL. Threshold requires conf>=75 OR human approval. Flags=17 (threshold=5 met), confidence NOT met (72%). Uncaptured edge every run. ~$1,732.64 missed EV. CRITICAL since run156.",
   "output": {
     "high_edges_found": 3,
     "weak_setups_found": 4

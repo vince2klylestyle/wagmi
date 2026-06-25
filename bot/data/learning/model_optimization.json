@@ -1,10 +1,10 @@
 {
-  "status": "UPDATED_RUN156",
-  "last_updated": "2026-06-25T01:01:00Z",
-  "run_number": 156,
+  "status": "UPDATED_RUN157",
+  "last_updated": "2026-06-25T02:01:00Z",
+  "run_number": 157,
   "cost_tracker_status": "NOT_FOUND",
   "cost_tracker_path": "bot/llm/cost_tracker.json",
-  "consecutive_skips": 13,
+  "consecutive_skips": 14,
   "data_source": "Architecture estimates from CLAUDE.md + accumulated forensics. No real cost data.",
   "roi_summary": {
     "total_pnl_965_trades": 905.23,
@@ -30,7 +30,7 @@
     }
   ],
   "missing_data_gaps": [
-    "bot/llm/cost_tracker.json -- does not exist. 13th consecutive skip.",
+    "bot/llm/cost_tracker.json -- does not exist. 14th consecutive skip.",
     "llm_regime field in CSV -- empty for all 965 trades.",
     "Veto log -- Critic decisions not recorded.",
     "Agent-level PnL attribution -- unknown which agent decisions led to wins vs losses."
