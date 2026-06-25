@@ -427,3 +427,27 @@ CONCERN FOR DAYTIME (do NOT rush overnight): watchdog "heartbeat stall" (~5min) 
 restarts; bot self-recovers each time but it's the main fragility — needs careful diagnosis of the stall root cause + whether
 the 5min watchdog threshold is too tight for slow LLM scan cycles. Also cosmetic: log date-rotation past midnight.
 OVERNIGHT PLAN: light periodic health monitoring (catch a sustained outage), no code churn, let it gather data.
+
+## 2026-06-25T07:04Z — overnight watch: healthy, equity $2092 (peak $2104), circuit OK, 0 open, no crash-loop (stable since 01:18 restart), 10 closes net +$36
+## 2026-06-25T07:35Z — overnight watch: healthy, equity $2092, circuit OK, 0 open, stable (no new restarts since 01:18), 10 closes net +$36 (flat in chop)
+## 2026-06-25T08:06Z — overnight watch: healthy (hb 3.6min), equity $2092, circuit OK, 0 open, stable since 01:18, 10 closes net +$36
+## 2026-06-25T08:37Z — overnight watch: healthy, equity $2092, circuit OK, 0 open, stable since 01:18, 10 closes net +$36 (flat in chop)
+## 2026-06-25T09:08Z — overnight watch (cycle 5): healthy, equity $2092, circuit OK, 0 open, stable since 01:18, 10 closes net +$36 (flat ~3.5h in chop)
+## 2026-06-25T09:39Z — overnight watch (cycle 6, healthy streak): equity $2092, circuit OK, 0 open, stable ~8.5h since 01:18, 10 closes net +$36. Widening watch to hourly.
+## 2026-06-25T10:40Z — hourly watch: healthy, equity $2092, circuit OK, 0 open, stable ~9.4h, 10 closes net +$36 (flat in chop)
+## 2026-06-25T11:42Z — hourly watch: healthy, equity $2092, circuit OK, 0 open, stable ~10.4h, 10 closes net +$36. Note: RSS creeping ~209MB (slow; watch for leak).
+## 2026-06-25T12:43Z — hourly watch: healthy, equity $2092, circuit OK, 0 open, stable ~11.4h, 10 closes net +$36. RSS back to 118MB (no leak — was normal fluctuation).
+## 2026-06-25T13:45Z — hourly watch: healthy, equity $2092, circuit OK, 0 open, stable ~12.4h, 10 closes net +$36. Flat ~8h (no closes since 05:39) — daytime: confirm not over-conservative vs correctly avoiding chop.
+## 2026-06-25T14:46Z — hourly watch: ACTIVE again, equity $2046 (-2.2%, within tol), circuit OK. 4 new closes net -$47 = 3 LONG SLs (HYPE/BTC/ETH -$64) + 1 SOL SHORT trailing +$17 — the known longs-lose/shorts-win pattern. 4 open positions (SOL/HYPE/BTC/ETH). DAYTIME: bot still taking -EV longs (incl HYPE_LONG despite veto — override/exploration?); consider tightening long restriction. Cadence -> 30min to watch open positions.
+
+## 2026-06-25T15:20Z — ACCURATE+AGGRESSIVE: stop exploration overriding the LLM's correct -EV-long skips
+Owner back. Diagnosed the overnight long losses: ALL exploration-FORCED, NOT LLM-chosen. Logs show the LLM correctly
+SKIPPED BTC/ETH/HYPE LONG ("0% WR","lacks credible edge","likely chops") and exploration (epsilon 0.55) force-converted
+skip->go anyway — all 3 stopped out (-$64). The LLM is accurate; exploration was blindly overriding it on proven -EV setups.
+FIX (evidence-based, reversible, keeps aggression): EXPLORATION_BLOCK_COMBOS=HYPE_LONG,SOL_LONG,BTC_LONG,ETH_LONG — blocks
+ONLY exploration-forced longs; the LLM can still take a conviction long on its own go. Epsilon stays 0.55, MAX_OPEN 8 —
+full aggression preserved on the +EV short side. NOT a "pre-decided block": the LLM itself + the n=84 edge map both say longs -EV.
+Restarted (pid 39516->9572, healthy 15:20Z). Stopped the overnight auto health-watch (owner returned).
+DEEPER FIX PENDING (the principled version): make the exploration converter RESPECT high-conviction LLM skips universally
+(don't force skip->go when the LLM's skip reason signals strong -EV like "0% WR"/"no edge") — then no directional block is
+needed at all; exploration only explores genuinely-uncertain skips. Build next (gated).
