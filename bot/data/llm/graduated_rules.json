@@ -189,8 +189,9 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
-      "gate_percentage": 20
+      "active": false,
+      "gate_percentage": 20,
+      "deactivated_reason": "AUDIT_2026-06-26: HYPE is worst symbol (-$5014 total PnL). Boost pushes into 80-90%+ zone where EV=-$33 to -$42/trade."
     },
     {
       "rule_id": "conf_floor_70_v1",
@@ -208,8 +209,9 @@
       "last_applied": 1778811039.5375004,
       "times_applied": 2,
       "times_correct": 0,
-      "active": false,
-      "gate_percentage": 0
+      "active": true,
+      "gate_percentage": 0,
+      "reactivated_reason": "AUDIT_2026-06-26: 60-70% conf = 46.3% WR, EV=-$18.9/trade, n=123. Strong evidence for penalization."
     },
     {
       "rule_id": "btc_trend_long_counter_v1",
@@ -228,10 +230,11 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
+      "active": false,
       "gate_percentage": 50,
       "gate_escalated_at": "2026-05-23T23:11:54.661001+00:00",
-      "gate_escalation_reason": "GRADUATION_CRITERION_MET: pending_ab_graduation threshold was n>=10 WR<=0.45. Live data: 17 trades at 18% WR. Threshold met (17>=10, 0.18<=0.45). Feedback BTC_LONG_reduce at gate=50%. Triple protection stack (counter+Critic prompt+parent disabled). Conf=0.92 >> 0.75 threshold."
+      "gate_escalation_reason": "GRADUATION_CRITERION_MET: pending_ab_graduation threshold was n>=10 WR<=0.45. Live data: 17 trades at 18% WR. Threshold met (17>=10, 0.18<=0.45). Feedback BTC_LONG_reduce at gate=50%. Triple protection stack (counter+Critic prompt+parent disabled). Conf=0.92 >> 0.75 threshold.",
+      "deactivated_reason": "AUDIT_2026-06-26: BTC LONG has 63.9% WR, EV=+$25.5/trade, n=72. Rule inverts evidence."
     },
     {
       "rule_id": "tod_evening_edge_v1",
@@ -468,11 +471,19 @@
       "last_applied": null,
       "times_applied": 0,
       "times_correct": 0,
-      "active": true,
+      "active": false,
       "source": "feedback/graduated_rules.json SOL_SHORT_full_block (conf=88, gate=100%) + live evidence 34.6% WR n=52. RULE_CONFLICT resolved: conflict was LLM understrength (20%) vs feedback full_block (100%). Escalating to 50% closes half the gap.",
       "outcome_tracking": "PENDING_RESTART — graduate gate 50%→100% (full veto) at WR<40% n>=20 post-restart.",
       "gate_escalated_at": "2026-05-24T05:00:00+00:00",
-      "gate_escalation_reason": "RULE_CONFLICT_RESOLUTION_V1: Graduation criterion met on historical data (WR=34.6%<40% n=52>=30 conf=0.88). RULE_CONFLICT_SOL_SHORT was that LLM engine was 5x weaker than feedback engine (gate=20% vs feedback gate=100%). Escalating to gate=50% closes half the alignment gap. Directional alignment: both engines agree SOL SELL is weak. Next graduation: full veto (gate=100%) after n>=20 post-restart trades at WR<40%."
+      "gate_escalation_reason": "RULE_CONFLICT_RESOLUTION_V1: Graduation criterion met on historical data (WR=34.6%<40% n=52>=30 conf=0.88). RULE_CONFLICT_SOL_SHORT was that LLM engine was 5x weaker than feedback engine (gate=20% vs feedback gate=100%). Escalating to gate=50% closes half the alignment gap. Directional alignment: both engines agree SOL SELL is weak. Next graduation: full veto (gate=100%) after n>=20 post-restart trades at WR<40%.",
+      "deactivated_reason": "AUDIT_2026-06-26: SOL SHORT = best setup in dataset (63.7% WR, EV=+$32/trade, n=179). Rule inverts evidence."
     }
+  ],
+  "last_audit": "2026-06-26T06:07:17Z",
+  "audit_changes": [
+    "DEACTIVATE: HYPE unknown regime boost +5 (was active=True)",
+    "ACTIVATE: 60-70% conf penalize -5 (was active=False)",
+    "DEACTIVATE: BTC LONG trend penalize -13 (was active=True)",
+    "DEACTIVATE: SOL SELL penalize -10 (was active=True)"
   ]
 }
