@@ -726,3 +726,6 @@ HEALTHY: pid=18440 scan=747 errors=0 equity=$1992.69 pos=2. Collector ~5.2h accr
 
 === 2026-06-30 ~00:00 UTC check #6 ===
 HEALTHY: pid=18440 scan=877 errors=0 equity=$1992.69 pos=3. Collector ~6.2h accrued (693 rec). No close (85). Insufficient for rank-8 (ETA ~check #8). Hold.
+
+=== 2026-06-30 ~00:45 UTC check #7 ===
+HEALTHY: pid=18440 scan=1049 errors=0 equity=$1992.21 pos=3. Collector ~7.5h accrued (718 rec). No close (85). Just shy of 8h for rank-8. Hold.
