@@ -790,3 +790,6 @@ RANK-8: datapoint #1 — HYPE LONG loss, entry context funding=stable +11%/yr, O
 
 === 2026-06-30 ~09:30 UTC overnight check — WAGMI ===
 HEALTHY: pid=18284 scan=282 errors=0 equity=$1971 pos=2. 1 logged close since fix (HYPE LONG, rank-8 n=1). Grad rules: sol_long_veto 11/11 (edge), hype_long_veto 9/0 (1 app from auto-retire eval), eth_boost 1/0, conf_floor 2/1. WATCH: pos dropped 3->2 + equity -$13 but trades.csv flat at 86 -> possible reconciliation-drop or unlogged close; if rank-8 stalls at n=1 while positions cycle, audit the close->trades.csv logging path.
+
+=== 2026-06-30 ~10:36 UTC overnight WAGMI ===
+HEALTHY: pid=18284 scan=419 errors=0 equity=$1971 pos=2 (stable). No new closes this hour (still 86, rank-8 n=1). pos+equity STABLE -> no logging-gap evidence this pass. Grad rules unchanged (sol_long_veto 11/11, hype_long_veto 9/0). Quiet selective hour; rank-8 builds slowly.
