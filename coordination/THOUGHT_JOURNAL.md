@@ -758,3 +758,6 @@ OWNER DECISIONS NEEDED:
     profit-taking. (Conditional gate, not full re-enable.)
  B) Fix the partial_pct unit-mismatch bug (50 rejected) so partial trims work — clear bug, reversible.
 Both are reversible and would unblock exits + let rank-8 accumulate. Awaiting owner go.
+
+=== 2026-06-30 ~05:35 UTC check #11 ===
+HEALTHY: pid=18440 scan=1613 errors=0 equity=$1984 pos=5. Still 0 closes (trades.csv=85). Dead-capital issue unchanged; owner not yet greenlit exit fix; holding per directive. Collector ~10.5h (797 rec).
