@@ -1,7 +1,7 @@
 {
-  "status": "UPDATED_RUN159",
-  "last_updated": "2026-06-30T20:00:00Z",
-  "run_number": 159,
+  "status": "UPDATED_RUN161",
+  "last_updated": "2026-07-01T00:00:00Z",
+  "run_number": 161,
   "trades_analyzed": 965,
   "high_edges": [
     {
@@ -10,7 +10,7 @@
       "count": 179,
       "ev_per_trade": 32.44,
       "status": "ACTIVE -- sol_short_penalize_v1 DEACTIVATED Jun26 (correct, was inverting evidence)",
-      "consecutive_flags": 26
+      "consecutive_flags": 28
     },
     {
       "key": "BTC_SHORT_90PLUS",
@@ -18,17 +18,17 @@
       "count": 43,
       "ev_per_trade": 102.92,
       "status": "ACTIVE boost +10 via btc_short_90plus_boost_v1 (new rule since run157)",
-      "consecutive_flags": 26
+      "consecutive_flags": 28
     },
     {
       "key": "CONF_90_PLUS",
       "win_rate": 64.1,
       "count": 39,
       "ev_per_trade": 101.92,
-      "status": "PARTIALLY CAPTURED -- BTC SHORT via btc_short_90plus_boost_v1. Non-BTC PENDING_HUMAN_REVIEW.",
-      "consecutive_flags": 19,
+      "status": "PARTIALLY CAPTURED -- BTC SHORT via btc_short_90plus_boost_v1. Non-BTC ESCALATED (21st deferral, threshold review required).",
+      "consecutive_flags": 21,
       "missed_ev_total_paper": 7542.0,
-      "severity": "HIGH"
+      "severity": "HIGH_ESCALATED"
     }
   ],
   "high_edges_found": 3,
@@ -42,6 +42,6 @@
   ],
   "weak_setups_found": 6,
   "new_injections_this_run": 0,
-  "pending_human_review": "CONF_90PLUS_GENERAL_BOOST (conf=72%, flag #19 master / #80 paper). ~$7,542 missed EV. BTC SHORT 90%+ captured by btc_short_90plus_boost_v1. ETH/SOL at 90%+ still unbosted.",
+  "pending_human_review": "CONF_90PLUS_GENERAL_BOOST (conf=72%, flag #21 master). ~$7,542 missed EV. BTC SHORT 90%+ captured. ETH/SOL at 90%+ still unboosted. ESCALATED: 21 deferrals — threshold review overdue.",
   "output": {"high_edges_found": 3, "weak_setups_found": 6}
 }

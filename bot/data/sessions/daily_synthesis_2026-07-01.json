@@ -1,0 +1,85 @@
+{
+  "date": "2026-07-01",
+  "run": 161,
+  "generated_at": "2026-07-01T00:00:00Z",
+  "bot_status": "OFFLINE",
+  "days_offline": 69,
+  "trades_today": 0,
+  "summary": "New day. Bot offline Day 69. No trades. Morning window (74% WR, best of day) opens at 06:00 UTC in ~6h.",
+  "anomalies": [
+    {
+      "type": "BOT_OFFLINE",
+      "severity": "CRITICAL",
+      "days": 69,
+      "description": "Bot has been offline 69 days. 23 graduated rules and 5 A/B gates are ready but untested. Equity at $497.05."
+    },
+    {
+      "type": "RR_GEOMETRY_BROKEN",
+      "severity": "CRITICAL",
+      "rr_ratio": 0.479,
+      "flags": 93,
+      "description": "avg_loss=$306.96 vs avg_win=$147.07. 93 consecutive flags without human decision on atr_mult_sl fix."
+    },
+    {
+      "type": "MORNING_WINDOW_IMMINENT",
+      "severity": "HIGH_TIMESENSITIVE",
+      "window": "06:00-12:00 UTC",
+      "wr": 0.74,
+      "description": "Best trading window of the day opens in ~6h. Bot must be live to capture it."
+    },
+    {
+      "type": "EQUITY_DRAWDOWN",
+      "severity": "HIGH",
+      "equity": 497.05,
+      "drawdown_pct": 90.1,
+      "circuit_breaker_losses_remaining": 2
+    },
+    {
+      "type": "CONF_90PLUS_EDGE_PENDING",
+      "severity": "HIGH",
+      "missed_ev": 7542.0,
+      "deferrals": 21,
+      "description": "conf_90plus_general_boost_v1 ready to write (gate=20%). 21 deferrals at conf=72% — 3pts below threshold. ETH/SOL 90%+ unboosted."
+    },
+    {
+      "type": "CIRCUIT_BREAKER_PROXIMITY",
+      "severity": "MEDIUM",
+      "consecutive_losses": 4,
+      "trigger_at": 6,
+      "losses_remaining": 2
+    }
+  ],
+  "tomorrow_priorities": {
+    "windows_ranked": [
+      {"window": "morning 06:00-12:00 UTC", "wr": 0.74, "boost_rule": "tod_morning_edge_v1 +5"},
+      {"window": "evening 18:00-24:00 UTC", "wr": 0.65, "boost_rule": "tod_evening_edge_v1 +5"},
+      {"window": "afternoon 12:00-18:00 UTC", "wr": 0.64, "boost_rule": "tod_afternoon_edge_v1 +5"}
+    ],
+    "best_setups": [
+      "SOL SHORT (63.7% WR, n=179, EV=+$32.44/trade) — sol_short_penalize_v1 deactivated, boost available",
+      "BTC SHORT 90%+ conf (67% WR, n=43, EV=+$102.92/trade) — btc_short_90plus_boost_v1 active",
+      "ETH trending regime (71% WR, n=7) — eth_trending_regime_boost_v1 active"
+    ],
+    "avoid": [
+      "HYPE any direction (vetoed, EV deeply negative)",
+      "Night session 00:00-06:00 UTC (19% WR, blocked)",
+      "Illiquid/ranging regimes (28%/25% WR, penalized)",
+      "BTC SELL 70-79% conf (worst noise-stop bucket)"
+    ],
+    "sizing": "START AT 50% — streak=4, circuit breaker trigger at 6 (2 losses away)"
+  },
+  "pending_human_decisions": [
+    {
+      "id": "RR_ATR_FIX",
+      "priority": 1,
+      "description": "Choose atr_mult_sl fix: Option A (global 1.5->1.8) or Option B (HYPE-specific 2.0->2.3). 93 flags overdue.",
+      "impact": "Fixes breakeven WR from 68% to 62% (Option A) — most impactful single change available."
+    },
+    {
+      "id": "CONF_90PLUS_BOOST",
+      "priority": 2,
+      "description": "Apply conf_90plus_general_boost_v1 manually OR lower auto-apply threshold to 70% for this proposal.",
+      "impact": "+$7,542 cumulative missed EV at current rate."
+    }
+  ]
+}
